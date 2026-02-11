@@ -1,0 +1,18 @@
+# Configuration
+config.yaml
+
+# Project metadata and instructions
+AGENTS.md
+project.md
+RnD_Reference/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log

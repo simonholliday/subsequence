@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "subsequence"
+version = "0.1.0"
+description = "A generative MIDI sequencer"
+readme = "README.md"
+authors = [{ name = "Si", email = "si@example.com" }]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "mido",
+    "python-rtmidi",
+    "pyyaml",
+    "numpy",
+]
+requires-python = ">=3.10"
+
+[project.scripts]
+subsequence = "subsequence.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["subsequence*"]

@@ -1,0 +1,5 @@
+midi:
+  device_name: "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
+
+sequencer:
+  initial_bpm: 125
