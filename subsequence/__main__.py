@@ -7,6 +7,7 @@ import yaml
 import subsequence.constants
 import subsequence.pattern
 import subsequence.sequencer
+import subsequence.sequence_utils
 
 
 # Configure logging
@@ -45,22 +46,31 @@ def main () -> None:
 
 	pattern = subsequence.pattern.Pattern(channel=subsequence.constants.MIDI_CHANNEL_DRM1, length=4)
 
-	# Create a simple beat
-	# Kick on 1, 3
-	pattern.add_note(0 * subsequence.constants.MIDI_QUARTER_NOTE, subsequence.constants.DRM1_MKIV_KICK, 100, subsequence.constants.MIDI_SIXTEENTH_NOTE)
-	pattern.add_note(2 * subsequence.constants.MIDI_QUARTER_NOTE, subsequence.constants.DRM1_MKIV_KICK, 100, subsequence.constants.MIDI_SIXTEENTH_NOTE)
+	# Create a simple beat using Euclidean rhythm for kick (4 hits in 16 steps)
+	kick_sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=16, pulses=4)
+	for i, hit in enumerate(kick_sequence):
+		if hit:
+			pattern.add_note(i * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_KICK, 100, subsequence.constants.MIDI_SIXTEENTH_NOTE)
 
-	# Snare on 2, 4
-	pattern.add_note(1 * subsequence.constants.MIDI_QUARTER_NOTE, subsequence.constants.DRM1_MKIV_SNARE, 100, subsequence.constants.MIDI_SIXTEENTH_NOTE)
-	pattern.add_note(3 * subsequence.constants.MIDI_QUARTER_NOTE, subsequence.constants.DRM1_MKIV_SNARE, 100, subsequence.constants.MIDI_SIXTEENTH_NOTE)
+	# Snare on 2 and 4 (standard backbeat)
+	# 16th notes: 4, 12
+	pattern.add_note(4 * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_SNARE, 100, subsequence.constants.MIDI_SIXTEENTH_NOTE)
+	pattern.add_note(12 * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_SNARE, 100, subsequence.constants.MIDI_SIXTEENTH_NOTE)
 
-	# Hi-hats on 8ths
-	for i in range(8):
-		pos = i * (subsequence.constants.MIDI_QUARTER_NOTE // 2)
-		pattern.add_note(pos, subsequence.constants.DRM1_MKIV_HH1_CLOSED, 80, subsequence.constants.MIDI_SIXTEENTH_NOTE)
-
+	# Hi-hats using Bresenham (8 hits in 16 steps = straight 8ths)
+	hh_sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=16, pulses=8)
+	
+	# Use van der Corput to modulate velocity slightly
+	velocities = subsequence.sequence_utils.generate_van_der_corput_sequence(n=16, base=2)
+	
+	for i, hit in enumerate(hh_sequence):
+		if hit:
+			# Map 0-1 float to velocity range 60-100
+			vel = int(60 + (velocities[i] * 40))
+			pattern.add_note(i * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_HH1_CLOSED, vel, subsequence.constants.MIDI_SIXTEENTH_NOTE)
+	
 	# Open Hi-hat on the last off-beat
-	pattern.add_note(7 * (subsequence.constants.MIDI_QUARTER_NOTE // 2), subsequence.constants.DRM1_MKIV_HH1_OPEN, 80, subsequence.constants.MIDI_SIXTEENTH_NOTE)
+	pattern.add_note(14 * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_HH1_OPEN, 80, subsequence.constants.MIDI_SIXTEENTH_NOTE)
 
 	# Schedule for 4 bars
 	pulses_per_bar = 4 * subsequence.constants.MIDI_QUARTER_NOTE
