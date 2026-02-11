@@ -52,8 +52,14 @@ class Sequencer:
 		"""
 
 		self.midi_device_name = midi_device_name
-		self.current_bpm = initial_bpm
 		self.pulses_per_beat = subsequence.constants.MIDI_QUARTER_NOTE
+		
+		# Timing variables
+		self.current_bpm = 0
+		self.seconds_per_beat = 0.0
+		self.seconds_per_pulse = 0.0
+		
+		self.set_bpm(initial_bpm)
 
 		self.midi_out = None
 		self._init_midi()
@@ -66,6 +72,22 @@ class Sequencer:
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
 		self.queue_lock = threading.Lock()
+
+
+	def set_bpm (self, bpm: int) -> None:
+
+		"""
+		Set the tempo and recalculate timing constants.
+		"""
+		
+		if bpm <= 0:
+			raise ValueError("BPM must be positive")
+			
+		self.current_bpm = bpm
+		self.seconds_per_beat = 60.0 / self.current_bpm
+		self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
+		
+		logger.info(f"BPM set to {self.current_bpm}")
 
 
 	def _init_midi (self) -> None:
@@ -185,11 +207,9 @@ class Sequencer:
 
 			current_time = time.perf_counter()
 			elapsed_time = current_time - self.start_time
-
-			seconds_per_beat = 60.0 / self.current_bpm
-			seconds_per_pulse = seconds_per_beat / self.pulses_per_beat
-
-			target_pulse = int(elapsed_time / seconds_per_pulse)
+			
+			# Use cached timing values
+			target_pulse = int(elapsed_time / self.seconds_per_pulse)
 
 			while self.pulse_count <= target_pulse:
 				self._process_pulse(self.pulse_count)
@@ -202,7 +222,7 @@ class Sequencer:
 					self.running = False
 					break
 
-			next_pulse_target_time = (self.pulse_count * seconds_per_pulse) + self.start_time
+			next_pulse_target_time = (self.pulse_count * self.seconds_per_pulse) + self.start_time
 			sleep_time = next_pulse_target_time - time.perf_counter()
 
 			if sleep_time > 0:

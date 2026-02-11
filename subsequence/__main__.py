@@ -80,7 +80,7 @@ def main () -> None:
 	seq.start()
 
 	try:
-		while True:
+		while seq.running:
 			time.sleep(1)
 	except KeyboardInterrupt:
 		logger.info("Stopping...")
