@@ -63,6 +63,7 @@ class Sequencer:
 		self.thread = None
 		self.start_time = 0.0
 		self.pulse_count = 0
+		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
 		self.queue_lock = threading.Lock()
 
@@ -168,6 +169,9 @@ class Sequencer:
 		logger.info("Sequencer stopped")
 
 
+		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
+
+
 	def _run_loop (self) -> None:
 
 		"""
@@ -190,6 +194,13 @@ class Sequencer:
 			while self.pulse_count <= target_pulse:
 				self._process_pulse(self.pulse_count)
 				self.pulse_count += 1
+			
+			# Check if queue is empty and we are past the last event
+			with self.queue_lock:
+				if not self.event_queue and not self.active_notes:
+					logger.info("Sequence complete (no more events or active notes).")
+					self.running = False
+					break
 
 			next_pulse_target_time = (self.pulse_count * seconds_per_pulse) + self.start_time
 			sleep_time = next_pulse_target_time - time.perf_counter()
@@ -209,6 +220,13 @@ class Sequencer:
 			while self.event_queue and self.event_queue[0].pulse <= pulse:
 
 				event = heapq.heappop(self.event_queue)
+				
+				# Track active notes
+				if event.message_type == 'note_on' and event.velocity > 0:
+					self.active_notes.add((event.channel, event.note))
+				elif event.message_type == 'note_off' or (event.message_type == 'note_on' and event.velocity == 0):
+					if (event.channel, event.note) in self.active_notes:
+						self.active_notes.remove((event.channel, event.note))
 
 				if event.pulse == pulse:
 					self._send_midi(event)
@@ -216,6 +234,19 @@ class Sequencer:
 				else:
 					# Event is in the past, send it anyway (late)
 					self._send_midi(event)
+
+
+	def _stop_all_active_notes (self) -> None:
+	
+		"""
+		Send note_off for all currently tracked active notes.
+		"""
+		
+		with self.queue_lock:
+			for channel, note in list(self.active_notes):
+				if self.midi_out:
+					self.midi_out.send(mido.Message('note_off', channel=channel, note=note, velocity=0))
+			self.active_notes.clear()
 
 
 	def _send_midi (self, event: MidiEvent) -> None:
@@ -241,6 +272,20 @@ class Sequencer:
 		"""
 		Send a MIDI panic message to all channels.
 		"""
+		
+		# 1. Stop all tracked active notes manually
+		self._stop_all_active_notes()
 
 		if self.midi_out:
+			
+			# 2. Send "All Notes Off" (CC 123) and "All Sound Off" (CC 120) to all 16 channels
+			for channel in range(16):
+				self.midi_out.send(mido.Message('control_change', channel=channel, control=123, value=0))
+				self.midi_out.send(mido.Message('control_change', channel=channel, control=120, value=0))
+
+			# 3. Use built-in panic and reset
 			self.midi_out.panic()
+			
+			# Note: reset() might close/reopen ports or clear internal buffers depending on backend,
+			# but mido docs say it sends "All Notes Off" and "Reset All Controllers".
+			self.midi_out.reset()
