@@ -48,26 +48,25 @@ def main () -> None:
 
 	# Create a simple beat using Euclidean rhythm for kick (4 hits in 16 steps)
 	kick_sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=16, pulses=4)
-	for i, hit in enumerate(kick_sequence):
-		if hit:
-			pattern.add_note(i * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_KICK, 100, subsequence.constants.MIDI_SIXTEENTH_NOTE)
+	pattern.add_sequence(kick_sequence, step_duration=subsequence.constants.MIDI_SIXTEENTH_NOTE, pitch=subsequence.constants.DRM1_MKIV_KICK, velocity=100)
 
 	# Snare on 2 and 4 (standard backbeat)
 	# 16th notes: 4, 12
-	pattern.add_note(4 * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_SNARE, 100, subsequence.constants.MIDI_SIXTEENTH_NOTE)
-	pattern.add_note(12 * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_SNARE, 100, subsequence.constants.MIDI_SIXTEENTH_NOTE)
+	# Let's make a simple list sequence for snare:
+	snare_sequence = [0] * 16
+	snare_sequence[4] = 1
+	snare_sequence[12] = 1
+	pattern.add_sequence(snare_sequence, step_duration=subsequence.constants.MIDI_SIXTEENTH_NOTE, pitch=subsequence.constants.DRM1_MKIV_SNARE, velocity=100)
 
 	# Hi-hats using Bresenham (8 hits in 16 steps = straight 8ths)
 	hh_sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=16, pulses=8)
 	
 	# Use van der Corput to modulate velocity slightly
-	velocities = subsequence.sequence_utils.generate_van_der_corput_sequence(n=16, base=2)
+	vdc_values = subsequence.sequence_utils.generate_van_der_corput_sequence(n=16, base=2)
+	# Map 0-1 float to velocity range 60-100
+	hh_velocities = [int(60 + (v * 40)) for v in vdc_values]
 	
-	for i, hit in enumerate(hh_sequence):
-		if hit:
-			# Map 0-1 float to velocity range 60-100
-			vel = int(60 + (velocities[i] * 40))
-			pattern.add_note(i * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_HH1_CLOSED, vel, subsequence.constants.MIDI_SIXTEENTH_NOTE)
+	pattern.add_sequence(hh_sequence, step_duration=subsequence.constants.MIDI_SIXTEENTH_NOTE, pitch=subsequence.constants.DRM1_MKIV_HH1_CLOSED, velocity=hh_velocities)
 	
 	# Open Hi-hat on the last off-beat
 	pattern.add_note(14 * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_HH1_OPEN, 80, subsequence.constants.MIDI_SIXTEENTH_NOTE)

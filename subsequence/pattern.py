@@ -61,3 +61,27 @@ class Pattern:
 		)
 
 		self.steps[position].notes.append(note)
+
+
+	def add_sequence (self, sequence: typing.List[int], step_duration: int, pitch: int, velocity: typing.Union[int, typing.List[int]] = 100, note_duration: int = 6) -> None:
+
+		"""
+		Add a sequence of notes to the pattern.
+		"""
+
+		if isinstance(velocity, int):
+			velocity = [velocity] * len(sequence)
+
+		for i, hit in enumerate(sequence):
+			
+			if hit:
+				
+				# Handle case where velocity list might be shorter than sequence
+				vel = velocity[i % len(velocity)]
+				
+				self.add_note(
+					position = i * step_duration,
+					pitch = pitch,
+					velocity = int(vel),
+					duration = note_duration
+				)
