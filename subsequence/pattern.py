@@ -1,6 +1,8 @@
 import dataclasses
 import typing
 
+import subsequence.constants
+
 
 @dataclasses.dataclass
 class Note:
@@ -86,6 +88,67 @@ class Pattern:
 					velocity = int(vel),
 					duration = note_duration
 				)
+
+	def add_note_beats (self, beat_position: float, pitch: int, velocity: int, duration_beats: float, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+
+		"""
+		Add a note to the pattern at a beat position.
+		"""
+
+		if beat_position < 0:
+			raise ValueError("Beat position cannot be negative")
+
+		if duration_beats <= 0:
+			raise ValueError("Beat duration must be positive")
+
+		if pulses_per_beat <= 0:
+			raise ValueError("Pulses per beat must be positive")
+
+		position = int(beat_position * pulses_per_beat)
+		duration = int(duration_beats * pulses_per_beat)
+
+		if duration <= 0:
+			raise ValueError("Beat duration must be at least one pulse")
+
+		self.add_note(
+			position = position,
+			pitch = pitch,
+			velocity = velocity,
+			duration = duration
+		)
+
+
+	def add_sequence_beats (self, sequence: typing.List[int], step_beats: float, pitch: int, velocity: typing.Union[int, typing.List[int]] = 100, note_duration_beats: float = 0.25, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+
+		"""
+		Add a sequence of notes using beat durations.
+		"""
+
+		if step_beats <= 0:
+			raise ValueError("Step duration must be positive")
+
+		if note_duration_beats <= 0:
+			raise ValueError("Note duration must be positive")
+
+		if pulses_per_beat <= 0:
+			raise ValueError("Pulses per beat must be positive")
+
+		step_duration = int(step_beats * pulses_per_beat)
+		note_duration = int(note_duration_beats * pulses_per_beat)
+
+		if step_duration <= 0:
+			raise ValueError("Step duration must be at least one pulse")
+
+		if note_duration <= 0:
+			raise ValueError("Note duration must be at least one pulse")
+
+		self.add_sequence(
+			sequence = sequence,
+			step_duration = step_duration,
+			pitch = pitch,
+			velocity = velocity,
+			note_duration = note_duration
+		)
 
 
 	def on_reschedule (self) -> None:

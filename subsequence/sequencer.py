@@ -1,6 +1,7 @@
 import asyncio
 import dataclasses
 import heapq
+import itertools
 import logging
 import time
 import typing
@@ -60,6 +61,7 @@ class ScheduledPattern:
 	cycle_start_pulse: int
 	length_pulses: int
 	lookahead_pulses: int
+	next_reschedule_pulse: int
 
 
 class Sequencer:
@@ -96,7 +98,8 @@ class Sequencer:
 
 		self.queue_lock = asyncio.Lock()
 		self.pattern_lock = asyncio.Lock()
-		self.scheduled_patterns: typing.List[ScheduledPattern] = []
+		self.reschedule_queue: typing.List[typing.Tuple[int, int, ScheduledPattern]] = []
+		self._reschedule_counter = itertools.count()
 		
 		# Callbacks
 		self.callbacks: typing.List[typing.Callable[[int], typing.Coroutine]] = []
@@ -230,15 +233,19 @@ class Sequencer:
 
 		await self.schedule_pattern(pattern, start_pulse)
 
+		next_reschedule_pulse = start_pulse + length_pulses - lookahead_pulses
+
 		scheduled_pattern = ScheduledPattern(
 			pattern = pattern,
 			cycle_start_pulse = start_pulse,
 			length_pulses = length_pulses,
-			lookahead_pulses = lookahead_pulses
+			lookahead_pulses = lookahead_pulses,
+			next_reschedule_pulse = next_reschedule_pulse
 		)
 
 		async with self.pattern_lock:
-			self.scheduled_patterns.append(scheduled_pattern)
+			counter = next(self._reschedule_counter)
+			heapq.heappush(self.reschedule_queue, (scheduled_pattern.next_reschedule_pulse, counter, scheduled_pattern))
 
 
 	async def play (self) -> None:
@@ -294,7 +301,8 @@ class Sequencer:
 		logger.info("Sequencer stopped")
 
 		async with self.pattern_lock:
-			self.scheduled_patterns = []
+			self.reschedule_queue = []
+			self._reschedule_counter = itertools.count()
 
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
@@ -351,26 +359,30 @@ class Sequencer:
 		Reschedule repeating patterns when they reach their lookahead threshold.
 		"""
 
-		to_reschedule: typing.List[typing.Tuple[PatternLike, int]] = []
+		to_reschedule: typing.List[ScheduledPattern] = []
 
 		async with self.pattern_lock:
 
-			for scheduled_pattern in self.scheduled_patterns:
+			while self.reschedule_queue and self.reschedule_queue[0][0] <= pulse:
 
-				reschedule_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses - scheduled_pattern.lookahead_pulses
+				_, _, scheduled_pattern = heapq.heappop(self.reschedule_queue)
 
-				if pulse >= reschedule_pulse:
+				next_start_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses
+				scheduled_pattern.cycle_start_pulse = next_start_pulse
+				scheduled_pattern.next_reschedule_pulse = next_start_pulse + scheduled_pattern.length_pulses - scheduled_pattern.lookahead_pulses
 
-					next_start_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses
-					scheduled_pattern.cycle_start_pulse = next_start_pulse
+				to_reschedule.append(scheduled_pattern)
 
-					to_reschedule.append((scheduled_pattern.pattern, next_start_pulse))
+		for scheduled_pattern in to_reschedule:
 
-		for pattern, start_pulse in to_reschedule:
+			scheduled_pattern.pattern.on_reschedule()
 
-			pattern.on_reschedule()
+			await self.schedule_pattern(scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse)
 
-			await self.schedule_pattern(pattern, start_pulse)
+		async with self.pattern_lock:
+			for scheduled_pattern in to_reschedule:
+				counter = next(self._reschedule_counter)
+				heapq.heappush(self.reschedule_queue, (scheduled_pattern.next_reschedule_pulse, counter, scheduled_pattern))
 
 
 	async def _process_pulse (self, pulse: int) -> None:
@@ -392,12 +404,8 @@ class Sequencer:
 					if (event.channel, event.note) in self.active_notes:
 						self.active_notes.remove((event.channel, event.note))
 
-				if event.pulse == pulse:
-					self._send_midi(event)
-
-				else:
-					# Event is in the past, send it anyway (late)
-					self._send_midi(event)
+				# Send events at or before the current pulse (late events are sent immediately).
+				self._send_midi(event)
 
 
 	async def _stop_all_active_notes (self) -> None:

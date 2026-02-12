@@ -31,7 +31,7 @@ def generate_euclidean_sequence (steps: int, pulses: int) -> typing.List[int]:
 
 	counts.append(divisor)
 
-	def build (level):
+	def build (level: int) -> None:
 		if level == -1:
 			sequence.append(0)
 		elif level == -2:
