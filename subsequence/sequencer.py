@@ -72,6 +72,9 @@ class Sequencer:
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
 		self.queue_lock = asyncio.Lock()
+		
+		# Callbacks
+		self.callbacks: typing.List[typing.Callable[[int], typing.Coroutine]] = []
 
 
 	def set_bpm (self, bpm: int) -> None:
@@ -88,6 +91,15 @@ class Sequencer:
 		self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
 		
 		logger.info(f"BPM set to {self.current_bpm}")
+
+
+	def add_callback (self, callback: typing.Callable[[int], typing.Coroutine]) -> None:
+
+		"""
+		Add an async callback to be invoked at the start of each bar.
+		"""
+		
+		self.callbacks.append(callback)
 
 
 	def _init_midi (self) -> None:
@@ -221,6 +233,9 @@ class Sequencer:
 
 		self.start_time = time.perf_counter()
 		self.pulse_count = 0
+		
+		current_bar = -1
+		pulses_per_bar = 4 * self.pulses_per_beat # Assuming 4/4
 
 		while self.running:
 
@@ -229,6 +244,13 @@ class Sequencer:
 			
 			# Use cached timing values
 			target_pulse = int(elapsed_time / self.seconds_per_pulse)
+			
+			# Check for bar change
+			new_bar = target_pulse // pulses_per_bar
+			if new_bar > current_bar:
+				current_bar = new_bar
+				for cb in self.callbacks:
+					asyncio.create_task(cb(current_bar))
 
 			while self.pulse_count <= target_pulse:
 				await self._process_pulse(self.pulse_count)

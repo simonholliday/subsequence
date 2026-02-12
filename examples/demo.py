@@ -89,6 +89,11 @@ async def main () -> None:
 	for bar in range(4):
 		await seq.schedule_pattern(pattern, start_pulse=bar * pulses_per_bar)
 
+	async def on_bar (bar: int) -> None:
+		logger.info(f"Bar {bar + 1}")
+
+	seq.add_callback(on_bar)
+
 	logger.info("Playing sequence...")
 	await seq.play()
 
