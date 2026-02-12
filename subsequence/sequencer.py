@@ -1,7 +1,7 @@
+import asyncio
 import dataclasses
 import heapq
 import logging
-import threading
 import time
 import typing
 
@@ -66,12 +66,12 @@ class Sequencer:
 
 		self.event_queue: typing.List[MidiEvent] = []
 		self.running = False
-		self.thread = None
+		self.task = None
 		self.start_time = 0.0
 		self.pulse_count = 0
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
-		self.queue_lock = threading.Lock()
+		self.queue_lock = asyncio.Lock()
 
 
 	def set_bpm (self, bpm: int) -> None:
@@ -117,13 +117,13 @@ class Sequencer:
 			logger.error(f"Failed to open MIDI output: {e}")
 
 
-	def schedule_pattern (self, pattern: PatternLike, start_pulse: int) -> None:
+	async def schedule_pattern (self, pattern: PatternLike, start_pulse: int) -> None:
 
 		"""
 		Schedules a pattern's notes into the sequencer's event queue.
 		"""
 
-		with self.queue_lock:
+		async with self.queue_lock:
 
 			for position, step in pattern.steps.items():
 
@@ -156,23 +156,42 @@ class Sequencer:
 		logger.debug(f"Scheduled pattern at {start_pulse}, queue size: {len(self.event_queue)}")
 
 
-	def start (self) -> None:
+		logger.debug(f"Scheduled pattern at {start_pulse}, queue size: {len(self.event_queue)}")
+
+
+	async def play (self) -> None:
 
 		"""
-		Start the sequencer playback in a separate thread.
+		Convenience method to start playback and wait for completion.
+		"""
+
+		await self.start()
+		
+		try:
+			if self.task:
+				await self.task
+		except asyncio.CancelledError:
+			pass
+		finally:
+			await self.stop()
+
+
+	async def start (self) -> None:
+
+		"""
+		Start the sequencer playback in a separate asyncio task.
 		"""
 
 		if self.running:
 			return
 
 		self.running = True
-		self.thread = threading.Thread(target=self._run_loop, daemon=True)
-		self.thread.start()
+		self.task = asyncio.create_task(self._run_loop())
 
 		logger.info("Sequencer started")
 
 
-	def stop (self) -> None:
+	async def stop (self) -> None:
 
 		"""
 		Stop the sequencer playback and cleanup resources.
@@ -180,10 +199,10 @@ class Sequencer:
 
 		self.running = False
 
-		if self.thread:
-			self.thread.join(timeout=1.0)
+		if self.task:
+			await self.task
 
-		self.panic()
+		await self.panic()
 
 		if self.midi_out:
 			self.midi_out.close()
@@ -194,10 +213,10 @@ class Sequencer:
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
 
-	def _run_loop (self) -> None:
+	async def _run_loop (self) -> None:
 
 		"""
-		Main playback loop running in a separate thread.
+		Main playback loop running as an asyncio task.
 		"""
 
 		self.start_time = time.perf_counter()
@@ -212,11 +231,11 @@ class Sequencer:
 			target_pulse = int(elapsed_time / self.seconds_per_pulse)
 
 			while self.pulse_count <= target_pulse:
-				self._process_pulse(self.pulse_count)
+				await self._process_pulse(self.pulse_count)
 				self.pulse_count += 1
 			
 			# Check if queue is empty and we are past the last event
-			with self.queue_lock:
+			async with self.queue_lock:
 				if not self.event_queue and not self.active_notes:
 					logger.info("Sequence complete (no more events or active notes).")
 					self.running = False
@@ -226,16 +245,16 @@ class Sequencer:
 			sleep_time = next_pulse_target_time - time.perf_counter()
 
 			if sleep_time > 0:
-				time.sleep(max(0, sleep_time))
+				await asyncio.sleep(max(0, sleep_time))
 
 
-	def _process_pulse (self, pulse: int) -> None:
+	async def _process_pulse (self, pulse: int) -> None:
 
 		"""
 		Process and execute all events for a specific pulse.
 		"""
 
-		with self.queue_lock:
+		async with self.queue_lock:
 
 			while self.event_queue and self.event_queue[0].pulse <= pulse:
 
@@ -256,13 +275,13 @@ class Sequencer:
 					self._send_midi(event)
 
 
-	def _stop_all_active_notes (self) -> None:
+	async def _stop_all_active_notes (self) -> None:
 	
 		"""
 		Send note_off for all currently tracked active notes.
 		"""
 		
-		with self.queue_lock:
+		async with self.queue_lock:
 			for channel, note in list(self.active_notes):
 				if self.midi_out:
 					self.midi_out.send(mido.Message('note_off', channel=channel, note=note, velocity=0))
@@ -287,14 +306,14 @@ class Sequencer:
 			self.midi_out.send(msg)
 
 
-	def panic (self) -> None:
+	async def panic (self) -> None:
 
 		"""
 		Send a MIDI panic message to all channels.
 		"""
 		
 		# 1. Stop all tracked active notes manually
-		self._stop_all_active_notes()
+		await self._stop_all_active_notes()
 
 		if self.midi_out:
 			
