@@ -65,6 +65,20 @@ class ScheduledPattern:
 	next_reschedule_pulse: int
 
 
+@dataclasses.dataclass
+class ScheduledCallback:
+
+	"""
+	Tracks a repeating callback and its scheduling metadata.
+	"""
+
+	callback: typing.Callable[[int], typing.Any]
+	cycle_start_pulse: int
+	interval_pulses: int
+	lookahead_pulses: int
+	next_fire_pulse: int
+
+
 class Sequencer:
 
 	"""
@@ -102,6 +116,9 @@ class Sequencer:
 		self.reschedule_queue: typing.List[typing.Tuple[int, int, ScheduledPattern]] = []
 		self._reschedule_counter = itertools.count()
 		self.events = subsequence.event_emitter.EventEmitter()
+		self.callback_lock = asyncio.Lock()
+		self.callback_queue: typing.List[typing.Tuple[int, int, ScheduledCallback]] = []
+		self._callback_counter = itertools.count()
 		
 		# Callbacks
 		self.callbacks: typing.List[typing.Callable[[int], typing.Coroutine]] = []
@@ -168,31 +185,37 @@ class Sequencer:
 			logger.error(f"Failed to open MIDI output: {e}")
 
 
+	def _get_schedule_timing (self, length_beats: float, lookahead_beats: float) -> typing.Tuple[int, int]:
+
+		"""
+		Convert schedule length and reschedule lookahead from beats to pulses.
+		"""
+
+		if length_beats <= 0:
+			raise ValueError("Schedule length must be positive")
+
+		if lookahead_beats < 0:
+			raise ValueError("Reschedule lookahead cannot be negative")
+
+		if lookahead_beats > length_beats:
+			raise ValueError("Reschedule lookahead cannot exceed schedule length")
+
+		length_pulses = int(length_beats * self.pulses_per_beat)
+		lookahead_pulses = int(lookahead_beats * self.pulses_per_beat)
+
+		if length_pulses <= 0:
+			raise ValueError("Schedule length must be at least one pulse")
+
+		return length_pulses, lookahead_pulses
+
+
 	def _get_pattern_timing (self, pattern: PatternLike) -> typing.Tuple[int, int]:
 
 		"""
 		Convert pattern length and reschedule lookahead from beats to pulses.
 		"""
 
-		length_beats = pattern.length
-		lookahead_beats = pattern.reschedule_lookahead
-
-		if length_beats <= 0:
-			raise ValueError("Pattern length must be positive")
-
-		if lookahead_beats < 0:
-			raise ValueError("Reschedule lookahead cannot be negative")
-
-		if lookahead_beats > length_beats:
-			raise ValueError("Reschedule lookahead cannot exceed pattern length")
-
-		length_pulses = int(length_beats * self.pulses_per_beat)
-		lookahead_pulses = int(lookahead_beats * self.pulses_per_beat)
-
-		if length_pulses <= 0:
-			raise ValueError("Pattern length must be at least one pulse")
-
-		return length_pulses, lookahead_pulses
+		return self._get_schedule_timing(pattern.length, pattern.reschedule_lookahead)
 
 
 	async def schedule_pattern (self, pattern: PatternLike, start_pulse: int) -> None:
@@ -259,6 +282,29 @@ class Sequencer:
 			heapq.heappush(self.reschedule_queue, (scheduled_pattern.next_reschedule_pulse, counter, scheduled_pattern))
 
 
+	async def schedule_callback_repeating (self, callback: typing.Callable[[int], typing.Any], interval_beats: float, start_pulse: int = 0, reschedule_lookahead: float = 1) -> None:
+
+		"""
+		Schedule a repeating callback on a beat interval.
+		"""
+
+		interval_pulses, lookahead_pulses = self._get_schedule_timing(interval_beats, reschedule_lookahead)
+
+		next_fire_pulse = start_pulse + interval_pulses - lookahead_pulses
+
+		scheduled_callback = ScheduledCallback(
+			callback = callback,
+			cycle_start_pulse = start_pulse,
+			interval_pulses = interval_pulses,
+			lookahead_pulses = lookahead_pulses,
+			next_fire_pulse = next_fire_pulse
+		)
+
+		async with self.callback_lock:
+			counter = next(self._callback_counter)
+			heapq.heappush(self.callback_queue, (scheduled_callback.next_fire_pulse, counter, scheduled_callback))
+
+
 	async def play (self) -> None:
 
 		"""
@@ -317,6 +363,10 @@ class Sequencer:
 			self.reschedule_queue = []
 			self._reschedule_counter = itertools.count()
 
+		async with self.callback_lock:
+			self.callback_queue = []
+			self._callback_counter = itertools.count()
+
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
 		await self.events.emit_async("stop")
@@ -372,10 +422,36 @@ class Sequencer:
 	async def _maybe_reschedule_patterns (self, pulse: int) -> None:
 
 		"""
-		Reschedule repeating patterns when they reach their lookahead threshold.
+		Reschedule repeating callbacks and patterns when they reach their lookahead threshold.
 		"""
 
+		to_fire: typing.List[ScheduledCallback] = []
 		to_reschedule: typing.List[ScheduledPattern] = []
+
+		async with self.callback_lock:
+
+			while self.callback_queue and self.callback_queue[0][0] <= pulse:
+
+				_, _, scheduled_callback = heapq.heappop(self.callback_queue)
+
+				next_start_pulse = scheduled_callback.cycle_start_pulse + scheduled_callback.interval_pulses
+				scheduled_callback.cycle_start_pulse = next_start_pulse
+				scheduled_callback.next_fire_pulse = next_start_pulse + scheduled_callback.interval_pulses - scheduled_callback.lookahead_pulses
+
+				to_fire.append(scheduled_callback)
+
+		if to_fire:
+			# Decision path: composition-level callbacks fire before pattern rebuilds.
+			for scheduled_callback in to_fire:
+				result = scheduled_callback.callback(pulse)
+
+				if asyncio.iscoroutine(result):
+					await result
+
+		async with self.callback_lock:
+			for scheduled_callback in to_fire:
+				counter = next(self._callback_counter)
+				heapq.heappush(self.callback_queue, (scheduled_callback.next_fire_pulse, counter, scheduled_callback))
 
 		async with self.pattern_lock:
 
@@ -388,6 +464,11 @@ class Sequencer:
 				scheduled_pattern.next_reschedule_pulse = next_start_pulse + scheduled_pattern.length_pulses - scheduled_pattern.lookahead_pulses
 
 				to_reschedule.append(scheduled_pattern)
+
+		if to_reschedule:
+			# Decision path: update shared composition state before pattern rebuilds.
+			patterns = [scheduled_pattern.pattern for scheduled_pattern in to_reschedule]
+			await self.events.emit_async("reschedule_pulse", pulse, patterns)
 
 		for scheduled_pattern in to_reschedule:
 

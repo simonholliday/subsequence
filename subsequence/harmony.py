@@ -1,110 +1,32 @@
 import logging
-import random
 import typing
 
-import subsequence.constants
-import subsequence.chord_graphs.functional_major
-import subsequence.chord_graphs.turnaround_global
 import subsequence.chords
+import subsequence.harmonic_state
 import subsequence.pattern
-import subsequence.weighted_graph
 
 
 logger = logging.getLogger(__name__)
 
 
-GraphBuilderType = typing.Callable[
-	[str, bool, float],
-	typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]
-]
-
-
-GRAPH_BUILDERS: typing.Dict[str, GraphBuilderType] = {
-	"functional_major": subsequence.chord_graphs.functional_major.build_graph,
-	"turnaround_global": subsequence.chord_graphs.turnaround_global.build_graph,
-}
-
-
-def get_graph_builder (graph_style: str) -> GraphBuilderType:
-
-	"""
-	Return a chord graph builder by name.
-	"""
-
-	if graph_style not in GRAPH_BUILDERS:
-		raise ValueError(f"Unknown graph style: {graph_style}")
-
-	return GRAPH_BUILDERS[graph_style]
-
-
-def _build_major_key_chords (key_name: str) -> typing.List[subsequence.chords.Chord]:
-
-	"""
-	Return diatonic triads for a major key.
-	"""
-
-	key_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
-	scale_intervals = [0, 2, 4, 5, 7, 9, 11]
-	degree_qualities = ["major", "minor", "minor", "major", "major", "minor", "diminished"]
-
-	chords: typing.List[subsequence.chords.Chord] = []
-
-	for degree, quality in enumerate(degree_qualities):
-		root_pc = (key_pc + scale_intervals[degree]) % 12
-		chords.append(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
-
-	return chords
-
-
-def _get_key_gravity_sets (key_name: str) -> typing.Tuple[typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]]:
-
-	"""
-	Return diatonic and functional chord sets for key gravity.
-	"""
-
-	diatonic = set(_build_major_key_chords(key_name))
-
-	key_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
-	scale_intervals = [0, 2, 5, 7]
-	function_qualities = ["major", "minor", "major", "major"]
-
-	function_chords: typing.Set[subsequence.chords.Chord] = set()
-
-	for interval, quality in zip(scale_intervals, function_qualities):
-		root_pc = (key_pc + interval) % 12
-		function_chords.add(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
-
-	# Decision path: include the dominant seventh as a functional and diatonic chord option.
-	dominant_7th = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="dominant_7th")
-	function_chords.add(dominant_7th)
-	diatonic.add(dominant_7th)
-
-	return diatonic, function_chords
-
-
 class ChordPattern (subsequence.pattern.Pattern):
 
 	"""
-	A repeating chord pattern that evolves with a Markov progression.
+	A repeating chord pattern that follows the shared harmonic state.
 	"""
 
 	def __init__ (
 		self,
-		key_name: str,
+		harmonic_state: subsequence.harmonic_state.HarmonicState,
 		length: int = 4,
 		root_midi: int = 52,
 		velocity: int = 90,
 		reschedule_lookahead: int = 1,
-		include_dominant_7th: bool = True,
-		graph_style: str = "functional_major",
-		key_gravity_blend: float = 1.0,
-		minor_turnaround_weight: float = 0.0,
-		rng: typing.Optional[random.Random] = None,
 		channel: typing.Optional[int] = None
 	) -> None:
 
 		"""
-		Initialize a chord pattern for a major key.
+		Initialize a chord pattern driven by composition-level harmony.
 		"""
 
 		if channel is None:
@@ -118,26 +40,10 @@ class ChordPattern (subsequence.pattern.Pattern):
 			reschedule_lookahead = reschedule_lookahead
 		)
 
-		self.key_name = key_name
-		self.key_root_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
+		self.harmonic_state = harmonic_state
 		self.key_root_midi = root_midi
 		self.velocity = velocity
-		self.key_gravity_blend = key_gravity_blend
-
-		if self.key_gravity_blend < 0 or self.key_gravity_blend > 1:
-			raise ValueError("Key gravity blend must be between 0 and 1")
-
-		graph_builder = get_graph_builder(graph_style)
-		self.graph, tonic = graph_builder(
-			key_name = key_name,
-			include_dominant_7th = include_dominant_7th,
-			minor_turnaround_weight = minor_turnaround_weight
-		)
-
-		self._diatonic_chords, self._function_chords = _get_key_gravity_sets(self.key_name)
-
-		self.rng = rng or random.Random()
-		self.current_chord = tonic
+		self.current_chord = self.harmonic_state.get_current_chord()
 
 		self._build_current_chord()
 
@@ -148,9 +54,7 @@ class ChordPattern (subsequence.pattern.Pattern):
 		Calculate the MIDI root for a chord relative to the key root.
 		"""
 
-		offset = (chord.root_pc - self.key_root_pc) % 12
-
-		return self.key_root_midi + offset
+		return self.harmonic_state.get_chord_root_midi(self.key_root_midi, chord)
 
 
 	def _build_current_chord (self) -> None:
@@ -179,27 +83,10 @@ class ChordPattern (subsequence.pattern.Pattern):
 	def on_reschedule (self) -> None:
 
 		"""
-		Advance the chord and rebuild the pattern.
+		Rebuild the chord pattern from the shared harmonic state.
 		"""
 
-		def weight_modifier (
-			source: subsequence.chords.Chord,
-			target: subsequence.chords.Chord,
-			weight: int
-		) -> float:
-
-			"""
-			Blend functional vs diatonic key gravity for transition weights.
-			"""
-
-			is_function = 1.0 if target in self._function_chords else 0.0
-			is_diatonic = 1.0 if target in self._diatonic_chords else 0.0
-
-			# Decision path: blend controls which chord set receives the key gravity boost.
-			boost = (1.0 - self.key_gravity_blend) * is_function + self.key_gravity_blend * is_diatonic
-
-			return 1.0 + boost
-
-		self.current_chord = self.graph.choose_next(self.current_chord, self.rng, weight_modifier=weight_modifier)
+		# Decision path: chord changes come from harmonic_state.step in the sequencer callback.
+		self.current_chord = self.harmonic_state.get_current_chord()
 
 		self._build_current_chord()

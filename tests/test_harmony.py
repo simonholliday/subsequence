@@ -2,7 +2,7 @@ import pytest
 
 import subsequence.chord_graphs.functional_major
 import subsequence.chords
-import subsequence.harmony
+import subsequence.harmonic_state
 
 
 def test_dominant_7th_included () -> None:
@@ -40,7 +40,7 @@ def test_key_gravity_blend_changes_weights () -> None:
 	"""
 
 	graph, tonic = subsequence.chord_graphs.functional_major.build_graph("E", include_dominant_7th=True)
-	diatonic, function_chords = subsequence.harmony._get_key_gravity_sets("E")
+	diatonic, function_chords = subsequence.harmonic_state._get_key_gravity_sets("E")
 
 	diatonic_only = 1.0
 	function_only = 0.0

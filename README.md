@@ -8,6 +8,7 @@ Subsequence is a generative MIDI sequencer built in Python. It schedules pattern
 - **Polyrhythms** emerge by running patterns with different lengths.
 - **Harmony** can evolve via a weighted Markov transition graph (see the chord pattern in the demo).
 - **Motifs & swing** utilities support expressive timing and reusable note fragments.
+- **Composition clocks** can advance harmony independently of any specific pattern.
 
 ## Quick start
 1. Install dependencies:
@@ -18,7 +19,7 @@ pip install -e .
 ```
 cp config.yaml.default config.yaml
 ```
-3. Run the demo (drums + evolving chords in E major):
+3. Run the demo (drums + evolving harmony in E major):
 ```
 python examples/demo.py
 ```
@@ -31,7 +32,7 @@ python examples/demo.py
 See `config.yaml.default` for defaults.
 
 ## Demo details
-The demo schedules two drum patterns, a tonal chord pattern on `MIDI_CHANNEL_MATRIARCH`, and a simple swung motif on `MIDI_CHANNEL_MODEL_D`. Chords evolve each cycle using a weighted transition graph and are voiced in root position (inversions may be added later). The chord pattern explicitly selects a graph style (`turnaround_global`) and includes `key_gravity_blend` plus `minor_turnaround_weight` settings. Press Ctrl+C to stop; the sequencer logs a panic message and sends all notes off.
+The demo schedules two drum patterns, a tonal chord pattern on `MIDI_CHANNEL_VOCE_EP`, a simple swung motif on `MIDI_CHANNEL_MATRIARCH`, and a steady bassline on `MIDI_CHANNEL_MINITAUR` that plays the chord root every beat. A shared `HarmonicState` advances chords for the whole composition on a dedicated composition clock, and patterns read that state when they rebuild so the motif and bassline follow chord changes together. Chords evolve each cycle using a weighted transition graph and are voiced in root position (inversions may be added later). The harmonic state explicitly selects a graph style (`turnaround_global`) and includes `key_gravity_blend` plus `minor_turnaround_weight` settings. Press Ctrl+C to stop; the sequencer logs a panic message and sends all notes off.
 
 ## Extra utilities
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
@@ -40,6 +41,7 @@ The demo schedules two drum patterns, a tonal chord pattern on `MIDI_CHANNEL_MAT
 - `subsequence.event_emitter` supports sync/async events for later extensibility.
 - `subsequence.chord_graphs` contains chord transition graphs (functional and global turnaround).
 - `subsequence.weighted_graph` provides a generic weighted graph used for transitions.
+- `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
 
 ## Tests
 This project uses `pytest`.

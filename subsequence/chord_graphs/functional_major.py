@@ -17,6 +17,8 @@ def build_graph (key_name: str, include_dominant_7th: bool = True, minor_turnaro
 	Build a functional major-key graph and return it with the tonic chord.
 	"""
 
+	# Decision path: minor_turnaround_weight is ignored for the functional-major model.
+
 	if key_name not in subsequence.chords.NOTE_NAME_TO_PC:
 		raise ValueError(f"Unknown key name: {key_name}")
 
