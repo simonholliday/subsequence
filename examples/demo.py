@@ -187,7 +187,7 @@ def generate_motif_pattern () -> subsequence.pattern.Pattern:
 	motif = subsequence.motif.Motif()
 
 	# Decision: use a compact four-note shape to add a gentle melodic layer.
-	root = 52
+	root = 64
 	notes = [root, root + 4, root + 7, root + 12]
 	beat_positions = [0.0, 0.5, 1.0, 1.5]
 
@@ -196,7 +196,7 @@ def generate_motif_pattern () -> subsequence.pattern.Pattern:
 
 	pattern = motif.to_pattern(
 		# Decision: place the motif on MODEL_D to separate it from the VOCE chords.
-		channel = subsequence.constants.MIDI_CHANNEL_MODEL_D,
+		channel = subsequence.constants.MIDI_CHANNEL_MATRIARCH,
 		length_beats = 4,
 		reschedule_lookahead = 1
 	)
