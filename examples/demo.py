@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import os
 import random
 import signal
@@ -241,23 +242,37 @@ class BassPattern (subsequence.pattern.Pattern):
 	A simple bassline that follows the composition-level harmony.
 	"""
 
-	def __init__ (self, harmonic_state: subsequence.harmonic_state.HarmonicState, channel: int, length: int, reschedule_lookahead: int = 1, root_midi: int = 40) -> None:
+	def __init__ (self, harmonic_state: subsequence.harmonic_state.HarmonicState, channel: int, cycle_beats: int, step_beats: float = 1.0, note_duration_beats: float = 0.5, reschedule_lookahead: int = 1, root_midi: int = 40) -> None:
 
 		"""
 		Initialize the bass pattern with shared harmonic state.
 		"""
 
-		sequence = [1] * length * 4
+		sequence_length = cycle_beats / step_beats
+		sequence_length_int = int(round(sequence_length))
+
+		if not math.isclose(sequence_length, sequence_length_int, rel_tol=0.0, abs_tol=1e-9):
+			raise ValueError("cycle_beats must be divisible by step_beats")
+
+		if note_duration_beats <= 0:
+			raise ValueError("note_duration_beats must be positive")
+
+		if note_duration_beats > step_beats:
+			raise ValueError("note_duration_beats cannot exceed step_beats")
+
+		sequence = [1] * sequence_length_int
 
 		super().__init__(
 			channel = channel,
-			length = length,
+			length = cycle_beats,
 			reschedule_lookahead = reschedule_lookahead
 		)
 
 		self.harmonic_state = harmonic_state
 		self.root_midi = root_midi
 		self.base_key_name = harmonic_state.get_key_name()
+		self.step_beats = step_beats
+		self.note_duration_beats = note_duration_beats
 		self.sequence = sequence
 
 		self._build_pattern()
@@ -290,13 +305,13 @@ class BassPattern (subsequence.pattern.Pattern):
 		chord = self.harmonic_state.get_current_chord()
 		chord_root = self.harmonic_state.get_chord_root_midi(self.root_midi, chord)
 
-		# Decision: play a note on every beat with a half-beat duration.
+		# Decision: cycle length sets duration; step_beats sets note density within the cycle.
 		self.add_sequence_beats(
 			sequence = self.sequence,
-			step_beats = 0.25,
+			step_beats = self.step_beats,
 			pitch = chord_root,
 			velocity = 90,
-			note_duration_beats = 0.2
+			note_duration_beats = self.note_duration_beats
 		)
 
 
@@ -382,7 +397,10 @@ async def main () -> None:
 		# Decision: place the bass on MINITAUR for a dedicated low-end voice.
 		channel = subsequence.constants.MIDI_CHANNEL_MINITAUR,
 		# Decision: match the chord cycle length so bass updates on every chord change.
-		length = harmonic_cycle_beats,
+		cycle_beats = harmonic_cycle_beats,
+		# Decision: 16th-note grid inside each cycle for a busier bassline.
+		step_beats = 0.25,
+		note_duration_beats = 0.2,
 		reschedule_lookahead = 1,
 		root_midi = 28
 	)

@@ -32,7 +32,7 @@ python examples/demo.py
 See `config.yaml.default` for defaults.
 
 ## Demo details
-The demo schedules two drum patterns, a tonal chord pattern on `MIDI_CHANNEL_VOCE_EP`, a simple swung motif on `MIDI_CHANNEL_MATRIARCH`, and a steady bassline on `MIDI_CHANNEL_MINITAUR` that plays the chord root every beat. A shared `HarmonicState` advances chords for the whole composition on a dedicated composition clock, and patterns read that state when they rebuild so the motif and bassline follow chord changes together. Chords evolve each cycle using a weighted transition graph and are voiced in root position (inversions may be added later). The harmonic state explicitly selects a graph style (`turnaround_global`) and includes `key_gravity_blend` plus `minor_turnaround_weight` settings. Press Ctrl+C to stop; the sequencer logs a panic message and sends all notes off.
+The demo schedules two drum patterns, a tonal chord pattern on `MIDI_CHANNEL_VOCE_EP`, a simple swung motif on `MIDI_CHANNEL_MATRIARCH`, and a steady bassline on `MIDI_CHANNEL_MINITAUR` that repeats the chord root on a 16th-note grid. A shared `HarmonicState` advances chords for the whole composition on a dedicated composition clock, and patterns read that state when they rebuild so the motif and bassline follow chord changes together. Chords evolve each cycle using a weighted transition graph and are voiced in root position (inversions may be added later). The harmonic state explicitly selects a graph style (`turnaround_global`) and includes `key_gravity_blend` plus `minor_turnaround_weight` settings. Press Ctrl+C to stop; the sequencer logs a panic message and sends all notes off.
 
 ## Extra utilities
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
