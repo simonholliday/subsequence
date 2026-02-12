@@ -7,6 +7,7 @@ import signal
 import yaml
 
 import subsequence.constants
+import subsequence.harmony
 import subsequence.pattern
 import subsequence.sequencer
 import subsequence.sequence_utils
@@ -193,9 +194,18 @@ async def main () -> None:
 
 	kick_snare = KickSnarePattern(length=4, reschedule_lookahead=1)
 	hats = HatPattern(length=5, reschedule_lookahead=1)
+	chords = subsequence.harmony.ChordPattern(
+		key_name = "E",
+		length = 4,
+		root_midi = 52,
+		velocity = 90,
+		reschedule_lookahead = 1,
+		include_dominant_7th = True
+	)
 
 	await seq.schedule_pattern_repeating(kick_snare, start_pulse=0)
 	await seq.schedule_pattern_repeating(hats, start_pulse=0)
+	await seq.schedule_pattern_repeating(chords, start_pulse=0)
 
 	async def on_bar (bar: int) -> None:
 
