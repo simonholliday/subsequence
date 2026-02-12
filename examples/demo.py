@@ -8,6 +8,7 @@ import yaml
 
 import subsequence.constants
 import subsequence.harmony
+import subsequence.motif
 import subsequence.pattern
 import subsequence.sequencer
 import subsequence.sequence_utils
@@ -177,6 +178,32 @@ class HatPattern (subsequence.pattern.Pattern):
 		self._build_pattern()
 
 
+def generate_motif_pattern () -> subsequence.pattern.Pattern:
+
+	"""
+	Generate a simple swung motif pattern.
+	"""
+
+	motif = subsequence.motif.Motif()
+
+	root = 52
+	notes = [root, root + 4, root + 7, root + 12]
+	beat_positions = [0.0, 0.5, 1.0, 1.5]
+
+	for beat_position, pitch in zip(beat_positions, notes):
+		motif.add_note_beats(beat_position=beat_position, pitch=pitch, velocity=90, duration_beats=0.5)
+
+	pattern = motif.to_pattern(
+		channel = subsequence.constants.MIDI_CHANNEL_MODEL_D,
+		length_beats = 4,
+		reschedule_lookahead = 1
+	)
+
+	pattern.apply_swing(swing_ratio=2.0)
+
+	return pattern
+
+
 async def main () -> None:
 
 	"""
@@ -202,10 +229,12 @@ async def main () -> None:
 		reschedule_lookahead = 1,
 		include_dominant_7th = True
 	)
+	motif = generate_motif_pattern()
 
 	await seq.schedule_pattern_repeating(kick_snare, start_pulse=0)
 	await seq.schedule_pattern_repeating(hats, start_pulse=0)
 	await seq.schedule_pattern_repeating(chords, start_pulse=0)
+	await seq.schedule_pattern_repeating(motif, start_pulse=0)
 
 	async def on_bar (bar: int) -> None:
 

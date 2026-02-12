@@ -65,6 +65,33 @@ def generate_bresenham_sequence (steps: int, pulses: int) -> typing.List[int]:
 	return sequence
 
 
+def generate_bresenham_sequence_weighted (steps: int, weights: typing.List[float]) -> typing.List[int]:
+
+	"""
+	Generate a sequence that distributes weighted indices across steps.
+	"""
+
+	if steps <= 0:
+		raise ValueError("Steps must be positive")
+
+	if not weights:
+		raise ValueError("Weights cannot be empty")
+
+	acc = [0.0] * len(weights)
+	sequence: typing.List[int] = []
+
+	for _ in range(steps):
+
+		for i, weight in enumerate(weights):
+			acc[i] += weight
+
+		chosen = max(range(len(weights)), key=lambda i: acc[i])
+		sequence.append(chosen)
+		acc[chosen] -= 1.0
+
+	return sequence
+
+
 def generate_van_der_corput_sequence (n: int, base: int = 2) -> typing.List[float]:
 
 	"""
@@ -84,3 +111,23 @@ def generate_van_der_corput_sequence (n: int, base: int = 2) -> typing.List[floa
 		sequence.append(value)
 		
 	return sequence
+
+
+def generate_legato_durations (hits: typing.List[int]) -> typing.List[int]:
+
+	"""
+	Convert a hit list into per-step legato durations.
+	"""
+
+	if not hits:
+		return []
+
+	note_on_indices = [idx for idx, hit in enumerate(hits) if hit]
+	note_on_indices.append(len(hits))
+
+	durations = [0] * len(hits)
+
+	for idx, next_idx in zip(note_on_indices[:-1], note_on_indices[1:]):
+		durations[idx] = max(1, next_idx - idx)
+
+	return durations

@@ -3,6 +3,7 @@ import random
 import typing
 
 import subsequence.constants
+import subsequence.markov_chain
 import subsequence.pattern
 
 
@@ -142,17 +143,7 @@ class ChordTransitionGraph:
 		if not options:
 			return source
 
-		total_weight = sum(weight for _, weight in options)
-
-		roll = rng.uniform(0, total_weight)
-		accum = 0.0
-
-		for chord, weight in options:
-			accum += weight
-			if roll <= accum:
-				return chord
-
-		return options[-1][0]
+		return subsequence.markov_chain.choose_weighted(options, rng)
 
 
 def build_major_key_graph (key_name: str, include_dominant_7th: bool = True) -> typing.Tuple[ChordTransitionGraph, Chord]:
@@ -229,8 +220,11 @@ class ChordMarkov:
 		"""
 
 		self.graph = graph
-		self.current = start
-		self.rng = rng or random.Random()
+		self.chain = subsequence.markov_chain.MarkovChain(
+			transitions = graph.transitions,
+			initial_state = start,
+			rng = rng
+		)
 
 
 	def step (self) -> Chord:
@@ -239,9 +233,16 @@ class ChordMarkov:
 		Advance to the next chord and return it.
 		"""
 
-		self.current = self.graph.choose_next(self.current, self.rng)
+		return self.chain.step()
 
-		return self.current
+
+	def get_state (self) -> Chord:
+
+		"""
+		Return the current chord.
+		"""
+
+		return self.chain.get_state()
 
 
 class ChordPattern (subsequence.pattern.Pattern):
@@ -259,7 +260,7 @@ class ChordPattern (subsequence.pattern.Pattern):
 		reschedule_lookahead: int = 1,
 		include_dominant_7th: bool = True,
 		rng: typing.Optional[random.Random] = None,
-		channel: int = subsequence.constants.MIDI_CHANNEL_MATRIARCH
+		channel: int = subsequence.constants.MIDI_CHANNEL_VOCE_EP
 	) -> None:
 
 		"""

@@ -9,6 +9,7 @@ import typing
 import mido
 
 import subsequence.constants
+import subsequence.event_emitter
 
 
 logger = logging.getLogger(__name__)
@@ -100,6 +101,7 @@ class Sequencer:
 		self.pattern_lock = asyncio.Lock()
 		self.reschedule_queue: typing.List[typing.Tuple[int, int, ScheduledPattern]] = []
 		self._reschedule_counter = itertools.count()
+		self.events = subsequence.event_emitter.EventEmitter()
 		
 		# Callbacks
 		self.callbacks: typing.List[typing.Callable[[int], typing.Coroutine]] = []
@@ -128,6 +130,15 @@ class Sequencer:
 		"""
 		
 		self.callbacks.append(callback)
+
+
+	def on_event (self, event_name: str, callback: typing.Callable[..., typing.Any]) -> None:
+
+		"""
+		Register a callback for a named event.
+		"""
+
+		self.events.on(event_name, callback)
 
 
 	def _init_midi (self) -> None:
@@ -279,6 +290,8 @@ class Sequencer:
 
 		logger.info("Sequencer started")
 
+		await self.events.emit_async("start")
+
 
 	async def stop (self) -> None:
 
@@ -305,6 +318,8 @@ class Sequencer:
 			self._reschedule_counter = itertools.count()
 
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
+
+		await self.events.emit_async("stop")
 
 
 	async def _run_loop (self) -> None:
@@ -333,6 +348,7 @@ class Sequencer:
 				current_bar = new_bar
 				for cb in self.callbacks:
 					asyncio.create_task(cb(current_bar))
+				asyncio.create_task(self.events.emit_async("bar", current_bar))
 
 			while self.pulse_count <= target_pulse:
 				await self._maybe_reschedule_patterns(self.pulse_count)
@@ -378,6 +394,7 @@ class Sequencer:
 			scheduled_pattern.pattern.on_reschedule()
 
 			await self.schedule_pattern(scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse)
+			asyncio.create_task(self.events.emit_async("pattern_reschedule", scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse))
 
 		async with self.pattern_lock:
 			for scheduled_pattern in to_reschedule:

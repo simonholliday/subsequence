@@ -2,6 +2,7 @@ import dataclasses
 import typing
 
 import subsequence.constants
+import subsequence.swing
 
 
 @dataclasses.dataclass
@@ -148,6 +149,18 @@ class Pattern:
 			pitch = pitch,
 			velocity = velocity,
 			note_duration = note_duration
+		)
+
+	def apply_swing (self, swing_ratio: float = 2.0, pulses_per_quarter: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+
+		"""
+		Apply swing timing to the pattern steps.
+		"""
+
+		self.steps = subsequence.swing.apply_swing(
+			steps = self.steps,
+			swing_ratio = swing_ratio,
+			pulses_per_quarter = pulses_per_quarter
 		)
 
 

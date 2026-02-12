@@ -7,6 +7,7 @@ Subsequence is a generative MIDI sequencer built in Python. It schedules pattern
 - **Sequencer** keeps a stable clock, handles note on/off, and reschedules patterns ahead of their cycle end.
 - **Polyrhythms** emerge by running patterns with different lengths.
 - **Harmony** can evolve via a weighted Markov transition graph (see the chord pattern in the demo).
+- **Motifs & swing** utilities support expressive timing and reusable note fragments.
 
 ## Quick start
 1. Install dependencies:
@@ -30,4 +31,10 @@ python examples/demo.py
 See `config.yaml.default` for defaults.
 
 ## Demo details
-The demo schedules two drum patterns and a tonal chord pattern on `MIDI_CHANNEL_MATRIARCH`. Chords evolve each cycle using a weighted transition graph and are voiced in root position (inversions may be added later). Press Ctrl+C to stop; the sequencer logs a panic message and sends all notes off.
+The demo schedules two drum patterns, a tonal chord pattern on `MIDI_CHANNEL_MATRIARCH`, and a simple swung motif on `MIDI_CHANNEL_MODEL_D`. Chords evolve each cycle using a weighted transition graph and are voiced in root position (inversions may be added later). Press Ctrl+C to stop; the sequencer logs a panic message and sends all notes off.
+
+## Extra utilities
+- `subsequence.motif` provides a small Motif helper that can render into a Pattern.
+- `subsequence.swing` applies swing timing to a pattern.
+- `subsequence.intervals` contains interval and scale definitions for future harmonic work.
+- `subsequence.event_emitter` supports sync/async events for later extensibility.
