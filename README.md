@@ -1,3 +1,29 @@
 # Subsequence
 
-A generative MIDI sequencer.
+Subsequence is a generative MIDI sequencer built in Python. It schedules patterns “just in time,” so music can evolve continuously without stopping. Patterns are defined as collections of notes in pulse time, and when a pattern is scheduled its current state is copied into the sequencer’s event queue. This lets patterns mutate over time without affecting already‑scheduled notes.
+
+## Key ideas
+- **Patterns** store notes in pulses and can evolve each cycle.
+- **Sequencer** keeps a stable clock, handles note on/off, and reschedules patterns ahead of their cycle end.
+- **Polyrhythms** emerge by running patterns with different lengths.
+
+## Quick start
+1. Install dependencies:
+```
+pip install -e .
+```
+2. Copy the default config (optional) and adjust your MIDI output device:
+```
+cp config.yaml.default config.yaml
+```
+3. Run the demo:
+```
+python examples/demo.py
+```
+
+## Configuration
+`config.yaml` (optional) supports:
+- `midi.device_name` (string): MIDI output device name.
+- `sequencer.initial_bpm` (int): tempo in beats per minute.
+
+See `config.yaml.default` for defaults.
