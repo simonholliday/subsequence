@@ -22,7 +22,17 @@ class PatternLike (typing.Protocol):
 
 	channel: int
 	length: int
+	reschedule_lookahead: int
 	steps: typing.Dict[int, typing.Any]
+
+
+	def on_reschedule (self) -> None:
+
+		"""
+		Hook called immediately before the pattern is rescheduled.
+		"""
+
+		...
 
 
 @dataclasses.dataclass (order=True)
@@ -37,6 +47,19 @@ class MidiEvent:
 	channel: int = dataclasses.field(compare=False)
 	note: int = dataclasses.field(compare=False)
 	velocity: int = dataclasses.field(compare=False)
+
+
+@dataclasses.dataclass
+class ScheduledPattern:
+
+	"""
+	Tracks a repeating pattern and its scheduling metadata.
+	"""
+
+	pattern: PatternLike
+	cycle_start_pulse: int
+	length_pulses: int
+	lookahead_pulses: int
 
 
 class Sequencer:
@@ -72,6 +95,8 @@ class Sequencer:
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
 		self.queue_lock = asyncio.Lock()
+		self.pattern_lock = asyncio.Lock()
+		self.scheduled_patterns: typing.List[ScheduledPattern] = []
 		
 		# Callbacks
 		self.callbacks: typing.List[typing.Callable[[int], typing.Coroutine]] = []
@@ -129,6 +154,33 @@ class Sequencer:
 			logger.error(f"Failed to open MIDI output: {e}")
 
 
+	def _get_pattern_timing (self, pattern: PatternLike) -> typing.Tuple[int, int]:
+
+		"""
+		Convert pattern length and reschedule lookahead from beats to pulses.
+		"""
+
+		length_beats = pattern.length
+		lookahead_beats = pattern.reschedule_lookahead
+
+		if length_beats <= 0:
+			raise ValueError("Pattern length must be positive")
+
+		if lookahead_beats < 0:
+			raise ValueError("Reschedule lookahead cannot be negative")
+
+		if lookahead_beats > length_beats:
+			raise ValueError("Reschedule lookahead cannot exceed pattern length")
+
+		length_pulses = int(length_beats * self.pulses_per_beat)
+		lookahead_pulses = int(lookahead_beats * self.pulses_per_beat)
+
+		if length_pulses <= 0:
+			raise ValueError("Pattern length must be at least one pulse")
+
+		return length_pulses, lookahead_pulses
+
+
 	async def schedule_pattern (self, pattern: PatternLike, start_pulse: int) -> None:
 
 		"""
@@ -168,7 +220,25 @@ class Sequencer:
 		logger.debug(f"Scheduled pattern at {start_pulse}, queue size: {len(self.event_queue)}")
 
 
-		logger.debug(f"Scheduled pattern at {start_pulse}, queue size: {len(self.event_queue)}")
+	async def schedule_pattern_repeating (self, pattern: PatternLike, start_pulse: int) -> None:
+
+		"""
+		Schedule a pattern and register it for rescheduling each cycle.
+		"""
+
+		length_pulses, lookahead_pulses = self._get_pattern_timing(pattern)
+
+		await self.schedule_pattern(pattern, start_pulse)
+
+		scheduled_pattern = ScheduledPattern(
+			pattern = pattern,
+			cycle_start_pulse = start_pulse,
+			length_pulses = length_pulses,
+			lookahead_pulses = lookahead_pulses
+		)
+
+		async with self.pattern_lock:
+			self.scheduled_patterns.append(scheduled_pattern)
 
 
 	async def play (self) -> None:
@@ -209,6 +279,8 @@ class Sequencer:
 		Stop the sequencer playback and cleanup resources.
 		"""
 
+		logger.info("Stopping sequencer...")
+
 		self.running = False
 
 		if self.task:
@@ -221,6 +293,8 @@ class Sequencer:
 
 		logger.info("Sequencer stopped")
 
+		async with self.pattern_lock:
+			self.scheduled_patterns = []
 
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
@@ -253,6 +327,7 @@ class Sequencer:
 					asyncio.create_task(cb(current_bar))
 
 			while self.pulse_count <= target_pulse:
+				await self._maybe_reschedule_patterns(self.pulse_count)
 				await self._process_pulse(self.pulse_count)
 				self.pulse_count += 1
 			
@@ -268,6 +343,34 @@ class Sequencer:
 
 			if sleep_time > 0:
 				await asyncio.sleep(max(0, sleep_time))
+
+
+	async def _maybe_reschedule_patterns (self, pulse: int) -> None:
+
+		"""
+		Reschedule repeating patterns when they reach their lookahead threshold.
+		"""
+
+		to_reschedule: typing.List[typing.Tuple[PatternLike, int]] = []
+
+		async with self.pattern_lock:
+
+			for scheduled_pattern in self.scheduled_patterns:
+
+				reschedule_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses - scheduled_pattern.lookahead_pulses
+
+				if pulse >= reschedule_pulse:
+
+					next_start_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses
+					scheduled_pattern.cycle_start_pulse = next_start_pulse
+
+					to_reschedule.append((scheduled_pattern.pattern, next_start_pulse))
+
+		for pattern, start_pulse in to_reschedule:
+
+			pattern.on_reschedule()
+
+			await self.schedule_pattern(pattern, start_pulse)
 
 
 	async def _process_pulse (self, pulse: int) -> None:
@@ -333,6 +436,8 @@ class Sequencer:
 		"""
 		Send a MIDI panic message to all channels.
 		"""
+
+		logger.info("Panic: sending all notes off.")
 		
 		# 1. Stop all tracked active notes manually
 		await self._stop_all_active_notes()

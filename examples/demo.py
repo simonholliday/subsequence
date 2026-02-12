@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import os
-import time
+import random
+import signal
 
 import yaml
 
@@ -30,40 +31,149 @@ def load_config (config_path: str = 'config.yaml') -> dict:
 		return yaml.safe_load(f)
 
 
-def generate_drum_pattern (length: int = 4) -> subsequence.pattern.Pattern:
+class KickSnarePattern (subsequence.pattern.Pattern):
 
 	"""
-	Generates a drum pattern with Kick, Snare, and Hi-hats.
+	A kick and snare pattern that evolves on each reschedule.
 	"""
 
-	pattern = subsequence.pattern.Pattern(channel=subsequence.constants.MIDI_CHANNEL_DRM1, length=length)
+	def __init__ (self, length: int, reschedule_lookahead: int = 1) -> None:
 
-	# Create a simple beat using Euclidean rhythm for kick (4 hits in 16 steps)
-	kick_sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=16, pulses=4)
-	pattern.add_sequence(kick_sequence, step_duration=subsequence.constants.MIDI_SIXTEENTH_NOTE, pitch=subsequence.constants.DRM1_MKIV_KICK, velocity=100)
+		"""
+		Initialize the kick/snare pattern and build the first cycle.
+		"""
 
-	# Snare on 2 and 4 (standard backbeat)
-	# 16th notes: 4, 12
-	# Let's make a simple list sequence for snare:
-	snare_sequence = [0] * 16
-	snare_sequence[4] = 1
-	snare_sequence[12] = 1
-	pattern.add_sequence(snare_sequence, step_duration=subsequence.constants.MIDI_SIXTEENTH_NOTE, pitch=subsequence.constants.DRM1_MKIV_SNARE, velocity=100)
+		super().__init__(
+			channel = subsequence.constants.MIDI_CHANNEL_DRM1,
+			length = length,
+			reschedule_lookahead = reschedule_lookahead
+		)
 
-	# Hi-hats using Bresenham (8 hits in 16 steps = straight 8ths)
-	hh_sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=16, pulses=8)
-	
-	# Use van der Corput to modulate velocity slightly
-	vdc_values = subsequence.sequence_utils.generate_van_der_corput_sequence(n=16, base=2)
-	# Map 0-1 float to velocity range 60-100
-	hh_velocities = [int(60 + (v * 40)) for v in vdc_values]
-	
-	pattern.add_sequence(hh_sequence, step_duration=subsequence.constants.MIDI_SIXTEENTH_NOTE, pitch=subsequence.constants.DRM1_MKIV_HH1_CLOSED, velocity=hh_velocities)
-	
-	# Open Hi-hat on the last off-beat
-	pattern.add_note(14 * subsequence.constants.MIDI_SIXTEENTH_NOTE, subsequence.constants.DRM1_MKIV_HH1_OPEN, 80, subsequence.constants.MIDI_SIXTEENTH_NOTE)
-	
-	return pattern
+		self.rng = random.Random()
+
+		self._build_pattern()
+
+
+	def _build_pattern (self) -> None:
+
+		"""
+		Build a new kick/snare cycle with light variation.
+		"""
+
+		self.steps = {}
+
+		steps = self.length * 4
+		step_duration = subsequence.constants.MIDI_SIXTEENTH_NOTE
+
+		kick_hits = max(1, steps // 4)
+		kick_sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=steps, pulses=kick_hits)
+
+		for i in range(steps):
+
+			if kick_sequence[i] and self.rng.random() < 0.2:
+				kick_sequence[i] = 0
+
+		self.add_sequence(
+			kick_sequence,
+			step_duration = step_duration,
+			pitch = subsequence.constants.DRM1_MKIV_KICK,
+			velocity = 105
+		)
+
+		snare_sequence = [0] * steps
+		snare_indices = [4, 12]
+
+		for idx in snare_indices:
+			if idx < steps:
+				snare_sequence[idx] = 1
+
+		self.add_sequence(
+			snare_sequence,
+			step_duration = step_duration,
+			pitch = subsequence.constants.DRM1_MKIV_SNARE,
+			velocity = 100
+		)
+
+
+	def on_reschedule (self) -> None:
+
+		"""
+		Rebuild the pattern before the next cycle is scheduled.
+		"""
+
+		self._build_pattern()
+
+
+class HatPattern (subsequence.pattern.Pattern):
+
+	"""
+	A hi-hat pattern with evolving velocities and occasional open hats.
+	"""
+
+	def __init__ (self, length: int, reschedule_lookahead: int = 1) -> None:
+
+		"""
+		Initialize the hi-hat pattern and build the first cycle.
+		"""
+
+		super().__init__(
+			channel = subsequence.constants.MIDI_CHANNEL_DRM1,
+			length = length,
+			reschedule_lookahead = reschedule_lookahead
+		)
+
+		self.rng = random.Random()
+
+		self._build_pattern()
+
+
+	def _build_pattern (self) -> None:
+
+		"""
+		Build a new hi-hat cycle with stochastic accents.
+		"""
+
+		self.steps = {}
+
+		steps = self.length * 4
+		step_duration = subsequence.constants.MIDI_SIXTEENTH_NOTE
+
+		hat_hits = max(1, steps // 2)
+		hh_sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=steps, pulses=hat_hits)
+
+		vdc_values = subsequence.sequence_utils.generate_van_der_corput_sequence(n=steps, base=2)
+		hh_velocities = [int(60 + (v * 40)) for v in vdc_values]
+
+		for i in range(steps):
+
+			if hh_sequence[i] and self.rng.random() < 0.1:
+				hh_sequence[i] = 0
+
+		self.add_sequence(
+			hh_sequence,
+			step_duration = step_duration,
+			pitch = subsequence.constants.DRM1_MKIV_HH1_CLOSED,
+			velocity = hh_velocities
+		)
+
+		open_hat_step = steps - 2
+
+		if open_hat_step >= 0 and self.rng.random() < 0.6:
+			self.add_note(
+				open_hat_step * step_duration,
+				subsequence.constants.DRM1_MKIV_HH1_OPEN,
+				85,
+				step_duration
+			)
+
+
+	def on_reschedule (self) -> None:
+
+		"""
+		Rebuild the pattern before the next cycle is scheduled.
+		"""
+
+		self._build_pattern()
 
 
 async def main () -> None:
@@ -81,21 +191,46 @@ async def main () -> None:
 
 	seq = subsequence.sequencer.Sequencer(midi_device_name=midi_device, initial_bpm=initial_bpm)
 
-	pattern = generate_drum_pattern(length=4)
+	kick_snare = KickSnarePattern(length=4, reschedule_lookahead=1)
+	hats = HatPattern(length=5, reschedule_lookahead=1)
 
-	# Schedule for 4 bars
-	pulses_per_bar = 4 * subsequence.constants.MIDI_QUARTER_NOTE
-
-	for bar in range(4):
-		await seq.schedule_pattern(pattern, start_pulse=bar * pulses_per_bar)
+	await seq.schedule_pattern_repeating(kick_snare, start_pulse=0)
+	await seq.schedule_pattern_repeating(hats, start_pulse=0)
 
 	async def on_bar (bar: int) -> None:
+
+		"""
+		Log the current bar for visibility.
+		"""
+
 		logger.info(f"Bar {bar + 1}")
 
 	seq.add_callback(on_bar)
 
-	logger.info("Playing sequence...")
-	await seq.play()
+	logger.info("Playing sequence. Press Ctrl+C to stop.")
+
+	await seq.start()
+
+	stop_event = asyncio.Event()
+	loop = asyncio.get_running_loop()
+
+	def _request_stop () -> None:
+
+		"""
+		Signal handler to request a clean shutdown.
+		"""
+
+		stop_event.set()
+
+	for sig in (signal.SIGINT, signal.SIGTERM):
+		loop.add_signal_handler(sig, _request_stop)
+
+	await asyncio.wait(
+		[asyncio.create_task(stop_event.wait()), seq.task],
+		return_when = asyncio.FIRST_COMPLETED
+	)
+
+	await seq.stop()
 
 
 if __name__ == "__main__":

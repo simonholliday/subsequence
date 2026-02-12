@@ -31,15 +31,16 @@ class Pattern:
 	Allows us to define and manipulate music pattern objects.
 	"""
 
-	def __init__ (self, channel: int, length: int = 16, time_signature: typing.Tuple[int, int] = (4, 4)) -> None:
+	def __init__ (self, channel: int, length: int = 16, time_signature: typing.Tuple[int, int] = (4, 4), reschedule_lookahead: int = 1) -> None:
 
 		"""
-		Initialize a new pattern with MIDI channel, length in beats, and time signature.
+		Initialize a new pattern with MIDI channel, length in beats, time signature, and reschedule lookahead.
 		"""
 
 		self.channel = channel
 		self.length = length
 		self.time_signature = time_signature
+		self.reschedule_lookahead = reschedule_lookahead
 
 		self.steps: typing.Dict[int, Step] = {}
 
@@ -85,3 +86,12 @@ class Pattern:
 					velocity = int(vel),
 					duration = note_duration
 				)
+
+
+	def on_reschedule (self) -> None:
+
+		"""
+		Hook called immediately before the pattern is rescheduled.
+		"""
+
+		return None
