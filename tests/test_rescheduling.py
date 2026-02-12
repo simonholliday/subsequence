@@ -1,7 +1,5 @@
-import typing
-import unittest
-
 import mido
+import pytest
 
 import subsequence.pattern
 import subsequence.sequencer
@@ -49,7 +47,7 @@ class FakeMidiOut:
 		return None
 
 
-def _fake_get_output_names () -> typing.List[str]:
+def _fake_get_output_names () -> list[str]:
 
 	"""
 	Return a fixed list of MIDI output names for tests.
@@ -67,7 +65,7 @@ def _fake_open_output (name: str) -> FakeMidiOut:
 	return FakeMidiOut()
 
 
-def _has_note_on_at_pulse (events: typing.List[subsequence.sequencer.MidiEvent], pulse: int, note: int) -> bool:
+def _has_note_on_at_pulse (events: list[subsequence.sequencer.MidiEvent], pulse: int, note: int) -> bool:
 
 	"""
 	Check whether a note_on event exists at a given pulse.
@@ -89,113 +87,93 @@ def _has_note_on_at_pulse (events: typing.List[subsequence.sequencer.MidiEvent],
 	return False
 
 
-class ReschedulingTests (unittest.IsolatedAsyncioTestCase):
+@pytest.mark.asyncio
+async def test_reschedule_triggers_and_uses_updated_notes (monkeypatch: pytest.MonkeyPatch) -> None:
 
 	"""
-	Tests for pattern rescheduling behavior.
+	Ensure rescheduling triggers at lookahead and uses updated pattern state.
 	"""
 
-	async def asyncSetUp (self) -> None:
+	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
+	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+
+	sequencer = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+
+	class TestPattern (subsequence.pattern.Pattern):
 
 		"""
-		Patch mido to avoid real MIDI I/O.
+		Pattern that changes its notes when rescheduled.
 		"""
 
-		self._orig_get_output_names = mido.get_output_names
-		self._orig_open_output = mido.open_output
-
-		mido.get_output_names = _fake_get_output_names
-		mido.open_output = _fake_open_output
-
-		self.sequencer = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
-
-
-	async def asyncTearDown (self) -> None:
-
-		"""
-		Restore mido functions after tests.
-		"""
-
-		mido.get_output_names = self._orig_get_output_names
-		mido.open_output = self._orig_open_output
-
-
-	async def test_reschedule_triggers_and_uses_updated_notes (self) -> None:
-
-		"""
-		Ensure rescheduling triggers at lookahead and uses updated pattern state.
-		"""
-
-		class TestPattern (subsequence.pattern.Pattern):
+		def __init__ (self) -> None:
 
 			"""
-			Pattern that changes its notes when rescheduled.
+			Initialize the test pattern with a short cycle.
 			"""
 
-			def __init__ (self) -> None:
+			super().__init__(channel=0, length=4, reschedule_lookahead=1)
 
-				"""
-				Initialize the test pattern with a short cycle.
-				"""
-
-				super().__init__(channel=0, length=4, reschedule_lookahead=1)
-
-				self.reschedule_calls = 0
-				self._build(initial=True)
+			self.reschedule_calls = 0
+			self._build(initial=True)
 
 
-			def _build (self, initial: bool) -> None:
+		def _build (self, initial: bool) -> None:
 
-				"""
-				Build either the initial or rescheduled note set.
-				"""
+			"""
+			Build either the initial or rescheduled note set.
+			"""
 
-				self.steps = {}
+			self.steps = {}
 
-				if initial:
-					self.add_note(position=0, pitch=60, velocity=100, duration=6)
+			if initial:
+				self.add_note(position=0, pitch=60, velocity=100, duration=6)
 
-				else:
-					self.add_note(position=12, pitch=61, velocity=100, duration=6)
-
-
-			def on_reschedule (self) -> None:
-
-				"""
-				Switch to the rescheduled note layout.
-				"""
-
-				self.reschedule_calls += 1
-				self._build(initial=False)
+			else:
+				self.add_note(position=12, pitch=61, velocity=100, duration=6)
 
 
-		pattern = TestPattern()
-		length_pulses = pattern.length * self.sequencer.pulses_per_beat
-		lookahead_pulses = pattern.reschedule_lookahead * self.sequencer.pulses_per_beat
-		reschedule_pulse = length_pulses - lookahead_pulses
+		def on_reschedule (self) -> None:
 
-		await self.sequencer.schedule_pattern_repeating(pattern, start_pulse=0)
+			"""
+			Switch to the rescheduled note layout.
+			"""
 
-		await self.sequencer._maybe_reschedule_patterns(reschedule_pulse - 1)
-		self.assertEqual(pattern.reschedule_calls, 0)
-
-		await self.sequencer._maybe_reschedule_patterns(reschedule_pulse)
-		self.assertEqual(pattern.reschedule_calls, 1)
-
-		next_start = length_pulses
-		expected_note_pulse = next_start + 12
-
-		events = list(self.sequencer.event_queue)
-		self.assertTrue(_has_note_on_at_pulse(events, expected_note_pulse, 61))
+			self.reschedule_calls += 1
+			self._build(initial=False)
 
 
-	async def test_reschedule_lookahead_validation (self) -> None:
+	pattern = TestPattern()
+	length_pulses = pattern.length * sequencer.pulses_per_beat
+	lookahead_pulses = pattern.reschedule_lookahead * sequencer.pulses_per_beat
+	reschedule_pulse = length_pulses - lookahead_pulses
 
-		"""
-		Invalid lookahead values should raise when scheduling repeating patterns.
-		"""
+	await sequencer.schedule_pattern_repeating(pattern, start_pulse=0)
 
-		pattern = subsequence.pattern.Pattern(channel=0, length=2, reschedule_lookahead=3)
+	await sequencer._maybe_reschedule_patterns(reschedule_pulse - 1)
+	assert pattern.reschedule_calls == 0
 
-		with self.assertRaises(ValueError):
-			await self.sequencer.schedule_pattern_repeating(pattern, start_pulse=0)
+	await sequencer._maybe_reschedule_patterns(reschedule_pulse)
+	assert pattern.reschedule_calls == 1
+
+	next_start = length_pulses
+	expected_note_pulse = next_start + 12
+
+	events = list(sequencer.event_queue)
+	assert _has_note_on_at_pulse(events, expected_note_pulse, 61)
+
+
+@pytest.mark.asyncio
+async def test_reschedule_lookahead_validation (monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""
+	Invalid lookahead values should raise when scheduling repeating patterns.
+	"""
+
+	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
+	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+
+	sequencer = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+	pattern = subsequence.pattern.Pattern(channel=0, length=2, reschedule_lookahead=3)
+
+	with pytest.raises(ValueError):
+		await sequencer.schedule_pattern_repeating(pattern, start_pulse=0)

@@ -1,22 +1,14 @@
-import unittest
-
 import subsequence.swing
 
 
-class SwingTests (unittest.TestCase):
+def test_apply_swing_moves_offbeat () -> None:
 
 	"""
-	Tests for swing timing.
+	An offbeat eighth should be delayed with swing applied.
 	"""
 
-	def test_apply_swing_moves_offbeat (self) -> None:
+	steps = {0: ["a"], 12: ["b"]}
+	swung = subsequence.swing.apply_swing(steps, swing_ratio=2.0, pulses_per_quarter=24)
 
-		"""
-		An offbeat eighth should be delayed with swing applied.
-		"""
-
-		steps = {0: ["a"], 12: ["b"]}
-		swung = subsequence.swing.apply_swing(steps, swing_ratio=2.0, pulses_per_quarter=24)
-
-		self.assertIn(0, swung)
-		self.assertIn(16, swung)
+	assert 0 in swung
+	assert 16 in swung

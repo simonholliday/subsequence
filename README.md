@@ -38,3 +38,16 @@ The demo schedules two drum patterns, a tonal chord pattern on `MIDI_CHANNEL_MAT
 - `subsequence.swing` applies swing timing to a pattern.
 - `subsequence.intervals` contains interval and scale definitions for future harmonic work.
 - `subsequence.event_emitter` supports sync/async events for later extensibility.
+
+## Tests
+This project uses `pytest`.
+
+```
+pytest
+```
+
+Async tests use `pytest-asyncio`. Install test dependencies with:
+
+```
+pip install -e .[test]
+```

@@ -1,33 +1,27 @@
 import random
-import unittest
+import pytest
 
 import subsequence.markov_chain
 
 
-class MarkovChainTests (unittest.TestCase):
+def test_single_transition () -> None:
 
 	"""
-	Tests for the weighted Markov chain utility.
+	A single transition should always be selected.
 	"""
 
-	def test_single_transition (self) -> None:
+	transitions = {"A": [("B", 1)]}
+	chain = subsequence.markov_chain.MarkovChain(transitions=transitions, initial_state="A", rng=random.Random(1))
 
-		"""
-		A single transition should always be selected.
-		"""
-
-		transitions = {"A": [("B", 1)]}
-		chain = subsequence.markov_chain.MarkovChain(transitions=transitions, initial_state="A", rng=random.Random(1))
-
-		self.assertEqual(chain.step(), "B")
-		self.assertEqual(chain.get_state(), "B")
+	assert chain.step() == "B"
+	assert chain.get_state() == "B"
 
 
-	def test_invalid_weight_raises (self) -> None:
+def test_invalid_weight_raises () -> None:
 
-		"""
-		Invalid weights should raise in choose_weighted.
-		"""
+	"""
+	Invalid weights should raise in choose_weighted.
+	"""
 
-		with self.assertRaises(ValueError):
-			subsequence.markov_chain.choose_weighted([("A", 0)], random.Random(1))
+	with pytest.raises(ValueError):
+		subsequence.markov_chain.choose_weighted([("A", 0)], random.Random(1))

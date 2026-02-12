@@ -1,30 +1,22 @@
-import unittest
-
 import subsequence.intervals
 
 
-class IntervalTests (unittest.TestCase):
+def test_get_intervals () -> None:
 
 	"""
-	Tests for interval definitions and diatonic construction.
+	Interval lookup should return a known definition.
 	"""
 
-	def test_get_intervals (self) -> None:
-
-		"""
-		Interval lookup should return a known definition.
-		"""
-
-		self.assertEqual(subsequence.intervals.get_intervals("major_triad"), [0, 4, 7])
+	assert subsequence.intervals.get_intervals("major_triad") == [0, 4, 7]
 
 
-	def test_get_diatonic_intervals (self) -> None:
+def test_get_diatonic_intervals () -> None:
 
-		"""
-		Diatonic chord construction should return the expected tonic triad.
-		"""
+	"""
+	Diatonic chord construction should return the expected tonic triad.
+	"""
 
-		major_scale = [0, 2, 4, 5, 7, 9, 11]
-		chords = subsequence.intervals.get_diatonic_intervals(major_scale)
+	major_scale = [0, 2, 4, 5, 7, 9, 11]
+	chords = subsequence.intervals.get_diatonic_intervals(major_scale)
 
-		self.assertEqual(chords[0], [0, 4, 7])
+	assert chords[0] == [0, 4, 7]
