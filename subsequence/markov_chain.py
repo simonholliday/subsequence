@@ -35,7 +35,7 @@ def choose_weighted (options: typing.List[typing.Tuple[StateType, int]], rng: ra
 class MarkovChain (typing.Generic[StateType]):
 
 	"""
-	A simple weighted Markov chain over arbitrary states.
+	A simple weighted Markov chain over arbitrary states (kept for future use).
 	"""
 
 	def __init__ (

@@ -134,6 +134,8 @@ class ChordPattern (subsequence.pattern.Pattern):
 			minor_turnaround_weight = minor_turnaround_weight
 		)
 
+		self._diatonic_chords, self._function_chords = _get_key_gravity_sets(self.key_name)
+
 		self.rng = rng or random.Random()
 		self.current_chord = tonic
 
@@ -180,8 +182,6 @@ class ChordPattern (subsequence.pattern.Pattern):
 		Advance the chord and rebuild the pattern.
 		"""
 
-		diatonic, function_chords = _get_key_gravity_sets(self.key_name)
-
 		def weight_modifier (
 			source: subsequence.chords.Chord,
 			target: subsequence.chords.Chord,
@@ -192,8 +192,8 @@ class ChordPattern (subsequence.pattern.Pattern):
 			Blend functional vs diatonic key gravity for transition weights.
 			"""
 
-			is_function = 1.0 if target in function_chords else 0.0
-			is_diatonic = 1.0 if target in diatonic else 0.0
+			is_function = 1.0 if target in self._function_chords else 0.0
+			is_diatonic = 1.0 if target in self._diatonic_chords else 0.0
 
 			# Decision path: blend controls which chord set receives the key gravity boost.
 			boost = (1.0 - self.key_gravity_blend) * is_function + self.key_gravity_blend * is_diatonic
