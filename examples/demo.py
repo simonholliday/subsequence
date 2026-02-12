@@ -1,38 +1,21 @@
 import asyncio
 import logging
 import math
-import os
 import random
-import signal
 
-import yaml
-
-import subsequence.constants
 import subsequence.chords
+import subsequence.composition
+import subsequence.constants
 import subsequence.harmonic_state
 import subsequence.harmony
 import subsequence.pattern
-import subsequence.sequencer
 import subsequence.sequence_utils
+import subsequence.sequencer
 
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def load_config (config_path: str = 'config.yaml') -> dict:
-
-	"""
-	Load configuration from a YAML file.
-	"""
-
-	if not os.path.exists(config_path):
-		logger.warning(f"Config file {config_path} not found. Using defaults.")
-		return {}
-
-	with open(config_path, 'r') as f:
-		return yaml.safe_load(f)
 
 
 class KickSnarePattern (subsequence.pattern.Pattern):
@@ -203,6 +186,7 @@ class MotifPattern (subsequence.pattern.Pattern):
 
 		self._build_pattern()
 
+
 	def _build_pattern (self) -> None:
 
 		"""
@@ -254,11 +238,14 @@ class BassPattern (subsequence.pattern.Pattern):
 		if not math.isclose(sequence_length, sequence_length_int, rel_tol=0.0, abs_tol=1e-9):
 			raise ValueError("cycle_beats must be divisible by step_beats")
 
+
 		if note_duration_beats <= 0:
 			raise ValueError("note_duration_beats must be positive")
 
+
 		if note_duration_beats > step_beats:
 			raise ValueError("note_duration_beats cannot exceed step_beats")
+
 
 		sequence = [1] * sequence_length_int
 
@@ -324,7 +311,6 @@ class BassPattern (subsequence.pattern.Pattern):
 		# Decision path: chord changes drive bass transposition; key changes are implicit via harmonic_state.
 		self._build_pattern()
 
-
 async def main () -> None:
 
 	"""
@@ -333,10 +319,13 @@ async def main () -> None:
 
 	logger.info("Subsequence Demo starting...")
 
-	config = load_config()
+	config = subsequence.composition.load_config()
 
-	midi_device = config.get('midi', {}).get('device_name', 'Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0')
-	initial_bpm = config.get('sequencer', {}).get('initial_bpm', 125)
+	midi_device, initial_bpm = subsequence.composition.get_sequencer_settings(
+		config = config,
+		default_device = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0",
+		default_bpm = 125
+	)
 
 	seq = subsequence.sequencer.Sequencer(midi_device_name=midi_device, initial_bpm=initial_bpm)
 
@@ -349,23 +338,13 @@ async def main () -> None:
 		minor_turnaround_weight = 0.25
 	)
 
-	def advance_harmony (pulse: int) -> None:
-
-		"""
-		Advance the harmonic state on the composition clock.
-		"""
-
-		# Decision: chord changes are driven by the harmonic clock; key changes are explicit in harmonic_state.
-		harmonic_state.step()
-
 	harmonic_cycle_beats = 4
 
 	# Decision: schedule harmonic changes independently of any pattern, aligned to a 4-beat grid.
-	await seq.schedule_callback_repeating(
-		callback = advance_harmony,
-		interval_beats = harmonic_cycle_beats,
-		start_pulse = 0,
-		# Decision: use the same lookahead as patterns so rebuilds see the new chord.
+	await subsequence.composition.schedule_harmonic_clock(
+		sequencer = seq,
+		harmonic_state = harmonic_state,
+		cycle_beats = harmonic_cycle_beats,
 		reschedule_lookahead = 1
 	)
 
@@ -405,11 +384,11 @@ async def main () -> None:
 		root_midi = 28
 	)
 
-	await seq.schedule_pattern_repeating(kick_snare, start_pulse=0)
-	await seq.schedule_pattern_repeating(hats, start_pulse=0)
-	await seq.schedule_pattern_repeating(chords, start_pulse=0)
-	await seq.schedule_pattern_repeating(motif, start_pulse=0)
-	await seq.schedule_pattern_repeating(bass, start_pulse=0)
+	await subsequence.composition.schedule_patterns(
+		sequencer = seq,
+		patterns = [kick_snare, hats, chords, motif, bass],
+		start_pulse = 0
+	)
 
 	async def on_bar (bar: int) -> None:
 
@@ -421,30 +400,7 @@ async def main () -> None:
 
 	seq.add_callback(on_bar)
 
-	logger.info("Playing sequence. Press Ctrl+C to stop.")
-
-	await seq.start()
-
-	stop_event = asyncio.Event()
-	loop = asyncio.get_running_loop()
-
-	def _request_stop () -> None:
-
-		"""
-		Signal handler to request a clean shutdown.
-		"""
-
-		stop_event.set()
-
-	for sig in (signal.SIGINT, signal.SIGTERM):
-		loop.add_signal_handler(sig, _request_stop)
-
-	await asyncio.wait(
-		[asyncio.create_task(stop_event.wait()), seq.task],
-		return_when = asyncio.FIRST_COMPLETED
-	)
-
-	await seq.stop()
+	await subsequence.composition.run_until_stopped(seq)
 
 
 if __name__ == "__main__":
