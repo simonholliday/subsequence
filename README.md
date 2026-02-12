@@ -31,13 +31,15 @@ python examples/demo.py
 See `config.yaml.default` for defaults.
 
 ## Demo details
-The demo schedules two drum patterns, a tonal chord pattern on `MIDI_CHANNEL_MATRIARCH`, and a simple swung motif on `MIDI_CHANNEL_MODEL_D`. Chords evolve each cycle using a weighted transition graph and are voiced in root position (inversions may be added later). Press Ctrl+C to stop; the sequencer logs a panic message and sends all notes off.
+The demo schedules two drum patterns, a tonal chord pattern on `MIDI_CHANNEL_MATRIARCH`, and a simple swung motif on `MIDI_CHANNEL_MODEL_D`. Chords evolve each cycle using a weighted transition graph and are voiced in root position (inversions may be added later). The chord pattern explicitly selects a graph style (`turnaround_global`) and includes `key_gravity_blend` plus `minor_turnaround_weight` settings. Press Ctrl+C to stop; the sequencer logs a panic message and sends all notes off.
 
 ## Extra utilities
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
 - `subsequence.swing` applies swing timing to a pattern.
 - `subsequence.intervals` contains interval and scale definitions for future harmonic work.
 - `subsequence.event_emitter` supports sync/async events for later extensibility.
+- `subsequence.chord_graphs` contains chord transition graphs (functional and global turnaround).
+- `subsequence.weighted_graph` provides a generic weighted graph used for transitions.
 
 ## Tests
 This project uses `pytest`.

@@ -1,6 +1,7 @@
 import pytest
 
-import subsequence.harmony
+import subsequence.chord_graphs.functional_major
+import subsequence.chords
 
 
 def test_dominant_7th_included () -> None:
@@ -9,10 +10,10 @@ def test_dominant_7th_included () -> None:
 	Dominant seventh should appear when enabled and resolve to tonic.
 	"""
 
-	graph, tonic = subsequence.harmony.build_major_key_graph("E", include_dominant_7th=True)
+	graph, tonic = subsequence.chord_graphs.functional_major.build_graph("E", include_dominant_7th=True)
 
-	dominant = subsequence.harmony.Chord(root_pc=11, quality="major")
-	dominant_7th = subsequence.harmony.Chord(root_pc=11, quality="dominant_7th")
+	dominant = subsequence.chords.Chord(root_pc=11, quality="major")
+	dominant_7th = subsequence.chords.Chord(root_pc=11, quality="dominant_7th")
 
 	transitions = graph.get_transitions(dominant)
 	assert any(chord == dominant_7th for chord, _ in transitions)
@@ -28,4 +29,4 @@ def test_invalid_key_name () -> None:
 	"""
 
 	with pytest.raises(ValueError):
-		subsequence.harmony.build_major_key_graph("H", include_dominant_7th=True)
+		subsequence.chord_graphs.functional_major.build_graph("H", include_dominant_7th=True)

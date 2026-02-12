@@ -186,6 +186,7 @@ def generate_motif_pattern () -> subsequence.pattern.Pattern:
 
 	motif = subsequence.motif.Motif()
 
+	# Decision: use a compact four-note shape to add a gentle melodic layer.
 	root = 52
 	notes = [root, root + 4, root + 7, root + 12]
 	beat_positions = [0.0, 0.5, 1.0, 1.5]
@@ -194,11 +195,13 @@ def generate_motif_pattern () -> subsequence.pattern.Pattern:
 		motif.add_note_beats(beat_position=beat_position, pitch=pitch, velocity=90, duration_beats=0.5)
 
 	pattern = motif.to_pattern(
+		# Decision: place the motif on MODEL_D to separate it from the VOCE chords.
 		channel = subsequence.constants.MIDI_CHANNEL_MODEL_D,
 		length_beats = 4,
 		reschedule_lookahead = 1
 	)
 
+	# Decision: swing adds a humanized feel to the motif without changing the rhythm grid.
 	pattern.apply_swing(swing_ratio=2.0)
 
 	return pattern
@@ -219,16 +222,29 @@ async def main () -> None:
 
 	seq = subsequence.sequencer.Sequencer(midi_device_name=midi_device, initial_bpm=initial_bpm)
 
+	# Decision: 4-beat kick/snare anchors the groove.
 	kick_snare = KickSnarePattern(length=4, reschedule_lookahead=1)
+	# Decision: 5-beat hats create a subtle polyrhythm against the 4-beat core.
 	hats = HatPattern(length=5, reschedule_lookahead=1)
 	chords = subsequence.harmony.ChordPattern(
+		# Decision: E major establishes the harmonic center for the VOCE.
 		key_name = "E",
 		length = 4,
 		root_midi = 52,
 		velocity = 90,
 		reschedule_lookahead = 1,
-		include_dominant_7th = True
+		include_dominant_7th = True,
+		# Decision: assign the harmonic layer to the VOCE EP channel explicitly.
+		channel = subsequence.constants.MIDI_CHANNEL_VOCE_EP,
+		# Decision: explicit graph choice makes it easy to experiment.
+		graph_style = "turnaround_global",
+#		graph_style = "functional_major",
+		# Decision: blend functional and full diatonic gravity toward stability.
+		key_gravity_blend = 0.8,
+		# Decision: allow minor turnarounds but keep them relatively rare.
+		minor_turnaround_weight = 0.25
 	)
+	# Decision: add a swung motif layer for contrast.
 	motif = generate_motif_pattern()
 
 	await seq.schedule_pattern_repeating(kick_snare, start_pulse=0)

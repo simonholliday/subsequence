@@ -1,248 +1,85 @@
-import dataclasses
+import logging
 import random
 import typing
 
 import subsequence.constants
-import subsequence.markov_chain
+import subsequence.chord_graphs.functional_major
+import subsequence.chord_graphs.turnaround_global
+import subsequence.chords
 import subsequence.pattern
+import subsequence.weighted_graph
 
 
-NOTE_NAME_TO_PC = {
-	"C": 0,
-	"C#": 1,
-	"Db": 1,
-	"D": 2,
-	"D#": 3,
-	"Eb": 3,
-	"E": 4,
-	"F": 5,
-	"F#": 6,
-	"Gb": 6,
-	"G": 7,
-	"G#": 8,
-	"Ab": 8,
-	"A": 9,
-	"A#": 10,
-	"Bb": 10,
-	"B": 11,
-}
-
-PC_TO_NOTE_NAME = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+logger = logging.getLogger(__name__)
 
 
-CHORD_INTERVALS = {
-	"major": [0, 4, 7],
-	"minor": [0, 3, 7],
-	"diminished": [0, 3, 6],
-	"augmented": [0, 4, 8],
-	"dominant_7th": [0, 4, 7, 10],
-	"major_7th": [0, 4, 7, 11],
-	"minor_7th": [0, 3, 7, 10],
-}
+GraphBuilderType = typing.Callable[
+	[str, bool, float],
+	typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]
+]
 
-CHORD_SUFFIX = {
-	"major": "",
-	"minor": "m",
-	"diminished": "dim",
-	"augmented": "+",
-	"dominant_7th": "7",
-	"major_7th": "maj7",
-	"minor_7th": "m7",
+
+GRAPH_BUILDERS: typing.Dict[str, GraphBuilderType] = {
+	"functional_major": subsequence.chord_graphs.functional_major.build_graph,
+	"turnaround_global": subsequence.chord_graphs.turnaround_global.build_graph,
 }
 
 
-WEIGHT_STRONG = 6
-WEIGHT_MEDIUM = 4
-WEIGHT_COMMON = 3
-WEIGHT_WEAK = 1
-WEIGHT_DECEPTIVE = 2
-
-
-@dataclasses.dataclass(frozen=True)
-class Chord:
+def get_graph_builder (graph_style: str) -> GraphBuilderType:
 
 	"""
-	Represents a chord as a root pitch class and quality.
+	Return a chord graph builder by name.
 	"""
 
-	root_pc: int
-	quality: str
+	if graph_style not in GRAPH_BUILDERS:
+		raise ValueError(f"Unknown graph style: {graph_style}")
+
+	return GRAPH_BUILDERS[graph_style]
 
 
-	def intervals (self) -> typing.List[int]:
-
-		"""
-		Return the chord intervals for this chord quality.
-		"""
-
-		if self.quality not in CHORD_INTERVALS:
-			raise ValueError(f"Unknown chord quality: {self.quality}")
-
-		return CHORD_INTERVALS[self.quality]
-
-
-	def name (self) -> str:
-
-		"""
-		Return a human-friendly chord name.
-		"""
-
-		root_name = PC_TO_NOTE_NAME[self.root_pc % 12]
-		suffix = CHORD_SUFFIX.get(self.quality, "")
-
-		return f"{root_name}{suffix}"
-
-
-class ChordTransitionGraph:
+def _build_major_key_chords (key_name: str) -> typing.List[subsequence.chords.Chord]:
 
 	"""
-	A weighted transition graph for chords.
+	Return diatonic triads for a major key.
 	"""
 
-	def __init__ (self) -> None:
-
-		"""
-		Initialize an empty chord transition graph.
-		"""
-
-		self.transitions: typing.Dict[Chord, typing.List[typing.Tuple[Chord, int]]] = {}
-
-
-	def add_transition (self, source: Chord, target: Chord, weight: int) -> None:
-
-		"""
-		Add a weighted transition between two chords.
-		"""
-
-		if weight <= 0:
-			raise ValueError("Transition weight must be positive")
-
-		if source not in self.transitions:
-			self.transitions[source] = []
-
-		self.transitions[source].append((target, weight))
-
-
-	def get_transitions (self, source: Chord) -> typing.List[typing.Tuple[Chord, int]]:
-
-		"""
-		Return the weighted transitions for a chord.
-		"""
-
-		return self.transitions.get(source, [])
-
-
-	def choose_next (self, source: Chord, rng: random.Random) -> Chord:
-
-		"""
-		Choose the next chord based on weighted transitions.
-		"""
-
-		options = self.get_transitions(source)
-
-		if not options:
-			return source
-
-		return subsequence.markov_chain.choose_weighted(options, rng)
-
-
-def build_major_key_graph (key_name: str, include_dominant_7th: bool = True) -> typing.Tuple[ChordTransitionGraph, Chord]:
-
-	"""
-	Build a transition graph for a major key and return it with the tonic chord.
-	"""
-
-	if key_name not in NOTE_NAME_TO_PC:
-		raise ValueError(f"Unknown key name: {key_name}")
-
-	key_pc = NOTE_NAME_TO_PC[key_name]
+	key_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
 	scale_intervals = [0, 2, 4, 5, 7, 9, 11]
 	degree_qualities = ["major", "minor", "minor", "major", "major", "minor", "diminished"]
 
-	chords: typing.List[Chord] = []
+	chords: typing.List[subsequence.chords.Chord] = []
 
 	for degree, quality in enumerate(degree_qualities):
 		root_pc = (key_pc + scale_intervals[degree]) % 12
-		chords.append(Chord(root_pc=root_pc, quality=quality))
+		chords.append(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
 
-	tonic = chords[0]
-	supertonic = chords[1]
-	mediant = chords[2]
-	subdominant = chords[3]
-	dominant = chords[4]
-	submediant = chords[5]
-	leading = chords[6]
-
-	graph = ChordTransitionGraph()
-
-	graph.add_transition(tonic, subdominant, WEIGHT_COMMON)
-	graph.add_transition(tonic, dominant, WEIGHT_COMMON)
-	graph.add_transition(tonic, submediant, WEIGHT_COMMON)
-	graph.add_transition(tonic, supertonic, WEIGHT_WEAK)
-
-	graph.add_transition(supertonic, dominant, WEIGHT_STRONG)
-
-	graph.add_transition(mediant, submediant, WEIGHT_COMMON)
-	graph.add_transition(mediant, subdominant, WEIGHT_WEAK)
-
-	graph.add_transition(subdominant, dominant, WEIGHT_STRONG)
-	graph.add_transition(subdominant, supertonic, WEIGHT_COMMON)
-
-	graph.add_transition(dominant, tonic, WEIGHT_STRONG)
-	graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE)
-
-	graph.add_transition(submediant, supertonic, WEIGHT_COMMON)
-	graph.add_transition(submediant, subdominant, WEIGHT_COMMON)
-	graph.add_transition(submediant, dominant, WEIGHT_WEAK)
-
-	graph.add_transition(leading, tonic, WEIGHT_STRONG)
-
-	if include_dominant_7th:
-		dominant_7th = Chord(root_pc=dominant.root_pc, quality="dominant_7th")
-
-		graph.add_transition(dominant, dominant_7th, WEIGHT_WEAK)
-		graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG)
-		graph.add_transition(dominant_7th, submediant, WEIGHT_DECEPTIVE)
-
-	return graph, tonic
+	return chords
 
 
-class ChordMarkov:
+def _get_key_gravity_sets (key_name: str) -> typing.Tuple[typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]]:
 
 	"""
-	Holds the current chord and advances through a transition graph.
+	Return diatonic and functional chord sets for key gravity.
 	"""
 
-	def __init__ (self, graph: ChordTransitionGraph, start: Chord, rng: typing.Optional[random.Random] = None) -> None:
+	diatonic = set(_build_major_key_chords(key_name))
 
-		"""
-		Initialize the Markov chord state.
-		"""
+	key_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
+	scale_intervals = [0, 2, 5, 7]
+	function_qualities = ["major", "minor", "major", "major"]
 
-		self.graph = graph
-		self.chain = subsequence.markov_chain.MarkovChain(
-			transitions = graph.transitions,
-			initial_state = start,
-			rng = rng
-		)
+	function_chords: typing.Set[subsequence.chords.Chord] = set()
 
+	for interval, quality in zip(scale_intervals, function_qualities):
+		root_pc = (key_pc + interval) % 12
+		function_chords.add(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
 
-	def step (self) -> Chord:
+	# Decision path: include the dominant seventh as a functional and diatonic chord option.
+	dominant_7th = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="dominant_7th")
+	function_chords.add(dominant_7th)
+	diatonic.add(dominant_7th)
 
-		"""
-		Advance to the next chord and return it.
-		"""
-
-		return self.chain.step()
-
-
-	def get_state (self) -> Chord:
-
-		"""
-		Return the current chord.
-		"""
-
-		return self.chain.get_state()
+	return diatonic, function_chords
 
 
 class ChordPattern (subsequence.pattern.Pattern):
@@ -259,13 +96,21 @@ class ChordPattern (subsequence.pattern.Pattern):
 		velocity: int = 90,
 		reschedule_lookahead: int = 1,
 		include_dominant_7th: bool = True,
+		graph_style: str = "functional_major",
+		key_gravity_blend: float = 1.0,
+		minor_turnaround_weight: float = 0.0,
 		rng: typing.Optional[random.Random] = None,
-		channel: int = subsequence.constants.MIDI_CHANNEL_VOCE_EP
+		channel: typing.Optional[int] = None
 	) -> None:
 
 		"""
 		Initialize a chord pattern for a major key.
 		"""
+
+		if channel is None:
+			# Decision path: channel is required so composition choices stay in demo.py.
+			logger.error("ChordPattern requires an explicit MIDI channel")
+			raise ValueError("ChordPattern requires an explicit MIDI channel")
 
 		super().__init__(
 			channel = channel,
@@ -274,19 +119,28 @@ class ChordPattern (subsequence.pattern.Pattern):
 		)
 
 		self.key_name = key_name
-		self.key_root_pc = NOTE_NAME_TO_PC[key_name]
+		self.key_root_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
 		self.key_root_midi = root_midi
 		self.velocity = velocity
+		self.key_gravity_blend = key_gravity_blend
 
-		graph, tonic = build_major_key_graph(key_name, include_dominant_7th=include_dominant_7th)
+		if self.key_gravity_blend < 0 or self.key_gravity_blend > 1:
+			raise ValueError("Key gravity blend must be between 0 and 1")
 
-		self.markov = ChordMarkov(graph, tonic, rng=rng)
+		graph_builder = get_graph_builder(graph_style)
+		self.graph, tonic = graph_builder(
+			key_name = key_name,
+			include_dominant_7th = include_dominant_7th,
+			minor_turnaround_weight = minor_turnaround_weight
+		)
+
+		self.rng = rng or random.Random()
 		self.current_chord = tonic
 
 		self._build_current_chord()
 
 
-	def _get_chord_root_midi (self, chord: Chord) -> int:
+	def _get_chord_root_midi (self, chord: subsequence.chords.Chord) -> int:
 
 		"""
 		Calculate the MIDI root for a chord relative to the key root.
@@ -326,6 +180,26 @@ class ChordPattern (subsequence.pattern.Pattern):
 		Advance the chord and rebuild the pattern.
 		"""
 
-		self.current_chord = self.markov.step()
+		diatonic, function_chords = _get_key_gravity_sets(self.key_name)
+
+		def weight_modifier (
+			source: subsequence.chords.Chord,
+			target: subsequence.chords.Chord,
+			weight: int
+		) -> float:
+
+			"""
+			Blend functional vs diatonic key gravity for transition weights.
+			"""
+
+			is_function = 1.0 if target in function_chords else 0.0
+			is_diatonic = 1.0 if target in diatonic else 0.0
+
+			# Decision path: blend controls which chord set receives the key gravity boost.
+			boost = (1.0 - self.key_gravity_blend) * is_function + self.key_gravity_blend * is_diatonic
+
+			return 1.0 + boost
+
+		self.current_chord = self.graph.choose_next(self.current_chord, self.rng, weight_modifier=weight_modifier)
 
 		self._build_current_chord()
