@@ -90,6 +90,56 @@ async def schedule_harmonic_clock (
 	)
 
 
+def _make_safe_callback (fn: typing.Callable) -> typing.Callable[[int], None]:
+
+	"""Wrap a user function as a fire-and-forget callback that never blocks the clock."""
+
+	is_async = asyncio.iscoroutinefunction(fn)
+
+	async def _execute () -> None:
+
+		"""Run the user function with error handling and optional threading."""
+
+		try:
+
+			if is_async:
+				await fn()
+
+			else:
+				loop = asyncio.get_running_loop()
+				await loop.run_in_executor(None, fn)
+
+		except Exception as exc:
+			logger.warning(f"Scheduled task {fn.__name__!r} failed: {exc}")
+
+	def wrapper (pulse: int) -> None:
+
+		"""Spawn the task in the background without blocking the sequencer."""
+
+		asyncio.create_task(_execute())
+
+	return wrapper
+
+
+async def schedule_task (
+	sequencer: subsequence.sequencer.Sequencer,
+	fn: typing.Callable,
+	cycle_beats: int,
+	reschedule_lookahead: int = 1
+) -> None:
+
+	"""Schedule a non-blocking repeating task on the sequencer's beat clock."""
+
+	wrapped = _make_safe_callback(fn)
+
+	await sequencer.schedule_callback_repeating(
+		callback = wrapped,
+		interval_beats = cycle_beats,
+		start_pulse = 0,
+		reschedule_lookahead = reschedule_lookahead
+	)
+
+
 async def schedule_patterns (
 	sequencer: subsequence.sequencer.Sequencer,
 	patterns: typing.Iterable[subsequence.pattern.Pattern],
@@ -162,6 +212,19 @@ class _PendingPattern:
 		self.reschedule_lookahead = reschedule_lookahead
 
 
+class _PendingScheduled:
+
+	"""Holds a user function and cycle interval for deferred scheduling."""
+
+	def __init__ (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int) -> None:
+
+		"""Store the function and scheduling parameters."""
+
+		self.fn = fn
+		self.cycle_beats = cycle_beats
+		self.reschedule_lookahead = reschedule_lookahead
+
+
 class Composition:
 
 	"""
@@ -187,6 +250,8 @@ class Composition:
 		self._harmony_cycle_beats: typing.Optional[int] = None
 		self._harmony_reschedule_lookahead: int = 1
 		self._pending_patterns: typing.List[_PendingPattern] = []
+		self._pending_scheduled: typing.List[_PendingScheduled] = []
+		self.data: typing.Dict[str, typing.Any] = {}
 
 	def harmony (
 		self,
@@ -223,6 +288,12 @@ class Composition:
 		"""
 
 		self._sequencer.on_event(event_name, callback)
+
+	def schedule (self, fn: typing.Callable, cycle: int, reschedule_lookahead: int = 1) -> None:
+
+		"""Register a function to run on a repeating beat-based cycle."""
+
+		self._pending_scheduled.append(_PendingScheduled(fn, cycle, reschedule_lookahead))
 
 	def pattern (
 		self,
@@ -281,6 +352,17 @@ class Composition:
 				harmonic_state = self._harmonic_state,
 				cycle_beats = self._harmony_cycle_beats,
 				reschedule_lookahead = self._harmony_reschedule_lookahead
+			)
+
+		for pending_task in self._pending_scheduled:
+
+			wrapped = _make_safe_callback(pending_task.fn)
+
+			await self._sequencer.schedule_callback_repeating(
+				callback = wrapped,
+				interval_beats = pending_task.cycle_beats,
+				start_pulse = 0,
+				reschedule_lookahead = pending_task.reschedule_lookahead
 			)
 
 		# Build Pattern objects from pending registrations.

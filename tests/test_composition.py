@@ -221,3 +221,62 @@ def test_chord_not_injected_without_parameter (patch_midi: None) -> None:
 	pattern = composition._build_pattern_from_pending(pending)
 
 	assert len(calls) == 1
+
+
+def test_data_store_exists (patch_midi: None) -> None:
+
+	"""Composition should have an empty data dict on creation."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+
+	assert isinstance(composition.data, dict)
+	assert len(composition.data) == 0
+
+
+def test_schedule_registers_pending (patch_midi: None) -> None:
+
+	"""Calling schedule() should append to _pending_scheduled."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+
+	def my_task () -> None:
+		pass
+
+	composition.schedule(my_task, cycle=16)
+
+	assert len(composition._pending_scheduled) == 1
+	assert composition._pending_scheduled[0].fn is my_task
+	assert composition._pending_scheduled[0].cycle_beats == 16
+
+
+def test_data_accessible_from_builder (patch_midi: None) -> None:
+
+	"""Builder functions should be able to read composition.data via closure."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+	composition.data["test_key"] = 42
+	read_values = []
+
+	def my_builder (p):
+		read_values.append(composition.data.get("test_key"))
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	composition._build_pattern_from_pending(pending)
+
+	assert read_values == [42]
+
+
+def test_data_default_when_not_set (patch_midi: None) -> None:
+
+	"""Data store get() should return the default when key is not set."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+
+	assert composition.data.get("missing", 0.5) == 0.5

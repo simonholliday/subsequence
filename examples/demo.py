@@ -6,8 +6,10 @@ Patterns evolve on every reschedule via stochastic decisions
 in the builder functions.
 """
 
+import json
 import logging
 import random
+import urllib.request
 
 import subsequence
 import subsequence.sequence_utils
@@ -54,21 +56,42 @@ composition.harmony(
 )
 
 
+# ─── External Data ───────────────────────────────────────────────────
+
+def fetch_iss () -> None:
+
+	"""Fetch ISS position and normalize lat/long to 0-1 range."""
+
+	try:
+		request = urllib.request.urlopen("https://api.wheretheiss.at/v1/satellites/25544", timeout=5)
+		body = json.loads(request.read())
+		composition.data["latitude_norm"] = (body["latitude"] + 52) / 104.0
+		composition.data["longitude_norm"] = (body["longitude"] + 180) / 360.0
+		logging.info(f"ISS lat={body['latitude']:.1f} lon={body['longitude']:.1f}")
+
+	except Exception as exc:
+		logging.warning(f"ISS fetch failed (keeping last value): {exc}")
+
+composition.schedule(fetch_iss, cycle=32)
+
+
 # ─── Drums ───────────────────────────────────────────────────────────
 
 @composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
 def kick_snare (p):
 	"""
-	Four-on-the-floor kick anchors the groove while an evolving
+	Four-on-the-floor kick anchors the groove while an ISS-modulated
 	euclidean snare is rolled to land on backbeat positions.
 	"""
 
 	# Fixed four-on-the-floor kick — steps 0, 4, 8, 12 on a 16-step grid.
 	p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
 
-	# Euclidean snare with random density, rolled +4 for backbeat offset.
+	# Euclidean snare: ISS longitude modulates max density.
 	if p.cycle > 3:
-		snare_hits = random.randint(1, 6)
+		nl = composition.data.get("longitude_norm", 0.5)
+		max_snare_hits = max(2, round(nl * 8))
+		snare_hits = random.randint(1, max_snare_hits)
 		snare_seq = subsequence.sequence_utils.generate_euclidean_sequence(16, snare_hits)
 		snare_steps = subsequence.sequence_utils.sequence_to_indices(snare_seq)
 		snare_steps = subsequence.sequence_utils.roll(snare_steps, 4, 16)

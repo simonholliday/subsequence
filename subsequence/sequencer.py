@@ -119,7 +119,8 @@ class Sequencer:
 		self.callback_lock = asyncio.Lock()
 		self.callback_queue: typing.List[typing.Tuple[int, int, ScheduledCallback]] = []
 		self._callback_counter = itertools.count()
-		
+		self.data: typing.Dict[str, typing.Any] = {}
+
 		# Callbacks
 		self.callbacks: typing.List[typing.Callable[[int], typing.Coroutine]] = []
 

@@ -1,6 +1,9 @@
 import asyncio
+import json
 import logging
 import random
+import typing
+import urllib.request
 
 import subsequence.composition
 import subsequence.constants
@@ -35,7 +38,7 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 	A kick and snare pattern that evolves on each reschedule.
 	"""
 
-	def __init__ (self, length: int, reschedule_lookahead: int = 1) -> None:
+	def __init__ (self, data: typing.Dict[str, typing.Any], length: int, reschedule_lookahead: int = 1) -> None:
 
 		"""
 		Initialize the kick/snare pattern and build the first cycle.
@@ -47,6 +50,7 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 			reschedule_lookahead = reschedule_lookahead
 		)
 
+		self.data = data
 		self.rng = random.Random()
 		self.cycle_count = 0
 
@@ -75,9 +79,11 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 			velocity = 127
 		)
 
-		# Euclidean snare with random density, rolled +4 for backbeat offset.
+		# Euclidean snare: ISS longitude modulates max density.
 		if self.cycle_count > 3:
-			snare_hits = self.rng.randint(1, 6)
+			nl = self.data.get("longitude_norm", 0.5)
+			max_snare_hits = max(2, round(nl * 8))
+			snare_hits = self.rng.randint(1, max_snare_hits)
 			snare_seq = subsequence.sequence_utils.generate_euclidean_sequence(16, snare_hits)
 			snare_indices = subsequence.sequence_utils.sequence_to_indices(snare_seq)
 			snare_indices = subsequence.sequence_utils.roll(snare_indices, 4, 16)
@@ -317,8 +323,26 @@ async def main () -> None:
 		reschedule_lookahead = 1
 	)
 
+	# ─── External Data ───────────────────────────────────────────────────
+
+	def fetch_iss () -> None:
+
+		"""Fetch ISS position and normalize lat/long to 0-1 range."""
+
+		try:
+			request = urllib.request.urlopen("https://api.wheretheiss.at/v1/satellites/25544", timeout=5)
+			body = json.loads(request.read())
+			seq.data["latitude_norm"] = (body["latitude"] + 52) / 104.0
+			seq.data["longitude_norm"] = (body["longitude"] + 180) / 360.0
+			logger.info(f"ISS lat={body['latitude']:.1f} lon={body['longitude']:.1f}")
+
+		except Exception as exc:
+			logger.warning(f"ISS fetch failed (keeping last value): {exc}")
+
+	await subsequence.composition.schedule_task(sequencer=seq, fn=fetch_iss, cycle_beats=32)
+
 	# Decision: all percussion on a unified 4-beat / 16-step grid.
-	kick_snare = KickSnarePattern(length=4, reschedule_lookahead=1)
+	kick_snare = KickSnarePattern(data=seq.data, length=4, reschedule_lookahead=1)
 	hats = HatPattern(length=4, reschedule_lookahead=1)
 	chords = subsequence.harmony.ChordPattern(
 		harmonic_state = harmonic_state,
