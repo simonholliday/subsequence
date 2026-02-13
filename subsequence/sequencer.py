@@ -109,6 +109,7 @@ class Sequencer:
 		self.task = None
 		self.start_time = 0.0
 		self.pulse_count = 0
+		self.current_bar: int = -1
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
 		self.queue_lock = asyncio.Lock()
@@ -381,25 +382,25 @@ class Sequencer:
 
 		self.start_time = time.perf_counter()
 		self.pulse_count = 0
-		
-		current_bar = -1
+		self.current_bar = -1
+
 		pulses_per_bar = 4 * self.pulses_per_beat  # 4/4 time assumed throughout
 
 		while self.running:
 
 			current_time = time.perf_counter()
 			elapsed_time = current_time - self.start_time
-			
+
 			# Use cached timing values
 			target_pulse = int(elapsed_time / self.seconds_per_pulse)
-			
+
 			# Check for bar change
 			new_bar = target_pulse // pulses_per_bar
-			if new_bar > current_bar:
-				current_bar = new_bar
+			if new_bar > self.current_bar:
+				self.current_bar = new_bar
 				for cb in self.callbacks:
-					asyncio.create_task(cb(current_bar))
-				asyncio.create_task(self.events.emit_async("bar", current_bar))
+					asyncio.create_task(cb(self.current_bar))
+				asyncio.create_task(self.events.emit_async("bar", self.current_bar))
 
 			while self.pulse_count <= target_pulse:
 				await self._maybe_reschedule_patterns(self.pulse_count)

@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import itertools
 import logging
 import signal
 import typing
@@ -11,6 +12,120 @@ import subsequence.sequencer
 
 
 logger = logging.getLogger(__name__)
+
+
+class SectionInfo:
+
+	"""Immutable snapshot of the current section state."""
+
+	def __init__ (self, name: str, bar: int, bars: int, index: int) -> None:
+
+		"""Store the section name, bar position, total bars, and form index."""
+
+		self.name = name
+		self.bar = bar
+		self.bars = bars
+		self.index = index
+
+	@property
+	def progress (self) -> float:
+
+		"""Return how far through this section we are (0.0 to ~1.0)."""
+
+		if self.bars <= 0:
+			return 0.0
+
+		return self.bar / self.bars
+
+	@property
+	def first_bar (self) -> bool:
+
+		"""Return True if this is the first bar of the section."""
+
+		return self.bar == 0
+
+	@property
+	def last_bar (self) -> bool:
+
+		"""Return True if this is the last bar of the section."""
+
+		return self.bar == self.bars - 1
+
+
+class FormState:
+
+	"""Track compositional form as a sequence of named sections with bar durations."""
+
+	def __init__ (self, sections: typing.Union[typing.List[typing.Tuple[str, int]], typing.Iterator[typing.Tuple[str, int]]], loop: bool = False) -> None:
+
+		"""Initialize from a list or iterator of (name, bars) tuples."""
+
+		if isinstance(sections, list):
+			self._iterator: typing.Iterator[typing.Tuple[str, int]] = itertools.cycle(sections) if loop else iter(sections)
+		else:
+			self._iterator = sections
+
+		self._current: typing.Optional[typing.Tuple[str, int]] = None
+		self._bar_in_section: int = 0
+		self._section_index: int = 0
+		self._total_bars: int = 0
+		self._finished: bool = False
+
+		# Pull the first section immediately.
+		try:
+			self._current = next(self._iterator)
+		except StopIteration:
+			self._finished = True
+
+	def advance (self) -> bool:
+
+		"""Advance one bar, transitioning to the next section when needed, returning True if section changed."""
+
+		if self._finished:
+			return False
+
+		self._bar_in_section += 1
+		self._total_bars += 1
+
+		_, current_bars = self._current
+
+		if self._bar_in_section >= current_bars:
+
+			try:
+				self._current = next(self._iterator)
+				self._section_index += 1
+				self._bar_in_section = 0
+				return True
+
+			except StopIteration:
+				self._finished = True
+				self._current = None
+				return True
+
+		return False
+
+	def get_section_info (self) -> typing.Optional[SectionInfo]:
+
+		"""Return current section info, or None if the form is exhausted."""
+
+		if self._finished or self._current is None:
+			return None
+
+		name, bars = self._current
+
+		return SectionInfo(
+			name = name,
+			bar = self._bar_in_section,
+			bars = bars,
+			index = self._section_index
+		)
+
+	@property
+	def total_bars (self) -> int:
+
+		"""Return the global bar count since the form started."""
+
+		return self._total_bars
 
 
 class _InjectedChord:
@@ -140,6 +255,40 @@ async def schedule_task (
 	)
 
 
+async def schedule_form (
+	sequencer: subsequence.sequencer.Sequencer,
+	form_state: FormState,
+	reschedule_lookahead: int = 1
+) -> None:
+
+	"""Schedule the form state to advance each bar."""
+
+	# Log the initial section.
+	initial_section = form_state.get_section_info()
+	if initial_section:
+		logger.info(f"Form: {initial_section.name}")
+
+	def advance_form (pulse: int) -> None:
+
+		"""Advance the form by one bar, logging section changes."""
+
+		section_changed = form_state.advance()
+
+		if section_changed:
+			section = form_state.get_section_info()
+			if section:
+				logger.info(f"Form: {section.name}")
+			else:
+				logger.info("Form: finished")
+
+	await sequencer.schedule_callback_repeating(
+		callback = advance_form,
+		interval_beats = 4,
+		start_pulse = 0,
+		reschedule_lookahead = reschedule_lookahead
+	)
+
+
 async def schedule_patterns (
 	sequencer: subsequence.sequencer.Sequencer,
 	patterns: typing.Iterable[subsequence.pattern.Pattern],
@@ -251,21 +400,21 @@ class Composition:
 		self._harmony_reschedule_lookahead: int = 1
 		self._pending_patterns: typing.List[_PendingPattern] = []
 		self._pending_scheduled: typing.List[_PendingScheduled] = []
+		self._form_state: typing.Optional[FormState] = None
+		self._builder_bar: int = 0
 		self.data: typing.Dict[str, typing.Any] = {}
 
 	def harmony (
 		self,
 		style: typing.Union[str, subsequence.chord_graphs.ChordGraph] = "functional_major",
-		cycle: int = 4,
+		cycle_beats: int = 4,
 		dominant_7th: bool = True,
 		gravity: float = 1.0,
 		minor_weight: float = 0.0,
 		reschedule_lookahead: int = 1
 	) -> None:
 
-		"""
-		Configure the harmonic state and chord change cycle for this composition.
-		"""
+		"""Configure the harmonic state and chord change cycle for this composition."""
 
 		if self.key is None:
 			raise ValueError("Cannot configure harmony without a key — set key in the Composition constructor")
@@ -278,7 +427,7 @@ class Composition:
 			minor_turnaround_weight = minor_weight
 		)
 
-		self._harmony_cycle_beats = cycle
+		self._harmony_cycle_beats = cycle_beats
 		self._harmony_reschedule_lookahead = reschedule_lookahead
 
 	def on_event (self, event_name: str, callback: typing.Callable[..., typing.Any]) -> None:
@@ -294,6 +443,12 @@ class Composition:
 		"""Register a function to run on a repeating beat-based cycle."""
 
 		self._pending_scheduled.append(_PendingScheduled(fn, cycle_beats, reschedule_lookahead))
+
+	def form (self, sections: typing.Union[typing.List[typing.Tuple[str, int]], typing.Iterator[typing.Tuple[str, int]]], loop: bool = False) -> None:
+
+		"""Define the compositional form as a sequence of named sections with bar durations."""
+
+		self._form_state = FormState(sections, loop=loop)
 
 	def pattern (
 		self,
@@ -353,6 +508,25 @@ class Composition:
 				cycle_beats = self._harmony_cycle_beats,
 				reschedule_lookahead = self._harmony_reschedule_lookahead
 			)
+
+		if self._form_state is not None:
+
+			await schedule_form(
+				sequencer = self._sequencer,
+				form_state = self._form_state,
+				reschedule_lookahead = 1
+			)
+
+		# Bar counter — always active so p.bar is available to all builders.
+		def _advance_builder_bar (pulse: int) -> None:
+			self._builder_bar += 1
+
+		await self._sequencer.schedule_callback_repeating(
+			callback = _advance_builder_bar,
+			interval_beats = 4,
+			start_pulse = 0,
+			reschedule_lookahead = 1
+		)
 
 		for pending_task in self._pending_scheduled:
 
@@ -432,7 +606,9 @@ class Composition:
 				builder = subsequence.pattern_builder.PatternBuilder(
 					pattern = self,
 					cycle = current_cycle,
-					drum_note_map = self._drum_note_map
+					drum_note_map = self._drum_note_map,
+					section = composition_ref._form_state.get_section_info() if composition_ref._form_state else None,
+					bar = composition_ref._builder_bar
 				)
 
 				if self._wants_chord and composition_ref._harmonic_state is not None:

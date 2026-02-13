@@ -1,3 +1,37 @@
+"""
+Subsequence Advanced Demo — Direct Pattern API
+
+The same generative composition as demo.py, but using direct Pattern
+subclassing instead of the Composition decorator API. This is the
+"power user" approach — you manage the sequencer, harmonic state,
+and form state yourself, gaining full control over scheduling and
+pattern internals.
+
+If you're new to Subsequence, start with demo.py. Come here when you
+need something the Composition API doesn't expose.
+
+How to read this file
+─────────────────────
+1. MIDI Setup      — Device name and channel assignments (same as demo.py).
+2. Sequencer       — Create the low-level sequencer with a tempo.
+3. Harmony         — Create a HarmonicState and schedule it on a beat clock.
+4. Form            — Create a FormState and schedule it to advance each bar.
+5. External Data   — Schedule a background task via the module helper.
+6. Pattern Classes — Subclass Pattern directly. Override _build_pattern()
+                     to populate notes and on_reschedule() to rebuild each
+                     cycle. Read the FormState yourself for section awareness.
+7. Main            — Wire everything together and run until Ctrl+C.
+
+Musical overview
+────────────────
+Identical to demo.py: intro (4 bars) → verse (8) → chorus (8) →
+breakdown (4), looping. The kick always plays. The snare enters in
+the chorus with euclidean density modulated by ISS longitude. Hats
+are muted during the intro. Chords build intensity through each
+section. The arpeggio and bass only play during the chorus. Chord
+changes happen every bar (4 beats) via the dark_minor graph in E.
+"""
+
 import asyncio
 import json
 import logging
@@ -14,60 +48,82 @@ import subsequence.sequence_utils
 import subsequence.sequencer
 
 
-# Configure logging
+# Configure logging so you can see bar numbers and ISS fetches in the console.
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# MIDI channel and drum note assignments (previously in subsequence.constants,
-# now defined locally since they are studio-specific).
-MIDI_CHANNEL_DRM1 = 9
-MIDI_CHANNEL_VOCE_EP = 8
-MIDI_CHANNEL_MATRIARCH = 0
-MIDI_CHANNEL_MINITAUR = 5
+# ─── MIDI Setup ──────────────────────────────────────────────────────
+#
+# These values are specific to YOUR studio. Change them to match your
+# MIDI interface and instrument channel assignments.
 
-DRM1_MKIV_KICK = 36
-DRM1_MKIV_SNARE = 38
-DRM1_MKIV_HH1_CLOSED = 44
-DRM1_MKIV_HH1_OPEN = 46
+MIDI_DEVICE = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
+
+DRUMS_MIDI_CHANNEL = 9       # Channel 10 in 1-indexed MIDI (standard drums)
+EP_MIDI_CHANNEL = 8          # Electric piano / pad synth
+SYNTH_MIDI_CHANNEL = 0       # Lead / arpeggio synth
+BASS_MIDI_CHANNEL = 5        # Bass synth
+
+# Drum note map — maps names to MIDI note numbers.
+# These depend on your drum machine or sample library.
+DRUM_KICK = 36
+DRUM_SNARE = 38
+DRUM_HH_CLOSED = 44
+DRUM_HH_OPEN = 46
+
+
+# ─── Pattern Classes ─────────────────────────────────────────────────
+#
+# Each pattern is a subclass of Pattern. The key methods are:
+#
+#   _build_pattern()   — Clear self.steps and populate notes for one cycle.
+#   on_reschedule()    — Called by the sequencer before each new cycle.
+#                        Increment your cycle counter and call _build_pattern().
+#
+# Unlike the Composition API (where the module injects chords and section
+# info for you), here you hold references to the shared HarmonicState and
+# FormState and read them yourself.
+#
+# All drum patterns use a 16-step grid (sixteenth notes) over 4 beats.
 
 
 class KickSnarePattern (subsequence.pattern.Pattern):
 
-	"""
-	A kick and snare pattern that evolves on each reschedule.
-	"""
+	"""Four-on-the-floor kick with a euclidean snare (chorus only)."""
 
-	def __init__ (self, data: typing.Dict[str, typing.Any], length: int, reschedule_lookahead: int = 1) -> None:
+	def __init__ (
+		self,
+		form_state: subsequence.composition.FormState,
+		data: typing.Dict[str, typing.Any],
+		length: int = 4,
+		reschedule_lookahead: int = 1
+	) -> None:
 
-		"""
-		Initialize the kick/snare pattern and build the first cycle.
-		"""
+		"""Initialize the kick/snare pattern with form state and shared data."""
 
 		super().__init__(
-			channel = MIDI_CHANNEL_DRM1,
+			channel = DRUMS_MIDI_CHANNEL,
 			length = length,
 			reschedule_lookahead = reschedule_lookahead
 		)
 
+		self.form_state = form_state
 		self.data = data
 		self.rng = random.Random()
 		self.cycle_count = 0
 
 		self._build_pattern()
 
-
 	def _build_pattern (self) -> None:
 
-		"""
-		Build a 16-step kick/snare cycle with evolving snare.
-		"""
+		"""Build a 16-step kick/snare cycle, section-aware."""
 
 		self.steps = {}
 
 		step_duration = subsequence.constants.MIDI_SIXTEENTH_NOTE
 
-		# Fixed four-on-the-floor kick — steps 0, 4, 8, 12 on a 16-step grid.
+		# Fixed kick on every beat — steps 0, 4, 8, 12 on the 16-step grid.
 		kick_sequence = [0] * 16
 		for idx in [0, 4, 8, 12]:
 			kick_sequence[idx] = 1
@@ -75,12 +131,14 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 		self.add_sequence(
 			kick_sequence,
 			step_duration = step_duration,
-			pitch = DRM1_MKIV_KICK,
+			pitch = DRUM_KICK,
 			velocity = 127
 		)
 
-		# Euclidean snare: ISS longitude modulates max density.
-		if self.cycle_count > 3:
+		# Snare only during the chorus.
+		section = self.form_state.get_section_info()
+
+		if section and section.name == "chorus":
 			nl = self.data.get("longitude_norm", 0.5)
 			max_snare_hits = max(2, round(nl * 8))
 			snare_hits = self.rng.randint(1, max_snare_hits)
@@ -95,16 +153,13 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 			self.add_sequence(
 				snare_sequence,
 				step_duration = step_duration,
-				pitch = DRM1_MKIV_SNARE,
+				pitch = DRUM_SNARE,
 				velocity = 100
 			)
 
-
 	def on_reschedule (self) -> None:
 
-		"""
-		Rebuild the pattern before the next cycle is scheduled.
-		"""
+		"""Rebuild the pattern before the next cycle is scheduled."""
 
 		self.cycle_count += 1
 		self._build_pattern()
@@ -112,34 +167,38 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 
 class HatPattern (subsequence.pattern.Pattern):
 
-	"""
-	A hi-hat pattern with evolving velocities and occasional open hats.
-	"""
+	"""Bresenham hi-hats with stochastic dropout and velocity shaping."""
 
-	def __init__ (self, length: int, reschedule_lookahead: int = 1) -> None:
+	def __init__ (
+		self,
+		form_state: subsequence.composition.FormState,
+		length: int = 4,
+		reschedule_lookahead: int = 1
+	) -> None:
 
-		"""
-		Initialize the hi-hat pattern and build the first cycle.
-		"""
+		"""Initialize the hi-hat pattern with form state."""
 
 		super().__init__(
-			channel = MIDI_CHANNEL_DRM1,
+			channel = DRUMS_MIDI_CHANNEL,
 			length = length,
 			reschedule_lookahead = reschedule_lookahead
 		)
 
+		self.form_state = form_state
 		self.rng = random.Random()
 
 		self._build_pattern()
 
-
 	def _build_pattern (self) -> None:
 
-		"""
-		Build a 16-step hi-hat cycle with stochastic accents.
-		"""
+		"""Build a 16-step hi-hat cycle, muted during the intro."""
 
 		self.steps = {}
+
+		# Silent during intro.
+		section = self.form_state.get_section_info()
+		if not section or section.name == "intro":
+			return
 
 		step_duration = subsequence.constants.MIDI_SIXTEENTH_NOTE
 
@@ -152,14 +211,13 @@ class HatPattern (subsequence.pattern.Pattern):
 
 		# Stochastic dropout.
 		for i in range(16):
-
 			if hh_sequence[i] and self.rng.random() < 0.1:
 				hh_sequence[i] = 0
 
 		self.add_sequence(
 			hh_sequence,
 			step_duration = step_duration,
-			pitch = DRM1_MKIV_HH1_CLOSED,
+			pitch = DRUM_HH_CLOSED,
 			velocity = hh_velocities
 		)
 
@@ -167,32 +225,101 @@ class HatPattern (subsequence.pattern.Pattern):
 		if self.rng.random() < 0.6:
 			self.add_note(
 				14 * step_duration,
-				DRM1_MKIV_HH1_OPEN,
+				DRUM_HH_OPEN,
 				85,
 				step_duration
 			)
 
+	def on_reschedule (self) -> None:
+
+		"""Rebuild the pattern before the next cycle is scheduled."""
+
+		self._build_pattern()
+
+
+class ChordPadPattern (subsequence.pattern.Pattern):
+
+	"""Sustained chord pads that follow the harmonic state."""
+
+	def __init__ (
+		self,
+		harmonic_state: subsequence.harmonic_state.HarmonicState,
+		form_state: subsequence.composition.FormState,
+		channel: int,
+		length: int = 4,
+		reschedule_lookahead: int = 1,
+		root_midi: int = 52
+	) -> None:
+
+		"""Initialize the chord pad with harmonic state, form state, and root note."""
+
+		super().__init__(
+			channel = channel,
+			length = length,
+			reschedule_lookahead = reschedule_lookahead
+		)
+
+		self.harmonic_state = harmonic_state
+		self.form_state = form_state
+		self.root_midi = root_midi
+
+		self._build_pattern()
+
+	def _build_pattern (self) -> None:
+
+		"""Build a sustained chord, section-aware with intensity shaping."""
+
+		self.steps = {}
+
+		section = self.form_state.get_section_info()
+
+		# Silent during intro.
+		if not section or section.name == "intro":
+			return
+
+		chord = self.harmonic_state.get_current_chord()
+		chord_root = self.harmonic_state.get_chord_root_midi(self.root_midi, chord)
+		chord_intervals = chord.intervals()
+
+		duration = int(self.length * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		# Quiet during breakdown.
+		if section.name == "breakdown":
+			velocity = 50
+		else:
+			# Build intensity through the section.
+			velocity = int(70 + 30 * section.progress)
+
+		for interval in chord_intervals:
+			self.add_note(
+				position = 0,
+				pitch = chord_root + interval,
+				velocity = velocity,
+				duration = duration
+			)
 
 	def on_reschedule (self) -> None:
 
-		"""
-		Rebuild the pattern before the next cycle is scheduled.
-		"""
+		"""Rebuild the chord pad after the harmonic state advances."""
 
 		self._build_pattern()
 
 
 class MotifPattern (subsequence.pattern.Pattern):
 
-	"""
-	A motif pattern that follows the shared harmonic state.
-	"""
+	"""A cycling arpeggio built from the current chord tones (chorus only)."""
 
-	def __init__ (self, harmonic_state: subsequence.harmonic_state.HarmonicState, length: int, reschedule_lookahead: int, channel: int, root_midi: int = 52) -> None:
+	def __init__ (
+		self,
+		harmonic_state: subsequence.harmonic_state.HarmonicState,
+		form_state: subsequence.composition.FormState,
+		channel: int,
+		length: int = 4,
+		reschedule_lookahead: int = 1,
+		root_midi: int = 76
+	) -> None:
 
-		"""
-		Initialize the motif pattern with shared harmonic state.
-		"""
+		"""Initialize the arpeggio motif with harmonic state, form state, and root note."""
 
 		super().__init__(
 			channel = channel,
@@ -201,50 +328,52 @@ class MotifPattern (subsequence.pattern.Pattern):
 		)
 
 		self.harmonic_state = harmonic_state
+		self.form_state = form_state
 		self.root_midi = root_midi
 
 		self._build_pattern()
 
-
 	def _build_pattern (self) -> None:
 
-		"""
-		Build a cycling arpeggio based on the current chord.
-		"""
+		"""Build a cycling arpeggio from chord tones, chorus only."""
 
 		self.steps = {}
+
+		# Only plays during the chorus.
+		section = self.form_state.get_section_info()
+		if not section or section.name != "chorus":
+			return
 
 		chord = self.harmonic_state.get_current_chord()
 		chord_root = self.harmonic_state.get_chord_root_midi(self.root_midi, chord)
 		chord_intervals = chord.intervals()[:3]
 
-		# Decision: use chord tones so motif follows chord changes.
 		pitches = [chord_root + interval for interval in chord_intervals]
 
 		self.add_arpeggio_beats(pitches=pitches, step_beats=0.25, velocity=90)
 
-
 	def on_reschedule (self) -> None:
 
-		"""
-		Rebuild the motif after the harmonic state advances.
-		"""
+		"""Rebuild the arpeggio after the harmonic state advances."""
 
-		# Decision path: chord changes are read from harmonic_state; key changes would be handled there.
 		self._build_pattern()
 
 
 class BassPattern (subsequence.pattern.Pattern):
 
-	"""
-	A 16-step bassline that follows the composition-level harmony.
-	"""
+	"""A 16th-note bassline on the chord root (chorus only)."""
 
-	def __init__ (self, harmonic_state: subsequence.harmonic_state.HarmonicState, channel: int, length: int = 4, reschedule_lookahead: int = 1, root_midi: int = 40) -> None:
+	def __init__ (
+		self,
+		harmonic_state: subsequence.harmonic_state.HarmonicState,
+		form_state: subsequence.composition.FormState,
+		channel: int,
+		length: int = 4,
+		reschedule_lookahead: int = 1,
+		root_midi: int = 40
+	) -> None:
 
-		"""
-		Initialize the bass pattern with shared harmonic state.
-		"""
+		"""Initialize the bassline with harmonic state, form state, and root note."""
 
 		super().__init__(
 			channel = channel,
@@ -253,18 +382,21 @@ class BassPattern (subsequence.pattern.Pattern):
 		)
 
 		self.harmonic_state = harmonic_state
+		self.form_state = form_state
 		self.root_midi = root_midi
 
 		self._build_pattern()
 
-
 	def _build_pattern (self) -> None:
 
-		"""
-		Build a 16-step bassline anchored to the current chord root.
-		"""
+		"""Build a 16-step bassline anchored to the current chord root, chorus only."""
 
 		self.steps = {}
+
+		# Only plays during the chorus.
+		section = self.form_state.get_section_info()
+		if not section or section.name != "chorus":
+			return
 
 		step_duration = subsequence.constants.MIDI_SIXTEENTH_NOTE
 
@@ -282,29 +414,34 @@ class BassPattern (subsequence.pattern.Pattern):
 			note_duration = 5
 		)
 
-
 	def on_reschedule (self) -> None:
 
-		"""
-		Rebuild the bassline after the harmonic state advances.
-		"""
+		"""Rebuild the bassline after the harmonic state advances."""
 
 		self._build_pattern()
 
+
+# ─── Main ────────────────────────────────────────────────────────────
+
 async def main () -> None:
 
-	"""
-	Main entry point for the demo application.
-	"""
+	"""Wire up the sequencer, harmony, form, patterns, and run until Ctrl+C."""
 
-	logger.info("Subsequence Demo starting...")
+	logger.info("Subsequence Advanced Demo starting...")
 
-	midi_device = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
-	initial_bpm = 125
+	# ─── Sequencer ───────────────────────────────────────────────────
 
-	seq = subsequence.sequencer.Sequencer(midi_device_name=midi_device, initial_bpm=initial_bpm)
+	seq = subsequence.sequencer.Sequencer(
+		midi_device_name = MIDI_DEVICE,
+		initial_bpm = 125
+	)
 
-	# Decision: E major is the global key center; key changes would be handled via harmonic_state in future.
+	# ─── Harmony ─────────────────────────────────────────────────────
+	#
+	# Create a HarmonicState and schedule it to advance every 4 beats
+	# (once per bar). Any pattern that holds this reference can read
+	# the current chord via harmonic_state.get_current_chord().
+
 	harmonic_state = subsequence.harmonic_state.HarmonicState(
 		key_name = "E",
 		graph_style = "dark_minor",
@@ -313,17 +450,37 @@ async def main () -> None:
 		minor_turnaround_weight = 0.25
 	)
 
-	harmonic_cycle_beats = 4
-
-	# Decision: schedule harmonic changes independently of any pattern, aligned to a 4-beat grid.
 	await subsequence.composition.schedule_harmonic_clock(
 		sequencer = seq,
 		harmonic_state = harmonic_state,
-		cycle_beats = harmonic_cycle_beats,
+		cycle_beats = 4,
 		reschedule_lookahead = 1
 	)
 
-	# ─── External Data ───────────────────────────────────────────────────
+	# ─── Form ────────────────────────────────────────────────────────
+	#
+	# Create a FormState and schedule it to advance each bar.
+	# Patterns hold a reference to this and call get_section_info()
+	# inside _build_pattern() to decide what to play.
+
+	form_state = subsequence.composition.FormState([
+		("intro", 4),
+		("verse", 8),
+		("chorus", 8),
+		("breakdown", 4),
+	], loop=True)
+
+	await subsequence.composition.schedule_form(
+		sequencer = seq,
+		form_state = form_state,
+		reschedule_lookahead = 1
+	)
+
+	# ─── External Data ───────────────────────────────────────────────
+	#
+	# Fetch ISS position every 8 bars (32 beats). The result is stored
+	# in seq.data so patterns can read it. Sync functions run in a
+	# thread pool so they never block the MIDI clock.
 
 	def fetch_iss () -> None:
 
@@ -341,32 +498,29 @@ async def main () -> None:
 
 	await subsequence.composition.schedule_task(sequencer=seq, fn=fetch_iss, cycle_beats=32)
 
-	# Decision: all percussion on a unified 4-beat / 16-step grid.
-	kick_snare = KickSnarePattern(data=seq.data, length=4, reschedule_lookahead=1)
-	hats = HatPattern(length=4, reschedule_lookahead=1)
-	chords = subsequence.harmony.ChordPattern(
+	# ─── Patterns ────────────────────────────────────────────────────
+	#
+	# Create pattern instances, passing in the shared harmonic_state
+	# and form_state. Each pattern reads these during _build_pattern().
+
+	kick_snare = KickSnarePattern(form_state=form_state, data=seq.data)
+	hats = HatPattern(form_state=form_state)
+	chords = ChordPadPattern(
 		harmonic_state = harmonic_state,
-		length = harmonic_cycle_beats,
-		root_midi = 52,
-		velocity = 90,
-		reschedule_lookahead = 1,
-		# Decision: assign the harmonic layer to the EP channel explicitly.
-		channel = MIDI_CHANNEL_VOCE_EP
+		form_state = form_state,
+		channel = EP_MIDI_CHANNEL,
+		root_midi = 52
 	)
-	# Decision: arpeggio on MATRIARCH, cycling through chord tones across 16 steps.
 	motif = MotifPattern(
 		harmonic_state = harmonic_state,
-		length = harmonic_cycle_beats,
-		reschedule_lookahead = 1,
-		channel = MIDI_CHANNEL_MATRIARCH,
+		form_state = form_state,
+		channel = SYNTH_MIDI_CHANNEL,
 		root_midi = 76
 	)
-	# Decision: 16-step bassline on MINITAUR, filling every step with the chord root.
 	bass = BassPattern(
 		harmonic_state = harmonic_state,
-		channel = MIDI_CHANNEL_MINITAUR,
-		length = harmonic_cycle_beats,
-		reschedule_lookahead = 1,
+		form_state = form_state,
+		channel = BASS_MIDI_CHANNEL,
 		root_midi = 28
 	)
 
@@ -376,15 +530,19 @@ async def main () -> None:
 		start_pulse = 0
 	)
 
-	async def on_bar (bar: int) -> None:
+	# ─── Events ──────────────────────────────────────────────────────
 
-		"""
-		Log the current bar for visibility.
-		"""
+	def on_bar (bar: int) -> None:
 
-		logger.info(f"Bar {bar + 1}")
+		"""Log bar number and current section for visibility."""
 
-	seq.add_callback(on_bar)
+		section = form_state.get_section_info()
+		section_name = section.name if section else "—"
+		logger.info(f"Bar {bar + 1}  [{section_name}]")
+
+	seq.on_event("bar", on_bar)
+
+	# ─── Play ────────────────────────────────────────────────────────
 
 	await subsequence.composition.run_until_stopped(seq)
 

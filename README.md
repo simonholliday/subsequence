@@ -12,6 +12,7 @@ Subsequence is a generative MIDI sequencer built in Python. It schedules pattern
 - **Chord graphs** define harmonic palettes: `"diatonic_major"` (single-key I–vii), `"turnaround"` (ii-V-I across all keys), and `"dark_minor"` (Phrygian/aeolian minor). Subclass `ChordGraph` to create your own.
 - **Scheduled tasks** let any function run on a repeating beat cycle via `composition.schedule()`. Sync functions run in a thread pool so they never block the MIDI clock. Failed tasks are logged and never crash playback.
 - **Shared data store** (`composition.data`) lets scheduled tasks publish values that pattern builders can read — connecting music to external inputs (APIs, sensors, files).
+- **Form** defines the large-scale structure of a composition — named sections with bar durations. Patterns read `p.section` to decide what to play in each section, enabling intros, verses, choruses, breakdowns, and more.
 - **Events** let you react to sequencer milestones (`"bar"`, `"start"`, `"stop"`) via `composition.on_event()`.
 - **Motifs & swing** utilities support expressive timing and reusable note fragments.
 
@@ -41,7 +42,7 @@ DRUMS_MIDI_CHANNEL = 9
 DRUM_NOTE_MAP = {"kick": 36, "snare": 38, "hh_closed": 42}
 
 composition = subsequence.Composition(device=MIDI_DEVICE, bpm=125, key="E")
-composition.harmony(style="dark_minor", cycle=4, dominant_7th=True, gravity=0.8)
+composition.harmony(style="dark_minor", cycle_beats=4, dominant_7th=True, gravity=0.8)
 
 # Schedule a repeating task — sync functions run in a thread pool automatically.
 def fetch_data ():
@@ -74,8 +75,59 @@ if __name__ == "__main__":
 
 MIDI channels, device names, and drum note mappings are defined by the musician in their composition file — the module does not ship studio-specific constants.
 
+## Form (sections)
+
+Define the large-scale structure of your composition with `composition.form()`. Each section has a name and a length in bars. Patterns read `p.section` to decide what to play:
+
+```python
+# Looping form — cycles back to intro after the breakdown.
+composition.form([
+    ("intro", 4),
+    ("verse", 8),
+    ("chorus", 8),
+    ("breakdown", 4),
+], loop=True)
+
+@composition.pattern(channel=9, length=4, drum_note_map=DRUM_NOTE_MAP)
+def drums (p):
+    p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
+
+    # Mute snare outside the chorus — the pattern keeps cycling silently.
+    if not p.section or p.section.name != "chorus":
+        return
+
+    # Build intensity through the section (0.0 → ~1.0).
+    vel = int(80 + 20 * p.section.progress)
+    p.hit_steps("snare", [4, 12], velocity=vel)
+```
+
+`p.section` is a `SectionInfo` object (or `None` when no form is configured):
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `name` | `str` | Current section name |
+| `bar` | `int` | Bar within section (0-indexed) |
+| `bars` | `int` | Total bars in this section |
+| `progress` | `float` | `bar / bars` (0.0 → ~1.0) |
+| `first_bar` | `bool` | True on the first bar of the section |
+| `last_bar` | `bool` | True on the last bar of the section |
+
+`p.bar` is always available (regardless of form) and tracks the global bar count since playback started.
+
+Forms can also be **generators** for stochastic or evolving structures:
+
+```python
+def my_form ():
+    yield ("intro", 4)
+    while True:
+        yield ("verse", random.choice([8, 16]))
+        yield ("chorus", 8)
+
+composition.form(my_form())
+```
+
 ## Demo details
-The demo (`examples/demo.py`) uses the Composition API to schedule drums (kick, snare, hats), chord pads, a cycling arpeggio, and a 16th-note bassline — all on a unified 16-step grid. The kick is fixed four-on-the-floor while the snare uses euclidean generation with `roll()` for backbeat offset. A scheduled task fetches the ISS position every 8 bars and stores normalized latitude/longitude in `composition.data`; the snare pattern reads `longitude_norm` to modulate its maximum density. A shared harmonic state advances chords on a 4-beat clock, and any pattern with a `chord` parameter automatically receives the current chord when it rebuilds. The builder's `cycle` property lets patterns evolve over time (e.g. introducing the snare after cycle 3). The advanced demo (`examples/demo_advanced.py`) shows the same composition using direct `Pattern` subclassing for power users. Press Ctrl+C to stop.
+The demo (`examples/demo.py`) uses the Composition API to schedule drums (kick, snare, hats), chord pads, a cycling arpeggio, and a 16th-note bassline — all on a unified 16-step grid. A looping form cycles through intro (4 bars) → verse (8) → chorus (8) → breakdown (4). Each pattern reads `p.section` to control its behavior: the kick always plays, the snare only enters during the chorus, hats are muted during the intro, and chord pads build intensity through each section via `p.section.progress`. A scheduled task fetches the ISS position every 8 bars and stores normalized latitude/longitude in `composition.data`; the snare pattern reads `longitude_norm` to modulate its maximum density. A shared harmonic state advances chords on a 4-beat clock, and any pattern with a `chord` parameter automatically receives the current chord when it rebuilds. The advanced demo (`examples/demo_advanced.py`) shows the same composition using direct `Pattern` subclassing for power users. Press Ctrl+C to stop.
 
 ## Extra utilities
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.

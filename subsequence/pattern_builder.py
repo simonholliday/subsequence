@@ -12,15 +12,15 @@ class PatternBuilder:
 	Provides high-level musical methods for building pattern content.
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, drum_note_map: typing.Optional[typing.Dict[str, int]] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0) -> None:
 
-		"""
-		Initialize the builder with a pattern, cycle count, and optional drum note map.
-		"""
+		"""Initialize the builder with pattern context, cycle count, and optional section info."""
 
 		self._pattern = pattern
 		self.cycle = cycle
 		self._drum_note_map = drum_note_map
+		self.section = section
+		self.bar = bar
 
 	def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int:
 

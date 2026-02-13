@@ -27,7 +27,7 @@ def test_composition_harmony_creates_state (patch_midi: None) -> None:
 
 	composition.harmony(
 		style = "turnaround_global",
-		cycle = 4,
+		cycle_beats = 4,
 		dominant_7th = True,
 		gravity = 0.8,
 		minor_weight = 0.25
@@ -45,7 +45,7 @@ def test_composition_harmony_without_key_raises (patch_midi: None) -> None:
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125)
 
 	with pytest.raises(ValueError):
-		composition.harmony(style="turnaround_global", cycle=4)
+		composition.harmony(style="turnaround_global", cycle_beats=4)
 
 
 def test_pattern_decorator_registers_pending (patch_midi: None) -> None:
@@ -167,7 +167,7 @@ def test_chord_injection (patch_midi: None) -> None:
 
 	composition.harmony(
 		style = "turnaround_global",
-		cycle = 4,
+		cycle_beats = 4,
 		dominant_7th = True
 	)
 
