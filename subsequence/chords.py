@@ -84,6 +84,15 @@ class Chord:
 		return CHORD_INTERVALS[self.quality]
 
 
+	def tones (self, root: int) -> typing.List[int]:
+
+		"""
+		Return MIDI note numbers for chord tones starting from a root.
+		"""
+
+		return [root + interval for interval in self.intervals()]
+
+
 	def name (self) -> str:
 
 		"""
