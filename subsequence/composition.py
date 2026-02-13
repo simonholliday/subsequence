@@ -4,6 +4,7 @@ import logging
 import signal
 import typing
 
+import subsequence.chord_graphs
 import subsequence.harmonic_state
 import subsequence.pattern
 import subsequence.sequencer
@@ -189,7 +190,7 @@ class Composition:
 
 	def harmony (
 		self,
-		style: str = "functional_major",
+		style: typing.Union[str, subsequence.chord_graphs.ChordGraph] = "functional_major",
 		cycle: int = 4,
 		dominant_7th: bool = True,
 		gravity: float = 1.0,
@@ -214,6 +215,14 @@ class Composition:
 
 		self._harmony_cycle_beats = cycle
 		self._harmony_reschedule_lookahead = reschedule_lookahead
+
+	def on_event (self, event_name: str, callback: typing.Callable[..., typing.Any]) -> None:
+
+		"""
+		Register a callback for a sequencer event (e.g., "bar", "start", "stop").
+		"""
+
+		self._sequencer.on_event(event_name, callback)
 
 	def pattern (
 		self,

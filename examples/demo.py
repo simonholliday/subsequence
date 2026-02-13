@@ -45,7 +45,7 @@ composition = subsequence.Composition(
 )
 
 composition.harmony(
-	style = "turnaround_global",
+	style = "dark_minor",
 	cycle = 4,
 	dominant_7th = True,
 	gravity = 0.8,
@@ -63,7 +63,7 @@ def kick_snare (p):
 	"""
 
 	# Euclidean kick with 20% stochastic dropout — different every cycle.
-	p.euclidean("kick", pulses=4, velocity=105, dropout=0.2)
+	p.euclidean("kick", pulses=4, velocity=127, dropout=0.2)
 
 	# Backbeat snare, always present.
 	if p.cycle > 3:
@@ -128,4 +128,15 @@ def bass (p, chord):
 # ─── Play ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+
+	def on_bar (bar: int) -> None:
+
+		"""
+		Log the current bar for visibility.
+		"""
+
+		logging.info(f"Bar {bar + 1}")
+
+	composition.on_event("bar", on_bar)
+
 	composition.play()

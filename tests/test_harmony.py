@@ -40,7 +40,7 @@ def test_key_gravity_blend_changes_weights () -> None:
 	"""
 
 	graph, tonic = subsequence.chord_graphs.functional_major.build_graph("E", include_dominant_7th=True)
-	diatonic, function_chords = subsequence.harmonic_state._get_key_gravity_sets("E")
+	diatonic, function_chords = subsequence.chord_graphs.functional_major.DiatonicMajor().gravity_sets("E")
 
 	diatonic_only = 1.0
 	function_only = 0.0

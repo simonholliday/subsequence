@@ -1,5 +1,6 @@
 import typing
 
+import subsequence.chord_graphs
 import subsequence.chords
 import subsequence.weighted_graph
 
@@ -13,9 +14,7 @@ WEIGHT_DECEPTIVE = 2
 
 def _build_major_key_chords (key_pc: int) -> typing.Dict[str, subsequence.chords.Chord]:
 
-	"""
-	Return common functional chords for a major key root.
-	"""
+	"""Return common functional chords for a major key root."""
 
 	scale_intervals = [0, 2, 4, 5, 7, 9, 11]
 	degree_qualities = ["major", "minor", "minor", "major", "major", "minor", "diminished"]
@@ -43,9 +42,7 @@ def _add_turnaround_edges (
 	include_dominant_7th: bool
 ) -> None:
 
-	"""
-	Add ii–V–I style edges for a single major key.
-	"""
+	"""Add ii-V-I style edges for a single major key."""
 
 	tonic = chords["I"]
 	supertonic = chords["ii"]
@@ -53,6 +50,7 @@ def _add_turnaround_edges (
 	subdominant = chords["IV"]
 	dominant = chords["V"]
 	dominant_7th = subsequence.chords.Chord(root_pc=dominant.root_pc, quality="dominant_7th")
+
 	# Decision path: allow the dominant seventh to drive stronger resolutions.
 	dominant_target = dominant_7th if include_dominant_7th else dominant
 
@@ -76,9 +74,7 @@ def _add_minor_turnaround (
 	include_dominant_7th: bool
 ) -> None:
 
-	"""
-	Add a minor ii–V–I turnaround using a weight multiplier.
-	"""
+	"""Add a minor ii-V-I turnaround using a weight multiplier."""
 
 	if minor_turnaround_weight <= 0:
 		# Decision path: weight of zero disables minor turnarounds entirely.
@@ -106,26 +102,53 @@ def _add_minor_turnaround (
 		graph.add_transition(dominant, tonic_minor, minor_weight_strong)
 
 
+class TurnaroundModulation (subsequence.chord_graphs.ChordGraph):
+
+	"""Global ii-V-I turnaround graph enabling modulation between all keys."""
+
+	def __init__ (self, include_dominant_7th: bool = True, minor_turnaround_weight: float = 0.0) -> None:
+
+		"""Configure dominant sevenths and minor turnaround strength."""
+
+		if minor_turnaround_weight < 0 or minor_turnaround_weight > 1:
+			raise ValueError("Minor turnaround weight must be between 0 and 1")
+
+		self.include_dominant_7th = include_dominant_7th
+		self.minor_turnaround_weight = minor_turnaround_weight
+
+	def build (self, key_name: str) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
+
+		"""Build the global turnaround graph for all 12 keys."""
+
+		if key_name not in subsequence.chords.NOTE_NAME_TO_PC:
+			raise ValueError(f"Unknown key name: {key_name}")
+
+		graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = subsequence.weighted_graph.WeightedGraph()
+
+		for key_pc in range(12):
+			chords = _build_major_key_chords(key_pc)
+			_add_turnaround_edges(graph, chords, self.include_dominant_7th)
+			_add_minor_turnaround(graph, key_pc, self.minor_turnaround_weight, self.include_dominant_7th)
+
+		tonic_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
+		tonic = subsequence.chords.Chord(root_pc=tonic_pc, quality="major")
+
+		return graph, tonic
+
+	def gravity_sets (self, key_name: str) -> typing.Tuple[typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]]:
+
+		"""Return major-key diatonic and functional chord sets."""
+
+		return subsequence.chord_graphs._major_key_gravity_sets(key_name)
+
+
 def build_graph (key_name: str, include_dominant_7th: bool = True, minor_turnaround_weight: float = 0.0) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
 
-	"""
-	Build a global turnaround graph and return it with the chosen key tonic.
-	"""
+	"""Build a global turnaround graph and return it with the chosen key tonic."""
 
-	if key_name not in subsequence.chords.NOTE_NAME_TO_PC:
-		raise ValueError(f"Unknown key name: {key_name}")
+	graph_obj = TurnaroundModulation(
+		include_dominant_7th = include_dominant_7th,
+		minor_turnaround_weight = minor_turnaround_weight
+	)
 
-	if minor_turnaround_weight < 0 or minor_turnaround_weight > 1:
-		raise ValueError("Minor turnaround weight must be between 0 and 1")
-
-	graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = subsequence.weighted_graph.WeightedGraph()
-
-	for key_pc in range(12):
-		chords = _build_major_key_chords(key_pc)
-		_add_turnaround_edges(graph, chords, include_dominant_7th)
-		_add_minor_turnaround(graph, key_pc, minor_turnaround_weight, include_dominant_7th)
-
-	tonic_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
-	tonic = subsequence.chords.Chord(root_pc=tonic_pc, quality="major")
-
-	return graph, tonic
+	return graph_obj.build(key_name)

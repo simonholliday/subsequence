@@ -78,7 +78,7 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 			kick_sequence,
 			step_duration = step_duration,
 			pitch = DRM1_MKIV_KICK,
-			velocity = 105
+			velocity = 127
 		)
 
 		if self.cycle_count > 3:
@@ -338,7 +338,7 @@ async def main () -> None:
 	# Decision: E major is the global key center; key changes would be handled via harmonic_state in future.
 	harmonic_state = subsequence.harmonic_state.HarmonicState(
 		key_name = "E",
-		graph_style = "turnaround_global",
+		graph_style = "dark_minor",
 		include_dominant_7th = True,
 		key_gravity_blend = 0.8,
 		minor_turnaround_weight = 0.25
