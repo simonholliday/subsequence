@@ -47,7 +47,7 @@ composition.harmony(style="dark_minor", cycle=4, dominant_7th=True, gravity=0.8)
 def fetch_data ():
     composition.data["value"] = some_external_api()
 
-composition.schedule(fetch_data, cycle=32)  # Every 8 bars (32 beats)
+composition.schedule(fetch_data, cycle_beats=32)  # Every 8 bars (32 beats)
 
 @composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
 def drums (p):

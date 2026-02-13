@@ -72,7 +72,7 @@ def fetch_iss () -> None:
 	except Exception as exc:
 		logging.warning(f"ISS fetch failed (keeping last value): {exc}")
 
-composition.schedule(fetch_iss, cycle=32)
+composition.schedule(fetch_iss, cycle_beats=32)
 
 
 # ─── Drums ───────────────────────────────────────────────────────────

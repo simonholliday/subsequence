@@ -242,7 +242,7 @@ def test_schedule_registers_pending (patch_midi: None) -> None:
 	def my_task () -> None:
 		pass
 
-	composition.schedule(my_task, cycle=16)
+	composition.schedule(my_task, cycle_beats=16)
 
 	assert len(composition._pending_scheduled) == 1
 	assert composition._pending_scheduled[0].fn is my_task

@@ -289,11 +289,11 @@ class Composition:
 
 		self._sequencer.on_event(event_name, callback)
 
-	def schedule (self, fn: typing.Callable, cycle: int, reschedule_lookahead: int = 1) -> None:
+	def schedule (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int = 1) -> None:
 
 		"""Register a function to run on a repeating beat-based cycle."""
 
-		self._pending_scheduled.append(_PendingScheduled(fn, cycle, reschedule_lookahead))
+		self._pending_scheduled.append(_PendingScheduled(fn, cycle_beats, reschedule_lookahead))
 
 	def pattern (
 		self,
