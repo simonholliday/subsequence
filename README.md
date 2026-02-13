@@ -81,16 +81,17 @@ Define the large-scale structure of your composition with `composition.form()`. 
 
 ### Graph-based form
 
-A dict defines a weighted transition graph. Each section has a bar count and a list of `(next_section, weight)` transitions. Weights control probability — `3:1` means 75%/25%. Sections with no outgoing edges self-loop. The form runs until stopped.
+A dict defines a weighted transition graph. Each section has a bar count and a list of `(next_section, weight)` transitions. Weights control probability — `3:1` means 75%/25%. Sections with an empty list `[]` self-loop forever. Sections with `None` are terminal — the form ends after they complete.
 
 ```python
-# Intro plays once, then never returns.
+# Intro plays once, then never returns. The outro ends the piece.
 composition.form({
     "intro":     (4, [("verse", 1)]),
     "verse":     (8, [("chorus", 3), ("bridge", 1)]),
-    "chorus":    (8, [("breakdown", 2), ("verse", 1)]),
+    "chorus":    (8, [("breakdown", 2), ("verse", 1), ("outro", 1)]),
     "bridge":    (4, [("chorus", 1)]),
     "breakdown": (4, [("verse", 1)]),
+    "outro":     (4, None),
 }, start="intro")
 
 @composition.pattern(channel=9, length=4, drum_note_map=DRUM_NOTE_MAP)

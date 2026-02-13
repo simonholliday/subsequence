@@ -504,3 +504,66 @@ def test_composition_form_graph_registers_state (patch_midi: None) -> None:
 
 	assert composition._form_state is not None
 	assert composition._form_state.get_section_info().name == "intro"
+
+
+# --- Terminal graph sections ---
+
+
+def test_form_state_graph_terminal_section () -> None:
+
+	"""A section with None transitions should end the form after completing."""
+
+	form = subsequence.composition.FormState({
+		"intro": (2, [("outro", 1)]),
+		"outro": (2, None),
+	}, start="intro")
+
+	# Advance through intro (2 bars).
+	form.advance()
+	form.advance()
+
+	assert form.get_section_info().name == "outro"
+
+	# Advance through outro (2 bars) — form should end.
+	form.advance()
+	form.advance()
+
+	assert form.get_section_info() is None
+
+
+def test_form_state_graph_terminal_vs_dead_end () -> None:
+
+	"""None transitions end the form; empty list transitions self-loop."""
+
+	# Terminal: None → form ends.
+	terminal = subsequence.composition.FormState({
+		"end": (1, None),
+	}, start="end")
+
+	terminal.advance()
+	assert terminal.get_section_info() is None
+
+	# Dead end: [] → self-loops.
+	dead_end = subsequence.composition.FormState({
+		"end": (1, []),
+	}, start="end")
+
+	dead_end.advance()
+	assert dead_end.get_section_info() is not None
+	assert dead_end.get_section_info().name == "end"
+
+
+def test_form_state_graph_terminal_advance_returns_changed () -> None:
+
+	"""advance() should return True when the form ends at a terminal section."""
+
+	form = subsequence.composition.FormState({
+		"only": (2, None),
+	}, start="only")
+
+	changed = form.advance()
+	assert changed is False
+
+	changed = form.advance()
+	assert changed is True
+	assert form.get_section_info() is None

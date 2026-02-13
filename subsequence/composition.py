@@ -63,7 +63,7 @@ class FormState:
 		sections: typing.Union[
 			typing.List[typing.Tuple[str, int]],
 			typing.Iterator[typing.Tuple[str, int]],
-			typing.Dict[str, typing.Tuple[int, typing.List[typing.Tuple[str, int]]]]
+			typing.Dict[str, typing.Tuple[int, typing.Optional[typing.List[typing.Tuple[str, int]]]]]
 		],
 		loop: bool = False,
 		start: typing.Optional[str] = None,
@@ -84,6 +84,9 @@ class FormState:
 		self._rng: random.Random = rng or random.Random()
 		self._iterator: typing.Optional[typing.Iterator[typing.Tuple[str, int]]] = None
 
+		# Terminal sections (graph mode only): sections with None transitions.
+		self._terminal_sections: typing.Set[str] = set()
+
 		if isinstance(sections, dict):
 			# Graph mode: build a WeightedGraph from the dict.
 			self._graph = subsequence.weighted_graph.WeightedGraph()
@@ -91,8 +94,11 @@ class FormState:
 
 			for name, (bars, transitions) in sections.items():
 				self._section_bars[name] = bars
-				for target, weight in transitions:
-					self._graph.add_transition(name, target, weight)
+				if transitions is None:
+					self._terminal_sections.add(name)
+				else:
+					for target, weight in transitions:
+						self._graph.add_transition(name, target, weight)
 
 			start_name = start if start is not None else next(iter(sections))
 
@@ -136,6 +142,13 @@ class FormState:
 			if self._graph is not None:
 				# Graph mode: choose next section via weighted graph.
 				current_name = self._current[0]
+
+				if current_name in self._terminal_sections:
+					# Terminal section — form ends.
+					self._finished = True
+					self._current = None
+					return True
+
 				next_name = self._graph.choose_next(current_name, self._rng)
 				self._current = (next_name, self._section_bars[next_name])
 				self._section_index += 1
@@ -502,7 +515,7 @@ class Composition:
 		sections: typing.Union[
 			typing.List[typing.Tuple[str, int]],
 			typing.Iterator[typing.Tuple[str, int]],
-			typing.Dict[str, typing.Tuple[int, typing.List[typing.Tuple[str, int]]]]
+			typing.Dict[str, typing.Tuple[int, typing.Optional[typing.List[typing.Tuple[str, int]]]]]
 		],
 		loop: bool = False,
 		start: typing.Optional[str] = None
