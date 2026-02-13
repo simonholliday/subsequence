@@ -50,6 +50,7 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 		)
 
 		self.rng = random.Random()
+		self.cycle_count = 0
 
 		self._build_pattern()
 
@@ -80,19 +81,20 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 			velocity = 105
 		)
 
-		snare_sequence = [0] * steps
-		snare_indices = [4, 12]
+		if self.cycle_count > 3:
+			snare_sequence = [0] * steps
+			snare_indices = [4, 12]
 
-		for idx in snare_indices:
-			if idx < steps:
-				snare_sequence[idx] = 1
+			for idx in snare_indices:
+				if idx < steps:
+					snare_sequence[idx] = 1
 
-		self.add_sequence(
-			snare_sequence,
-			step_duration = step_duration,
-			pitch = DRM1_MKIV_SNARE,
-			velocity = 100
-		)
+			self.add_sequence(
+				snare_sequence,
+				step_duration = step_duration,
+				pitch = DRM1_MKIV_SNARE,
+				velocity = 100
+			)
 
 
 	def on_reschedule (self) -> None:
@@ -101,6 +103,7 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 		Rebuild the pattern before the next cycle is scheduled.
 		"""
 
+		self.cycle_count += 1
 		self._build_pattern()
 
 

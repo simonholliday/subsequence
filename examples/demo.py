@@ -66,7 +66,8 @@ def kick_snare (p):
 	p.euclidean("kick", pulses=4, velocity=105, dropout=0.2)
 
 	# Backbeat snare, always present.
-	p.hit("snare", beats=[1, 3], velocity=100)
+	if p.cycle > 3:
+		p.hit("snare", beats=[1, 3], velocity=100)
 
 
 @composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=5, drum_note_map=DRUM_NOTE_MAP)
