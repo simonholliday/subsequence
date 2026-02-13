@@ -1,3 +1,5 @@
+import random
+
 import pytest
 
 import subsequence
@@ -301,3 +303,204 @@ def test_form_state_advance_returns_section_changed () -> None:
 	changed = form.advance()
 	assert changed is True
 	assert form.get_section_info() is None
+
+
+# --- Graph-based FormState ---
+
+
+def test_form_state_graph_initial_section () -> None:
+
+	"""Graph-based FormState should expose the start section immediately after creation."""
+
+	form = subsequence.composition.FormState({
+		"intro": (4, [("verse", 1)]),
+		"verse": (8, [("chorus", 1)]),
+		"chorus": (8, []),
+	}, start="intro")
+
+	section = form.get_section_info()
+
+	assert section is not None
+	assert section.name == "intro"
+	assert section.bar == 0
+	assert section.bars == 4
+	assert section.index == 0
+
+
+def test_form_state_graph_advance_within_section () -> None:
+
+	"""Advancing within a graph section should increment bar but keep the same name."""
+
+	form = subsequence.composition.FormState({
+		"intro": (4, [("verse", 1)]),
+		"verse": (8, []),
+	}, start="intro")
+
+	form.advance()
+	section = form.get_section_info()
+
+	assert section.name == "intro"
+	assert section.bar == 1
+
+
+def test_form_state_graph_transition () -> None:
+
+	"""Graph-based form should transition to the next section when bars are exhausted."""
+
+	form = subsequence.composition.FormState({
+		"intro": (2, [("verse", 1)]),
+		"verse": (4, []),
+	}, start="intro")
+
+	# Advance through intro (2 bars).
+	form.advance()
+	form.advance()
+
+	section = form.get_section_info()
+
+	assert section.name == "verse"
+	assert section.bar == 0
+	assert section.bars == 4
+	assert section.index == 1
+
+
+def test_form_state_graph_weighted_transition () -> None:
+
+	"""Graph transitions should follow weighted probabilities."""
+
+	counts = {"chorus": 0, "bridge": 0}
+
+	for seed in range(100):
+
+		rng = random.Random(seed)
+
+		form = subsequence.composition.FormState({
+			"verse": (1, [("chorus", 3), ("bridge", 1)]),
+			"chorus": (1, [("verse", 1)]),
+			"bridge": (1, [("verse", 1)]),
+		}, start="verse", rng=rng)
+
+		form.advance()
+		section = form.get_section_info()
+		counts[section.name] += 1
+
+	# With 3:1 weights, chorus should get ~75%. Allow a generous margin.
+	assert counts["chorus"] > 50
+	assert counts["bridge"] > 5
+
+
+def test_form_state_graph_dead_end_self_loops () -> None:
+
+	"""A section with no outgoing edges should loop itself."""
+
+	form = subsequence.composition.FormState({
+		"intro": (2, [("end", 1)]),
+		"end":   (2, []),
+	}, start="intro")
+
+	# Advance through intro.
+	form.advance()
+	form.advance()
+
+	assert form.get_section_info().name == "end"
+
+	# Advance through "end" — should self-loop.
+	form.advance()
+	form.advance()
+
+	section = form.get_section_info()
+
+	assert section.name == "end"
+	assert section.bar == 0
+	assert section.index == 2
+
+
+def test_form_state_graph_never_finishes () -> None:
+
+	"""Graph-based form should never exhaust — it always has a next section."""
+
+	form = subsequence.composition.FormState({
+		"A": (1, [("B", 1)]),
+		"B": (1, [("A", 1)]),
+	}, start="A")
+
+	for _ in range(100):
+		form.advance()
+		assert form.get_section_info() is not None
+
+
+def test_form_state_graph_default_start () -> None:
+
+	"""Omitting start= should default to the first key in the dict."""
+
+	form = subsequence.composition.FormState({
+		"alpha": (2, [("beta", 1)]),
+		"beta":  (2, [("alpha", 1)]),
+	})
+
+	assert form.get_section_info().name == "alpha"
+
+
+def test_form_state_graph_invalid_start_raises () -> None:
+
+	"""Passing a start section not in the dict should raise ValueError."""
+
+	with pytest.raises(ValueError):
+
+		subsequence.composition.FormState({
+			"A": (2, [("B", 1)]),
+			"B": (2, []),
+		}, start="Z")
+
+
+def test_form_state_graph_total_bars () -> None:
+
+	"""The total_bars counter should track across graph transitions."""
+
+	form = subsequence.composition.FormState({
+		"A": (2, [("B", 1)]),
+		"B": (2, [("A", 1)]),
+	}, start="A")
+
+	assert form.total_bars == 0
+
+	form.advance()
+	assert form.total_bars == 1
+
+	form.advance()
+	assert form.total_bars == 2
+
+	form.advance()
+	assert form.total_bars == 3
+
+
+def test_form_state_graph_section_progress () -> None:
+
+	"""Section progress should reflect position within graph-mode sections."""
+
+	form = subsequence.composition.FormState({
+		"verse": (4, [("verse", 1)]),
+	}, start="verse")
+
+	assert form.get_section_info().progress == 0.0
+
+	form.advance()
+	assert form.get_section_info().progress == 0.25
+
+	form.advance()
+	assert form.get_section_info().progress == 0.5
+
+
+def test_composition_form_graph_registers_state (patch_midi: None) -> None:
+
+	"""Calling form() with a dict should create a graph-mode FormState."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+
+	composition.form({
+		"intro": (4, [("verse", 1)]),
+		"verse": (8, []),
+	}, start="intro")
+
+	assert composition._form_state is not None
+	assert composition._form_state.get_section_info().name == "intro"

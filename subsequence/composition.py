@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import itertools
 import logging
+import random
 import signal
 import typing
 
@@ -9,6 +10,7 @@ import subsequence.chord_graphs
 import subsequence.harmonic_state
 import subsequence.pattern
 import subsequence.sequencer
+import subsequence.weighted_graph
 
 
 logger = logging.getLogger(__name__)
@@ -56,14 +58,19 @@ class FormState:
 
 	"""Track compositional form as a sequence of named sections with bar durations."""
 
-	def __init__ (self, sections: typing.Union[typing.List[typing.Tuple[str, int]], typing.Iterator[typing.Tuple[str, int]]], loop: bool = False) -> None:
+	def __init__ (
+		self,
+		sections: typing.Union[
+			typing.List[typing.Tuple[str, int]],
+			typing.Iterator[typing.Tuple[str, int]],
+			typing.Dict[str, typing.Tuple[int, typing.List[typing.Tuple[str, int]]]]
+		],
+		loop: bool = False,
+		start: typing.Optional[str] = None,
+		rng: typing.Optional[random.Random] = None
+	) -> None:
 
-		"""Initialize from a list or iterator of (name, bars) tuples."""
-
-		if isinstance(sections, list):
-			self._iterator: typing.Iterator[typing.Tuple[str, int]] = itertools.cycle(sections) if loop else iter(sections)
-		else:
-			self._iterator = sections
+		"""Initialize from a list, iterator, or dict of weighted section transitions."""
 
 		self._current: typing.Optional[typing.Tuple[str, int]] = None
 		self._bar_in_section: int = 0
@@ -71,11 +78,46 @@ class FormState:
 		self._total_bars: int = 0
 		self._finished: bool = False
 
-		# Pull the first section immediately.
-		try:
-			self._current = next(self._iterator)
-		except StopIteration:
-			self._finished = True
+		# Graph mode state (only set when sections is a dict).
+		self._graph: typing.Optional[subsequence.weighted_graph.WeightedGraph] = None
+		self._section_bars: typing.Optional[typing.Dict[str, int]] = None
+		self._rng: random.Random = rng or random.Random()
+		self._iterator: typing.Optional[typing.Iterator[typing.Tuple[str, int]]] = None
+
+		if isinstance(sections, dict):
+			# Graph mode: build a WeightedGraph from the dict.
+			self._graph = subsequence.weighted_graph.WeightedGraph()
+			self._section_bars = {}
+
+			for name, (bars, transitions) in sections.items():
+				self._section_bars[name] = bars
+				for target, weight in transitions:
+					self._graph.add_transition(name, target, weight)
+
+			start_name = start if start is not None else next(iter(sections))
+
+			if start_name not in self._section_bars:
+				raise ValueError(f"Start section '{start_name}' not found in form definition")
+
+			self._current = (start_name, self._section_bars[start_name])
+
+		elif isinstance(sections, list):
+			# List mode: convert to iterator, optionally cycling.
+			self._iterator = itertools.cycle(sections) if loop else iter(sections)
+
+			try:
+				self._current = next(self._iterator)
+			except StopIteration:
+				self._finished = True
+
+		else:
+			# Generator/iterator mode: use directly.
+			self._iterator = sections
+
+			try:
+				self._current = next(self._iterator)
+			except StopIteration:
+				self._finished = True
 
 	def advance (self) -> bool:
 
@@ -91,16 +133,27 @@ class FormState:
 
 		if self._bar_in_section >= current_bars:
 
-			try:
-				self._current = next(self._iterator)
+			if self._graph is not None:
+				# Graph mode: choose next section via weighted graph.
+				current_name = self._current[0]
+				next_name = self._graph.choose_next(current_name, self._rng)
+				self._current = (next_name, self._section_bars[next_name])
 				self._section_index += 1
 				self._bar_in_section = 0
 				return True
 
-			except StopIteration:
-				self._finished = True
-				self._current = None
-				return True
+			else:
+				# Iterator mode.
+				try:
+					self._current = next(self._iterator)
+					self._section_index += 1
+					self._bar_in_section = 0
+					return True
+
+				except StopIteration:
+					self._finished = True
+					self._current = None
+					return True
 
 		return False
 
@@ -444,11 +497,20 @@ class Composition:
 
 		self._pending_scheduled.append(_PendingScheduled(fn, cycle_beats, reschedule_lookahead))
 
-	def form (self, sections: typing.Union[typing.List[typing.Tuple[str, int]], typing.Iterator[typing.Tuple[str, int]]], loop: bool = False) -> None:
+	def form (
+		self,
+		sections: typing.Union[
+			typing.List[typing.Tuple[str, int]],
+			typing.Iterator[typing.Tuple[str, int]],
+			typing.Dict[str, typing.Tuple[int, typing.List[typing.Tuple[str, int]]]]
+		],
+		loop: bool = False,
+		start: typing.Optional[str] = None
+	) -> None:
 
-		"""Define the compositional form as a sequence of named sections with bar durations."""
+		"""Define the compositional form as a sequence of sections or a weighted section graph."""
 
-		self._form_state = FormState(sections, loop=loop)
+		self._form_state = FormState(sections, loop=loop, start=start)
 
 	def pattern (
 		self,

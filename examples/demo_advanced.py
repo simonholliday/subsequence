@@ -24,12 +24,16 @@ How to read this file
 
 Musical overview
 ────────────────
-Identical to demo.py: intro (4 bars) → verse (8) → chorus (8) →
-breakdown (4), looping. The kick always plays. The snare enters in
-the chorus with euclidean density modulated by ISS longitude. Hats
-are muted during the intro. Chords build intensity through each
-section. The arpeggio and bass only play during the chorus. Chord
-changes happen every bar (4 beats) via the dark_minor graph in E.
+Identical to demo.py: the form is a graph where the intro (4 bars)
+plays once then moves to the verse. From there, the form follows
+weighted transitions — verse leads to chorus (75%) or bridge (25%),
+chorus goes to breakdown (67%) or verse (33%), bridge always goes
+to chorus, and breakdown always returns to verse. The intro never
+returns. The kick always plays. The snare enters in the chorus with
+euclidean density modulated by ISS longitude. Hats are muted during
+the intro. Chords build intensity through each section. The arpeggio
+and bass only play during the chorus. Chord changes happen every bar
+(4 beats) via the dark_minor graph in E.
 """
 
 import asyncio
@@ -459,16 +463,18 @@ async def main () -> None:
 
 	# ─── Form ────────────────────────────────────────────────────────
 	#
-	# Create a FormState and schedule it to advance each bar.
-	# Patterns hold a reference to this and call get_section_info()
-	# inside _build_pattern() to decide what to play.
+	# Create a graph-based FormState and schedule it to advance each
+	# bar. The intro plays once, then the form follows weighted
+	# transitions — it never returns to the intro. Patterns hold a
+	# reference and call get_section_info() to decide what to play.
 
-	form_state = subsequence.composition.FormState([
-		("intro", 4),
-		("verse", 8),
-		("chorus", 8),
-		("breakdown", 4),
-	], loop=True)
+	form_state = subsequence.composition.FormState({
+		"intro":     (4, [("verse", 1)]),
+		"verse":     (8, [("chorus", 3), ("bridge", 1)]),
+		"chorus":    (8, [("breakdown", 2), ("verse", 1)]),
+		"bridge":    (4, [("chorus", 1)]),
+		"breakdown": (4, [("verse", 1)]),
+	}, start="intro")
 
 	await subsequence.composition.schedule_form(
 		sequencer = seq,

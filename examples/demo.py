@@ -21,11 +21,16 @@ How to read this file
 
 Musical overview
 ────────────────
-The form cycles: intro (4 bars) → verse (8) → chorus (8) → breakdown (4).
+The form is a graph: intro (4 bars) plays once then moves to the verse.
+From the verse (8 bars), the form goes to the chorus (75%) or a bridge
+(25%). The chorus (8 bars) leads to a breakdown (67%) or back to the
+verse (33%). The bridge (4 bars) always goes to the chorus. The breakdown
+(4 bars) always leads back to the verse. The intro never returns.
+
 During the intro only the kick plays. The verse adds hats and pads. The
-chorus adds everything — snare, arpeggio, and bass. The breakdown strips
-back to hats and a quiet pad. Chord changes happen every bar (4 beats)
-via the dark_minor graph centred on E.
+chorus adds everything — snare, arpeggio, and bass. The bridge and
+breakdown strip back to hats and a quiet pad. Chord changes happen every
+bar (4 beats) via the dark_minor graph centred on E.
 """
 
 import json
@@ -89,20 +94,23 @@ composition.harmony(
 
 # ─── Form ────────────────────────────────────────────────────────────
 #
-# The form defines the large-scale structure. Each tuple is a section
-# name and its length in bars. With loop=True, after the breakdown
-# the form cycles back to the intro.
+# The form defines the large-scale structure as a weighted graph.
+# Each section has a bar count and a list of (next_section, weight)
+# transitions. The intro plays once, then the form follows the graph
+# — the intro never returns. Dead-end sections (empty transitions)
+# self-loop.
 #
 # Patterns read p.section.name to decide what to play in each section.
 # p.section.progress (0.0 → 1.0) lets patterns build or fade intensity
 # within a section.
 
-composition.form([
-	("intro", 4),
-	("verse", 8),
-	("chorus", 8),
-	("breakdown", 4),
-], loop=True)
+composition.form({
+	"intro":     (4, [("verse", 1)]),
+	"verse":     (8, [("chorus", 3), ("bridge", 1)]),
+	"chorus":    (8, [("breakdown", 2), ("verse", 1)]),
+	"bridge":    (4, [("chorus", 1)]),
+	"breakdown": (4, [("verse", 1)]),
+}, start="intro")
 
 
 # ─── External Data ───────────────────────────────────────────────────
