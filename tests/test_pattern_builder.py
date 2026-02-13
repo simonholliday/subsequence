@@ -338,3 +338,68 @@ def test_velocity_shape_applies () -> None:
 	# Velocities should not all be the same (van der Corput is non-uniform)
 	assert len(set(velocities)) > 1
 
+
+def test_arpeggio_cycles_pitches () -> None:
+
+	"""
+	Arpeggio with 3 pitches over 4 beats at step=0.5 should produce 8 notes cycling through the pitches.
+	"""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.arpeggio([60, 64, 67], step=0.5, velocity=90)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 8
+
+	# Verify pitch cycling
+	positions = sorted(pattern.steps.keys())
+	pitches = [pattern.steps[pos].notes[0].pitch for pos in positions]
+
+	expected_pitches = [60, 64, 67, 60, 64, 67, 60, 64]
+
+	assert pitches == expected_pitches
+
+
+def test_arpeggio_fills_pattern () -> None:
+
+	"""
+	Arpeggio with step=0.25 over 4 beats should produce 16 notes.
+	"""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.arpeggio([60, 64, 67], step=0.25, velocity=90)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 16
+
+
+def test_arpeggio_empty_pitches_raises () -> None:
+
+	"""
+	Arpeggio with empty pitches list should raise ValueError.
+	"""
+
+	pattern, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="Pitches list cannot be empty"):
+		builder.arpeggio([], step=0.25)
+
+
+def test_arpeggio_invalid_step_raises () -> None:
+
+	"""
+	Arpeggio with non-positive step should raise ValueError.
+	"""
+
+	pattern, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="Step must be positive"):
+		builder.arpeggio([60, 64, 67], step=0)
+
+	with pytest.raises(ValueError, match="Step must be positive"):
+		builder.arpeggio([60, 64, 67], step=-1)
+

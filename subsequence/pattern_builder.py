@@ -82,6 +82,30 @@ class PatternBuilder:
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 			beat += step
 
+	def arpeggio (self, pitches: typing.Union[typing.List[int], typing.List[str]], step: float = 0.25, velocity: int = 100, duration: typing.Optional[float] = None) -> None:
+
+		"""
+		Cycle through a list of pitches at regular intervals to create an arpeggio.
+		"""
+
+		if not pitches:
+			raise ValueError("Pitches list cannot be empty")
+
+		if step <= 0:
+			raise ValueError("Step must be positive")
+
+		resolved_pitches = [self._resolve_pitch(p) for p in pitches]
+
+		if duration is None:
+			duration = step
+
+		self._pattern.add_arpeggio_beats(
+			pitches = resolved_pitches,
+			step_beats = step,
+			velocity = velocity,
+			duration_beats = duration
+		)
+
 	def chord (self, chord_obj: typing.Any, root: int, velocity: int = 90, sustain: bool = False, duration: float = 1.0) -> None:
 
 		"""

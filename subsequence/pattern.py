@@ -151,6 +151,43 @@ class Pattern:
 			note_duration = note_duration
 		)
 
+	def add_arpeggio_beats (self, pitches: typing.List[int], step_beats: float, velocity: int = 100, duration_beats: typing.Optional[float] = None, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+
+		"""
+		Add an arpeggio that cycles through pitches at regular intervals.
+		"""
+
+		if not pitches:
+			raise ValueError("Pitches list cannot be empty")
+
+		if step_beats <= 0:
+			raise ValueError("Step duration must be positive")
+
+		if pulses_per_beat <= 0:
+			raise ValueError("Pulses per beat must be positive")
+
+		if duration_beats is None:
+			duration_beats = step_beats
+
+		if duration_beats <= 0:
+			raise ValueError("Note duration must be positive")
+
+		beat = 0.0
+		pitch_index = 0
+
+		while beat < self.length:
+			pitch = pitches[pitch_index % len(pitches)]
+			self.add_note_beats(
+				beat_position = beat,
+				pitch = pitch,
+				velocity = velocity,
+				duration_beats = duration_beats,
+				pulses_per_beat = pulses_per_beat
+			)
+			beat += step_beats
+			pitch_index += 1
+
+
 	def apply_swing (self, swing_ratio: float = 2.0, pulses_per_quarter: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
 
 		"""

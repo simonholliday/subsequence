@@ -206,24 +206,19 @@ class MotifPattern (subsequence.pattern.Pattern):
 	def _build_pattern (self) -> None:
 
 		"""
-		Build a simple swung motif based on the current chord.
+		Build a cycling arpeggio based on the current chord.
 		"""
 
 		self.steps = {}
 
 		chord = self.harmonic_state.get_current_chord()
 		chord_root = self.harmonic_state.get_chord_root_midi(self.root_midi, chord)
-		chord_intervals = chord.intervals()
+		chord_intervals = chord.intervals()[:3]
 
 		# Decision: use chord tones so motif follows chord changes.
-		beat_positions = [0.0, 0.5, 1.0, 1.5]
-		pitches = [chord_root + chord_intervals[i % len(chord_intervals)] for i in range(len(beat_positions))]
+		pitches = [chord_root + interval for interval in chord_intervals]
 
-		for beat_position, pitch in zip(beat_positions, pitches):
-			self.add_note_beats(beat_position=beat_position, pitch=pitch, velocity=90, duration_beats=0.5)
-
-		# Decision: swing adds a humanized feel without changing chord or key.
-		self.apply_swing(swing_ratio=2.0)
+		self.add_arpeggio_beats(pitches=pitches, step_beats=0.25, velocity=90)
 
 
 	def on_reschedule (self) -> None:

@@ -105,19 +105,13 @@ def chords (p, chord):
 @composition.pattern(channel=SYNTH_MIDI_CHANNEL, length=4)
 def motif (p, chord):
 	"""
-	A swung arpeggio built from the current chord tones.
+	A cycling arpeggio built from the current chord tones.
 	Each reschedule gets the latest chord, so the motif
 	naturally follows the harmonic progression.
 	"""
 
-	tones = chord.tones(root=76)
-	beat_positions = [0.0, 0.5, 1.0, 1.5]
-
-	for i, beat in enumerate(beat_positions):
-		pitch = tones[i % len(tones)]
-		p.note(pitch, beat=beat, velocity=90, duration=0.5)
-
-	p.swing(2.0)
+	tones = chord.tones(root=76)[:3]
+	p.arpeggio(tones, step=0.25, velocity=90)
 
 
 @composition.pattern(channel=BASS_MIDI_CHANNEL, length=4)
