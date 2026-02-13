@@ -321,6 +321,7 @@ class Composition:
 				self._builder_fn = pending.builder_fn
 				self._drum_note_map = pending.drum_note_map
 				self._wants_chord = "chord" in inspect.signature(pending.builder_fn).parameters
+				self._cycle_count = 0
 
 				self._rebuild()
 
@@ -331,12 +332,15 @@ class Composition:
 				"""
 
 				self.steps = {}
+				current_cycle = self._cycle_count
+				self._cycle_count += 1
 
 				# Import here to avoid circular import at module level.
 				import subsequence.pattern_builder
 
 				builder = subsequence.pattern_builder.PatternBuilder(
 					pattern = self,
+					cycle = current_cycle,
 					drum_note_map = self._drum_note_map
 				)
 

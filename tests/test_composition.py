@@ -226,6 +226,40 @@ def test_build_pattern_rebuilds_on_reschedule (monkeypatch: pytest.MonkeyPatch) 
 	assert call_count[0] == 2
 
 
+def test_builder_cycle_injection (monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""
+	The builder should receive the current cycle count.
+	"""
+
+	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
+	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+	received_cycles = []
+
+	def my_builder (p):
+		received_cycles.append(p.cycle)
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+
+	assert received_cycles == [0]
+
+	pattern.on_reschedule()
+	assert received_cycles == [0, 1]
+
+	pattern.on_reschedule()
+	assert received_cycles == [0, 1, 2]
+
+
 def test_chord_injection (monkeypatch: pytest.MonkeyPatch) -> None:
 
 	"""

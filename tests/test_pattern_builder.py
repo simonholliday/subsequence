@@ -16,6 +16,7 @@ def _make_builder (channel: int = 0, length: int = 4, drum_note_map: dict = None
 
 	builder = subsequence.pattern_builder.PatternBuilder(
 		pattern = pattern,
+		cycle = 0,
 		drum_note_map = drum_note_map
 	)
 
