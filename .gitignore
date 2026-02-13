@@ -16,3 +16,6 @@ build/
 
 # Logs
 *.log
+
+# Documentation build output
+docs/html/

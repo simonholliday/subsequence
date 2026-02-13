@@ -25,6 +25,9 @@ test = [
     "pytest",
     "pytest-asyncio",
 ]
+docs = [
+    "pdoc>=14.0.0",
+]
 
 [project.scripts]
 subsequence = "subsequence.__main__:main"

@@ -1,3 +1,18 @@
+"""Chord definitions and pitch class utilities.
+
+This module provides chord quality definitions, pitch class mappings, and the `Chord` class
+for representing and manipulating chords.
+
+Module-level constants:
+- `NOTE_NAME_TO_PC`: Maps note names (e.g., `"C"`, `"F#"`, `"Bb"`) to pitch classes (0-11)
+- `PC_TO_NOTE_NAME`: Maps pitch classes to note names
+- `CHORD_INTERVALS`: Maps chord quality names to interval lists (semitones from root)
+- `CHORD_SUFFIX`: Maps chord quality names to human-readable suffixes (e.g., `"m"`, `"7"`)
+
+Chord qualities: `"major"`, `"minor"`, `"diminished"`, `"augmented"`, `"dominant_7th"`,
+`"major_7th"`, `"minor_7th"`, `"half_diminished_7th"`
+"""
+
 import dataclasses
 import typing
 
@@ -86,8 +101,22 @@ class Chord:
 
 	def tones (self, root: int) -> typing.List[int]:
 
-		"""
-		Return MIDI note numbers for chord tones starting from a root.
+		"""Return MIDI note numbers for chord tones starting from a root.
+
+		Parameters:
+			root: MIDI root note number (default 60 = middle C)
+
+		Returns:
+			List of MIDI note numbers for chord tones
+
+		Example:
+			```python
+			chord = Chord(root_pc=0, quality="major")  # C major
+			tones = chord.tones(root=60)  # [60, 64, 67] = C, E, G
+
+			chord = Chord(root_pc=7, quality="minor_7th")  # G minor 7
+			tones = chord.tones(root=55)  # [55, 58, 62, 65] = G, Bb, D, F
+			```
 		"""
 
 		return [root + interval for interval in self.intervals()]

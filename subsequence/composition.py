@@ -18,7 +18,24 @@ logger = logging.getLogger(__name__)
 
 class SectionInfo:
 
-	"""Immutable snapshot of the current section state."""
+	"""Immutable snapshot of the current section state.
+
+	Patterns read `p.section` to decide what to play in each section.
+
+	Example:
+		```python
+		@composition.pattern(channel=9, length=4, drum_note_map=DRUM_NOTE_MAP)
+		def drums(p):
+			# Always play kick
+			p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
+
+			# Only play snare during chorus
+			if p.section and p.section.name == "chorus":
+				# Build intensity through the section
+				vel = int(80 + 20 * p.section.progress)
+				p.hit_steps("snare", [4, 12], velocity=vel)
+		```
+	"""
 
 	def __init__ (self, name: str, bar: int, bars: int, index: int) -> None:
 
@@ -448,8 +465,21 @@ class Composition:
 
 	def __init__ (self, device: str, bpm: int = 120, key: typing.Optional[str] = None) -> None:
 
-		"""
-		Initialize a composition with MIDI device, tempo, and optional key.
+		"""Initialize a composition with MIDI device, tempo, and optional key.
+
+		Parameters:
+			device: MIDI device name (e.g., `"Device Name:Port 1 16:0"`)
+			bpm: Tempo in beats per minute (default 120)
+			key: Root key name (e.g., `"C"`, `"F#"`, `"Bb"`). Required if using `harmony()`.
+
+		Example:
+			```python
+			composition = subsequence.Composition(
+				device="Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0",
+				bpm=125,
+				key="E"
+			)
+			```
 		"""
 
 		self.device = device
@@ -480,7 +510,26 @@ class Composition:
 		reschedule_lookahead: int = 1
 	) -> None:
 
-		"""Configure the harmonic state and chord change cycle for this composition."""
+		"""Configure the harmonic state and chord change cycle for this composition.
+
+		Parameters:
+			style: Chord graph style — `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, or a `ChordGraph` instance
+			cycle_beats: How often chords change (in beats, default 4)
+			dominant_7th: Include dominant seventh chords (default True)
+			gravity: Key gravity blend 0.0-1.0 (default 1.0). Higher values favor chords closer to the tonic.
+			minor_weight: Weight for minor vs major turnarounds 0.0-1.0 (default 0.0, turnaround graph only)
+			reschedule_lookahead: Reschedule lookahead in beats (default 1)
+
+		Example:
+			```python
+			composition.harmony(
+				style="dark_minor",
+				cycle_beats=4,
+				dominant_7th=True,
+				gravity=0.8
+			)
+			```
+		"""
 
 		if self.key is None:
 			raise ValueError("Cannot configure harmony without a key — set key in the Composition constructor")
@@ -506,7 +555,31 @@ class Composition:
 
 	def schedule (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int = 1) -> None:
 
-		"""Register a function to run on a repeating beat-based cycle."""
+		"""Register a function to run on a repeating beat-based cycle.
+
+		Sync functions automatically run in a thread pool so they never block the MIDI clock.
+		Async functions run directly on the event loop.
+
+		Parameters:
+			fn: Function to call on each cycle (sync or async)
+			cycle_beats: How often to call the function (in beats)
+			reschedule_lookahead: Reschedule lookahead in beats (default 1)
+
+		Example:
+			```python
+			# Sync function (runs in thread pool automatically)
+			def fetch_data():
+				composition.data["value"] = some_external_api()
+
+			composition.schedule(fetch_data, cycle_beats=32)  # Every 8 bars
+
+			# Async function (runs directly)
+			async def async_task():
+				composition.data["value"] = await some_async_api()
+
+			composition.schedule(async_task, cycle_beats=16)
+			```
+		"""
 
 		self._pending_scheduled.append(_PendingScheduled(fn, cycle_beats, reschedule_lookahead))
 
@@ -521,7 +594,42 @@ class Composition:
 		start: typing.Optional[str] = None
 	) -> None:
 
-		"""Define the compositional form as a sequence of sections or a weighted section graph."""
+		"""Define the compositional form as a sequence of sections or a weighted section graph.
+
+		Three modes:
+		- **Dict** (graph): Weighted section transitions. Format: `{section_name: (bars, [(next_section, weight), ...])}`
+		- **List**: Linear sequence. With `loop=True`, cycles back to the start.
+		- **Generator**: Yields `(name, bars)` tuples for stochastic structures.
+
+		Parameters:
+			sections: Dict (graph), list, or generator of `(name, bars)` tuples
+			loop: For lists only — cycle back to start after the last section (default False)
+			start: For dicts only — initial section name (default: first dict key)
+
+		Example:
+			```python
+			# Graph-based form — intro plays once, then never returns
+			composition.form({
+				"intro":     (4, [("verse", 1)]),
+				"verse":     (8, [("chorus", 3), ("bridge", 1)]),
+				"chorus":    (8, [("breakdown", 2), ("verse", 1)]),
+				"bridge":    (4, [("chorus", 1)]),
+				"breakdown": (4, [("verse", 1)]),
+			}, start="intro")
+
+			# List-based form with loop
+			composition.form([("intro", 4), ("verse", 8), ("chorus", 8)], loop=True)
+
+			# Generator form
+			def my_form():
+				yield ("intro", 4)
+				while True:
+					yield ("verse", random.choice([8, 16]))
+					yield ("chorus", 8)
+
+			composition.form(my_form())
+			```
+		"""
 
 		self._form_state = FormState(sections, loop=loop, start=start)
 
@@ -533,8 +641,29 @@ class Composition:
 		reschedule_lookahead: int = 1
 	) -> typing.Callable:
 
-		"""
-		Decorator that registers a builder function as a repeating pattern.
+		"""Decorator that registers a builder function as a repeating pattern.
+
+		The builder function receives a `PatternBuilder` (`p`) and optionally a `chord` parameter
+		(automatically injected if present and harmony is configured).
+
+		Parameters:
+			channel: MIDI channel (0-15)
+			length: Pattern length in beats (default 4)
+			drum_note_map: Optional dict mapping string names to MIDI note numbers (e.g., `{"kick": 36}`)
+			reschedule_lookahead: Reschedule lookahead in beats (default 1)
+
+		Example:
+			```python
+			@composition.pattern(channel=9, length=4, drum_note_map={"kick": 36, "snare": 38})
+			def drums(p):
+				p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
+				p.hit_steps("snare", [4, 12], velocity=100)
+
+			@composition.pattern(channel=0, length=4)
+			def melody(p, chord):
+				# chord is automatically injected
+				p.note(chord.tones(root=60)[0], beat=0, velocity=90)
+			```
 		"""
 
 		def decorator (fn: typing.Callable) -> typing.Callable:
@@ -559,8 +688,16 @@ class Composition:
 
 	def play (self) -> None:
 
-		"""
-		Start playback, blocking until stopped via Ctrl+C or signal.
+		"""Start playback, blocking until stopped via Ctrl+C or signal.
+
+		Schedules all registered patterns, harmonic state (if configured), form state (if configured),
+		and scheduled tasks. Runs the sequencer loop until interrupted.
+
+		Example:
+			```python
+			if __name__ == "__main__":
+				composition.play()  # Press Ctrl+C to stop
+			```
 		"""
 
 		try:

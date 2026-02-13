@@ -41,8 +41,24 @@ class PatternBuilder:
 
 	def note (self, pitch: typing.Union[int, str], beat: float, velocity: int = 100, duration: float = 0.25) -> None:
 
-		"""
-		Place a single note at a beat position.
+		"""Place a single note at a beat position.
+
+		Negative beat values wrap to the end of the pattern (e.g., `-1` = last beat).
+
+		Parameters:
+			pitch: MIDI note number or drum note map key (e.g., `"kick"`)
+			beat: Beat position (0.0 = start of pattern)
+			velocity: MIDI velocity 0-127 (default 100)
+			duration: Note duration in beats (default 0.25)
+
+		Example:
+			```python
+			# Place a note at beat 0
+			p.note(pitch=60, beat=0, velocity=90, duration=0.5)
+
+			# Place a drum hit using the drum note map
+			p.note(pitch="kick", beat=0, velocity=127)
+			```
 		"""
 
 		midi_pitch = self._resolve_pitch(pitch)
@@ -69,7 +85,30 @@ class PatternBuilder:
 
 	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: int = 100, duration: float = 0.1, step_count: int = 16) -> None:
 
-		"""Place short hits at specific step positions on a subdivided grid."""
+		"""Place short hits at specific step positions on a subdivided grid.
+
+		The default `step_count=16` creates a sixteenth-note grid over a 4-beat pattern,
+		where step 0 = beat 0, step 4 = beat 1, step 8 = beat 2, step 12 = beat 3.
+
+		Parameters:
+			pitch: MIDI note number or drum note map key (e.g., `"kick"`)
+			steps: List of step indices (e.g., `[0, 4, 8, 12]` for quarter notes on a 16-step grid)
+			velocity: MIDI velocity 0-127 (default 100)
+			duration: Note duration in beats (default 0.1)
+			step_count: Grid subdivisions per pattern (default 16 = sixteenth notes)
+
+		Example:
+			```python
+			# Four-on-the-floor kick on a 16-step grid
+			p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
+
+			# Backbeat snare (beats 2 and 4)
+			p.hit_steps("snare", [4, 12], velocity=100)
+
+			# Eighth-note hi-hats on an 8-step grid
+			p.hit_steps("hh", list(range(8)), velocity=80, step_count=8)
+			```
+		"""
 
 		step_duration = self._pattern.length / step_count
 		beats = [i * step_duration for i in steps]
@@ -92,8 +131,23 @@ class PatternBuilder:
 
 	def arpeggio (self, pitches: typing.Union[typing.List[int], typing.List[str]], step: float = 0.25, velocity: int = 100, duration: typing.Optional[float] = None) -> None:
 
-		"""
-		Cycle through a list of pitches at regular intervals to create an arpeggio.
+		"""Cycle through a list of pitches at regular intervals to create an arpeggio.
+
+		Parameters:
+			pitches: List of MIDI note numbers or drum note map keys
+			step: Interval between notes in beats (default 0.25 = sixteenth notes)
+			velocity: MIDI velocity 0-127 (default 100)
+			duration: Note duration in beats (default: same as step)
+
+		Example:
+			```python
+			# Sixteenth-note arpeggio from chord tones
+			tones = chord.tones(root=60)  # [60, 64, 67] for C major
+			p.arpeggio(tones, step=0.25, velocity=90)
+
+			# Slower eighth-note arpeggio
+			p.arpeggio([60, 64, 67, 72], step=0.5, velocity=100)
+			```
 		"""
 
 		if not pitches:
@@ -116,8 +170,22 @@ class PatternBuilder:
 
 	def chord (self, chord_obj: typing.Any, root: int, velocity: int = 90, sustain: bool = False, duration: float = 1.0) -> None:
 
-		"""
-		Place a chord at beat 0 using the chord's intervals.
+		"""Place a chord at beat 0 using the chord's intervals.
+
+		Parameters:
+			chord_obj: A `Chord` object (automatically injected if the pattern accepts a `chord` parameter)
+			root: MIDI root note number
+			velocity: MIDI velocity 0-127 (default 90)
+			sustain: If True, duration spans the entire pattern length (default False)
+			duration: Note duration in beats (default 1.0, ignored if sustain=True)
+
+		Example:
+			```python
+			@composition.pattern(channel=0, length=4)
+			def chords(p, chord):
+				# chord is automatically injected
+				p.chord(chord, root=60, velocity=90, sustain=True)
+			```
 		"""
 
 		pitches = chord_obj.tones(root=root)
@@ -135,16 +203,46 @@ class PatternBuilder:
 
 	def swing (self, ratio: float = 2.0) -> None:
 
-		"""
-		Apply swing timing to all placed notes.
+		"""Apply swing timing to all placed notes.
+
+		Delays every other note by a ratio. A ratio of 2.0 creates classic "triplet swing"
+		where off-beats land on the third triplet.
+
+		Parameters:
+			ratio: Swing ratio (default 2.0). Higher values = more swing.
+
+		Example:
+			```python
+			# Place eighth notes, then apply triplet swing
+			p.hit_steps("hh", list(range(8)), velocity=80, step_count=8)
+			p.swing(ratio=2.0)
+			```
 		"""
 
 		self._pattern.apply_swing(swing_ratio=ratio)
 
 	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = 100, duration: float = 0.1, dropout: float = 0.0) -> None:
 
-		"""
-		Generate a Euclidean rhythm and place hits at the resulting beat positions.
+		"""Generate a Euclidean rhythm and place hits at the resulting beat positions.
+
+		Euclidean rhythms distribute `pulses` evenly across the pattern length. The algorithm
+		is based on Bjorklund's algorithm and creates rhythms used in traditional music worldwide.
+
+		Parameters:
+			pitch: MIDI note number or drum note map key
+			pulses: Number of evenly-distributed hits
+			velocity: MIDI velocity 0-127 (default 100)
+			duration: Note duration in beats (default 0.1)
+			dropout: Probability 0.0-1.0 of randomly removing hits (default 0.0)
+
+		Example:
+			```python
+			# Classic Euclidean(16,3) rhythm (common in African music)
+			p.euclidean(pitch=36, pulses=3, velocity=127)
+
+			# Euclidean(16,5) with some randomness
+			p.euclidean(pitch=38, pulses=5, velocity=100, dropout=0.1)
+			```
 		"""
 
 		steps = self._pattern.length * 4
@@ -210,8 +308,21 @@ class PatternBuilder:
 
 	def velocity_shape (self, low: int = 60, high: int = 120) -> None:
 
-		"""
-		Apply a van der Corput velocity distribution to existing notes.
+		"""Apply a van der Corput velocity distribution to existing notes.
+
+		Creates organic-sounding velocity variation using the van der Corput low-discrepancy sequence.
+		This distributes velocities more evenly than pure randomness.
+
+		Parameters:
+			low: Minimum velocity (default 60)
+			high: Maximum velocity (default 120)
+
+		Example:
+			```python
+			# Place hi-hats, then shape velocities for a natural feel
+			p.hit_steps("hh", list(range(16)), velocity=80)
+			p.velocity_shape(low=60, high=100)
+			```
 		"""
 
 		positions = sorted(self._pattern.steps.keys())
