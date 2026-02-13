@@ -88,6 +88,35 @@ def test_dark_minor_gravity_sets () -> None:
 	assert dominant in functional
 
 
+def test_dark_minor_no_dead_ends () -> None:
+
+	"""Every chord reachable in the dark minor graph should have at least one outgoing transition."""
+
+	graph_obj = subsequence.chord_graphs.dark_minor.DarkMinor(include_dominant_7th=True)
+	graph, tonic = graph_obj.build("A")
+
+	# Walk every reachable chord via BFS from tonic.
+	visited = set()
+	queue = [tonic]
+
+	while queue:
+		current = queue.pop(0)
+
+		if current in visited:
+			continue
+
+		visited.add(current)
+
+		transitions = graph.get_transitions(current)
+
+		assert len(transitions) > 0, f"Dead end: {current} has no outgoing transitions"
+
+		for target, _ in transitions:
+
+			if target not in visited:
+				queue.append(target)
+
+
 def test_harmonic_state_accepts_chord_graph_instance () -> None:
 
 	"""HarmonicState should accept a ChordGraph instance directly."""

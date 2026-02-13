@@ -58,6 +58,11 @@ class DarkMinor (subsequence.chord_graphs.ChordGraph):
 		graph.add_transition(tonic, flat_two, WEIGHT_WEAK)
 		graph.add_transition(tonic, natural_dominant, WEIGHT_COMMON)
 
+		# --- Natural dominant (v) departures ---
+		graph.add_transition(natural_dominant, submediant, WEIGHT_COMMON)
+		graph.add_transition(natural_dominant, subdominant, WEIGHT_COMMON)
+		graph.add_transition(natural_dominant, tonic, WEIGHT_WEAK)
+
 		# --- Minor plagal ---
 		graph.add_transition(subdominant, tonic, WEIGHT_PLAGAL)
 		graph.add_transition(subdominant, dominant, WEIGHT_MEDIUM)
