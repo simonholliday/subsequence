@@ -67,6 +67,14 @@ class PatternBuilder:
 		for beat in beats:
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 
+	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: int = 100, duration: float = 0.1, step_count: int = 16) -> None:
+
+		"""Place short hits at specific step positions on a subdivided grid."""
+
+		step_duration = self._pattern.length / step_count
+		beats = [i * step_duration for i in steps]
+		self.hit(pitch, beats=beats, velocity=velocity, duration=duration)
+
 	def fill (self, pitch: typing.Union[int, str], step: float, velocity: int = 100, duration: float = 0.25) -> None:
 
 		"""

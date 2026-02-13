@@ -1,9 +1,7 @@
 import asyncio
 import logging
-import math
 import random
 
-import subsequence.chords
 import subsequence.composition
 import subsequence.constants
 import subsequence.harmonic_state
@@ -58,21 +56,17 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 	def _build_pattern (self) -> None:
 
 		"""
-		Build a new kick/snare cycle with light variation.
+		Build a 16-step kick/snare cycle with evolving snare.
 		"""
 
 		self.steps = {}
 
-		steps = self.length * 4
 		step_duration = subsequence.constants.MIDI_SIXTEENTH_NOTE
 
-		kick_hits = max(1, steps // 4)
-		kick_sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=steps, pulses=kick_hits)
-
-		for i in range(steps):
-
-			if kick_sequence[i] and self.rng.random() < 0.2:
-				kick_sequence[i] = 0
+		# Fixed four-on-the-floor kick — steps 0, 4, 8, 12 on a 16-step grid.
+		kick_sequence = [0] * 16
+		for idx in [0, 4, 8, 12]:
+			kick_sequence[idx] = 1
 
 		self.add_sequence(
 			kick_sequence,
@@ -81,13 +75,16 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 			velocity = 127
 		)
 
+		# Euclidean snare with random density, rolled +4 for backbeat offset.
 		if self.cycle_count > 3:
-			snare_sequence = [0] * steps
-			snare_indices = [4, 12]
+			snare_hits = self.rng.randint(1, 6)
+			snare_seq = subsequence.sequence_utils.generate_euclidean_sequence(16, snare_hits)
+			snare_indices = subsequence.sequence_utils.sequence_to_indices(snare_seq)
+			snare_indices = subsequence.sequence_utils.roll(snare_indices, 4, 16)
 
+			snare_sequence = [0] * 16
 			for idx in snare_indices:
-				if idx < steps:
-					snare_sequence[idx] = 1
+				snare_sequence[idx] = 1
 
 			self.add_sequence(
 				snare_sequence,
@@ -133,21 +130,22 @@ class HatPattern (subsequence.pattern.Pattern):
 	def _build_pattern (self) -> None:
 
 		"""
-		Build a new hi-hat cycle with stochastic accents.
+		Build a 16-step hi-hat cycle with stochastic accents.
 		"""
 
 		self.steps = {}
 
-		steps = self.length * 4
 		step_duration = subsequence.constants.MIDI_SIXTEENTH_NOTE
 
-		hat_hits = max(1, steps // 2)
-		hh_sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=steps, pulses=hat_hits)
+		# 8 hits distributed across 16 steps via Bresenham.
+		hh_sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=16, pulses=8)
 
-		vdc_values = subsequence.sequence_utils.generate_van_der_corput_sequence(n=steps, base=2)
+		# Van der Corput velocity shaping for organic feel.
+		vdc_values = subsequence.sequence_utils.generate_van_der_corput_sequence(n=16, base=2)
 		hh_velocities = [int(60 + (v * 40)) for v in vdc_values]
 
-		for i in range(steps):
+		# Stochastic dropout.
+		for i in range(16):
 
 			if hh_sequence[i] and self.rng.random() < 0.1:
 				hh_sequence[i] = 0
@@ -159,11 +157,10 @@ class HatPattern (subsequence.pattern.Pattern):
 			velocity = hh_velocities
 		)
 
-		open_hat_step = steps - 2
-
-		if open_hat_step >= 0 and self.rng.random() < 0.6:
+		# Occasional open hat at step 14 (beat 3.5).
+		if self.rng.random() < 0.6:
 			self.add_note(
-				open_hat_step * step_duration,
+				14 * step_duration,
 				DRM1_MKIV_HH1_OPEN,
 				85,
 				step_duration
@@ -234,82 +231,49 @@ class MotifPattern (subsequence.pattern.Pattern):
 class BassPattern (subsequence.pattern.Pattern):
 
 	"""
-	A simple bassline that follows the composition-level harmony.
+	A 16-step bassline that follows the composition-level harmony.
 	"""
 
-	def __init__ (self, harmonic_state: subsequence.harmonic_state.HarmonicState, channel: int, cycle_beats: int, step_beats: float = 1.0, note_duration_beats: float = 0.5, reschedule_lookahead: int = 1, root_midi: int = 40) -> None:
+	def __init__ (self, harmonic_state: subsequence.harmonic_state.HarmonicState, channel: int, length: int = 4, reschedule_lookahead: int = 1, root_midi: int = 40) -> None:
 
 		"""
 		Initialize the bass pattern with shared harmonic state.
 		"""
 
-		sequence_length = cycle_beats / step_beats
-		sequence_length_int = int(round(sequence_length))
-
-		if not math.isclose(sequence_length, sequence_length_int, rel_tol=0.0, abs_tol=1e-9):
-			raise ValueError("cycle_beats must be divisible by step_beats")
-
-
-		if note_duration_beats <= 0:
-			raise ValueError("note_duration_beats must be positive")
-
-
-		if note_duration_beats > step_beats:
-			raise ValueError("note_duration_beats cannot exceed step_beats")
-
-
-		sequence = [1] * sequence_length_int
-
 		super().__init__(
 			channel = channel,
-			length = cycle_beats,
+			length = length,
 			reschedule_lookahead = reschedule_lookahead
 		)
 
 		self.harmonic_state = harmonic_state
 		self.root_midi = root_midi
-		self.base_key_name = harmonic_state.get_key_name()
-		self.step_beats = step_beats
-		self.note_duration_beats = note_duration_beats
-		self.sequence = sequence
 
 		self._build_pattern()
-
-
-	def _get_key_root_midi (self) -> int:
-
-		"""
-		Translate the current key into a MIDI root for the bassline.
-		"""
-
-		base_pc = subsequence.chords.NOTE_NAME_TO_PC[self.base_key_name]
-		current_pc = subsequence.chords.NOTE_NAME_TO_PC[self.harmonic_state.get_key_name()]
-
-		# Decision path: key changes transpose the bass root; chord changes do not.
-		offset = (current_pc - base_pc) % 12
-
-		return self.root_midi + offset
 
 
 	def _build_pattern (self) -> None:
 
 		"""
-		Build a steady bassline anchored to the current chord root.
+		Build a 16-step bassline anchored to the current chord root.
 		"""
 
 		self.steps = {}
 
-		# Decision: follow the current chord root so bass updates with harmonic changes.
+		step_duration = subsequence.constants.MIDI_SIXTEENTH_NOTE
+
 		chord = self.harmonic_state.get_current_chord()
 		chord_root = self.harmonic_state.get_chord_root_midi(self.root_midi, chord)
 
-		# Decision: cycle length sets duration; step_beats sets note density within the cycle.
-		self.add_sequence_beats(
-			sequence = self.sequence,
-			step_beats = self.step_beats,
+		# Fill all 16 steps with the chord root.
+		bass_sequence = [1] * 16
+
+		self.add_sequence(
+			bass_sequence,
+			step_duration = step_duration,
 			pitch = chord_root,
 			velocity = 90,
-			note_duration_beats = self.note_duration_beats
+			note_duration = 5
 		)
 
 
@@ -319,7 +283,6 @@ class BassPattern (subsequence.pattern.Pattern):
 		Rebuild the bassline after the harmonic state advances.
 		"""
 
-		# Decision path: chord changes drive bass transposition; key changes are implicit via harmonic_state.
 		self._build_pattern()
 
 async def main () -> None:
@@ -354,10 +317,9 @@ async def main () -> None:
 		reschedule_lookahead = 1
 	)
 
-	# Decision: 4-beat kick/snare anchors the groove.
+	# Decision: all percussion on a unified 4-beat / 16-step grid.
 	kick_snare = KickSnarePattern(length=4, reschedule_lookahead=1)
-	# Decision: 5-beat hats create a subtle polyrhythm against the 4-beat core.
-	hats = HatPattern(length=5, reschedule_lookahead=1)
+	hats = HatPattern(length=4, reschedule_lookahead=1)
 	chords = subsequence.harmony.ChordPattern(
 		harmonic_state = harmonic_state,
 		length = harmonic_cycle_beats,
@@ -367,25 +329,19 @@ async def main () -> None:
 		# Decision: assign the harmonic layer to the EP channel explicitly.
 		channel = MIDI_CHANNEL_VOCE_EP
 	)
-	# Decision: add a swung motif layer for contrast.
+	# Decision: arpeggio on MATRIARCH, cycling through chord tones across 16 steps.
 	motif = MotifPattern(
 		harmonic_state = harmonic_state,
 		length = harmonic_cycle_beats,
 		reschedule_lookahead = 1,
-		# Decision: place the motif on MATRIARCH to keep it distinct from chords.
 		channel = MIDI_CHANNEL_MATRIARCH,
 		root_midi = 76
 	)
-	# Decision: add a steady chord-root bassline to reinforce harmony (chord changes, not key changes).
+	# Decision: 16-step bassline on MINITAUR, filling every step with the chord root.
 	bass = BassPattern(
 		harmonic_state = harmonic_state,
-		# Decision: place the bass on MINITAUR for a dedicated low-end voice.
 		channel = MIDI_CHANNEL_MINITAUR,
-		# Decision: match the chord cycle length so bass updates on every chord change.
-		cycle_beats = harmonic_cycle_beats,
-		# Decision: 16th-note grid inside each cycle for a busier bassline.
-		step_beats = 0.25,
-		note_duration_beats = 0.2,
+		length = harmonic_cycle_beats,
 		reschedule_lookahead = 1,
 		root_midi = 28
 	)

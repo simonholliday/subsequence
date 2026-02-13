@@ -10,6 +10,7 @@ import logging
 import random
 
 import subsequence
+import subsequence.sequence_utils
 
 
 # Configure logging.
@@ -58,35 +59,41 @@ composition.harmony(
 @composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
 def kick_snare (p):
 	"""
-	Four-on-the-floor kick with euclidean distribution and ghost notes,
-	plus a backbeat snare on beats 1 and 3.
+	Four-on-the-floor kick anchors the groove while an evolving
+	euclidean snare is rolled to land on backbeat positions.
 	"""
 
-	# Euclidean kick with 20% stochastic dropout — different every cycle.
-	p.euclidean("kick", pulses=4, velocity=127, dropout=0.2)
+	# Fixed four-on-the-floor kick — steps 0, 4, 8, 12 on a 16-step grid.
+	p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
 
-	# Backbeat snare, always present.
+	# Euclidean snare with random density, rolled +4 for backbeat offset.
 	if p.cycle > 3:
-		p.hit("snare", beats=[1, 3], velocity=100)
+		snare_hits = random.randint(1, 6)
+		snare_seq = subsequence.sequence_utils.generate_euclidean_sequence(16, snare_hits)
+		snare_steps = subsequence.sequence_utils.sequence_to_indices(snare_seq)
+		snare_steps = subsequence.sequence_utils.roll(snare_steps, 4, 16)
+		p.hit_steps("snare", snare_steps, velocity=100)
 
 
-@composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=5, drum_note_map=DRUM_NOTE_MAP)
+@composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
 def hats (p):
 	"""
-	Bresenham hi-hats over a 5-beat cycle create a subtle polyrhythm
-	against the 4-beat kick/snare. Van der Corput velocity shaping
-	adds natural-feeling accents.
+	Bresenham hi-hats on a 16-step grid with van der Corput velocity
+	shaping for natural-feeling accents.
 	"""
 
-	# 8 hits over 20 16th-note steps with light dropout.
-	p.bresenham("hh_closed", pulses=8, velocity=80, dropout=0.1)
+	# 8 hits distributed across 16 steps via Bresenham.
+	hat_seq = subsequence.sequence_utils.generate_bresenham_sequence(16, 8)
+	hat_steps = subsequence.sequence_utils.sequence_to_indices(hat_seq)
+	p.hit_steps("hh_closed", hat_steps, velocity=80)
 
-	# Van der Corput velocity distribution for organic feel.
+	# Stochastic dropout and van der Corput velocity shaping.
+	p.dropout(0.1)
 	p.velocity_shape(low=60, high=100)
 
-	# Occasional open hat near the end of the cycle.
+	# Occasional open hat near the end of the cycle (step 14 = beat 3.5).
 	if random.random() < 0.6:
-		p.note("hh_open", beat=-0.5, velocity=85, duration=0.1)
+		p.hit_steps("hh_open", [14], velocity=85)
 
 
 # ─── Harmonic Instruments ───────────────────────────────────────────
@@ -95,8 +102,7 @@ def hats (p):
 def chords (p, chord):
 	"""
 	Sustained chord pads that follow the harmonic state.
-	The chord argument is automatically injected from the
-	harmonic clock — no manual wiring needed.
+	Placed at step 0 and held for the full 16-step cycle.
 	"""
 
 	p.chord(chord, root=52, velocity=90, sustain=True)
@@ -106,8 +112,7 @@ def chords (p, chord):
 def motif (p, chord):
 	"""
 	A cycling arpeggio built from the current chord tones.
-	Each reschedule gets the latest chord, so the motif
-	naturally follows the harmonic progression.
+	Three pitches distributed across 16 steps at quarter-note intervals.
 	"""
 
 	tones = chord.tones(root=76)[:3]
@@ -117,12 +122,11 @@ def motif (p, chord):
 @composition.pattern(channel=BASS_MIDI_CHANNEL, length=4)
 def bass (p, chord):
 	"""
-	A steady 16th-note bassline on the chord root.
-	Reinforces the harmonic foundation with a busy pulse.
+	A 16th-note bassline on the chord root filling all 16 steps.
 	"""
 
 	root = chord.tones(root=40)[0]
-	p.fill(root, step=0.25, velocity=90, duration=0.2)
+	p.hit_steps(root, list(range(16)), velocity=90, duration=0.2)
 
 
 # ─── Play ────────────────────────────────────────────────────────────

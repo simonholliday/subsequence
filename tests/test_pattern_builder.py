@@ -403,3 +403,74 @@ def test_arpeggio_invalid_step_raises () -> None:
 	with pytest.raises(ValueError, match="Step must be positive"):
 		builder.arpeggio([60, 64, 67], step=-1)
 
+
+# --- Phase 4: Step-Based Hits ---
+
+
+def test_hit_steps_places_at_correct_pulses () -> None:
+
+	"""Steps 0, 4, 8, 12 on a 16-step / 4-beat grid should map to beats 0, 1, 2, 3."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.hit_steps(60, steps=[0, 4, 8, 12], velocity=127)
+
+	expected_pulses = [
+		int(0 * subsequence.constants.MIDI_QUARTER_NOTE),
+		int(1 * subsequence.constants.MIDI_QUARTER_NOTE),
+		int(2 * subsequence.constants.MIDI_QUARTER_NOTE),
+		int(3 * subsequence.constants.MIDI_QUARTER_NOTE),
+	]
+
+	assert sorted(pattern.steps.keys()) == expected_pulses
+
+	for pulse in expected_pulses:
+		assert pattern.steps[pulse].notes[0].pitch == 60
+		assert pattern.steps[pulse].notes[0].velocity == 127
+
+
+def test_hit_steps_with_drum_note_map () -> None:
+
+	"""String pitches should resolve via the drum note map in hit_steps."""
+
+	drum_map = {"kick": 36, "snare": 38}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.hit_steps("kick", steps=[0, 4, 8, 12], velocity=127)
+
+	assert 0 in pattern.steps
+	assert pattern.steps[0].notes[0].pitch == 36
+
+
+def test_hit_steps_custom_step_count () -> None:
+
+	"""A custom step_count of 8 on a 4-beat pattern should place steps at half-beat intervals."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.hit_steps(60, steps=[0, 2, 4, 6], velocity=100, step_count=8)
+
+	# step_duration = 4 / 8 = 0.5 beats per step
+	expected_pulses = [
+		int(0.0 * subsequence.constants.MIDI_QUARTER_NOTE),
+		int(1.0 * subsequence.constants.MIDI_QUARTER_NOTE),
+		int(2.0 * subsequence.constants.MIDI_QUARTER_NOTE),
+		int(3.0 * subsequence.constants.MIDI_QUARTER_NOTE),
+	]
+
+	assert sorted(pattern.steps.keys()) == expected_pulses
+
+
+def test_hit_steps_backbeat_positions () -> None:
+
+	"""Steps 4 and 12 on a 16-step grid should place notes at beats 1 and 3."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.hit_steps(38, steps=[4, 12], velocity=100)
+
+	pulse_1 = int(1.0 * subsequence.constants.MIDI_QUARTER_NOTE)
+	pulse_3 = int(3.0 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	assert sorted(pattern.steps.keys()) == [pulse_1, pulse_3]
+

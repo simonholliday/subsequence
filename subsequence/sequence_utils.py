@@ -113,6 +113,20 @@ def generate_van_der_corput_sequence (n: int, base: int = 2) -> typing.List[floa
 	return sequence
 
 
+def sequence_to_indices (sequence: typing.List[int]) -> typing.List[int]:
+
+	"""Extract step indices where hits occur in a binary sequence."""
+
+	return [i for i, v in enumerate(sequence) if v]
+
+
+def roll (indices: typing.List[int], shift: int, length: int) -> typing.List[int]:
+
+	"""Circularly shift step indices by the specified amount."""
+
+	return [(i + shift) % length for i in indices]
+
+
 def generate_legato_durations (hits: typing.List[int]) -> typing.List[int]:
 
 	"""
