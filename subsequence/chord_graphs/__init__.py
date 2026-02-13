@@ -9,6 +9,14 @@ import subsequence.chords
 import subsequence.weighted_graph
 
 
+# Shared transition weights used by all chord graph builders.
+WEIGHT_STRONG = 6
+WEIGHT_MEDIUM = 4
+WEIGHT_COMMON = 3
+WEIGHT_DECEPTIVE = 2
+WEIGHT_WEAK = 1
+
+
 class ChordGraph (abc.ABC):
 
 	"""Abstract base for chord transition graphs."""

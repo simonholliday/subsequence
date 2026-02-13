@@ -1,7 +1,7 @@
 """
 Subsequence Demo — Composition API
 
-A generative composition in E major using the Composition API.
+A generative composition in dark E minor using the Composition API.
 Patterns evolve on every reschedule via stochastic decisions
 in the builder functions.
 """

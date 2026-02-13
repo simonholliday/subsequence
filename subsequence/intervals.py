@@ -51,17 +51,6 @@ INTERVAL_DEFINITIONS: typing.Dict[str, typing.List[int]] = {
 }
 
 
-DIATONIC_PROGRESSIONS: typing.Dict[int, typing.List[int]] = {
-	0: [1, 3, 4, 5],
-	1: [4, 6],
-	2: [3, 5],
-	3: [0, 4, 6],
-	4: [0, 5],
-	5: [1, 3],
-	6: [0],
-}
-
-
 MAJOR_DIATONIC_TRIADS: typing.List[typing.List[int]] = [
 	[0, 4, 7],
 	[0, 3, 7],

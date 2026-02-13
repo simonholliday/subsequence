@@ -5,13 +5,15 @@ import subsequence.chords
 import subsequence.weighted_graph
 
 
-WEIGHT_STRONG = 6
+WEIGHT_STRONG = subsequence.chord_graphs.WEIGHT_STRONG
+WEIGHT_MEDIUM = subsequence.chord_graphs.WEIGHT_MEDIUM
+WEIGHT_COMMON = subsequence.chord_graphs.WEIGHT_COMMON
+WEIGHT_DECEPTIVE = subsequence.chord_graphs.WEIGHT_DECEPTIVE
+WEIGHT_WEAK = subsequence.chord_graphs.WEIGHT_WEAK
+
+# Dark-minor-specific weights.
 WEIGHT_PHRYGIAN = 5
 WEIGHT_PLAGAL = 4
-WEIGHT_MEDIUM = 4
-WEIGHT_COMMON = 3
-WEIGHT_DECEPTIVE = 2
-WEIGHT_WEAK = 1
 
 
 class DarkMinor (subsequence.chord_graphs.ChordGraph):

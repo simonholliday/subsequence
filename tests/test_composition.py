@@ -1,4 +1,3 @@
-import mido
 import pytest
 
 import subsequence
@@ -8,74 +7,9 @@ import subsequence.pattern
 import subsequence.sequencer
 
 
-class FakeMidiOut:
+def test_composition_creates_sequencer (patch_midi: None) -> None:
 
-	"""
-	Minimal MIDI output stub for tests.
-	"""
-
-	def send (self, message: mido.Message) -> None:
-
-		"""
-		Ignore outgoing MIDI messages.
-		"""
-
-		return None
-
-
-	def close (self) -> None:
-
-		"""
-		No-op close for the fake device.
-		"""
-
-		return None
-
-
-	def panic (self) -> None:
-
-		"""
-		No-op panic for the fake device.
-		"""
-
-		return None
-
-
-	def reset (self) -> None:
-
-		"""
-		No-op reset for the fake device.
-		"""
-
-		return None
-
-
-def _fake_get_output_names () -> list[str]:
-
-	"""
-	Return a fixed list of MIDI output names for tests.
-	"""
-
-	return ["Dummy MIDI"]
-
-
-def _fake_open_output (name: str) -> FakeMidiOut:
-
-	"""
-	Return a fake MIDI output regardless of the name.
-	"""
-
-	return FakeMidiOut()
-
-
-def test_composition_creates_sequencer (monkeypatch: pytest.MonkeyPatch) -> None:
-
-	"""
-	Composition should create a working sequencer with the given device and BPM.
-	"""
-
-	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
-	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+	"""Composition should create a working sequencer with the given device and BPM."""
 
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=140, key="C")
 
@@ -85,14 +19,9 @@ def test_composition_creates_sequencer (monkeypatch: pytest.MonkeyPatch) -> None
 	assert composition.key == "C"
 
 
-def test_composition_harmony_creates_state (monkeypatch: pytest.MonkeyPatch) -> None:
+def test_composition_harmony_creates_state (patch_midi: None) -> None:
 
-	"""
-	Calling harmony() should create a HarmonicState with the given parameters.
-	"""
-
-	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
-	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+	"""Calling harmony() should create a HarmonicState with the given parameters."""
 
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="E")
 
@@ -109,14 +38,9 @@ def test_composition_harmony_creates_state (monkeypatch: pytest.MonkeyPatch) -> 
 	assert composition._harmony_cycle_beats == 4
 
 
-def test_composition_harmony_without_key_raises (monkeypatch: pytest.MonkeyPatch) -> None:
+def test_composition_harmony_without_key_raises (patch_midi: None) -> None:
 
-	"""
-	Calling harmony() without a key should raise ValueError.
-	"""
-
-	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
-	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+	"""Calling harmony() without a key should raise ValueError."""
 
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125)
 
@@ -124,14 +48,9 @@ def test_composition_harmony_without_key_raises (monkeypatch: pytest.MonkeyPatch
 		composition.harmony(style="turnaround_global", cycle=4)
 
 
-def test_pattern_decorator_registers_pending (monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pattern_decorator_registers_pending (patch_midi: None) -> None:
 
-	"""
-	The pattern decorator should register a pending pattern without scheduling immediately.
-	"""
-
-	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
-	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+	"""The pattern decorator should register a pending pattern without scheduling immediately."""
 
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
 
@@ -144,14 +63,9 @@ def test_pattern_decorator_registers_pending (monkeypatch: pytest.MonkeyPatch) -
 	assert composition._pending_patterns[0].length == 4
 
 
-def test_pattern_decorator_returns_original_function (monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pattern_decorator_returns_original_function (patch_midi: None) -> None:
 
-	"""
-	The pattern decorator should return the original function unchanged.
-	"""
-
-	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
-	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+	"""The pattern decorator should return the original function unchanged."""
 
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
 
@@ -163,14 +77,9 @@ def test_pattern_decorator_returns_original_function (monkeypatch: pytest.Monkey
 	assert decorated is my_fn
 
 
-def test_build_pattern_from_pending_calls_builder (monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_pattern_from_pending_calls_builder (patch_midi: None) -> None:
 
-	"""
-	Building a pattern from pending should call the builder function.
-	"""
-
-	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
-	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+	"""Building a pattern from pending should call the builder function."""
 
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
 	calls = []
@@ -194,14 +103,9 @@ def test_build_pattern_from_pending_calls_builder (monkeypatch: pytest.MonkeyPat
 	assert pattern.length == 4
 
 
-def test_build_pattern_rebuilds_on_reschedule (monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_pattern_rebuilds_on_reschedule (patch_midi: None) -> None:
 
-	"""
-	The decorator pattern should re-run the builder on on_reschedule.
-	"""
-
-	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
-	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+	"""The decorator pattern should re-run the builder on on_reschedule."""
 
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
 	call_count = [0]
@@ -226,14 +130,9 @@ def test_build_pattern_rebuilds_on_reschedule (monkeypatch: pytest.MonkeyPatch) 
 	assert call_count[0] == 2
 
 
-def test_builder_cycle_injection (monkeypatch: pytest.MonkeyPatch) -> None:
+def test_builder_cycle_injection (patch_midi: None) -> None:
 
-	"""
-	The builder should receive the current cycle count.
-	"""
-
-	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
-	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+	"""The builder should receive the current cycle count."""
 
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
 	received_cycles = []
@@ -260,14 +159,9 @@ def test_builder_cycle_injection (monkeypatch: pytest.MonkeyPatch) -> None:
 	assert received_cycles == [0, 1, 2]
 
 
-def test_chord_injection (monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chord_injection (patch_midi: None) -> None:
 
-	"""
-	Builder functions with a chord parameter should receive the current chord.
-	"""
-
-	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
-	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+	"""Builder functions with a chord parameter should receive the current chord."""
 
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="E")
 
@@ -306,14 +200,9 @@ def test_chord_injection (monkeypatch: pytest.MonkeyPatch) -> None:
 	assert injected.root_midi(40) == 40
 
 
-def test_chord_not_injected_without_parameter (monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chord_not_injected_without_parameter (patch_midi: None) -> None:
 
-	"""
-	Builder functions without a chord parameter should work without harmony.
-	"""
-
-	monkeypatch.setattr(mido, "get_output_names", _fake_get_output_names)
-	monkeypatch.setattr(mido, "open_output", _fake_open_output)
+	"""Builder functions without a chord parameter should work without harmony."""
 
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
 	calls = []

@@ -382,7 +382,7 @@ class Sequencer:
 		self.pulse_count = 0
 		
 		current_bar = -1
-		pulses_per_bar = 4 * self.pulses_per_beat # Assuming 4/4
+		pulses_per_bar = 4 * self.pulses_per_beat  # 4/4 time assumed throughout
 
 		while self.running:
 
