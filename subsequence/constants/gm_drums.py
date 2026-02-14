@@ -10,19 +10,19 @@ Two ways to use this module:
    of ``@composition.pattern()`` and use human-readable names like ``"kick_1"``
    or ``"snare_1"`` in your pattern builder calls::
 
-       import subsequence.gm_drums
+       import subsequence.constants.gm_drums
 
-       @composition.pattern(channel=9, length=4, drum_note_map=subsequence.gm_drums.GM_DRUM_MAP)
+       @composition.pattern(channel=9, length=4, drum_note_map=subsequence.constants.gm_drums.GM_DRUM_MAP)
        def drums (p):
            p.hit_steps("kick_1", [0, 4, 8, 12], velocity=127)
 
 2. **As constants** — reference note numbers directly::
 
-       import subsequence.gm_drums
+       import subsequence.constants.gm_drums
 
        @composition.pattern(channel=9, length=4)
        def drums (p):
-           p.hit_steps(subsequence.gm_drums.KICK_1, [0, 4, 8, 12], velocity=127)
+           p.hit_steps(subsequence.constants.gm_drums.KICK_1, [0, 4, 8, 12], velocity=127)
 """
 
 import typing

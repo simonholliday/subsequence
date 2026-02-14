@@ -20,15 +20,15 @@ are always shifting underneath.
 
 Pattern overview
 ────────────────
-  Pattern          │ Length │ Role
-  ─────────────────┼────────┼─────────────────────────────────────
-  Vermona DRM1     │ 4      │ Steady reference beat (kick/snare/hats)
-  Roland TR8S      │ 6      │ Euclidean percussion on a triplet grid
-  Voce EP          │ 4      │ Sustained chords (harmonic anchor)
-  Moog Matriarch   │ 2.25   │ Three-octave sixteenth-note arpeggio (9:16)
-  Model D          │ 5      │ Eighth-note arpeggio (5:4)
-  Carbon 8         │ 7      │ Dotted-eighth arpeggio (7:4)
-  Minitaur         │ 10.5   │ Bass arpeggio (float length — 21 eighths)
+  Pattern          │ Length            │ Role
+  ─────────────────┼───────────────────┼──────────────────────────────────
+  Vermona DRM1     │ 4 quarter notes   │ Steady reference beat (kick/snare/hats)
+  Roland TR8S      │ 6 quarter notes   │ Euclidean percussion on a triplet grid
+  Voce EP          │ 4 quarter notes   │ Sustained chords (harmonic anchor)
+  Moog Matriarch   │ 9 sixteenth notes │ Three-octave sixteenth-note arpeggio (9:16)
+  Model D          │ 5 quarter notes   │ Eighth-note arpeggio (5:4)
+  Carbon 8         │ 7 quarter notes   │ Dotted-eighth arpeggio (7:4)
+  Minitaur         │ 21 eighth notes   │ Bass arpeggio (float length)
 
 How to run
 ──────────
@@ -44,14 +44,15 @@ Tweakable parameters
   away from this over time, but gravity pulls it back.
 - Pattern lengths: Try changing a length to hear how the polyrhythm shifts.
   Prime numbers (3, 5, 7, 11, 13) create the most variety against 4.
-- Arpeggio step sizes: Smaller step = faster notes. Try 0.125 (32nd notes)
-  or 1.0 (quarter notes) for very different textures.
+- Arpeggio step sizes: Smaller step = faster notes. Try dur.THIRTYSECOND
+  or dur.QUARTER for very different textures.
 - Harmony gravity: Higher values (0.9) stay closer to the home key.
   Lower values (0.5) wander further and more often.
 """
 
 import subsequence
-import subsequence.gm_drums
+import subsequence.constants.durations as dur
+import subsequence.constants.gm_drums
 import subsequence.sequence_utils
 
 
@@ -100,7 +101,7 @@ composition = subsequence.Composition(
 
 composition.harmony(
 	style = "turnaround_global",
-	cycle_beats = 4,
+	cycle_beats = 4 * dur.QUARTER,
 	dominant_7th = True,
 	gravity = 0.8,
 	minor_weight = 0.25,
@@ -119,7 +120,7 @@ composition.harmony(
 #   snare:   .  .  .  .  x  .  .  .  .  .  .  .  x  .  .  .
 #   hats:    x  x  x  x  x  x  x  x  x  x  x  x  x  x  x  x
 
-@composition.pattern(channel=MIDI_CHANNEL_VERMONA_DRM1, length=4, drum_note_map=DRM1_DRUM_MAP)
+@composition.pattern(channel=MIDI_CHANNEL_VERMONA_DRM1, length=4 * dur.QUARTER, drum_note_map=DRM1_DRUM_MAP)
 def reference_drums (p):
 
 	"""Steady four-on-the-floor beat. Never changes."""
@@ -139,7 +140,7 @@ def reference_drums (p):
 # Uses General MIDI drum note names from the module's gm_drums map.
 # The euclidean density changes each cycle via p.rng for variety.
 
-@composition.pattern(channel=MIDI_CHANNEL_ROLAND_TR8S, length=6, drum_note_map=subsequence.gm_drums.GM_DRUM_MAP)
+@composition.pattern(channel=MIDI_CHANNEL_ROLAND_TR8S, length=6 * dur.QUARTER, drum_note_map=subsequence.constants.gm_drums.GM_DRUM_MAP)
 def tr8s_drums (p):
 
 	"""Euclidean percussion on a triplet grid. New density each cycle."""
@@ -168,7 +169,7 @@ def tr8s_drums (p):
 # middle C (MIDI note 52) so it doesn't crowd the bass or treble
 # arpeggios.
 
-@composition.pattern(channel=MIDI_CHANNEL_VOCE_EP, length=4)
+@composition.pattern(channel=MIDI_CHANNEL_VOCE_EP, length=4 * dur.QUARTER)
 def chords (p, chord):
 
 	"""Whole-bar sustained chord. Follows the turnaround harmony."""
@@ -176,11 +177,11 @@ def chords (p, chord):
 	p.chord(chord, root=52, velocity=85, sustain=True)
 
 
-# ─── Arpeggio: Moog Matriarch (2.25 beats, sixteenth notes) ──────────
+# ─── Arpeggio: Moog Matriarch (9 sixteenth notes) ───────────────────
 #
 # A fast arpeggio that sweeps chord tones across three octaves at
-# sixteenth-note speed (step=0.25). Three chord tones × 3 octaves =
-# 9 notes per cycle, so the pattern length is 9 × 0.25 = 2.25 beats.
+# sixteenth-note speed. Three chord tones × 3 octaves = 9 notes per
+# cycle, so the pattern length is 9 sixteenth notes (2.25 beats).
 #
 # Against the 4-beat drums this creates a 9:16 polyrhythm — one of
 # the most complex ratios in the piece. The arpeggio's downbeat
@@ -190,7 +191,7 @@ def chords (p, chord):
 # Starts at C3 (MIDI 48) and rises to around G5, sweeping through
 # the full mid range of the Matriarch.
 
-@composition.pattern(channel=MIDI_CHANNEL_MOOG_MATRIARCH, length=2.25)
+@composition.pattern(channel=MIDI_CHANNEL_MOOG_MATRIARCH, length=9 * dur.SIXTEENTH)
 def matriarch_arp (p, chord):
 
 	"""Three-octave sixteenth-note arpeggio. 9:16 polyrhythm against the drums."""
@@ -199,13 +200,13 @@ def matriarch_arp (p, chord):
 	tones = []
 	for octave in range(3):
 		tones.extend([t + 12 * octave for t in base_tones])
-	p.arpeggio(tones, step=0.25, velocity=90, duration=0.2)
+	p.arpeggio(tones, step=dur.SIXTEENTH, velocity=90, duration=0.2)
 
 
-# ─── Arpeggio: Model D (5 beats, eighth notes) ──────────────────────
+# ─── Arpeggio: Model D (5 quarter notes, eighth-note steps) ─────────
 #
-# A slower 5-beat arpeggio at eighth-note speed (step=0.5). With 5
-# beats at 0.5 step, that's 10 notes per cycle. The 5:4 polyrhythm
+# A slower 5-beat arpeggio at eighth-note speed. With 5 quarter notes
+# at eighth-note steps, that's 10 notes per cycle. The 5:4 polyrhythm
 # against the drums creates a wide, spacious feel — the arpeggio
 # "drifts" against the beat, landing on different subdivisions each bar.
 #
@@ -213,40 +214,39 @@ def matriarch_arp (p, chord):
 # the Minitaur bass. Uses all available chord tones (3 for triads,
 # 4 for sevenths).
 
-@composition.pattern(channel=MIDI_CHANNEL_MODEL_D, length=5)
+@composition.pattern(channel=MIDI_CHANNEL_MODEL_D, length=5 * dur.QUARTER)
 def model_d_arp (p, chord):
 
 	"""Spacious 5-beat arpeggio. Creates a 5:4 polyrhythm."""
 
 	tones = chord.tones(root=60)
-	p.arpeggio(tones, step=0.5, velocity=85, duration=0.375)
+	p.arpeggio(tones, step=dur.EIGHTH, velocity=85, duration=dur.DOTTED_SIXTEENTH)
 
 
-# ─── Arpeggio: Carbon 8 (7 beats, dotted eighths) ───────────────────
+# ─── Arpeggio: Carbon 8 (7 quarter notes, dotted-sixteenth steps) ───
 #
-# A 7-beat arpeggio at dotted-eighth speed (step=0.375 = three
-# sixteenth notes). This is the most complex polyrhythm in the piece:
-# 7 beats against 4 gives a 7:4 ratio, and the dotted-eighth step
-# adds another layer of rhythmic tension within the 7-beat cycle.
+# A 7-beat arpeggio at dotted-sixteenth speed (three sixteenth notes
+# per step). This is the most complex polyrhythm in the piece: 7 beats
+# against 4 gives a 7:4 ratio, and the dotted-sixteenth step adds
+# another layer of rhythmic tension within the 7-beat cycle.
 #
 # Voiced high around C5 (MIDI 72) for a bell-like, crystalline
 # quality that sits above the other arpeggios.
 
-@composition.pattern(channel=MIDI_CHANNEL_CARBON_8, length=7)
+@composition.pattern(channel=MIDI_CHANNEL_CARBON_8, length=7 * dur.QUARTER)
 def carbon8_arp (p, chord):
 
-	"""High 7-beat arpeggio with dotted-eighth rhythm. 7:4 polyrhythm."""
+	"""High 7-beat arpeggio with dotted-sixteenth rhythm. 7:4 polyrhythm."""
 
 	tones = chord.tones(root=72)[:3]
-	p.arpeggio(tones, step=0.375, velocity=80, duration=0.25)
+	p.arpeggio(tones, step=dur.DOTTED_SIXTEENTH, velocity=80, duration=dur.SIXTEENTH)
 
 
-# ─── Bass Arpeggio: Minitaur (10.5 beats, eighth notes) ─────────────
+# ─── Bass Arpeggio: Minitaur (21 eighth notes) ──────────────────────
 #
-# A bass arpeggio with a fractional length of 10.5 beats (21 eighth
-# notes). This demonstrates Subsequence's float length support —
-# the pattern is exactly 21 eighth notes long, which doesn't divide
-# evenly into standard 4-beat bars.
+# A bass arpeggio with a length of 21 eighth notes. This demonstrates
+# Subsequence's float length support — 21 eighth notes = 10.5 quarter
+# notes, which doesn't divide evenly into standard 4-beat bars.
 #
 # The result is a bass line that constantly shifts its downbeat
 # relative to the drums. It takes a very long time to realign,
@@ -255,15 +255,15 @@ def carbon8_arp (p, chord):
 # Uses just root and fifth for a simple, grounding bass movement
 # in the low register (MIDI 36 = C2).
 
-@composition.pattern(channel=MIDI_CHANNEL_MINITAUR, length=10.5)
+@composition.pattern(channel=MIDI_CHANNEL_MINITAUR, length=21 * dur.EIGHTH)
 def minitaur_bass (p, chord):
 
-	"""Bass arpeggio with float length (10.5 beats = 21 eighth notes)."""
+	"""Bass arpeggio with float length (21 eighth notes = 10.5 beats)."""
 
 	tones = chord.tones(root=36)
 	root = tones[0]
 	fifth = tones[2] if len(tones) >= 3 else root + 7
-	p.arpeggio([root, fifth], step=0.5, velocity=100, duration=0.375)
+	p.arpeggio([root, fifth], step=dur.EIGHTH, velocity=100, duration=dur.DOTTED_SIXTEENTH)
 
 
 # ─── Play ────────────────────────────────────────────────────────────

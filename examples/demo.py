@@ -39,6 +39,7 @@ import random
 import urllib.request
 
 import subsequence
+import subsequence.constants.durations as dur
 import subsequence.sequence_utils
 
 
@@ -85,7 +86,7 @@ composition = subsequence.Composition(
 
 composition.harmony(
 	style = "dark_minor",
-	cycle_beats = 4,
+	cycle_beats = 4 * dur.QUARTER,
 	dominant_7th = True,
 	gravity = 0.8,
 	minor_weight = 0.25,
@@ -134,7 +135,7 @@ def fetch_iss () -> None:
 	except Exception as exc:
 		logging.warning(f"ISS fetch failed (keeping last value): {exc}")
 
-composition.schedule(fetch_iss, cycle_beats=32)
+composition.schedule(fetch_iss, cycle_beats=32 * dur.QUARTER)
 
 
 # ─── Drums ───────────────────────────────────────────────────────────
@@ -142,7 +143,7 @@ composition.schedule(fetch_iss, cycle_beats=32)
 # All drum patterns use a 16-step grid (sixteenth notes) over 4 beats.
 # The drum_note_map lets you write "kick" instead of 36.
 
-@composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
+@composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=4 * dur.QUARTER, drum_note_map=DRUM_NOTE_MAP)
 def kick_snare (p):
 	"""
 	Four-on-the-floor kick with a euclidean snare.
@@ -164,7 +165,7 @@ def kick_snare (p):
 		p.hit_steps("snare", snare_steps, velocity=100)
 
 
-@composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
+@composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=4 * dur.QUARTER, drum_note_map=DRUM_NOTE_MAP)
 def hats (p):
 	"""
 	Bresenham hi-hats with stochastic dropout and velocity shaping.
@@ -194,7 +195,7 @@ def hats (p):
 # These patterns accept a "chord" parameter, which the module fills
 # automatically from the harmonic state.
 
-@composition.pattern(channel=EP_MIDI_CHANNEL, length=4)
+@composition.pattern(channel=EP_MIDI_CHANNEL, length=4 * dur.QUARTER)
 def chords (p, chord):
 	"""
 	Sustained chord pads that follow the harmonic state.
@@ -214,7 +215,7 @@ def chords (p, chord):
 	p.chord(chord, root=52, velocity=vel, sustain=True)
 
 
-@composition.pattern(channel=SYNTH_MIDI_CHANNEL, length=4)
+@composition.pattern(channel=SYNTH_MIDI_CHANNEL, length=4 * dur.QUARTER)
 def motif (p, chord):
 	"""
 	A cycling arpeggio built from the current chord tones.
@@ -225,10 +226,10 @@ def motif (p, chord):
 		return
 
 	tones = chord.tones(root=76)[:3]
-	p.arpeggio(tones, step=0.25, velocity=90)
+	p.arpeggio(tones, step=dur.SIXTEENTH, velocity=90)
 
 
-@composition.pattern(channel=BASS_MIDI_CHANNEL, length=4)
+@composition.pattern(channel=BASS_MIDI_CHANNEL, length=4 * dur.QUARTER)
 def bass (p, chord):
 	"""
 	A 16th-note bassline on the chord root.
