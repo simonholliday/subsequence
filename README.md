@@ -13,6 +13,7 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 - **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping via van der Corput sequences, and dropout for controlled randomness.
 - **Polyrhythms** emerge naturally by running patterns with different lengths.
 - **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Sync functions run in a thread pool automatically. Store results in `composition.data` and read them from any pattern — connect music to APIs, sensors, files, or anything Python can reach.
+- **Terminal visualization.** A persistent status line showing the current bar, section, chord, BPM, and key. Enabled with `composition.display()`. Log messages scroll cleanly above it without disruption.
 - **Two API levels.** The Composition API is high-level and declarative — most musicians will never need anything else. The Direct Pattern API gives power users full control over `Pattern` subclasses, `HarmonicState`, and async scheduling.
 - **Events** let you react to sequencer milestones (`"bar"`, `"start"`, `"stop"`) via `composition.on_event()`.
 - **Pure MIDI.** No audio synthesis, no dependencies beyond `mido` and `python-rtmidi`. Route MIDI to any hardware or software synth.
@@ -145,6 +146,29 @@ composition.form(my_form())
 
 `p.bar` is always available (regardless of form) and tracks the global bar count since playback started.
 
+## Terminal display
+
+Enable a live status line showing the current bar, section, chord, BPM, and key with a single call:
+
+```python
+composition.display()
+composition.play()
+```
+
+The status line updates every bar and looks like:
+
+```
+125 BPM  Key: E  Bar: 17  [chorus 1/8]  Chord: Em7
+```
+
+When form is not configured, the section is omitted. When harmony is not configured, the chord is omitted. Log messages scroll cleanly above the status line without disruption.
+
+To disable:
+
+```python
+composition.display(enabled=False)
+```
+
 ## Demo details
 The demo (`examples/demo.py`) uses the Composition API to schedule drums (kick, snare, hats), chord pads, a cycling arpeggio, and a 16th-note bassline — all on a unified 16-step grid. The form is a weighted graph: the intro (4 bars) plays once then moves to the verse. From the verse (8 bars), the form transitions to the chorus (75%) or a bridge (25%). The chorus (8 bars) leads to a breakdown (67%) or back to the verse (33%). The bridge (4 bars) always goes to the chorus. The breakdown (4 bars) always returns to the verse. The intro never comes back. Each pattern reads `p.section` to control its behavior: the kick always plays, the snare only enters during the chorus, hats are muted during the intro, and chord pads build intensity through each section via `p.section.progress`. A scheduled task fetches the ISS position every 8 bars and stores normalized latitude/longitude in `composition.data`; the snare pattern reads `longitude_norm` to modulate its maximum density. A shared harmonic state advances chords on a 4-beat clock, and any pattern with a `chord` parameter automatically receives the current chord when it rebuilds. The advanced demo (`examples/demo_advanced.py`) shows the same composition using direct `Pattern` subclassing for power users. Press Ctrl+C to stop.
 
@@ -167,7 +191,6 @@ Planned features, roughly in order of priority.
 ### High priority
 
 - **Hot-reload / live editing.** Watch the composition file and reload patterns without stopping the clock. Edit code, hear changes immediately.
-- **Terminal visualization.** A live-updating display showing the current section, bar, chord, and pattern activity. Even basic feedback like `Section: chorus | Bar: 3/8 | Chord: Em7` would close the gap with hardware sequencer LEDs.
 - **Probability per step.** `p.hit_steps("snare", [4, 12], probability=0.7)` — the baseline generative expectation, inspired by Elektron's conditional triggers.
 - **Stochastic primitives.** Weighted random choice, no-repeat random, random walks, and probability gates — controlled randomness that sounds intentional, not arbitrary.
 - **Example library.** A handful of short compositions in different styles (techno, ambient, jazz, minimal) so musicians can hear what the tool can do before investing time.
