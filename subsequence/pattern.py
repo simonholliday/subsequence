@@ -34,7 +34,7 @@ class Pattern:
 	Allows us to define and manipulate music pattern objects.
 	"""
 
-	def __init__ (self, channel: int, length: int = 16, reschedule_lookahead: int = 1) -> None:
+	def __init__ (self, channel: int, length: float = 16, reschedule_lookahead: float = 1) -> None:
 
 		"""
 		Initialize a new pattern with MIDI channel, length in beats, and reschedule lookahead.

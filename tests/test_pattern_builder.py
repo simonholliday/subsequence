@@ -632,3 +632,120 @@ def test_dropout_uses_builder_rng () -> None:
 
 	assert run_1 == run_2
 
+
+# --- Float length and set_length ---
+
+
+def test_float_length_hit_steps () -> None:
+
+	"""hit_steps should work with a float pattern length."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=10.5)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0
+	)
+
+	# 16-step grid over 10.5 beats: step_duration = 10.5/16 = 0.65625
+	builder.hit_steps(60, steps=[0, 4, 8, 12], velocity=100)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 4
+
+
+def test_float_length_fill () -> None:
+
+	"""fill should work with a float pattern length."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=3.5)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0
+	)
+
+	# step=0.5 over 3.5 beats = 7 notes (0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
+	builder.fill(60, step=0.5, velocity=100)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 7
+
+
+def test_float_length_euclidean () -> None:
+
+	"""euclidean should work with a float pattern length."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=10.5)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0
+	)
+
+	# int(10.5 * 4) = 42 steps, 5 pulses
+	builder.euclidean(60, pulses=5, velocity=100)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 5
+
+
+def test_float_length_bresenham () -> None:
+
+	"""bresenham should work with a float pattern length."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=5.5)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0
+	)
+
+	# int(5.5 * 4) = 22 steps, 3 pulses
+	builder.bresenham(60, pulses=3, velocity=100)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 3
+
+
+def test_set_length_updates_pattern () -> None:
+
+	"""set_length should change the underlying pattern's length."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0
+	)
+
+	assert pattern.length == 4
+
+	builder.set_length(8)
+
+	assert pattern.length == 8
+
+
+def test_set_length_affects_fill () -> None:
+
+	"""After set_length, fill should use the new length."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0
+	)
+
+	builder.set_length(2)
+	builder.fill(60, step=0.5, velocity=100)
+
+	# 2 beats / 0.5 step = 4 notes
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 4
+

@@ -388,3 +388,67 @@ def test_no_seed_builder_has_rng () -> None:
 	)
 
 	assert isinstance(builder.rng, random.Random)
+
+
+# --- Float length ---
+
+
+def test_pattern_decorator_float_length (patch_midi: None) -> None:
+
+	"""The pattern decorator should accept a float length."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=0, length=10.5)
+	def my_pattern (p):
+		pass
+
+	assert composition._pending_patterns[0].length == 10.5
+
+
+def test_build_pattern_float_length (patch_midi: None) -> None:
+
+	"""Building a pattern with float length should produce the correct Pattern."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=120)
+	calls = []
+
+	def my_builder (p):
+		calls.append(p._pattern.length)
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 10.5,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+
+	assert pattern.length == 10.5
+	assert calls == [10.5]
+
+
+def test_different_pattern_lengths_coexist (patch_midi: None) -> None:
+
+	"""Multiple patterns with different lengths should all register correctly."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=0, length=4)
+	def short (p):
+		pass
+
+	@composition.pattern(channel=1, length=9)
+	def medium (p):
+		pass
+
+	@composition.pattern(channel=2, length=10.5)
+	def long (p):
+		pass
+
+	assert len(composition._pending_patterns) == 3
+	assert composition._pending_patterns[0].length == 4
+	assert composition._pending_patterns[1].length == 9
+	assert composition._pending_patterns[2].length == 10.5

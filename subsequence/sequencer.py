@@ -463,7 +463,6 @@ class Sequencer:
 
 				next_start_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses
 				scheduled_pattern.cycle_start_pulse = next_start_pulse
-				scheduled_pattern.next_reschedule_pulse = next_start_pulse + scheduled_pattern.length_pulses - scheduled_pattern.lookahead_pulses
 
 				to_reschedule.append(scheduled_pattern)
 
@@ -475,6 +474,12 @@ class Sequencer:
 		for scheduled_pattern in to_reschedule:
 
 			scheduled_pattern.pattern.on_reschedule()
+
+			# Re-read length in case on_reschedule() changed it (e.g. via set_length).
+			new_length_pulses, new_lookahead_pulses = self._get_pattern_timing(scheduled_pattern.pattern)
+			scheduled_pattern.length_pulses = new_length_pulses
+			scheduled_pattern.lookahead_pulses = new_lookahead_pulses
+			scheduled_pattern.next_reschedule_pulse = scheduled_pattern.cycle_start_pulse + new_length_pulses - new_lookahead_pulses
 
 			await self.schedule_pattern(scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse)
 			asyncio.create_task(self.events.emit_async("pattern_reschedule", scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse))

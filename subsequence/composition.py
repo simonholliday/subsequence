@@ -429,9 +429,9 @@ class _PendingPattern:
 		self,
 		builder_fn: typing.Callable,
 		channel: int,
-		length: int,
+		length: float,
 		drum_note_map: typing.Optional[typing.Dict[str, int]],
-		reschedule_lookahead: int
+		reschedule_lookahead: float
 	) -> None:
 
 		"""
@@ -684,9 +684,9 @@ class Composition:
 	def pattern (
 		self,
 		channel: int,
-		length: int = 4,
+		length: float = 4,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
-		reschedule_lookahead: int = 1
+		reschedule_lookahead: float = 1
 	) -> typing.Callable:
 
 		"""Decorator that registers a builder function as a repeating pattern.

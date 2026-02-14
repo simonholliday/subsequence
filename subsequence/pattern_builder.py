@@ -23,6 +23,28 @@ class PatternBuilder:
 		self.bar = bar
 		self.rng: random.Random = rng or random.Random()
 
+	def set_length (self, length: float) -> None:
+
+		"""Change the pattern length for the current and future cycles.
+
+		The new length takes effect immediately for any notes placed after this call,
+		and the sequencer will use the new length when scheduling the next cycle.
+
+		Parameters:
+			length: New pattern length in beats
+
+		Example:
+			```python
+			@composition.pattern(channel=0, length=4)
+			def melody(p):
+				if p.section and p.section.name == "breakdown":
+					p.set_length(2)  # half-time during breakdown
+				p.fill(60, step=0.5)
+			```
+		"""
+
+		self._pattern.length = length
+
 	def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int:
 
 		"""
@@ -258,7 +280,7 @@ class PatternBuilder:
 		if rng is None:
 			rng = self.rng
 
-		steps = self._pattern.length * 4
+		steps = int(self._pattern.length * 4)
 		sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=steps, pulses=pulses)
 
 		step_duration = self._pattern.length / steps
@@ -291,7 +313,7 @@ class PatternBuilder:
 		if rng is None:
 			rng = self.rng
 
-		steps = self._pattern.length * 4
+		steps = int(self._pattern.length * 4)
 		sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=steps, pulses=pulses)
 
 		step_duration = self._pattern.length / steps

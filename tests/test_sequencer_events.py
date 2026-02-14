@@ -116,3 +116,52 @@ async def test_callback_precedes_reschedule_event (patch_midi: None) -> None:
 	await sequencer._maybe_reschedule_patterns(reschedule_pulse)
 
 	assert order == ["callback", "event", "pattern"]
+
+
+@pytest.mark.asyncio
+async def test_dynamic_length_change_on_reschedule (patch_midi: None) -> None:
+
+	"""When a pattern changes its length in on_reschedule, the sequencer should use the new length for the next cycle."""
+
+	sequencer = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+
+	class GrowingPattern (subsequence.pattern.Pattern):
+
+		"""Pattern that doubles its length on first reschedule."""
+
+		def __init__ (self) -> None:
+
+			"""Initialize with a 2-beat cycle."""
+
+			super().__init__(channel=0, length=2, reschedule_lookahead=1)
+			self.reschedule_count = 0
+
+		def on_reschedule (self) -> None:
+
+			"""Double the length on the first reschedule."""
+
+			self.reschedule_count += 1
+
+			if self.reschedule_count == 1:
+				self.length = 4
+
+	pattern = GrowingPattern()
+	await sequencer.schedule_pattern_repeating(pattern, start_pulse=0)
+
+	# First reschedule fires at: length(2) - lookahead(1) = 1 beat = 24 pulses.
+	first_reschedule_pulse = int((2 - 1) * sequencer.pulses_per_beat)
+	await sequencer._maybe_reschedule_patterns(first_reschedule_pulse)
+
+	assert pattern.reschedule_count == 1
+	assert pattern.length == 4
+
+	# After the first reschedule, the next cycle starts at pulse 2*24=48.
+	# With new length=4 and lookahead=1, next reschedule should be at: 48 + (4-1)*24 = 48+72 = 120.
+	# The old length would give: 48 + (2-1)*24 = 48+24 = 72.
+	# We check the reschedule queue to verify the new timing is used.
+	_, _, scheduled = sequencer.reschedule_queue[0]
+
+	expected_next_reschedule = int(2 * sequencer.pulses_per_beat) + int((4 - 1) * sequencer.pulses_per_beat)
+
+	assert scheduled.next_reschedule_pulse == expected_next_reschedule
+	assert scheduled.length_pulses == int(4 * sequencer.pulses_per_beat)
