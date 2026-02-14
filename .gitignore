@@ -3,8 +3,7 @@ config.yaml
 
 # Project metadata and instructions
 AGENTS.md
-project.md
-RnD_Reference/
+README-AGENTS.md
 
 # Python
 __pycache__/
