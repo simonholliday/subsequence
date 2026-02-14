@@ -1,20 +1,21 @@
 # Subsequence
 
-Subsequence is a generative MIDI sequencer built in Python. It schedules patterns "just in time," so music can evolve continuously without stopping. Patterns are defined as collections of notes in pulse time, and when a pattern is scheduled its current state is copied into the sequencer's event queue. This lets patterns mutate over time without affecting already-scheduled notes.
+**A generative MIDI sequencer for Python.** Define musical patterns as simple functions — Euclidean rhythms, chord progressions, arpeggios — and let them evolve over time. Subsequence handles the clock, the MIDI plumbing, and the scheduling. You handle the music.
 
-## Key ideas
-- **Composition API** wraps the engine in a musician-friendly interface — define patterns as simple functions and let the module handle scheduling, async, and MIDI plumbing.
-- **Patterns** store notes in pulses and can evolve each reschedule cycle.
-- **PatternBuilder** provides high-level musical verbs (`note`, `hit`, `hit_steps`, `fill`, `arpeggio`, `chord`, `euclidean`, `bresenham`, `dropout`, `swing`, `velocity_shape`).
-- **Sequencer** keeps a stable clock, handles note on/off, and reschedules patterns ahead of their cycle end.
-- **Polyrhythms** emerge by running patterns with different lengths.
-- **Harmony** evolves via weighted chord transition graphs; patterns that accept a `chord` parameter automatically receive the current harmonic state.
-- **Chord graphs** define harmonic palettes: `"diatonic_major"` (single-key I–vii), `"turnaround"` (ii-V-I across all keys), and `"dark_minor"` (Phrygian/aeolian minor). Subclass `ChordGraph` to create your own.
-- **Scheduled tasks** let any function run on a repeating beat cycle via `composition.schedule()`. Sync functions run in a thread pool so they never block the MIDI clock. Failed tasks are logged and never crash playback.
-- **Shared data store** (`composition.data`) lets scheduled tasks publish values that pattern builders can read — connecting music to external inputs (APIs, sensors, files).
-- **Form** defines the large-scale structure as a weighted transition graph (or linear list/generator). Sections follow weighted edges — an intro can play once and never return. Patterns read `p.section` to decide what to play in each section.
+Subsequence is built for **MIDI-literate musicians who can write some Python**. Patterns are plain Python functions with full access to conditionals, randomness, and external data. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with. Everything is code, and code is versionable, shareable, and diffable.
+
+## What it does
+
+- **Patterns as functions.** Each pattern is a decorated Python function that builds a full cycle of notes. The sequencer calls it fresh each cycle, so patterns can evolve — reading the current chord, section, cycle count, or external data to decide what to play.
+- **Harmonic intelligence.** Chord progressions are driven by weighted transition graphs (Markov chains with configurable gravity). Three built-in harmonic palettes — `"diatonic_major"`, `"turnaround"`, and `"dark_minor"` — or subclass `ChordGraph` to create your own. Patterns that accept a `chord` parameter automatically receive the current chord.
+- **Compositional form.** Define the large-scale structure — intro, verse, chorus, bridge — as a weighted transition graph, a linear list, or a generator. Sections follow probabilistic edges: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior.
+- **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
+- **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping via van der Corput sequences, and dropout for controlled randomness.
+- **Polyrhythms** emerge naturally by running patterns with different lengths.
+- **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Sync functions run in a thread pool automatically. Store results in `composition.data` and read them from any pattern — connect music to APIs, sensors, files, or anything Python can reach.
+- **Two API levels.** The Composition API is high-level and declarative — most musicians will never need anything else. The Direct Pattern API gives power users full control over `Pattern` subclasses, `HarmonicState`, and async scheduling.
 - **Events** let you react to sequencer milestones (`"bar"`, `"start"`, `"stop"`) via `composition.on_event()`.
-- **Motifs & swing** utilities support expressive timing and reusable note fragments.
+- **Pure MIDI.** No audio synthesis, no dependencies beyond `mido` and `python-rtmidi`. Route MIDI to any hardware or software synth.
 
 ## Quick start
 1. Install dependencies:
@@ -158,6 +159,32 @@ The demo (`examples/demo.py`) uses the Composition API to schedule drums (kick, 
 - `subsequence.weighted_graph` provides a generic weighted graph used for transitions.
 - `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
 - `subsequence.composition` provides the `Composition` class and internal scheduling helpers.
+
+## Feature Roadmap
+
+Planned features, roughly in order of priority.
+
+### High priority
+
+- **Hot-reload / live editing.** Watch the composition file and reload patterns without stopping the clock. Edit code, hear changes immediately.
+- **Terminal visualization.** A live-updating display showing the current section, bar, chord, and pattern activity. Even basic feedback like `Section: chorus | Bar: 3/8 | Chord: Em7` would close the gap with hardware sequencer LEDs.
+- **Probability per step.** `p.hit_steps("snare", [4, 12], probability=0.7)` — the baseline generative expectation, inspired by Elektron's conditional triggers.
+- **Stochastic primitives.** Weighted random choice, no-repeat random, random walks, and probability gates — controlled randomness that sounds intentional, not arbitrary.
+- **Example library.** A handful of short compositions in different styles (techno, ambient, jazz, minimal) so musicians can hear what the tool can do before investing time.
+
+### Medium priority
+
+- **Pattern transformations.** Higher-order functions like `every(4, double_time)`, `reverse()`, `layer()` for concise pattern variation.
+- **Mini-notation.** An optional string shorthand (e.g., `"x . x [x x]"`) that compiles to `hit_steps` calls for quick rhythm entry.
+- **MIDI input / CC mapping.** Map a hardware knob to `composition.data` so Subsequence feels like a hybrid hardware/software instrument.
+- **Ableton Link / MIDI clock sync.** Sync with DAWs and other devices for integration into existing studio setups.
+
+### Future ideas
+
+- Jupyter notebook mode for interactive examples
+- Chord inversions and voice leading
+- Embeddable engine mode (run as a library inside games or installations)
+- MIDI file export for capturing sessions into a DAW
 
 ## Tests
 This project uses `pytest`.
