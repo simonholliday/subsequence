@@ -1,6 +1,10 @@
 # Subsequence
 
-**A generative MIDI sequencer for Python.** Write patterns as simple functions — each one rebuilds every cycle, so it can respond to the current chord, the current section, or data from an external source. Chord progressions drift and evolve with adjustable pull toward home. Define large-scale form — intro, verse, chorus, bridge — and let sections follow weighted paths so the structure is familiar but never identical. Run patterns at different lengths and polyrhythms emerge on their own. Set a seed and get the same music every time — tweak and re-run until it's right. Change patterns, tempo, and chords while the music plays. Sync to a MIDI clock from your DAW or drum machine.
+**A generative MIDI sequencer for Python.** Write patterns as simple functions — each one rebuilds every cycle, so it can respond to the current chord, the current section, or data from an external source.
+
+Chord progressions drift and evolve with adjustable pull toward home. Define large-scale form — intro, verse, chorus, bridge — and let sections follow weighted paths so the structure is familiar but never identical. Run patterns at different lengths and polyrhythms emerge on their own.
+
+Set a seed and get the same music every time — tweak and re-run until it's right. Change patterns, tempo, and chords while the music plays. Sync to a MIDI clock from your DAW or drum machine.
 
 Subsequence is built for **MIDI-literate musicians who can write some Python**. Patterns are plain Python functions with full access to conditionals, randomness, and external data. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with. Two dependencies, pure MIDI output — route it to any hardware or software synth you already use. Everything is code, and code is versionable, shareable, and comparable.
 
