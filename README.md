@@ -382,6 +382,9 @@ A dark techno composition (`examples/dark_techno.py`) built for three instrument
 ### sequinoxe.py — Electronic suite (Jarre-inspired)
 An atmospheric electronic suite (`examples/sequinoxe.py`) inspired by Jean-Michel Jarre's Oxygène, Équinoxe, and Les Champs Magnétiques. Five instruments: Moog Matriarch (cascading two-octave arpeggio that starts as a sustained pad), Moog Minitaur (pulsing eighth-note bass), PWM Malevolent (Euclidean stabs), Vermona DRM1 (syncopated drums — not four-on-the-floor), and Roland TR8S (shaker/ride/cowbell texture via GM drum map). 112 BPM in D minor using the `dark_minor` graph with gravity at 0.75 for natural harmonic drift. The form builds like a Jarre suite: a 16-bar atmosphere (pad only) unfolds into a 16-bar build (arpeggio emerges, bass and sparse drums enter), then a 32-bar peak (full arrangement). The peak has a 33% chance of drifting to a stripped 16-bar section before building again.
 
+### kind_of_bleep.py — Jazz fusion (Miles Davis meets Squarepusher)
+An experimental jazz fusion piece (`examples/kind_of_bleep.py`) for three instruments: Modal Voce EP (rootless jazz voicings and angular melodic fragments), Vermona DRM1 (core jazz kit with ghost notes), and Roland TR8S (jazz ride and polyrhythmic breakbeats via GM). 142 BPM in Eb using the `turnaround` graph with dominant sevenths and minor turnaround weight — ii-V-I progressions drifting through all twelve keys. The percussion is built for complexity: six overlapping patterns at four different cycle lengths (3, 4, 5, and 7 beats) create interlocking polyrhythms whose combined cycle is 420 beats. The form oscillates between Miles-like space (sparse EP and ride) and Squarepusher-style chaos (dense breakbeats, ghost notes, glitch textures on coprime cycles).
+
 ## Extra utilities
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
