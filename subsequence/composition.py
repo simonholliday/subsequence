@@ -9,6 +9,7 @@ import typing
 import subsequence.chord_graphs
 import subsequence.display
 import subsequence.harmonic_state
+import subsequence.live_server
 import subsequence.pattern
 import subsequence.sequencer
 import subsequence.weighted_graph
@@ -504,6 +505,9 @@ class Composition:
 		self._form_state: typing.Optional[FormState] = None
 		self._builder_bar: int = 0
 		self._display: typing.Optional[subsequence.display.Display] = None
+		self._live_server: typing.Optional[subsequence.live_server.LiveServer] = None
+		self._is_live: bool = False
+		self._running_patterns: typing.Dict[str, typing.Any] = {}
 		self.data: typing.Dict[str, typing.Any] = {}
 
 	def harmony (
@@ -600,6 +604,137 @@ class Composition:
 			self._display = subsequence.display.Display(self)
 		else:
 			self._display = None
+
+	def live (self, port: int = 5555) -> None:
+
+		"""Enable the live coding server for runtime interaction.
+
+		Starts a TCP eval server on ``localhost`` that accepts Python code from
+		any source — the bundled REPL client, an editor plugin, or a raw socket.
+		The server launches when ``play()`` is called and stops when playback ends.
+
+		Parameters:
+			port: TCP port to listen on (default 5555)
+
+		Example:
+			```python
+			composition.live()      # enable before play()
+			composition.display()
+			composition.play()
+			```
+
+			Then in another terminal::
+
+				python -m subsequence.live_client
+		"""
+
+		self._live_server = subsequence.live_server.LiveServer(self, port=port)
+		self._is_live = True
+
+	def set_bpm (self, bpm: int) -> None:
+
+		"""Change the tempo while the composition is playing.
+
+		Parameters:
+			bpm: New tempo in beats per minute
+
+		Example:
+			```python
+			composition.set_bpm(140)
+			```
+		"""
+
+		self._sequencer.set_bpm(bpm)
+		self.bpm = bpm
+
+	def live_info (self) -> typing.Dict[str, typing.Any]:
+
+		"""Return a snapshot of the running composition state.
+
+		Returns a dict with: ``bpm``, ``key``, ``bar``, ``section``, ``chord``,
+		``patterns`` (list of dicts), and ``data``.
+
+		Example:
+			```python
+			info = composition.live_info()
+			print(info["bpm"], info["chord"])
+			```
+		"""
+
+		section_info = None
+		if self._form_state is not None:
+			section = self._form_state.get_section_info()
+			if section is not None:
+				section_info = {
+					"name": section.name,
+					"bar": section.bar,
+					"bars": section.bars,
+					"progress": section.progress
+				}
+
+		chord_name = None
+		if self._harmonic_state is not None:
+			chord = self._harmonic_state.get_current_chord()
+			if chord is not None:
+				chord_name = chord.name()
+
+		pattern_list = []
+		for name, pat in self._running_patterns.items():
+			pattern_list.append({
+				"name": name,
+				"channel": pat.channel,
+				"length": pat.length,
+				"cycle": pat._cycle_count,
+				"muted": pat._muted
+			})
+
+		return {
+			"bpm": self.bpm,
+			"key": self.key,
+			"bar": self._builder_bar,
+			"section": section_info,
+			"chord": chord_name,
+			"patterns": pattern_list,
+			"data": self.data
+		}
+
+	def mute (self, name: str) -> None:
+
+		"""Mute a running pattern by name. The pattern keeps scheduling but produces no notes.
+
+		Parameters:
+			name: The function name of the pattern to mute
+
+		Example:
+			```python
+			composition.mute("hats")
+			```
+		"""
+
+		if name not in self._running_patterns:
+			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
+
+		self._running_patterns[name]._muted = True
+		logger.info(f"Muted pattern: {name}")
+
+	def unmute (self, name: str) -> None:
+
+		"""Unmute a previously muted pattern.
+
+		Parameters:
+			name: The function name of the pattern to unmute
+
+		Example:
+			```python
+			composition.unmute("hats")
+			```
+		"""
+
+		if name not in self._running_patterns:
+			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
+
+		self._running_patterns[name]._muted = False
+		logger.info(f"Unmuted pattern: {name}")
 
 	def schedule (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int = 1) -> None:
 
@@ -718,7 +853,16 @@ class Composition:
 
 			"""
 			Wrap the builder function and register it as a pending pattern.
+			During live sessions, hot-swap an existing pattern's builder instead.
 			"""
+
+			# Hot-swap: if we're live and a pattern with this name exists, replace its builder.
+			if self._is_live and fn.__name__ in self._running_patterns:
+				running = self._running_patterns[fn.__name__]
+				running._builder_fn = fn
+				running._wants_chord = "chord" in inspect.signature(fn).parameters
+				logger.info(f"Hot-swapped pattern: {fn.__name__}")
+				return fn
 
 			pending = _PendingPattern(
 				builder_fn = fn,
@@ -899,11 +1043,22 @@ class Composition:
 			start_pulse = 0
 		)
 
+		# Populate the running patterns dict for live hot-swap and mute/unmute.
+		for i, pending in enumerate(self._pending_patterns):
+			name = pending.builder_fn.__name__
+			self._running_patterns[name] = patterns[i]
+
 		if self._display is not None:
 			self._display.start()
 			self._sequencer.on_event("bar", self._display.update)
 
+		if self._live_server is not None:
+			await self._live_server.start()
+
 		await run_until_stopped(self._sequencer)
+
+		if self._live_server is not None:
+			await self._live_server.stop()
 
 		if self._display is not None:
 			self._display.stop()
@@ -939,6 +1094,7 @@ class Composition:
 				self._wants_chord = "chord" in inspect.signature(pending.builder_fn).parameters
 				self._cycle_count = 0
 				self._rng = pattern_rng
+				self._muted = False
 
 				self._rebuild()
 
@@ -951,6 +1107,9 @@ class Composition:
 				self.steps = {}
 				current_cycle = self._cycle_count
 				self._cycle_count += 1
+
+				if self._muted:
+					return
 
 				# Import here to avoid circular import at module level.
 				import subsequence.pattern_builder

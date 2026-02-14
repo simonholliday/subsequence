@@ -4,6 +4,20 @@
 
 Subsequence is built for **MIDI-literate musicians who can write some Python**. Patterns are plain Python functions with full access to conditionals, randomness, and external data. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with. Everything is code, and code is versionable, shareable, and diffable.
 
+## Contents
+
+- [What it does](#what-it-does)
+- [Quick start](#quick-start)
+- [Composition API](#composition-api)
+- [Form (sections)](#form-sections)
+- [Seed and deterministic randomness](#seed-and-deterministic-randomness)
+- [Terminal display](#terminal-display)
+- [Live coding](#live-coding)
+- [Demo details](#demo-details)
+- [Extra utilities](#extra-utilities)
+- [Feature Roadmap](#feature-roadmap)
+- [Tests](#tests)
+
 ## What it does
 
 - **Patterns as functions.** Each pattern is a decorated Python function that builds a full cycle of notes. The sequencer calls it fresh each cycle, so patterns can evolve — reading the current chord, section, cycle count, or external data to decide what to play.
@@ -18,6 +32,7 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 - **Terminal visualization.** A persistent status line showing the current bar, section, chord, BPM, and key. Enabled with `composition.display()`. Log messages scroll cleanly above it without disruption.
 - **Two API levels.** The Composition API is high-level and declarative — most musicians will never need anything else. The Direct Pattern API gives power users full control over `Pattern` subclasses, `HarmonicState`, and async scheduling.
 - **Pattern transforms.** Reverse, double-time, half-time, shift, transpose, and invert — all as post-build methods on the pattern builder. `p.every(4, lambda p: p.reverse())` applies a transform every 4th cycle. `composition.layer()` merges multiple builder functions into one pattern. Place notes first, then reshape them.
+- **Live coding.** Modify a running composition without stopping playback. A TCP eval server accepts Python code from the bundled REPL client, an editor, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state — all while the music plays. Enable with `composition.live()`.
 - **Events** let you react to sequencer milestones (`"bar"`, `"start"`, `"stop"`) via `composition.on_event()`.
 - **Pure MIDI.** No audio synthesis, no dependencies beyond `mido` and `python-rtmidi`. Route MIDI to any hardware or software synth.
 
@@ -220,6 +235,93 @@ To disable:
 composition.display(enabled=False)
 ```
 
+## Live coding
+
+Modify a running composition without stopping playback. Subsequence includes a TCP eval server that accepts Python code from any source — the bundled REPL client, an editor plugin, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state — all while the music plays.
+
+### Enable the server
+
+One line before `play()`:
+
+```python
+composition.live()      # start on localhost:5555
+composition.display()
+composition.play()
+```
+
+### Connect with the REPL client
+
+In another terminal:
+
+```
+$ python -m subsequence.live_client
+Connected to Subsequence on 127.0.0.1:5555
+{'bpm': 120, 'key': 'C', 'bar': 12, 'section': {'name': 'verse', ...}, 'chord': 'Em7', ...}
+
+>>>
+```
+
+### What you can do
+
+**Query state** — see what's playing right now:
+
+```python
+>>> composition.live_info()
+{'bpm': 120, 'key': 'E', 'bar': 34, 'section': {'name': 'chorus', 'bar': 2, 'bars': 8, 'progress': 0.25}, 'chord': 'Em7', 'patterns': [{'name': 'drums', 'channel': 9, 'length': 4.0, 'cycle': 17, 'muted': False}, ...], 'data': {}}
+```
+
+**Change tempo** — hear the difference immediately:
+
+```python
+>>> composition.set_bpm(140)
+OK
+```
+
+**Mute and unmute patterns** — patterns keep cycling silently, so they stay in sync:
+
+```python
+>>> composition.mute("hats")
+OK
+>>> composition.unmute("hats")
+OK
+```
+
+**Modify shared data** — any value patterns read from `composition.data`:
+
+```python
+>>> composition.data["intensity"] = 0.8
+OK
+```
+
+**Hot-swap a pattern** — redefine the builder function and it takes effect on the next cycle:
+
+```python
+>>> @composition.pattern(channel=9, length=4, drum_note_map=DRUM_NOTE_MAP)
+... def drums(p):
+...     p.hit_steps("kick", [0, 8], velocity=127)
+...     p.hit_steps("snare", [4, 12], velocity=100)
+...
+OK
+```
+
+The running pattern keeps its cycle count, RNG state, and scheduling position — only the builder logic changes.
+
+### Use from any tool
+
+The server speaks a simple text protocol (messages delimited by `\x04`). You can send code from anything that opens a TCP socket:
+
+```bash
+# From another terminal with netcat
+echo -ne 'composition.set_bpm(140)\x04' | nc localhost 5555
+
+# Or Python one-liner
+python -c "import socket; s=socket.socket(); s.connect(('127.0.0.1',5555)); s.send(b'composition.live_info()\x04'); print(s.recv(4096).decode())"
+```
+
+### Input validation
+
+All code is validated as syntactically correct Python before execution. If you send a typo or malformed code, the server returns a `SyntaxError` traceback — nothing is executed, and the running composition is never affected.
+
 ## Demo details
 
 ### demo.py — Dark minor composition with form
@@ -241,6 +343,8 @@ The arpeggiator (`examples/arpeggiator.py`) demonstrates polyrhythmic capabiliti
 - `subsequence.constants.durations` provides beat-based duration constants. Import as `import subsequence.constants.durations as dur` and write `length = 9 * dur.SIXTEENTH` or `step = dur.DOTTED_EIGHTH` instead of raw floats. Constants: `THIRTYSECOND`, `SIXTEENTH`, `DOTTED_SIXTEENTH`, `TRIPLET_EIGHTH`, `EIGHTH`, `DOTTED_EIGHTH`, `TRIPLET_QUARTER`, `QUARTER`, `DOTTED_QUARTER`, `HALF`, `DOTTED_HALF`, `WHOLE`.
 - `subsequence.constants.gm_drums` provides the General MIDI Level 1 drum note map. `GM_DRUM_MAP` can be passed as `drum_note_map`; individual constants like `KICK_1` are also available.
 - `subsequence.constants.pulses` provides pulse-based MIDI timing constants used internally by the engine.
+- `subsequence.live_server` provides the TCP eval server for live coding. Started internally by `composition.live()`.
+- `subsequence.live_client` provides the interactive REPL client. Run with `python -m subsequence.live_client`.
 - `subsequence.composition` provides the `Composition` class and internal scheduling helpers.
 
 ## Feature Roadmap
@@ -249,7 +353,6 @@ Planned features, roughly in order of priority.
 
 ### High priority
 
-- **Hot-reload / live editing.** Watch the composition file and reload patterns without stopping the clock. Edit code, hear changes immediately.
 - **Example library.** A handful of short compositions in different styles (techno, ambient, jazz, minimal) so musicians can hear what the tool can do before investing time.
 
 ### Medium priority
