@@ -246,12 +246,5 @@ def bass (p, chord):
 
 if __name__ == "__main__":
 
-	def on_bar (bar: int) -> None:
-
-		"""Log bar number and current section for visibility."""
-
-		logging.info(f"Bar {bar + 1}")
-
-	composition.on_event("bar", on_bar)
-
+	composition.display()
 	composition.play()

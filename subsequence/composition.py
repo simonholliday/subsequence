@@ -7,6 +7,7 @@ import signal
 import typing
 
 import subsequence.chord_graphs
+import subsequence.display
 import subsequence.harmonic_state
 import subsequence.pattern
 import subsequence.sequencer
@@ -498,6 +499,7 @@ class Composition:
 		self._pending_scheduled: typing.List[_PendingScheduled] = []
 		self._form_state: typing.Optional[FormState] = None
 		self._builder_bar: int = 0
+		self._display: typing.Optional[subsequence.display.Display] = None
 		self.data: typing.Dict[str, typing.Any] = {}
 
 	def harmony (
@@ -552,6 +554,28 @@ class Composition:
 		"""
 
 		self._sequencer.on_event(event_name, callback)
+
+	def display (self, enabled: bool = True) -> None:
+
+		"""Enable or disable the live terminal status line.
+
+		When enabled, a persistent status line shows the current bar, section,
+		chord, BPM, and key. Log messages scroll above it without disruption.
+
+		Parameters:
+			enabled: Turn the display on (True) or off (False)
+
+		Example:
+			```python
+			composition.display()  # enable before play()
+			composition.play()
+			```
+		"""
+
+		if enabled:
+			self._display = subsequence.display.Display(self)
+		else:
+			self._display = None
 
 	def schedule (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int = 1) -> None:
 
@@ -767,7 +791,14 @@ class Composition:
 			start_pulse = 0
 		)
 
+		if self._display is not None:
+			self._display.start()
+			self._sequencer.on_event("bar", self._display.update)
+
 		await run_until_stopped(self._sequencer)
+
+		if self._display is not None:
+			self._display.stop()
 
 	def _build_pattern_from_pending (self, pending: _PendingPattern) -> subsequence.pattern.Pattern:
 
