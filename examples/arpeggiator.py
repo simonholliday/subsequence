@@ -25,7 +25,7 @@ Pattern overview
   Vermona DRM1     │ 4      │ Steady reference beat (kick/snare/hats)
   Roland TR8S      │ 6      │ Euclidean percussion on a triplet grid
   Voce EP          │ 4      │ Sustained chords (harmonic anchor)
-  Moog Matriarch   │ 3      │ Fast sixteenth-note arpeggio (3:4)
+  Moog Matriarch   │ 2.25   │ Three-octave sixteenth-note arpeggio (9:16)
   Model D          │ 5      │ Eighth-note arpeggio (5:4)
   Carbon 8         │ 7      │ Dotted-eighth arpeggio (7:4)
   Minitaur         │ 10.5   │ Bass arpeggio (float length — 21 eighths)
@@ -99,7 +99,7 @@ composition = subsequence.Composition(
 )
 
 composition.harmony(
-	style = "dark_minor",
+	style = "turnaround_global",
 	cycle_beats = 4,
 	dominant_7th = True,
 	gravity = 0.8,
@@ -176,22 +176,29 @@ def chords (p, chord):
 	p.chord(chord, root=52, velocity=85, sustain=True)
 
 
-# ─── Arpeggio: Moog Matriarch (3 beats, sixteenth notes) ────────────
+# ─── Arpeggio: Moog Matriarch (2.25 beats, sixteenth notes) ──────────
 #
-# A fast 3-beat arpeggio cycling chord tones at sixteenth-note speed
-# (step=0.25). With 3 beats at 0.25 step, that's 12 notes per cycle.
-# Against the 4-beat drums, this creates a 3:4 polyrhythm — the
-# arpeggio resets every 3 beats while the kick hits every 4.
+# A fast arpeggio that sweeps chord tones across three octaves at
+# sixteenth-note speed (step=0.25). Three chord tones × 3 octaves =
+# 9 notes per cycle, so the pattern length is 9 × 0.25 = 2.25 beats.
 #
-# The chord tones are taken from around C4 (MIDI 60), giving a
-# bright, shimmering texture in the mid-high register.
+# Against the 4-beat drums this creates a 9:16 polyrhythm — one of
+# the most complex ratios in the piece. The arpeggio's downbeat
+# shifts constantly, never landing in the same place twice for a
+# very long time.
+#
+# Starts at C3 (MIDI 48) and rises to around G5, sweeping through
+# the full mid range of the Matriarch.
 
-@composition.pattern(channel=MIDI_CHANNEL_MOOG_MATRIARCH, length=3)
+@composition.pattern(channel=MIDI_CHANNEL_MOOG_MATRIARCH, length=2.25)
 def matriarch_arp (p, chord):
 
-	"""Fast 3-beat arpeggio. Creates a 3:4 polyrhythm against the drums."""
+	"""Three-octave sixteenth-note arpeggio. 9:16 polyrhythm against the drums."""
 
-	tones = chord.tones(root=60)[:3]
+	base_tones = chord.tones(root=48)[:3]
+	tones = []
+	for octave in range(3):
+		tones.extend([t + 12 * octave for t in base_tones])
 	p.arpeggio(tones, step=0.25, velocity=90, duration=0.2)
 
 
@@ -202,15 +209,16 @@ def matriarch_arp (p, chord):
 # against the drums creates a wide, spacious feel — the arpeggio
 # "drifts" against the beat, landing on different subdivisions each bar.
 #
-# Voiced around C3 (MIDI 48) for a warm mid-range tone. Uses all
-# available chord tones (3 for triads, 4 for sevenths).
+# Voiced around C4 (MIDI 60) for a clear mid-range tone, well above
+# the Minitaur bass. Uses all available chord tones (3 for triads,
+# 4 for sevenths).
 
 @composition.pattern(channel=MIDI_CHANNEL_MODEL_D, length=5)
 def model_d_arp (p, chord):
 
 	"""Spacious 5-beat arpeggio. Creates a 5:4 polyrhythm."""
 
-	tones = chord.tones(root=48)
+	tones = chord.tones(root=60)
 	p.arpeggio(tones, step=0.5, velocity=85, duration=0.375)
 
 
