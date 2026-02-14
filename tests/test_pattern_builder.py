@@ -1,3 +1,5 @@
+import random
+
 import pytest
 
 import subsequence.chords
@@ -473,4 +475,160 @@ def test_hit_steps_backbeat_positions () -> None:
 	pulse_3 = int(3.0 * subsequence.constants.MIDI_QUARTER_NOTE)
 
 	assert sorted(pattern.steps.keys()) == [pulse_1, pulse_3]
+
+
+# --- Probability and RNG ---
+
+
+def test_hit_steps_probability_one_places_all () -> None:
+
+	"""probability=1.0 should place all hits (default behaviour)."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.hit_steps(60, steps=[0, 4, 8, 12], velocity=100, probability=1.0)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 4
+
+
+def test_hit_steps_probability_zero_places_none () -> None:
+
+	"""probability=0.0 should place no hits."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.hit_steps(60, steps=[0, 4, 8, 12], velocity=100, probability=0.0)
+
+	assert len(pattern.steps) == 0
+
+
+def test_hit_steps_probability_partial () -> None:
+
+	"""Intermediate probability should place some but not all hits."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0,
+		rng = random.Random(42)
+	)
+
+	builder.hit_steps(60, steps=list(range(16)), velocity=100, probability=0.5)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert 0 < total_notes < 16
+
+
+def test_euclidean_with_rng_deterministic () -> None:
+
+	"""Euclidean with dropout and a seeded rng should be deterministic."""
+
+	def build_with_seed (seed: int) -> set:
+
+		pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+		builder = subsequence.pattern_builder.PatternBuilder(
+			pattern = pattern,
+			cycle = 0,
+			rng = random.Random(seed)
+		)
+
+		builder.euclidean(60, pulses=8, dropout=0.3)
+
+		return set(pattern.steps.keys())
+
+	run_1 = build_with_seed(42)
+	run_2 = build_with_seed(42)
+	run_3 = build_with_seed(99)
+
+	assert run_1 == run_2
+	assert run_1 != run_3  # different seed should (almost certainly) differ
+
+
+def test_bresenham_with_rng_deterministic () -> None:
+
+	"""Bresenham with dropout and a seeded rng should be deterministic."""
+
+	def build_with_seed (seed: int) -> set:
+
+		pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+		builder = subsequence.pattern_builder.PatternBuilder(
+			pattern = pattern,
+			cycle = 0,
+			rng = random.Random(seed)
+		)
+
+		builder.bresenham(60, pulses=8, dropout=0.3)
+
+		return set(pattern.steps.keys())
+
+	run_1 = build_with_seed(42)
+	run_2 = build_with_seed(42)
+
+	assert run_1 == run_2
+
+
+def test_builder_rng_available () -> None:
+
+	"""Builder should expose an rng attribute."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0,
+		rng = random.Random(42)
+	)
+
+	assert isinstance(builder.rng, random.Random)
+
+	# Should produce deterministic values.
+	val = builder.rng.random()
+	expected = random.Random(42).random()
+
+	assert val == expected
+
+
+def test_builder_rng_default_unseeded () -> None:
+
+	"""When no rng is provided, builder should create a fresh Random."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0
+	)
+
+	assert isinstance(builder.rng, random.Random)
+
+
+def test_dropout_uses_builder_rng () -> None:
+
+	"""dropout() without explicit rng should use self.rng for determinism."""
+
+	def build_with_seed (seed: int) -> int:
+
+		pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+		builder = subsequence.pattern_builder.PatternBuilder(
+			pattern = pattern,
+			cycle = 0,
+			rng = random.Random(seed)
+		)
+
+		builder.fill(60, step=0.25, velocity=100)
+		builder.dropout(probability=0.5)
+
+		return sum(len(step.notes) for step in pattern.steps.values())
+
+	run_1 = build_with_seed(42)
+	run_2 = build_with_seed(42)
+
+	assert run_1 == run_2
 

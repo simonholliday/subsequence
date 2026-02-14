@@ -12,7 +12,7 @@ class PatternBuilder:
 	Provides high-level musical methods for building pattern content.
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info."""
 
@@ -21,6 +21,7 @@ class PatternBuilder:
 		self._drum_note_map = drum_note_map
 		self.section = section
 		self.bar = bar
+		self.rng: random.Random = rng or random.Random()
 
 	def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int:
 
@@ -83,7 +84,7 @@ class PatternBuilder:
 		for beat in beats:
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 
-	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: int = 100, duration: float = 0.1, step_count: int = 16) -> None:
+	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: int = 100, duration: float = 0.1, step_count: int = 16, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""Place short hits at specific step positions on a subdivided grid.
 
@@ -96,23 +97,31 @@ class PatternBuilder:
 			velocity: MIDI velocity 0-127 (default 100)
 			duration: Note duration in beats (default 0.1)
 			step_count: Grid subdivisions per pattern (default 16 = sixteenth notes)
+			probability: Chance of each hit sounding, 0.0-1.0 (default 1.0 = all hits)
+			rng: Random number generator (default: ``self.rng``)
 
 		Example:
 			```python
 			# Four-on-the-floor kick on a 16-step grid
 			p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
 
-			# Backbeat snare (beats 2 and 4)
-			p.hit_steps("snare", [4, 12], velocity=100)
-
-			# Eighth-note hi-hats on an 8-step grid
-			p.hit_steps("hh", list(range(8)), velocity=80, step_count=8)
+			# Hi-hats with 80% probability per step
+			p.hit_steps("hh", list(range(16)), velocity=80, probability=0.8)
 			```
 		"""
 
+		if rng is None:
+			rng = self.rng
+
 		step_duration = self._pattern.length / step_count
-		beats = [i * step_duration for i in steps]
-		self.hit(pitch, beats=beats, velocity=velocity, duration=duration)
+
+		for i in steps:
+
+			if probability < 1.0 and rng.random() >= probability:
+				continue
+
+			beat = i * step_duration
+			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 
 	def fill (self, pitch: typing.Union[int, str], step: float, velocity: int = 100, duration: float = 0.25) -> None:
 
@@ -221,7 +230,7 @@ class PatternBuilder:
 
 		self._pattern.apply_swing(swing_ratio=ratio)
 
-	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = 100, duration: float = 0.1, dropout: float = 0.0) -> None:
+	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = 100, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""Generate a Euclidean rhythm and place hits at the resulting beat positions.
 
@@ -234,6 +243,7 @@ class PatternBuilder:
 			velocity: MIDI velocity 0-127 (default 100)
 			duration: Note duration in beats (default 0.1)
 			dropout: Probability 0.0-1.0 of randomly removing hits (default 0.0)
+			rng: Random number generator for dropout (default: ``self.rng``)
 
 		Example:
 			```python
@@ -245,11 +255,13 @@ class PatternBuilder:
 			```
 		"""
 
+		if rng is None:
+			rng = self.rng
+
 		steps = self._pattern.length * 4
 		sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=steps, pulses=pulses)
 
 		step_duration = self._pattern.length / steps
-		rng = random.Random()
 
 		for i, hit_value in enumerate(sequence):
 
@@ -263,17 +275,26 @@ class PatternBuilder:
 
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 
-	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = 100, duration: float = 0.1, dropout: float = 0.0) -> None:
+	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = 100, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
 
+		"""Generate a Bresenham rhythm and place hits at the resulting beat positions.
+
+		Parameters:
+			pitch: MIDI note number or drum note map key
+			pulses: Number of evenly-distributed hits
+			velocity: MIDI velocity 0-127 (default 100)
+			duration: Note duration in beats (default 0.1)
+			dropout: Probability 0.0-1.0 of randomly removing hits (default 0.0)
+			rng: Random number generator for dropout (default: ``self.rng``)
 		"""
-		Generate a Bresenham rhythm and place hits at the resulting beat positions.
-		"""
+
+		if rng is None:
+			rng = self.rng
 
 		steps = self._pattern.length * 4
 		sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=steps, pulses=pulses)
 
 		step_duration = self._pattern.length / steps
-		rng = random.Random()
 
 		for i, hit_value in enumerate(sequence):
 
@@ -294,7 +315,7 @@ class PatternBuilder:
 		"""
 
 		if rng is None:
-			rng = random.Random()
+			rng = self.rng
 
 		positions_to_remove = []
 

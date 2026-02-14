@@ -1,3 +1,5 @@
+import random
+
 import pytest
 
 import subsequence
@@ -280,3 +282,109 @@ def test_data_default_when_not_set (patch_midi: None) -> None:
 	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
 
 	assert composition.data.get("missing", 0.5) == 0.5
+
+
+# --- Seed and RNG ---
+
+
+def test_composition_seed_constructor (patch_midi: None) -> None:
+
+	"""Composition should store a seed set via the constructor."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=120, seed=42)
+
+	assert composition._seed == 42
+
+
+def test_composition_seed_method (patch_midi: None) -> None:
+
+	"""Composition.seed() should store the seed value."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=120)
+
+	assert composition._seed is None
+
+	composition.seed(99)
+
+	assert composition._seed == 99
+
+
+def test_builder_receives_rng_from_seed (patch_midi: None) -> None:
+
+	"""When a seed is set, pattern builders should receive a deterministic rng."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=120, seed=42)
+	received_rngs = []
+
+	def my_builder (p):
+		received_rngs.append(p.rng)
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	composition._pending_patterns.append(pending)
+
+	# Simulate what _run() does: derive child RNGs.
+	master = random.Random(42)
+	pattern_rng = random.Random(master.randint(0, 2 ** 63))
+
+	pattern = composition._build_pattern_from_pending(pending, pattern_rng)
+
+	assert len(received_rngs) == 1
+	assert isinstance(received_rngs[0], random.Random)
+
+
+def test_seed_produces_deterministic_patterns (patch_midi: None) -> None:
+
+	"""Two builds with the same seed should produce identical pattern content."""
+
+	def build_steps (seed: int) -> set:
+
+		composition = subsequence.Composition(device="Dummy MIDI", bpm=120, seed=seed)
+
+		def my_builder (p):
+			# Use p.rng to make a stochastic pattern.
+			p.fill(60, step=0.25, velocity=100)
+			p.dropout(probability=0.4)
+
+		pending = subsequence.composition._PendingPattern(
+			builder_fn = my_builder,
+			channel = 1,
+			length = 4,
+			drum_note_map = None,
+			reschedule_lookahead = 1
+		)
+
+		# Derive RNG the same way _run() does.
+		master = random.Random(seed)
+		pattern_rng = random.Random(master.randint(0, 2 ** 63))
+
+		pattern = composition._build_pattern_from_pending(pending, pattern_rng)
+
+		return set(pattern.steps.keys())
+
+	run_1 = build_steps(42)
+	run_2 = build_steps(42)
+	run_3 = build_steps(99)
+
+	assert run_1 == run_2
+	assert run_1 != run_3
+
+
+def test_no_seed_builder_has_rng () -> None:
+
+	"""Even without a seed, the builder should have an rng attribute."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0
+	)
+
+	assert isinstance(builder.rng, random.Random)

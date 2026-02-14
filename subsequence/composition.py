@@ -464,7 +464,7 @@ class Composition:
 	Top-level composition object that owns the sequencer, harmonic state, and pattern registry.
 	"""
 
-	def __init__ (self, device: str, bpm: int = 120, key: typing.Optional[str] = None) -> None:
+	def __init__ (self, device: str, bpm: int = 120, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> None:
 
 		"""Initialize a composition with MIDI device, tempo, and optional key.
 
@@ -472,13 +472,16 @@ class Composition:
 			device: MIDI device name (e.g., `"Device Name:Port 1 16:0"`)
 			bpm: Tempo in beats per minute (default 120)
 			key: Root key name (e.g., `"C"`, `"F#"`, `"Bb"`). Required if using `harmony()`.
+			seed: Optional random seed. When set, all randomness (chord progressions, form
+				transitions, pattern builder functions) becomes deterministic and repeatable.
 
 		Example:
 			```python
 			composition = subsequence.Composition(
 				device="Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0",
 				bpm=125,
-				key="E"
+				key="E",
+				seed=42
 			)
 			```
 		"""
@@ -486,6 +489,7 @@ class Composition:
 		self.device = device
 		self.bpm = bpm
 		self.key = key
+		self._seed: typing.Optional[int] = seed
 
 		self._sequencer = subsequence.sequencer.Sequencer(
 			midi_device_name = device,
@@ -554,6 +558,26 @@ class Composition:
 		"""
 
 		self._sequencer.on_event(event_name, callback)
+
+	def seed (self, value: int) -> None:
+
+		"""Set a random seed for deterministic, repeatable output.
+
+		When set, all randomness — chord progressions, form transitions, and pattern
+		builder functions — produces the same results on every run. Pattern builders
+		access the seeded RNG via ``p.rng``.
+
+		Parameters:
+			value: Integer seed value
+
+		Example:
+			```python
+			composition.seed(42)
+			composition.play()  # same output every time
+			```
+		"""
+
+		self._seed = value
 
 	def display (self, enabled: bool = True) -> None:
 
@@ -736,6 +760,23 @@ class Composition:
 		Async entry point that schedules all patterns and runs the sequencer.
 		"""
 
+		# Derive child RNGs from the master seed so each component gets
+		# an independent, deterministic stream.  When no seed is set,
+		# each component creates its own unseeded RNG (existing behaviour).
+		self._pattern_rngs: typing.List[random.Random] = []
+
+		if self._seed is not None:
+			master = random.Random(self._seed)
+
+			if self._harmonic_state is not None:
+				self._harmonic_state.rng = random.Random(master.randint(0, 2 ** 63))
+
+			if self._form_state is not None:
+				self._form_state._rng = random.Random(master.randint(0, 2 ** 63))
+
+			for _ in self._pending_patterns:
+				self._pattern_rngs.append(random.Random(master.randint(0, 2 ** 63)))
+
 		if self._harmonic_state is not None and self._harmony_cycle_beats is not None:
 
 			await schedule_harmonic_clock(
@@ -776,13 +817,12 @@ class Composition:
 			)
 
 		# Build Pattern objects from pending registrations.
-		# The actual _DecoratorPattern will be implemented in Phase 2.
-		# For now, we create simple patterns from the builder functions.
 		patterns: typing.List[subsequence.pattern.Pattern] = []
 
-		for pending in self._pending_patterns:
+		for i, pending in enumerate(self._pending_patterns):
 
-			pattern = self._build_pattern_from_pending(pending)
+			pattern_rng = self._pattern_rngs[i] if i < len(self._pattern_rngs) else None
+			pattern = self._build_pattern_from_pending(pending, pattern_rng)
 			patterns.append(pattern)
 
 		await schedule_patterns(
@@ -800,7 +840,7 @@ class Composition:
 		if self._display is not None:
 			self._display.stop()
 
-	def _build_pattern_from_pending (self, pending: _PendingPattern) -> subsequence.pattern.Pattern:
+	def _build_pattern_from_pending (self, pending: _PendingPattern, rng: typing.Optional[random.Random] = None) -> subsequence.pattern.Pattern:
 
 		"""
 		Create a Pattern from a pending registration using a temporary subclass.
@@ -814,7 +854,7 @@ class Composition:
 			Pattern subclass that delegates to a builder function on each reschedule.
 			"""
 
-			def __init__ (self, pending: _PendingPattern) -> None:
+			def __init__ (self, pending: _PendingPattern, pattern_rng: typing.Optional[random.Random] = None) -> None:
 
 				"""
 				Initialize the decorator pattern from pending registration details.
@@ -830,6 +870,7 @@ class Composition:
 				self._drum_note_map = pending.drum_note_map
 				self._wants_chord = "chord" in inspect.signature(pending.builder_fn).parameters
 				self._cycle_count = 0
+				self._rng = pattern_rng
 
 				self._rebuild()
 
@@ -851,7 +892,8 @@ class Composition:
 					cycle = current_cycle,
 					drum_note_map = self._drum_note_map,
 					section = composition_ref._form_state.get_section_info() if composition_ref._form_state else None,
-					bar = composition_ref._builder_bar
+					bar = composition_ref._builder_bar,
+					rng = self._rng
 				)
 
 				if self._wants_chord and composition_ref._harmonic_state is not None:
@@ -871,4 +913,4 @@ class Composition:
 
 				self._rebuild()
 
-		return _DecoratorPattern(pending)
+		return _DecoratorPattern(pending, rng)

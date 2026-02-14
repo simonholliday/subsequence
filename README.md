@@ -10,7 +10,9 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 - **Harmonic intelligence.** Chord progressions are driven by weighted transition graphs (Markov chains with configurable gravity). Three built-in harmonic palettes — `"diatonic_major"`, `"turnaround"`, and `"dark_minor"` — or subclass `ChordGraph` to create your own. Patterns that accept a `chord` parameter automatically receive the current chord.
 - **Compositional form.** Define the large-scale structure — intro, verse, chorus, bridge — as a weighted transition graph, a linear list, or a generator. Sections follow probabilistic edges: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior.
 - **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
-- **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping via van der Corput sequences, and dropout for controlled randomness.
+- **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping via van der Corput sequences, and dropout for controlled randomness. Per-step probability on `hit_steps()` for Elektron-style conditional triggers.
+- **Stochastic primitives.** Weighted random choice, no-repeat shuffle, random walks, and probability gates — controlled randomness that sounds intentional, not arbitrary. All available in `subsequence.sequence_utils`.
+- **Deterministic seeding.** Set `seed=42` on your Composition and every random decision — chord progressions, form transitions, pattern randomness — becomes repeatable. Run the same code twice, get the same music. Pattern builders access the seeded RNG via `p.rng`.
 - **Polyrhythms** emerge naturally by running patterns with different lengths.
 - **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Sync functions run in a thread pool automatically. Store results in `composition.data` and read them from any pattern — connect music to APIs, sensors, files, or anything Python can reach.
 - **Terminal visualization.** A persistent status line showing the current bar, section, chord, BPM, and key. Enabled with `composition.display()`. Log messages scroll cleanly above it without disruption.
@@ -34,8 +36,6 @@ python examples/demo.py
 The `Composition` class is the main entry point. Define your MIDI setup, create a composition, add patterns, and play:
 
 ```python
-import random
-
 import subsequence
 import subsequence.sequence_utils
 
@@ -43,7 +43,7 @@ MIDI_DEVICE = "Your MIDI Device:Port"
 DRUMS_MIDI_CHANNEL = 9
 DRUM_NOTE_MAP = {"kick": 36, "snare": 38, "hh_closed": 42}
 
-composition = subsequence.Composition(device=MIDI_DEVICE, bpm=125, key="E")
+composition = subsequence.Composition(device=MIDI_DEVICE, bpm=125, key="E", seed=42)
 composition.harmony(style="dark_minor", cycle_beats=4, dominant_7th=True, gravity=0.8)
 
 # Schedule a repeating task — sync functions run in a thread pool automatically.
@@ -57,12 +57,13 @@ def drums (p):
     # Fixed four-on-the-floor kick on a 16-step grid.
     p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
 
-    # Use external data to modulate pattern — defaults handle missing values gracefully.
-    density = composition.data.get("value", 0.5)
+    # Hi-hats with per-step probability — some steps randomly drop out.
+    p.hit_steps("hh_closed", list(range(16)), velocity=80, probability=0.8)
 
     # Euclidean snare with random density, rolled +4 for backbeat offset.
+    # p.rng is seeded — same output every run when composition has a seed.
     if p.cycle > 3:
-        snare_seq = subsequence.sequence_utils.generate_euclidean_sequence(16, random.randint(1, 6))
+        snare_seq = subsequence.sequence_utils.generate_euclidean_sequence(16, p.rng.randint(1, 6))
         snare_steps = subsequence.sequence_utils.sequence_to_indices(snare_seq)
         p.hit_steps("snare", subsequence.sequence_utils.roll(snare_steps, 4, 16), velocity=100)
 
@@ -146,6 +147,55 @@ composition.form(my_form())
 
 `p.bar` is always available (regardless of form) and tracks the global bar count since playback started.
 
+## Seed and deterministic randomness
+
+Set a seed to make all random behavior repeatable:
+
+```python
+composition = subsequence.Composition(device=MIDI_DEVICE, bpm=125, key="E", seed=42)
+# OR
+composition.seed(42)
+```
+
+When a seed is set, chord progressions, form transitions, and all pattern randomness produce identical output on every run. Pattern builders access the seeded RNG via `p.rng`:
+
+```python
+@composition.pattern(channel=9, length=4, drum_note_map=DRUM_NOTE_MAP)
+def drums (p):
+    # p.rng replaces random.randint/random.choice — deterministic when seeded.
+    density = p.rng.choice([3, 5, 7])
+    p.euclidean("kick", pulses=density)
+
+    # Per-step probability also uses p.rng by default.
+    p.hit_steps("hh_closed", list(range(16)), velocity=80, probability=0.7)
+```
+
+`p.rng` is always available, even without a seed — in that case it's a fresh unseeded `random.Random`.
+
+### Stochastic utilities
+
+`subsequence.sequence_utils` provides structured randomness primitives:
+
+| Function | Description |
+|----------|-------------|
+| `weighted_choice(options, rng)` | Pick from `(value, weight)` pairs — biased selection |
+| `shuffled_choices(pool, n, rng)` | N items with no adjacent repeats (Max/MSP `urn`) |
+| `random_walk(n, low, high, step, rng)` | Values that drift by small steps (Max/MSP `drunk`) |
+| `probability_gate(sequence, probability, rng)` | Filter a binary sequence by probability |
+
+All require an explicit `rng` parameter — use `p.rng` in pattern builders:
+
+```python
+# Wandering hi-hat velocity
+walk = subsequence.sequence_utils.random_walk(16, low=50, high=110, step=15, rng=p.rng)
+for i, vel in enumerate(walk):
+    p.hit_steps("hh_closed", [i], velocity=vel)
+
+# Weighted density choice
+density = subsequence.sequence_utils.weighted_choice([(3, 0.5), (5, 0.3), (7, 0.2)], p.rng)
+p.euclidean("snare", pulses=density)
+```
+
 ## Terminal display
 
 Enable a live status line showing the current bar, section, chord, BPM, and key with a single call:
@@ -191,8 +241,6 @@ Planned features, roughly in order of priority.
 ### High priority
 
 - **Hot-reload / live editing.** Watch the composition file and reload patterns without stopping the clock. Edit code, hear changes immediately.
-- **Probability per step.** `p.hit_steps("snare", [4, 12], probability=0.7)` — the baseline generative expectation, inspired by Elektron's conditional triggers.
-- **Stochastic primitives.** Weighted random choice, no-repeat random, random walks, and probability gates — controlled randomness that sounds intentional, not arbitrary.
 - **Example library.** A handful of short compositions in different styles (techno, ambient, jazz, minimal) so musicians can hear what the tool can do before investing time.
 
 ### Medium priority
