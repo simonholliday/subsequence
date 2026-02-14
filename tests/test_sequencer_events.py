@@ -9,7 +9,7 @@ async def test_reschedule_event_precedes_pattern_rebuild (patch_midi: None) -> N
 
 	"""The reschedule_pulse event should fire before pattern on_reschedule."""
 
-	sequencer = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
 	order: list[str] = []
 
 	def on_reschedule_pulse (pulse: int, patterns: list[subsequence.pattern.Pattern]) -> None:
@@ -52,7 +52,7 @@ async def test_repeating_callback_fires_without_patterns (patch_midi: None) -> N
 
 	"""Repeating callbacks should fire even when no patterns are scheduled."""
 
-	sequencer = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
 	fired: list[int] = []
 
 	def on_tick (pulse: int) -> None:
@@ -74,7 +74,7 @@ async def test_callback_precedes_reschedule_event (patch_midi: None) -> None:
 
 	"""Repeating callbacks should run before reschedule events and pattern rebuilds."""
 
-	sequencer = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
 	order: list[str] = []
 
 	def on_tick (pulse: int) -> None:
@@ -123,7 +123,7 @@ async def test_dynamic_length_change_on_reschedule (patch_midi: None) -> None:
 
 	"""When a pattern changes its length in on_reschedule, the sequencer should use the new length for the next cycle."""
 
-	sequencer = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
 
 	class GrowingPattern (subsequence.pattern.Pattern):
 

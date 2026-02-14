@@ -465,12 +465,12 @@ class Composition:
 	Top-level composition object that owns the sequencer, harmonic state, and pattern registry.
 	"""
 
-	def __init__ (self, device: str, bpm: int = 120, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> None:
+	def __init__ (self, output_device: str, bpm: int = 120, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> None:
 
-		"""Initialize a composition with MIDI device, tempo, and optional key.
+		"""Initialize a composition with MIDI output device, tempo, and optional key.
 
 		Parameters:
-			device: MIDI device name (e.g., `"Device Name:Port 1 16:0"`)
+			output_device: MIDI output device name (e.g., `"Device Name:Port 1 16:0"`)
 			bpm: Tempo in beats per minute (default 120)
 			key: Root key name (e.g., `"C"`, `"F#"`, `"Bb"`). Required if using `harmony()`.
 			seed: Optional random seed. When set, all randomness (chord progressions, form
@@ -479,7 +479,7 @@ class Composition:
 		Example:
 			```python
 			composition = subsequence.Composition(
-				device="Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0",
+				output_device="Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0",
 				bpm=125,
 				key="E",
 				seed=42
@@ -487,13 +487,13 @@ class Composition:
 			```
 		"""
 
-		self.device = device
+		self.output_device = output_device
 		self.bpm = bpm
 		self.key = key
 		self._seed: typing.Optional[int] = seed
 
 		self._sequencer = subsequence.sequencer.Sequencer(
-			midi_device_name = device,
+			output_device_name = output_device,
 			initial_bpm = bpm
 		)
 
@@ -508,6 +508,8 @@ class Composition:
 		self._live_server: typing.Optional[subsequence.live_server.LiveServer] = None
 		self._is_live: bool = False
 		self._running_patterns: typing.Dict[str, typing.Any] = {}
+		self._input_device: typing.Optional[str] = None
+		self._clock_follow: bool = False
 		self.data: typing.Dict[str, typing.Any] = {}
 
 	def harmony (
@@ -605,6 +607,34 @@ class Composition:
 		else:
 			self._display = None
 
+	def midi_input (self, device: str, clock_follow: bool = False) -> None:
+
+		"""Configure MIDI input for receiving external clock and transport control.
+
+		When ``clock_follow`` is enabled, the sequencer follows incoming MIDI
+		clock ticks instead of using its own internal clock. The BPM set in
+		the constructor is ignored — tempo is determined by the external
+		source. MIDI start, stop, and continue messages control transport.
+
+		When ``clock_follow`` is disabled (default), the input port is opened
+		but no clock or transport messages are acted on.
+
+		Parameters:
+			device: MIDI input device name (e.g., ``"Device Name:Port 1 16:0"``)
+			clock_follow: Follow external MIDI clock for timing (default False)
+
+		Example:
+			```python
+			composition.midi_input(
+				device="Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0",
+				clock_follow=True
+			)
+			```
+		"""
+
+		self._input_device = device
+		self._clock_follow = clock_follow
+
 	def live (self, port: int = 5555) -> None:
 
 		"""Enable the live coding server for runtime interaction.
@@ -635,6 +665,9 @@ class Composition:
 
 		"""Change the tempo while the composition is playing.
 
+		When ``clock_follow`` is enabled, BPM is controlled by the external clock
+		source and this method has no effect.
+
 		Parameters:
 			bpm: New tempo in beats per minute
 
@@ -645,7 +678,9 @@ class Composition:
 		"""
 
 		self._sequencer.set_bpm(bpm)
-		self.bpm = bpm
+
+		if not self._clock_follow:
+			self.bpm = bpm
 
 	def live_info (self) -> typing.Dict[str, typing.Any]:
 
@@ -689,12 +724,14 @@ class Composition:
 			})
 
 		return {
-			"bpm": self.bpm,
+			"bpm": self._sequencer.current_bpm if self._clock_follow else self.bpm,
 			"key": self.key,
 			"bar": self._builder_bar,
 			"section": section_info,
 			"chord": chord_name,
 			"patterns": pattern_list,
+			"input_device": self._input_device,
+			"clock_follow": self._clock_follow,
 			"data": self.data
 		}
 
@@ -971,6 +1008,11 @@ class Composition:
 		"""
 		Async entry point that schedules all patterns and runs the sequencer.
 		"""
+
+		# Pass MIDI input configuration to the sequencer before start.
+		if self._input_device is not None:
+			self._sequencer.input_device_name = self._input_device
+			self._sequencer.clock_follow = self._clock_follow
 
 		# Derive child RNGs from the master seed so each component gets
 		# an independent, deterministic stream.  When no seed is set,

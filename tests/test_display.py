@@ -13,7 +13,7 @@ def _make_composition (patch_midi: None) -> subsequence.Composition:
 
 	"""Create a minimal composition for display testing."""
 
-	return subsequence.Composition(device="Dummy MIDI", bpm=125, key="E")
+	return subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="E")
 
 
 def test_format_status_minimal (patch_midi: None) -> None:
@@ -89,7 +89,7 @@ def test_format_status_no_key (patch_midi: None) -> None:
 
 	"""Status line should omit key when none is configured."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120)
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 	display = subsequence.display.Display(comp)
 
 	status = display._format_status()

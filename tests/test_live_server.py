@@ -40,7 +40,7 @@ def composition (patch_midi: None) -> subsequence.Composition:
 
 	"""Create a composition with a simple pattern for testing."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120, key="C")
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 	return comp
 
 
@@ -176,7 +176,7 @@ def test_live_creates_server (patch_midi: None) -> None:
 
 	"""Calling live() should create a LiveServer and set _is_live."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120)
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 	comp.live(port=5556)
 
 	assert comp._live_server is not None
@@ -187,7 +187,7 @@ def test_set_bpm (patch_midi: None) -> None:
 
 	"""set_bpm() should update both the sequencer and the composition."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120)
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 	comp.set_bpm(140)
 
 	assert comp.bpm == 140
@@ -220,7 +220,7 @@ def test_live_info (patch_midi: None) -> None:
 
 	"""live_info() should return a dict with the expected keys."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=125, key="E")
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="E")
 
 	info = comp.live_info()
 
@@ -237,7 +237,7 @@ def test_live_info_with_data (patch_midi: None) -> None:
 
 	"""live_info() should include the composition.data dict."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120, key="C")
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 	comp.data["intensity"] = 0.8
 
 	info = comp.live_info()
@@ -252,7 +252,7 @@ def test_mute_unmute (patch_midi: None) -> None:
 
 	"""Muting a pattern should produce empty steps; unmuting should restore them."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120, key="C")
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
 	def my_builder (p):
 		p.note(60, beat=0, velocity=100)
@@ -295,7 +295,7 @@ def test_mute_unknown_pattern_raises (patch_midi: None) -> None:
 
 	"""Muting a non-existent pattern should raise ValueError."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120, key="C")
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
 	with pytest.raises(ValueError, match="not found"):
 		comp.mute("nonexistent")
@@ -305,7 +305,7 @@ def test_unmute_unknown_pattern_raises (patch_midi: None) -> None:
 
 	"""Unmuting a non-existent pattern should raise ValueError."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120, key="C")
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
 	with pytest.raises(ValueError, match="not found"):
 		comp.unmute("nonexistent")
@@ -315,7 +315,7 @@ def test_mute_preserves_cycle_count (patch_midi: None) -> None:
 
 	"""Muting should keep advancing the cycle count even though no notes are produced."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120, key="C")
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
 	def my_builder (p):
 		p.note(60, beat=0, velocity=100)
@@ -349,7 +349,7 @@ def test_pattern_hot_swap (patch_midi: None) -> None:
 
 	"""During a live session, re-decorating a pattern should replace its builder function."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120, key="C")
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
 	def my_pattern (p):
 		p.note(60, beat=0, velocity=100)
@@ -388,7 +388,7 @@ def test_hot_swap_updates_wants_chord (patch_midi: None) -> None:
 
 	"""Hot-swapping should update _wants_chord when the new builder's signature differs."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120, key="C")
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
 	def my_pattern (p):
 		p.note(60, beat=0, velocity=100)
@@ -422,7 +422,7 @@ def test_live_info_includes_patterns (patch_midi: None) -> None:
 
 	"""live_info() should list running patterns with their metadata."""
 
-	comp = subsequence.Composition(device="Dummy MIDI", bpm=120, key="C")
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
 	def drums (p):
 		p.note(36, beat=0, velocity=127)

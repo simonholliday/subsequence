@@ -184,7 +184,7 @@ def test_composition_form_registers_state (patch_midi: None) -> None:
 
 	"""Calling form() should store a FormState on the composition."""
 
-	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
 
 	composition.form([("intro", 4), ("verse", 8)])
 
@@ -196,7 +196,7 @@ def test_section_injected_into_builder (patch_midi: None) -> None:
 
 	"""Builder functions should receive section info via p.section when form is configured."""
 
-	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
 
 	composition.form([("intro", 4), ("verse", 8)])
 
@@ -225,7 +225,7 @@ def test_no_form_section_is_none (patch_midi: None) -> None:
 
 	"""Without form(), p.section should be None."""
 
-	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
 
 	received_sections = []
 
@@ -249,7 +249,7 @@ def test_builder_bar_available (patch_midi: None) -> None:
 
 	"""Builder functions should have access to p.bar (global bar count)."""
 
-	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
 
 	received_bars = []
 
@@ -495,7 +495,7 @@ def test_composition_form_graph_registers_state (patch_midi: None) -> None:
 
 	"""Calling form() with a dict should create a graph-mode FormState."""
 
-	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
 
 	composition.form({
 		"intro": (4, [("verse", 1)]),

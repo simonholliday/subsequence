@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 # These values are specific to YOUR studio. Change them to match your
 # MIDI interface and instrument channel assignments.
 
-MIDI_DEVICE = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
+MIDI_OUTPUT_DEVICE = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
 
 DRUMS_MIDI_CHANNEL = 9       # Channel 10 in 1-indexed MIDI (standard drums)
 EP_MIDI_CHANNEL = 11          # Electric piano / pad synth
@@ -436,7 +436,7 @@ async def main () -> None:
 	# ─── Sequencer ───────────────────────────────────────────────────
 
 	seq = subsequence.sequencer.Sequencer(
-		midi_device_name = MIDI_DEVICE,
+		output_device_name = MIDI_OUTPUT_DEVICE,
 		initial_bpm = 125
 	)
 

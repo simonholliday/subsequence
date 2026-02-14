@@ -13,6 +13,7 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
 - [Terminal display](#terminal-display)
 - [Live coding](#live-coding)
+- [MIDI input & external clock](#midi-input--external-clock)
 - [Demo details](#demo-details)
 - [Extra utilities](#extra-utilities)
 - [Feature Roadmap](#feature-roadmap)
@@ -33,6 +34,7 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 - **Two API levels.** The Composition API is high-level and declarative — most musicians will never need anything else. The Direct Pattern API gives power users full control over `Pattern` subclasses, `HarmonicState`, and async scheduling.
 - **Pattern transforms.** Reverse, double-time, half-time, shift, transpose, and invert — all as post-build methods on the pattern builder. `p.every(4, lambda p: p.reverse())` applies a transform every 4th cycle. `composition.layer()` merges multiple builder functions into one pattern. Place notes first, then reshape them.
 - **Live coding.** Modify a running composition without stopping playback. A TCP eval server accepts Python code from the bundled REPL client, an editor, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state — all while the music plays. Enable with `composition.live()`.
+- **External clock follower.** Sync to an external MIDI clock from a DAW, drum machine, or hardware sequencer. Transport messages (start, stop, continue) are respected automatically. Enable with `composition.midi_input(device, clock_follow=True)`.
 - **Events** let you react to sequencer milestones (`"bar"`, `"start"`, `"stop"`) via `composition.on_event()`.
 - **Pure MIDI.** No audio synthesis, no dependencies beyond `mido` and `python-rtmidi`. Route MIDI to any hardware or software synth.
 
@@ -55,11 +57,11 @@ The `Composition` class is the main entry point. Define your MIDI setup, create 
 import subsequence
 import subsequence.sequence_utils
 
-MIDI_DEVICE = "Your MIDI Device:Port"
+MIDI_OUTPUT_DEVICE = "Your MIDI Device:Port"
 DRUMS_MIDI_CHANNEL = 9
 DRUM_NOTE_MAP = {"kick": 36, "snare": 38, "hh_closed": 42}
 
-composition = subsequence.Composition(device=MIDI_DEVICE, bpm=125, key="E", seed=42)
+composition = subsequence.Composition(output_device=MIDI_OUTPUT_DEVICE, bpm=125, key="E", seed=42)
 composition.harmony(style="dark_minor", cycle_beats=4, dominant_7th=True, gravity=0.8)
 
 # Schedule a repeating task — sync functions run in a thread pool automatically.
@@ -168,7 +170,7 @@ composition.form(my_form())
 Set a seed to make all random behavior repeatable:
 
 ```python
-composition = subsequence.Composition(device=MIDI_DEVICE, bpm=125, key="E", seed=42)
+composition = subsequence.Composition(output_device=MIDI_OUTPUT_DEVICE, bpm=125, key="E", seed=42)
 # OR
 composition.seed(42)
 ```
@@ -322,6 +324,46 @@ python -c "import socket; s=socket.socket(); s.connect(('127.0.0.1',5555)); s.se
 
 All code is validated as syntactically correct Python before execution. If you send a typo or malformed code, the server returns a `SyntaxError` traceback — nothing is executed, and the running composition is never affected.
 
+## MIDI input & external clock
+
+Subsequence can follow an external MIDI clock instead of running its own. This lets you sync with a DAW, drum machine, or any device that sends MIDI clock. Transport messages (start, stop, continue) are respected automatically.
+
+### Enable clock following
+
+```python
+MIDI_OUTPUT_DEVICE = "Your MIDI Device:Port"
+MIDI_INPUT_DEVICE = "Your MIDI Device:Port"  # Can be the same device
+
+composition = subsequence.Composition(output_device=MIDI_OUTPUT_DEVICE, bpm=120, key="E")
+
+# Follow external clock and respect transport (start/stop/continue)
+composition.midi_input(device=MIDI_INPUT_DEVICE, clock_follow=True)
+
+composition.play()
+```
+
+When `clock_follow=True`:
+- The sequencer waits for a MIDI **start** or **continue** message before playing
+- Each incoming MIDI **clock** tick advances the sequencer by one pulse (24 ticks = 1 beat, matching the MIDI standard)
+- A MIDI **stop** message halts the sequencer
+- A MIDI **start** message resets to pulse 0 and begins counting
+- A MIDI **continue** message resumes from the current position
+- BPM is estimated from incoming tick intervals (for display only)
+- `set_bpm()` has no effect — tempo is determined by the external clock
+
+Without `clock_follow` (the default), `midi_input()` opens the input port but does not act on clock or transport messages. This prepares for future MIDI CC mapping.
+
+### Direct API
+
+```python
+seq = subsequence.sequencer.Sequencer(
+    output_device_name="...",
+    initial_bpm=120,
+    input_device_name="...",
+    clock_follow=True
+)
+```
+
 ## Demo details
 
 ### demo.py — Dark minor composition with form
@@ -358,8 +400,8 @@ Planned features, roughly in order of priority.
 ### Medium priority
 
 - **Mini-notation.** An optional string shorthand (e.g., `"x . x [x x]"`) that compiles to `hit_steps` calls for quick rhythm entry.
-- **MIDI input / CC mapping.** Map a hardware knob to `composition.data` so Subsequence feels like a hybrid hardware/software instrument.
-- **Ableton Link / MIDI clock sync.** Sync with DAWs and other devices for integration into existing studio setups.
+- **MIDI CC mapping.** Map a hardware knob to `composition.data` so Subsequence feels like a hybrid hardware/software instrument. (MIDI input port is already supported via `composition.midi_input()`.)
+- **Ableton Link.** Peer-to-peer network sync with DAWs and other Link-enabled devices.
 
 ### Future ideas
 

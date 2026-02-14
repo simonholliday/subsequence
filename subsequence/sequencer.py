@@ -85,27 +85,47 @@ class Sequencer:
 	Plays any scheduled patterns with a rock-solid stable clock.
 	"""
 
-	def __init__ (self, midi_device_name: str, initial_bpm: int = 125) -> None:
+	def __init__ (
+		self,
+		output_device_name: str,
+		initial_bpm: int = 125,
+		input_device_name: typing.Optional[str] = None,
+		clock_follow: bool = False
+	) -> None:
 
-		"""
-		Initialize the sequencer with a MIDI device and initial BPM.
+		"""Initialize the sequencer with MIDI devices and initial BPM.
+
+		Parameters:
+			output_device_name: MIDI output device name
+			initial_bpm: Tempo in BPM (ignored when clock_follow is True)
+			input_device_name: Optional MIDI input device name for clock/transport
+			clock_follow: When True, follow external MIDI clock instead of internal clock
 		"""
 
-		self.midi_device_name = midi_device_name
+		self.output_device_name = output_device_name
+		self.input_device_name = input_device_name
+		self.clock_follow = clock_follow
 		self.pulses_per_beat = subsequence.constants.MIDI_QUARTER_NOTE
-		
+
 		# Timing variables
 		self.current_bpm = 0
 		self.seconds_per_beat = 0.0
 		self.seconds_per_pulse = 0.0
-		
+		self.running = False
+
 		self.set_bpm(initial_bpm)
 
 		self.midi_out = None
-		self._init_midi()
+		self._init_midi_output()
+
+		# MIDI input state
+		self.midi_in: typing.Any = None
+		self._midi_input_queue: typing.Optional[asyncio.Queue] = None
+		self._input_loop: typing.Optional[asyncio.AbstractEventLoop] = None
+		self._clock_tick_times: typing.List[float] = []
+		self._waiting_for_start: bool = False
 
 		self.event_queue: typing.List[MidiEvent] = []
-		self.running = False
 		self.task = None
 		self.start_time = 0.0
 		self.pulse_count = 0
@@ -128,17 +148,23 @@ class Sequencer:
 
 	def set_bpm (self, bpm: int) -> None:
 
+		"""Set the tempo and recalculate timing constants.
+
+		When clock_follow is enabled, BPM is determined by the external clock
+		source and this method has no effect.
 		"""
-		Set the tempo and recalculate timing constants.
-		"""
-		
+
+		if self.clock_follow and self.running:
+			logger.info("BPM is controlled by external clock — set_bpm() ignored")
+			return
+
 		if bpm <= 0:
 			raise ValueError("BPM must be positive")
-			
+
 		self.current_bpm = bpm
 		self.seconds_per_beat = 60.0 / self.current_bpm
 		self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
-		
+
 		logger.info(f"BPM set to {self.current_bpm}")
 
 
@@ -160,7 +186,7 @@ class Sequencer:
 		self.events.on(event_name, callback)
 
 
-	def _init_midi (self) -> None:
+	def _init_midi_output (self) -> None:
 
 		"""
 		Initialize the MIDI output port.
@@ -172,12 +198,12 @@ class Sequencer:
 
 			logger.info(f"Available MIDI outputs: {outputs}")
 
-			if self.midi_device_name in outputs:
-				self.midi_out = mido.open_output(self.midi_device_name)
-				logger.info(f"Opened MIDI output: {self.midi_device_name}")
+			if self.output_device_name in outputs:
+				self.midi_out = mido.open_output(self.output_device_name)
+				logger.info(f"Opened MIDI output: {self.output_device_name}")
 
 			else:
-				logger.warning(f"MIDI device '{self.midi_device_name}' not found.")
+				logger.warning(f"MIDI output device '{self.output_device_name}' not found.")
 
 				if outputs:
 					self.midi_out = mido.open_output(outputs[0])
@@ -185,6 +211,72 @@ class Sequencer:
 
 		except Exception as e:
 			logger.error(f"Failed to open MIDI output: {e}")
+
+
+	def _init_midi_input (self) -> None:
+
+		"""Initialize the MIDI input port with a callback that bridges to the asyncio queue."""
+
+		if self.input_device_name is None:
+			return
+
+		try:
+
+			inputs = mido.get_input_names()
+
+			logger.info(f"Available MIDI inputs: {inputs}")
+
+			target = self.input_device_name
+
+			if target not in inputs:
+				logger.warning(f"MIDI input device '{target}' not found.")
+
+				if inputs:
+					target = inputs[0]
+					logger.warning(f"Fallback to: {target}")
+				else:
+					return
+
+			self.midi_in = mido.open_input(target, callback=self._on_midi_input)
+			logger.info(f"Opened MIDI input: {target}")
+
+		except Exception as e:
+			logger.error(f"Failed to open MIDI input: {e}")
+
+
+	def _on_midi_input (self, message: typing.Any) -> None:
+
+		"""Handle incoming MIDI messages from the input port callback thread.
+
+		This runs in mido's callback thread. Messages are forwarded to the
+		asyncio event loop via call_soon_threadsafe.
+		"""
+
+		if self._midi_input_queue is None or self._input_loop is None:
+			return
+
+		self._input_loop.call_soon_threadsafe(
+			self._midi_input_queue.put_nowait, message
+		)
+
+
+	def _estimate_bpm (self, tick_time: float) -> None:
+
+		"""Estimate BPM from recent MIDI clock tick timestamps for display purposes."""
+
+		self._clock_tick_times.append(tick_time)
+
+		# Keep last 48 ticks (2 beats) for averaging.
+		if len(self._clock_tick_times) > 48:
+			self._clock_tick_times = self._clock_tick_times[-48:]
+
+		if len(self._clock_tick_times) >= 24:
+			# Average interval over last 24 ticks (1 beat).
+			recent = self._clock_tick_times[-24:]
+			interval = (recent[-1] - recent[0]) / (len(recent) - 1)
+
+			if interval > 0:
+				self.current_bpm = int(round(60.0 / (interval * self.pulses_per_beat)))
 
 
 	def _get_schedule_timing (self, length_beats: float, lookahead_beats: float) -> typing.Tuple[int, int]:
@@ -326,13 +418,22 @@ class Sequencer:
 
 	async def start (self) -> None:
 
-		"""
-		Start the sequencer playback in a separate asyncio task.
+		"""Start the sequencer playback in a separate asyncio task.
+
+		When an input device is configured, the MIDI input port is opened here
+		(after the event loop is running) so that call_soon_threadsafe works.
 		"""
 
 		if self.running:
 			return
 
+		# Set up MIDI input queue before opening the port.
+		if self.input_device_name is not None:
+			self._input_loop = asyncio.get_running_loop()
+			self._midi_input_queue = asyncio.Queue()
+			self._init_midi_input()
+
+		self._waiting_for_start = self.clock_follow
 		self.running = True
 		self.task = asyncio.create_task(self._run_loop())
 
@@ -359,6 +460,13 @@ class Sequencer:
 		if self.midi_out:
 			self.midi_out.close()
 
+		if self.midi_in:
+			self.midi_in.close()
+			self.midi_in = None
+
+		self._midi_input_queue = None
+		self._input_loop = None
+
 		logger.info("Sequencer stopped")
 
 		async with self.pattern_lock:
@@ -376,15 +484,23 @@ class Sequencer:
 
 	async def _run_loop (self) -> None:
 
-		"""
-		Main playback loop running as an asyncio task.
-		"""
+		"""Main playback loop — delegates to internal or external clock mode."""
 
 		self.start_time = time.perf_counter()
 		self.pulse_count = 0
 		self.current_bar = -1
 
 		pulses_per_bar = 4 * self.pulses_per_beat  # 4/4 time assumed throughout
+
+		if self.clock_follow and self._midi_input_queue is not None:
+			await self._run_loop_external_clock(pulses_per_bar)
+		else:
+			await self._run_loop_internal_clock(pulses_per_bar)
+
+
+	async def _run_loop_internal_clock (self, pulses_per_bar: int) -> None:
+
+		"""Playback loop driven by the internal wall clock."""
 
 		while self.running:
 
@@ -406,7 +522,7 @@ class Sequencer:
 				await self._maybe_reschedule_patterns(self.pulse_count)
 				await self._process_pulse(self.pulse_count)
 				self.pulse_count += 1
-			
+
 			# Check if queue is empty and we are past the last event
 			async with self.queue_lock:
 				if not self.event_queue and not self.active_notes:
@@ -419,6 +535,60 @@ class Sequencer:
 
 			if sleep_time > 0:
 				await asyncio.sleep(max(0, sleep_time))
+
+
+	async def _run_loop_external_clock (self, pulses_per_bar: int) -> None:
+
+		"""Playback loop driven by incoming MIDI clock messages.
+
+		Each MIDI ``clock`` tick advances exactly one pulse (24 ppqn = internal ppqn).
+		Transport messages (``start``, ``stop``, ``continue``) control sequencer state.
+		The loop waits for a ``start`` or ``continue`` before processing clock ticks.
+		"""
+
+		while self.running:
+
+			try:
+				message = await asyncio.wait_for(
+					self._midi_input_queue.get(), timeout=2.0
+				)
+			except asyncio.TimeoutError:
+				continue
+
+			if message.type == "clock":
+
+				# Ignore clock ticks until we receive a start or continue.
+				if self._waiting_for_start:
+					continue
+
+				self._estimate_bpm(time.perf_counter())
+
+				# Check for bar change.
+				new_bar = self.pulse_count // pulses_per_bar
+				if new_bar > self.current_bar:
+					self.current_bar = new_bar
+					for cb in self.callbacks:
+						asyncio.create_task(cb(self.current_bar))
+					asyncio.create_task(self.events.emit_async("bar", self.current_bar))
+
+				await self._maybe_reschedule_patterns(self.pulse_count)
+				await self._process_pulse(self.pulse_count)
+				self.pulse_count += 1
+
+			elif message.type == "start":
+				logger.info("MIDI start received")
+				self.pulse_count = 0
+				self.current_bar = -1
+				self._clock_tick_times = []
+				self._waiting_for_start = False
+
+			elif message.type == "stop":
+				logger.info("MIDI stop received")
+				self.running = False
+
+			elif message.type == "continue":
+				logger.info("MIDI continue received")
+				self._waiting_for_start = False
 
 
 	async def _maybe_reschedule_patterns (self, pulse: int) -> None:

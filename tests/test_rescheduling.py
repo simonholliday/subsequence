@@ -29,7 +29,7 @@ async def test_reschedule_triggers_and_uses_updated_notes (patch_midi: None) -> 
 
 	"""Ensure rescheduling triggers at lookahead and uses updated pattern state."""
 
-	sequencer = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
 
 	class TestPattern (subsequence.pattern.Pattern):
 
@@ -91,7 +91,7 @@ async def test_reschedule_lookahead_validation (patch_midi: None) -> None:
 
 	"""Invalid lookahead values should raise when scheduling repeating patterns."""
 
-	sequencer = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
 	pattern = subsequence.pattern.Pattern(channel=0, length=2, reschedule_lookahead=3)
 
 	with pytest.raises(ValueError):

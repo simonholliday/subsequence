@@ -52,7 +52,7 @@ logging.basicConfig(level=logging.INFO)
 # These values are specific to YOUR studio. Change them to match your
 # MIDI interface and instrument channel assignments.
 
-MIDI_DEVICE = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
+MIDI_OUTPUT_DEVICE = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
 
 DRUMS_MIDI_CHANNEL = 9       # Channel 10 in 1-indexed MIDI (standard drums)
 EP_MIDI_CHANNEL = 11          # Electric piano / pad synth
@@ -72,7 +72,7 @@ DRUM_NOTE_MAP = {
 # ─── Composition ─────────────────────────────────────────────────────
 
 composition = subsequence.Composition(
-	device = MIDI_DEVICE,
+	output_device = MIDI_OUTPUT_DEVICE,
 	bpm = 125,
 	key = "E"
 )

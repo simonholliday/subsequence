@@ -12,7 +12,7 @@ def test_sequencer_data_store_exists (patch_midi: None) -> None:
 
 	"""Sequencer should have an empty data dict on creation."""
 
-	seq = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+	seq = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
 
 	assert isinstance(seq.data, dict)
 	assert len(seq.data) == 0
@@ -104,7 +104,7 @@ async def test_schedule_task_registers_callback (patch_midi: None) -> None:
 
 	"""schedule_task should register a callback on the sequencer."""
 
-	seq = subsequence.sequencer.Sequencer(midi_device_name="Dummy MIDI", initial_bpm=120)
+	seq = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
 
 	def my_task () -> None:
 		pass
