@@ -102,6 +102,9 @@ class Sequencer:
 			clock_follow: When True, follow external MIDI clock instead of internal clock
 		"""
 
+		if clock_follow and input_device_name is None:
+			raise ValueError("clock_follow=True requires an input_device_name")
+
 		self.output_device_name = output_device_name
 		self.input_device_name = input_device_name
 		self.clock_follow = clock_follow
@@ -498,6 +501,30 @@ class Sequencer:
 			await self._run_loop_internal_clock(pulses_per_bar)
 
 
+	def _check_bar_change (self, pulse: int, pulses_per_bar: int) -> None:
+
+		"""Detect bar boundaries and fire bar callbacks + events."""
+
+		new_bar = pulse // pulses_per_bar
+
+		if new_bar > self.current_bar:
+			self.current_bar = new_bar
+
+			for cb in self.callbacks:
+				asyncio.create_task(cb(self.current_bar))
+
+			asyncio.create_task(self.events.emit_async("bar", self.current_bar))
+
+
+	async def _advance_pulse (self) -> None:
+
+		"""Reschedule patterns, process events, and increment the pulse counter."""
+
+		await self._maybe_reschedule_patterns(self.pulse_count)
+		await self._process_pulse(self.pulse_count)
+		self.pulse_count += 1
+
+
 	async def _run_loop_internal_clock (self, pulses_per_bar: int) -> None:
 
 		"""Playback loop driven by the internal wall clock."""
@@ -510,18 +537,10 @@ class Sequencer:
 			# Use cached timing values
 			target_pulse = int(elapsed_time / self.seconds_per_pulse)
 
-			# Check for bar change
-			new_bar = target_pulse // pulses_per_bar
-			if new_bar > self.current_bar:
-				self.current_bar = new_bar
-				for cb in self.callbacks:
-					asyncio.create_task(cb(self.current_bar))
-				asyncio.create_task(self.events.emit_async("bar", self.current_bar))
+			self._check_bar_change(target_pulse, pulses_per_bar)
 
 			while self.pulse_count <= target_pulse:
-				await self._maybe_reschedule_patterns(self.pulse_count)
-				await self._process_pulse(self.pulse_count)
-				self.pulse_count += 1
+				await self._advance_pulse()
 
 			# Check if queue is empty and we are past the last event
 			async with self.queue_lock:
@@ -562,18 +581,8 @@ class Sequencer:
 					continue
 
 				self._estimate_bpm(time.perf_counter())
-
-				# Check for bar change.
-				new_bar = self.pulse_count // pulses_per_bar
-				if new_bar > self.current_bar:
-					self.current_bar = new_bar
-					for cb in self.callbacks:
-						asyncio.create_task(cb(self.current_bar))
-					asyncio.create_task(self.events.emit_async("bar", self.current_bar))
-
-				await self._maybe_reschedule_patterns(self.pulse_count)
-				await self._process_pulse(self.pulse_count)
-				self.pulse_count += 1
+				self._check_bar_change(self.pulse_count, pulses_per_bar)
+				await self._advance_pulse()
 
 			elif message.type == "start":
 				logger.info("MIDI start received")
@@ -704,14 +713,19 @@ class Sequencer:
 
 		if self.midi_out:
 
-			msg = mido.Message(
-				event.message_type,
-				channel = event.channel,
-				note = event.note,
-				velocity = event.velocity
-			)
+			try:
 
-			self.midi_out.send(msg)
+				msg = mido.Message(
+					event.message_type,
+					channel = event.channel,
+					note = event.note,
+					velocity = event.velocity
+				)
+
+				self.midi_out.send(msg)
+
+			except Exception:
+				logger.exception("MIDI send failed (device may be disconnected)")
 
 
 	async def panic (self) -> None:
@@ -726,15 +740,20 @@ class Sequencer:
 		await self._stop_all_active_notes()
 
 		if self.midi_out:
-			
-			# 2. Send "All Notes Off" (CC 123) and "All Sound Off" (CC 120) to all 16 channels
-			for channel in range(16):
-				self.midi_out.send(mido.Message('control_change', channel=channel, control=123, value=0))
-				self.midi_out.send(mido.Message('control_change', channel=channel, control=120, value=0))
 
-			# 3. Use built-in panic and reset
-			self.midi_out.panic()
-			
-			# Note: reset() might close/reopen ports or clear internal buffers depending on backend,
-			# but mido docs say it sends "All Notes Off" and "Reset All Controllers".
-			self.midi_out.reset()
+			try:
+
+				# 2. Send "All Notes Off" (CC 123) and "All Sound Off" (CC 120) to all 16 channels
+				for channel in range(16):
+					self.midi_out.send(mido.Message('control_change', channel=channel, control=123, value=0))
+					self.midi_out.send(mido.Message('control_change', channel=channel, control=120, value=0))
+
+				# 3. Use built-in panic and reset
+				self.midi_out.panic()
+
+				# Note: reset() might close/reopen ports or clear internal buffers depending on backend,
+				# but mido docs say it sends "All Notes Off" and "Reset All Controllers".
+				self.midi_out.reset()
+
+			except Exception:
+				logger.exception("MIDI panic failed (device may be disconnected)")

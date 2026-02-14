@@ -18,6 +18,13 @@ import subsequence.weighted_graph
 logger = logging.getLogger(__name__)
 
 
+def _fn_has_parameter (fn: typing.Callable, name: str) -> bool:
+
+	"""Check whether a callable accepts a parameter with the given name."""
+
+	return name in inspect.signature(fn).parameters
+
+
 class SectionInfo:
 
 	"""Immutable snapshot of the current section state.
@@ -519,7 +526,7 @@ class Composition:
 		dominant_7th: bool = True,
 		gravity: float = 1.0,
 		minor_weight: float = 0.0,
-		reschedule_lookahead: int = 1
+		reschedule_lookahead: float = 1
 	) -> None:
 
 		"""Configure the harmonic state and chord change cycle for this composition.
@@ -897,7 +904,7 @@ class Composition:
 			if self._is_live and fn.__name__ in self._running_patterns:
 				running = self._running_patterns[fn.__name__]
 				running._builder_fn = fn
-				running._wants_chord = "chord" in inspect.signature(fn).parameters
+				running._wants_chord = _fn_has_parameter(fn, "chord")
 				logger.info(f"Hot-swapped pattern: {fn.__name__}")
 				return fn
 
@@ -954,14 +961,14 @@ class Composition:
 			```
 		"""
 
-		wants_chord = any("chord" in inspect.signature(fn).parameters for fn in builder_fns)
+		wants_chord = any(_fn_has_parameter(fn, "chord") for fn in builder_fns)
 
 		if wants_chord:
 
 			def merged_builder (p: typing.Any, chord: typing.Any) -> None:
 
 				for fn in builder_fns:
-					if "chord" in inspect.signature(fn).parameters:
+					if _fn_has_parameter(fn, "chord"):
 						fn(p, chord)
 					else:
 						fn(p)
@@ -1133,7 +1140,7 @@ class Composition:
 
 				self._builder_fn = pending.builder_fn
 				self._drum_note_map = pending.drum_note_map
-				self._wants_chord = "chord" in inspect.signature(pending.builder_fn).parameters
+				self._wants_chord = _fn_has_parameter(pending.builder_fn, "chord")
 				self._cycle_count = 0
 				self._rng = pattern_rng
 				self._muted = False
@@ -1165,14 +1172,19 @@ class Composition:
 					rng = self._rng
 				)
 
-				if self._wants_chord and composition_ref._harmonic_state is not None:
-					chord = composition_ref._harmonic_state.get_current_chord()
-					key_root_pc = composition_ref._harmonic_state.key_root_pc
-					injected = _InjectedChord(chord, key_root_pc)
-					self._builder_fn(builder, injected)
+				try:
 
-				else:
-					self._builder_fn(builder)
+					if self._wants_chord and composition_ref._harmonic_state is not None:
+						chord = composition_ref._harmonic_state.get_current_chord()
+						key_root_pc = composition_ref._harmonic_state.key_root_pc
+						injected = _InjectedChord(chord, key_root_pc)
+						self._builder_fn(builder, injected)
+
+					else:
+						self._builder_fn(builder)
+
+				except Exception:
+					logger.exception("Error in pattern builder '%s' (cycle %d) — pattern will be silent this cycle", self._builder_fn.__name__, current_cycle)
 
 			def on_reschedule (self) -> None:
 

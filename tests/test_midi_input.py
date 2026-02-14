@@ -27,6 +27,18 @@ def test_sequencer_accepts_input_device (patch_midi: None) -> None:
 	assert seq.clock_follow is True
 
 
+def test_clock_follow_without_input_raises (patch_midi: None) -> None:
+
+	"""clock_follow=True without an input device should raise ValueError."""
+
+	with pytest.raises(ValueError):
+		subsequence.sequencer.Sequencer(
+			output_device_name="Dummy MIDI",
+			initial_bpm=120,
+			clock_follow=True
+		)
+
+
 def test_sequencer_no_input_by_default (patch_midi: None) -> None:
 
 	"""Sequencer should have no MIDI input by default."""

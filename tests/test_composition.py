@@ -132,6 +132,34 @@ def test_build_pattern_rebuilds_on_reschedule (patch_midi: None) -> None:
 	assert call_count[0] == 2
 
 
+def test_builder_exception_produces_silent_pattern (patch_midi: None) -> None:
+
+	"""A builder that raises should produce an empty (silent) pattern, not crash."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	def bad_builder (p):
+		raise RuntimeError("intentional test error")
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = bad_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+
+	# Pattern should exist but have no notes (steps empty).
+	assert isinstance(pattern, subsequence.pattern.Pattern)
+	assert len(pattern.steps) == 0
+
+	# Rebuilding should also not crash.
+	pattern.on_reschedule()
+	assert len(pattern.steps) == 0
+
+
 def test_builder_cycle_injection (patch_midi: None) -> None:
 
 	"""The builder should receive the current cycle count."""
