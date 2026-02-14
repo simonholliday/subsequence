@@ -54,7 +54,7 @@ logging.basicConfig(level=logging.INFO)
 MIDI_DEVICE = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
 
 DRUMS_MIDI_CHANNEL = 9       # Channel 10 in 1-indexed MIDI (standard drums)
-EP_MIDI_CHANNEL = 8          # Electric piano / pad synth
+EP_MIDI_CHANNEL = 11          # Electric piano / pad synth
 SYNTH_MIDI_CHANNEL = 0       # Lead / arpeggio synth
 BASS_MIDI_CHANNEL = 5        # Bass synth
 

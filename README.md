@@ -220,7 +220,12 @@ composition.display(enabled=False)
 ```
 
 ## Demo details
+
+### demo.py — Dark minor composition with form
 The demo (`examples/demo.py`) uses the Composition API to schedule drums (kick, snare, hats), chord pads, a cycling arpeggio, and a 16th-note bassline — all on a unified 16-step grid. The form is a weighted graph: the intro (4 bars) plays once then moves to the verse. From the verse (8 bars), the form transitions to the chorus (75%) or a bridge (25%). The chorus (8 bars) leads to a breakdown (67%) or back to the verse (33%). The bridge (4 bars) always goes to the chorus. The breakdown (4 bars) always returns to the verse. The intro never comes back. Each pattern reads `p.section` to control its behavior: the kick always plays, the snare only enters during the chorus, hats are muted during the intro, and chord pads build intensity through each section via `p.section.progress`. A scheduled task fetches the ISS position every 8 bars and stores normalized latitude/longitude in `composition.data`; the snare pattern reads `longitude_norm` to modulate its maximum density. A shared harmonic state advances chords on a 4-beat clock, and any pattern with a `chord` parameter automatically receives the current chord when it rebuilds. The advanced demo (`examples/demo_advanced.py`) shows the same composition using direct `Pattern` subclassing for power users. Press Ctrl+C to stop.
+
+### arpeggiator.py — Polyrhythmic arpeggios
+The arpeggiator (`examples/arpeggiator.py`) demonstrates polyrhythmic capabilities with seven patterns cycling at five different lengths. A steady 4-beat drum pattern anchors the piece while arpeggios at 3, 5, 7, and 10.5 beats weave around it, creating 3:4, 5:4, and 7:4 polyrhythms. A second drum pattern runs on a 6-beat / 12-step triplet grid using General MIDI drum names from `subsequence.gm_drums`. The 10.5-beat bass arpeggio demonstrates float length support (21 eighth notes). Turnaround harmony drifts between keys for infinite evolution. Full phase alignment takes 420+ beats, so the piece always sounds fresh.
 
 ## Extra utilities
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
@@ -232,6 +237,7 @@ The demo (`examples/demo.py`) uses the Composition API to schedule drums (kick, 
 - `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"dark_minor"`.
 - `subsequence.weighted_graph` provides a generic weighted graph used for transitions.
 - `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
+- `subsequence.gm_drums` provides the General MIDI Level 1 drum note map. `GM_DRUM_MAP` can be passed as `drum_note_map`; individual constants like `KICK_1` are also available.
 - `subsequence.composition` provides the `Composition` class and internal scheduling helpers.
 
 ## Feature Roadmap
