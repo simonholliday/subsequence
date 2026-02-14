@@ -3,6 +3,7 @@ import typing
 
 import subsequence.chord_graphs
 import subsequence.chord_graphs.dark_minor
+import subsequence.chord_graphs.dark_techno
 import subsequence.chord_graphs.functional_major
 import subsequence.chord_graphs.turnaround_global
 import subsequence.chords
@@ -35,6 +36,10 @@ def _resolve_graph_style (
 		return subsequence.chord_graphs.dark_minor.DarkMinor(
 			include_dominant_7th = include_dominant_7th
 		)
+
+	if style == "dark_techno":
+
+		return subsequence.chord_graphs.dark_techno.DarkTechno()
 
 	raise ValueError(f"Unknown graph style: {style}")
 

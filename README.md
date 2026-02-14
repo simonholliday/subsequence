@@ -26,7 +26,7 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 ## What it does
 
 - **Patterns as functions.** Each pattern is a Python function that builds a full cycle of notes. The sequencer calls it fresh each cycle, so patterns can evolve — reading the current chord, section, cycle count, or external data to decide what to play.
-- **Harmonic intelligence.** Chord progressions drift and evolve, with adjustable pull toward home — each chord leads to the next based on weighted probabilities.[^markov] Three built-in harmonic palettes — `"diatonic_major"`, `"turnaround"`, and `"dark_minor"` — or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord.
+- **Harmonic intelligence.** Chord progressions drift and evolve, with adjustable pull toward home — each chord leads to the next based on weighted probabilities.[^markov] Four built-in harmonic palettes — `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, and `"dark_techno"` — or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord.
 - **Compositional form.** Define the large-scale structure — intro, verse, chorus, bridge — as a weighted graph, a linear list, or a generator function that yields sections one at a time. Sections follow weighted paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior.
 - **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
 - **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for Elektron-style conditional triggers.
@@ -376,6 +376,12 @@ The demo (`examples/demo.py`) uses the Composition API to schedule drums (kick, 
 ### arpeggiator.py — Polyrhythmic arpeggios
 The arpeggiator (`examples/arpeggiator.py`) demonstrates polyrhythmic capabilities with seven patterns cycling at six different lengths. A steady 4-beat drum pattern anchors the piece while arpeggios at 3, 5, 7, and 10.5 beats weave around it, creating 3:4, 5:4, and 7:4 polyrhythms. A second drum pattern runs on a 6-beat / 12-step triplet grid using General MIDI drum names from `subsequence.constants.gm_drums`. The 10.5-beat bass arpeggio demonstrates float length support (21 eighth notes). Turnaround harmony drifts between keys for infinite evolution. Full phase alignment takes 420+ beats, so the piece always sounds fresh.
 
+### dark_techno.py — Dark, hard techno
+A dark techno composition (`examples/dark_techno.py`) built for three instruments: Vermona DRM1 MKIV drums, Moog Minitaur bass, and Moog Matriarch lead. 140 BPM in E minor using the `"dark_techno"` chord graph — four all-minor chords with Phrygian half-step motion as the signature harmonic event. High gravity (0.9) keeps the harmony sitting on the tonic most of the time. The form loops infinitely: an intro (16 bars of kick and hats), a groove (32 bars with full kit, offbeat sub-bass, and a sparse Euclidean lead), and a breakdown (8 bars where the kick drops out and the bass sustains a single note). Patterns evolve slowly — ghost kicks, chromatic bass dips, and rotating lead rhythms keep things moving without ever breaking the groove.
+
+### sequinoxe.py — Electronic suite (Jarre-inspired)
+An atmospheric electronic suite (`examples/sequinoxe.py`) inspired by Jean-Michel Jarre's Oxygène, Équinoxe, and Les Champs Magnétiques. Five instruments: Moog Matriarch (cascading two-octave arpeggio that starts as a sustained pad), Moog Minitaur (pulsing eighth-note bass), PWM Malevolent (Euclidean stabs), Vermona DRM1 (syncopated drums — not four-on-the-floor), and Roland TR8S (shaker/ride/cowbell texture via GM drum map). 112 BPM in D minor using the `dark_minor` graph with gravity at 0.75 for natural harmonic drift. The form builds like a Jarre suite: a 16-bar atmosphere (pad only) unfolds into a 16-bar build (arpeggio emerges, bass and sparse drums enter), then a 32-bar peak (full arrangement). The peak has a 33% chance of drifting to a stripped 16-bar section before building again.
+
 ## Extra utilities
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
@@ -383,7 +389,7 @@ The arpeggiator (`examples/arpeggiator.py`) demonstrates polyrhythmic capabiliti
 - `subsequence.intervals` contains interval and scale definitions for harmonic work.
 - `subsequence.markov_chain` provides a generic weighted Markov chain utility.
 - `subsequence.event_emitter` supports sync/async events used by the sequencer.
-- `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"dark_minor"`.
+- `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, `"dark_techno"`.
 - `subsequence.weighted_graph` provides a generic weighted graph used for transitions.
 - `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
 - `subsequence.constants.durations` provides beat-based duration constants. Import as `import subsequence.constants.durations as dur` and write `length = 9 * dur.SIXTEENTH` or `step = dur.DOTTED_EIGHTH` instead of raw floats. Constants: `THIRTYSECOND`, `SIXTEENTH`, `DOTTED_SIXTEENTH`, `TRIPLET_EIGHTH`, `EIGHTH`, `DOTTED_EIGHTH`, `TRIPLET_QUARTER`, `QUARTER`, `DOTTED_QUARTER`, `HALF`, `DOTTED_HALF`, `WHOLE`.

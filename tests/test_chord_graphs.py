@@ -2,6 +2,7 @@ import pytest
 
 import subsequence.chord_graphs
 import subsequence.chord_graphs.dark_minor
+import subsequence.chord_graphs.dark_techno
 import subsequence.chord_graphs.functional_major
 import subsequence.chord_graphs.turnaround_global
 import subsequence.chords
@@ -161,6 +162,123 @@ def test_harmonic_state_legacy_aliases () -> None:
 	state_tg = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="turnaround_global")
 
 	assert state_tg.current_chord.quality == "major"
+
+
+def test_dark_techno_all_chords_are_minor () -> None:
+
+	"""Every chord in the dark_techno graph must be minor quality."""
+
+	graph_obj = subsequence.chord_graphs.dark_techno.DarkTechno()
+	graph, tonic = graph_obj.build("E")
+
+	# Walk every reachable chord and verify quality.
+	visited = set()
+	queue = [tonic]
+
+	while queue:
+		current = queue.pop(0)
+
+		if current in visited:
+			continue
+
+		visited.add(current)
+
+		assert current.quality == "minor", f"{current} is {current.quality}, expected minor"
+
+		for target, _ in graph.get_transitions(current):
+
+			if target not in visited:
+				queue.append(target)
+
+	assert len(visited) == 4
+
+
+def test_dark_techno_tonic () -> None:
+
+	"""The dark_techno tonic should be a minor chord on the key root."""
+
+	graph_obj = subsequence.chord_graphs.dark_techno.DarkTechno()
+	_, tonic = graph_obj.build("E")
+
+	assert tonic.quality == "minor"
+	assert tonic.root_pc == 4
+
+
+def test_dark_techno_phrygian_cadence () -> None:
+
+	"""The dark_techno graph should include a bII to i Phrygian cadence."""
+
+	graph_obj = subsequence.chord_graphs.dark_techno.DarkTechno()
+	graph, tonic = graph_obj.build("E")
+
+	# bII of E minor is F minor (root_pc=5).
+	flat_two = subsequence.chords.Chord(root_pc=5, quality="minor")
+
+	transitions = graph.get_transitions(flat_two)
+
+	assert any(chord == tonic for chord, _ in transitions)
+
+
+def test_dark_techno_gravity_sets () -> None:
+
+	"""Gravity sets should contain only minor chords."""
+
+	graph_obj = subsequence.chord_graphs.dark_techno.DarkTechno()
+	diatonic, functional = graph_obj.gravity_sets("E")
+
+	for chord in diatonic:
+		assert chord.quality == "minor"
+
+	for chord in functional:
+		assert chord.quality == "minor"
+
+	# Tonic should be in both.
+	tonic = subsequence.chords.Chord(root_pc=4, quality="minor")
+
+	assert tonic in diatonic
+	assert tonic in functional
+
+	# bII should be in functional.
+	flat_two = subsequence.chords.Chord(root_pc=5, quality="minor")
+
+	assert flat_two in functional
+
+
+def test_dark_techno_no_dead_ends () -> None:
+
+	"""Every chord in the dark_techno graph should have outgoing transitions."""
+
+	graph_obj = subsequence.chord_graphs.dark_techno.DarkTechno()
+	graph, tonic = graph_obj.build("E")
+
+	visited = set()
+	queue = [tonic]
+
+	while queue:
+		current = queue.pop(0)
+
+		if current in visited:
+			continue
+
+		visited.add(current)
+
+		transitions = graph.get_transitions(current)
+
+		assert len(transitions) > 0, f"Dead end: {current} has no outgoing transitions"
+
+		for target, _ in transitions:
+
+			if target not in visited:
+				queue.append(target)
+
+
+def test_dark_techno_string_name () -> None:
+
+	"""HarmonicState should accept 'dark_techno' as a style string."""
+
+	state = subsequence.harmonic_state.HarmonicState(key_name="E", graph_style="dark_techno")
+
+	assert state.current_chord.quality == "minor"
 
 
 def test_unknown_string_raises () -> None:
