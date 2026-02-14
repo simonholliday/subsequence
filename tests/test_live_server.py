@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import time
 
 import pytest
 
@@ -444,3 +445,97 @@ def test_live_info_includes_patterns (patch_midi: None) -> None:
 	assert info["patterns"][0]["channel"] == 9
 	assert info["patterns"][0]["length"] == 4
 	assert info["patterns"][0]["muted"] is False
+
+
+# --- Safety ---
+
+
+@pytest.mark.asyncio
+async def test_blocked_builtins (composition: subsequence.Composition) -> None:
+
+	"""Blocked builtins should return RuntimeError, not freeze or kill the process."""
+
+	server = subsequence.live_server.LiveServer(composition, port=0)
+	await server.start()
+	port = server._server.sockets[0].getsockname()[1]
+
+	reader, writer = await asyncio.open_connection("127.0.0.1", port)
+
+	for name in ("help()", "input()", "exit()", "quit()", "breakpoint()"):
+		result = await _send_recv(reader, writer, name)
+		assert "RuntimeError" in result, f"{name} should raise RuntimeError, got: {result}"
+		assert "not available in live mode" in result
+
+	writer.close()
+	await writer.wait_closed()
+	await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_sys_exit_caught (composition: subsequence.Composition) -> None:
+
+	"""sys.exit() should be caught and return an error, not kill the server."""
+
+	server = subsequence.live_server.LiveServer(composition, port=0)
+	await server.start()
+	port = server._server.sockets[0].getsockname()[1]
+
+	reader, writer = await asyncio.open_connection("127.0.0.1", port)
+
+	result = await _send_recv(reader, writer, "import sys; sys.exit()")
+
+	assert "SystemExit" in result
+
+	# Server should still be alive — send another command.
+	result = await _send_recv(reader, writer, "1 + 1")
+	assert result == "2"
+
+	writer.close()
+	await writer.wait_closed()
+	await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_eval_does_not_block_event_loop (composition: subsequence.Composition) -> None:
+
+	"""Eval should run in a thread, keeping the event loop responsive."""
+
+	server = subsequence.live_server.LiveServer(composition, port=0)
+	await server.start()
+	port = server._server.sockets[0].getsockname()[1]
+
+	# Open two connections — one sends a slow eval, the other pings.
+	slow_reader, slow_writer = await asyncio.open_connection("127.0.0.1", port)
+	fast_reader, fast_writer = await asyncio.open_connection("127.0.0.1", port)
+
+	# Send a slow eval (0.5s sleep) on the first connection.
+	slow_writer.write(b"__import__('time').sleep(0.5)\x04")
+	await slow_writer.drain()
+
+	# Give the slow eval a moment to start, then send a fast eval on the second connection.
+	await asyncio.sleep(0.05)
+
+	start = time.perf_counter()
+	fast_result = await _send_recv(fast_reader, fast_writer, "1 + 1")
+	fast_duration = time.perf_counter() - start
+
+	assert fast_result == "2"
+
+	# The fast eval should complete well before the 0.5s sleep finishes.
+	assert fast_duration < 0.3, f"Fast eval took {fast_duration:.2f}s — event loop was blocked"
+
+	# Wait for the slow eval to finish.
+	slow_chunks: list[bytes] = []
+	while True:
+		chunk = await asyncio.wait_for(slow_reader.read(4096), timeout=5.0)
+		if SENTINEL in chunk:
+			before, _, _ = chunk.partition(SENTINEL)
+			slow_chunks.append(before)
+			break
+		slow_chunks.append(chunk)
+
+	slow_writer.close()
+	await slow_writer.wait_closed()
+	fast_writer.close()
+	await fast_writer.wait_closed()
+	await server.stop()

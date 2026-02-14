@@ -16,6 +16,7 @@ the port should not be exposed to untrusted networks.
 """
 
 import asyncio
+import builtins
 import logging
 import traceback
 import typing
@@ -79,7 +80,7 @@ class LiveServer:
 				if code is None:
 					break
 
-				response = self._evaluate(code)
+				response = await asyncio.to_thread(self._evaluate, code)
 				writer.write(response.encode() + SENTINEL)
 				await writer.drain()
 
@@ -140,6 +141,8 @@ class LiveServer:
 			return repr(result) if result is not None else "OK"
 		except SyntaxError:
 			pass
+		except SystemExit:
+			return "SystemExit is not allowed in live mode."
 		except Exception:
 			return traceback.format_exc()
 
@@ -147,17 +150,39 @@ class LiveServer:
 		try:
 			exec(compile(code, "<live>", "exec"), self._namespace)
 			return "OK"
+		except SystemExit:
+			return "SystemExit is not allowed in live mode."
 		except Exception:
 			return traceback.format_exc()
 
 	def _build_namespace (self) -> typing.Dict[str, typing.Any]:
 
-		"""Build the namespace dict exposed to evaluated code."""
+		"""Build the namespace dict with safe builtins that can't block the sequencer."""
 
 		import subsequence
 
+		safe_builtins = {name: getattr(builtins, name) for name in dir(builtins)}
+
+		blocked = {"help", "input", "breakpoint", "exit", "quit"}
+
+		for name in blocked:
+			safe_builtins[name] = _blocked(name)
+
 		return {
-			"__builtins__": __builtins__,
+			"__builtins__": safe_builtins,
 			"composition": self._composition,
 			"subsequence": subsequence,
 		}
+
+
+def _blocked (name: str) -> typing.Callable:
+
+	"""Return a function that raises RuntimeError when called."""
+
+	def _raise (*args: typing.Any, **kwargs: typing.Any) -> None:
+		raise RuntimeError(f"{name}() is not available in live mode — it would block the sequencer.")
+
+	_raise.__name__ = name
+	_raise.__qualname__ = name
+
+	return _raise

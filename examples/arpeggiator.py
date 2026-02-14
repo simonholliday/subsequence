@@ -270,6 +270,9 @@ def minitaur_bass (p, chord):
 
 if __name__ == "__main__":
 
+	# Start the server
+	composition.live()
+
 	# Show the live status line (BPM, key, bar, chord).
 	composition.display()
 
