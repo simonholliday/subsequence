@@ -17,6 +17,7 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 - **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Sync functions run in a thread pool automatically. Store results in `composition.data` and read them from any pattern — connect music to APIs, sensors, files, or anything Python can reach.
 - **Terminal visualization.** A persistent status line showing the current bar, section, chord, BPM, and key. Enabled with `composition.display()`. Log messages scroll cleanly above it without disruption.
 - **Two API levels.** The Composition API is high-level and declarative — most musicians will never need anything else. The Direct Pattern API gives power users full control over `Pattern` subclasses, `HarmonicState`, and async scheduling.
+- **Pattern transforms.** Reverse, double-time, half-time, shift, transpose, and invert — all as post-build methods on the pattern builder. `p.every(4, lambda p: p.reverse())` applies a transform every 4th cycle. `composition.layer()` merges multiple builder functions into one pattern. Place notes first, then reshape them.
 - **Events** let you react to sequencer milestones (`"bar"`, `"start"`, `"stop"`) via `composition.on_event()`.
 - **Pure MIDI.** No audio synthesis, no dependencies beyond `mido` and `python-rtmidi`. Route MIDI to any hardware or software synth.
 
@@ -253,7 +254,6 @@ Planned features, roughly in order of priority.
 
 ### Medium priority
 
-- **Pattern transformations.** Higher-order functions like `every(4, double_time)`, `reverse()`, `layer()` for concise pattern variation.
 - **Mini-notation.** An optional string shorthand (e.g., `"x . x [x x]"`) that compiles to `hit_steps` calls for quick rhythm entry.
 - **MIDI input / CC mapping.** Map a hardware knob to `composition.data` so Subsequence feels like a hybrid hardware/software instrument.
 - **Ableton Link / MIDI clock sync.** Sync with DAWs and other devices for integration into existing studio setups.

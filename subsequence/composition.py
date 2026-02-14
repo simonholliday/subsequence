@@ -734,6 +734,74 @@ class Composition:
 
 		return decorator
 
+	def layer (
+		self,
+		*builder_fns: typing.Callable,
+		channel: int,
+		length: float = 4,
+		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+		reschedule_lookahead: float = 1
+	) -> None:
+
+		"""Register multiple builder functions as a single layered pattern.
+
+		Each builder function runs sequentially on the same PatternBuilder, so their notes
+		merge into one pattern. This is useful for composing reusable rhythm or melody
+		fragments without creating separate MIDI patterns.
+
+		Transforms like ``dropout()`` or ``swing()`` called in any builder affect the
+		combined result. If you need transforms to apply to only one layer, use separate
+		patterns instead.
+
+		Parameters:
+			*builder_fns: Two or more builder functions (each takes a PatternBuilder, and optionally a chord)
+			channel: MIDI channel (0-15)
+			length: Pattern length in beats (default 4)
+			drum_note_map: Optional dict mapping string names to MIDI note numbers
+			reschedule_lookahead: Reschedule lookahead in beats (default 1)
+
+		Example:
+			```python
+			def kick (p):
+				p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
+
+			def hats (p):
+				p.hit_steps("hh_closed", list(range(16)), velocity=80)
+				p.velocity_shape(low=60, high=100)
+
+			composition.layer(kick, hats, channel=9, length=4, drum_note_map=DRUM_NOTE_MAP)
+			```
+		"""
+
+		wants_chord = any("chord" in inspect.signature(fn).parameters for fn in builder_fns)
+
+		if wants_chord:
+
+			def merged_builder (p: typing.Any, chord: typing.Any) -> None:
+
+				for fn in builder_fns:
+					if "chord" in inspect.signature(fn).parameters:
+						fn(p, chord)
+					else:
+						fn(p)
+
+		else:
+
+			def merged_builder (p: typing.Any) -> None:
+
+				for fn in builder_fns:
+					fn(p)
+
+		pending = _PendingPattern(
+			builder_fn = merged_builder,
+			channel = channel,
+			length = length,
+			drum_note_map = drum_note_map,
+			reschedule_lookahead = reschedule_lookahead
+		)
+
+		self._pending_patterns.append(pending)
+
 	def play (self) -> None:
 
 		"""Start playback, blocking until stopped via Ctrl+C or signal.

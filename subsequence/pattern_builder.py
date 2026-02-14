@@ -382,3 +382,217 @@ class PatternBuilder:
 			for note in step.notes:
 				note.velocity = int(low + (high - low) * vdc_value)
 
+	# ─── Pattern Transforms ─────────────────────────────────────────
+	#
+	# These methods transform existing notes after they have been placed.
+	# Call them at the end of your builder function, after all notes are
+	# in position. They operate on self._pattern.steps (the pulse-position
+	# dict) and can be chained in any order.
+
+	def reverse (self) -> None:
+
+		"""Mirror all note positions in time, reversing the pattern.
+
+		A note at the start of the pattern moves to the end, and vice versa.
+		Notes at the same position stay together.
+
+		Example:
+			```python
+			p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
+			p.reverse()  # kick now hits on steps 12, 8, 4, 0 (from the listener's perspective)
+			```
+		"""
+
+		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
+		old_steps = self._pattern.steps
+		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
+
+		for position, step in old_steps.items():
+			new_position = (total_pulses - 1) - position
+
+			if new_position not in new_steps:
+				new_steps[new_position] = subsequence.pattern.Step()
+
+			new_steps[new_position].notes.extend(step.notes)
+
+		self._pattern.steps = new_steps
+
+	def double_time (self) -> None:
+
+		"""Compress all notes into the first half of the pattern, doubling the speed.
+
+		Positions and durations are halved. The second half of the pattern is left empty,
+		creating space for variation or layering.
+
+		Example:
+			```python
+			p.fill(60, step=0.5)       # 8 eighth notes across 4 beats
+			p.double_time()             # now 8 sixteenth notes in the first 2 beats
+			```
+		"""
+
+		old_steps = self._pattern.steps
+		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
+
+		for position, step in old_steps.items():
+			new_position = position // 2
+
+			if new_position not in new_steps:
+				new_steps[new_position] = subsequence.pattern.Step()
+
+			new_steps[new_position].notes.extend(
+				subsequence.pattern.Note(
+					pitch = note.pitch,
+					velocity = note.velocity,
+					duration = max(1, note.duration // 2),
+					channel = note.channel
+				)
+				for note in step.notes
+			)
+
+		self._pattern.steps = new_steps
+
+	def half_time (self) -> None:
+
+		"""Expand all notes to double their time position, halving the speed.
+
+		Positions and durations are doubled. Notes whose doubled position would exceed
+		the pattern length are dropped.
+
+		Example:
+			```python
+			p.fill(60, step=0.25)      # 16 sixteenth notes across 4 beats
+			p.half_time()               # now 8 eighth notes in the first 4 beats, rest dropped
+			```
+		"""
+
+		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
+		old_steps = self._pattern.steps
+		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
+
+		for position, step in old_steps.items():
+			new_position = position * 2
+
+			if new_position >= total_pulses:
+				continue
+
+			if new_position not in new_steps:
+				new_steps[new_position] = subsequence.pattern.Step()
+
+			new_steps[new_position].notes.extend(
+				subsequence.pattern.Note(
+					pitch = note.pitch,
+					velocity = note.velocity,
+					duration = min(note.duration * 2, total_pulses - new_position),
+					channel = note.channel
+				)
+				for note in step.notes
+			)
+
+		self._pattern.steps = new_steps
+
+	def shift (self, steps: int, step_count: int = 16) -> None:
+
+		"""Rotate the pattern by a number of grid steps, wrapping around.
+
+		Uses the same grid concept as ``hit_steps()`` — the default 16-step grid
+		divides the pattern into sixteenth notes. Positive values shift right
+		(later in time), negative values shift left (earlier).
+
+		Parameters:
+			steps: Number of grid steps to shift (positive = right, negative = left)
+			step_count: Grid subdivisions per pattern (default 16, matching ``hit_steps()``)
+
+		Example:
+			```python
+			# Shift a snare pattern by 4 steps (one beat) for a backbeat
+			p.euclidean("snare", pulses=4)
+			p.shift(4)
+			```
+		"""
+
+		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
+		pulses_per_step = total_pulses / step_count
+		shift_pulses = int(steps * pulses_per_step)
+
+		old_steps = self._pattern.steps
+		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
+
+		for position, step in old_steps.items():
+			new_position = (position + shift_pulses) % total_pulses
+
+			if new_position not in new_steps:
+				new_steps[new_position] = subsequence.pattern.Step()
+
+			new_steps[new_position].notes.extend(step.notes)
+
+		self._pattern.steps = new_steps
+
+	def transpose (self, semitones: int) -> None:
+
+		"""Shift all note pitches up or down by the given number of semitones.
+
+		Pitches are clamped to the MIDI range 0-127.
+
+		Parameters:
+			semitones: Number of semitones to shift (positive = up, negative = down)
+
+		Example:
+			```python
+			p.arpeggio([60, 64, 67], step=0.25)
+			p.transpose(12)   # up one octave
+			```
+		"""
+
+		for step in self._pattern.steps.values():
+
+			for note in step.notes:
+				note.pitch = max(0, min(127, note.pitch + semitones))
+
+	def invert (self, pivot: int = 60) -> None:
+
+		"""Invert all pitches around a pivot note, mirroring intervals.
+
+		A note 3 semitones above the pivot becomes 3 semitones below, and vice versa.
+		Pitches are clamped to the MIDI range 0-127.
+
+		Parameters:
+			pivot: MIDI note number to invert around (default 60 = middle C)
+
+		Example:
+			```python
+			p.arpeggio([60, 64, 67], step=0.25)   # C E G
+			p.invert(pivot=64)                      # becomes 68 64 61 (Ab E Db)
+			```
+		"""
+
+		for step in self._pattern.steps.values():
+
+			for note in step.notes:
+				note.pitch = max(0, min(127, pivot + (pivot - note.pitch)))
+
+	def every (self, n: int, fn: typing.Callable[["PatternBuilder"], None]) -> None:
+
+		"""Apply a transform function every Nth cycle.
+
+		A convenience wrapper around ``p.cycle``. Fires on cycle 0 (the first cycle)
+		and every N cycles after that.
+
+		Parameters:
+			n: Apply the transform when cycle is a multiple of n
+			fn: A function that receives this PatternBuilder and calls transform methods on it
+
+		Example:
+			```python
+			p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
+
+			# Reverse the pattern every 4th cycle
+			p.every(4, lambda p: p.reverse())
+
+			# Combine transforms in a single lambda
+			p.every(8, lambda p: (p.double_time(), p.transpose(12)))
+			```
+		"""
+
+		if self.cycle % n == 0:
+			fn(self)

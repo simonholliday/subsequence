@@ -452,3 +452,77 @@ def test_different_pattern_lengths_coexist (patch_midi: None) -> None:
 	assert composition._pending_patterns[0].length == 4
 	assert composition._pending_patterns[1].length == 9
 	assert composition._pending_patterns[2].length == 10.5
+
+
+# --- Layer ---
+
+
+def test_layer_registers_pending (patch_midi: None) -> None:
+
+	"""layer() should register a single pending pattern."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+
+	def kick (p):
+		pass
+
+	def hats (p):
+		pass
+
+	composition.layer(kick, hats, channel=9, length=4)
+
+	assert len(composition._pending_patterns) == 1
+	assert composition._pending_patterns[0].channel == 9
+	assert composition._pending_patterns[0].length == 4
+
+
+def test_layer_merges_notes (patch_midi: None) -> None:
+
+	"""layer() should merge notes from all builder functions into one pattern."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+
+	def kick (p):
+		p.note(36, beat=0, velocity=127)
+
+	def snare (p):
+		p.note(38, beat=1, velocity=100)
+
+	composition.layer(kick, snare, channel=9, length=4)
+
+	pattern = composition._build_pattern_from_pending(composition._pending_patterns[0])
+
+	# Both notes should be present.
+	pulse_0 = 0
+	pulse_1 = int(1.0 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	assert pulse_0 in pattern.steps
+	assert pulse_1 in pattern.steps
+	assert pattern.steps[pulse_0].notes[0].pitch == 36
+	assert pattern.steps[pulse_1].notes[0].pitch == 38
+
+
+def test_layer_with_chord_injection (patch_midi: None) -> None:
+
+	"""layer() should inject chord into builders that accept it."""
+
+	composition = subsequence.Composition(device="Dummy MIDI", bpm=125, key="C")
+	composition.harmony(style="diatonic_major", cycle_beats=4)
+
+	def bass (p, chord):
+		# Just verify chord is received by placing the root.
+		root = chord.tones(root=36)[0]
+		p.note(root, beat=0, velocity=100)
+
+	def rhythm (p):
+		p.note(60, beat=1, velocity=80)
+
+	composition.layer(bass, rhythm, channel=0, length=4)
+
+	# Build with a harmony state active — chord injection should work.
+	pattern = composition._build_pattern_from_pending(composition._pending_patterns[0])
+
+	# Both builders should have contributed notes.
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 2

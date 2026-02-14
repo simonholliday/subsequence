@@ -749,3 +749,269 @@ def test_set_length_affects_fill () -> None:
 
 	assert total_notes == 4
 
+
+# --- Pattern Transforms ---
+
+
+def test_reverse_mirrors_positions () -> None:
+
+	"""reverse() should mirror note positions so the first note moves to the end."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# Place notes at beats 0, 1, 2, 3 (pulses 0, 24, 48, 72).
+	builder.hit(60, beats=[0, 1, 2, 3], velocity=100)
+
+	builder.reverse()
+
+	total_pulses = int(4 * subsequence.constants.MIDI_QUARTER_NOTE)  # 96
+	positions = sorted(pattern.steps.keys())
+
+	# Beat 0 (pulse 0) → pulse 95, beat 1 (pulse 24) → pulse 71, etc.
+	expected = sorted([total_pulses - 1 - p for p in [0, 24, 48, 72]])
+
+	assert positions == expected
+
+
+def test_reverse_empty_pattern () -> None:
+
+	"""reverse() on an empty pattern should be a no-op."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.reverse()
+
+	assert len(pattern.steps) == 0
+
+
+def test_double_time_halves_positions () -> None:
+
+	"""double_time() should compress notes into the first half with halved durations."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# Place notes at beats 0, 1, 2, 3 (pulses 0, 24, 48, 72).
+	builder.hit(60, beats=[0, 1, 2, 3], velocity=100, duration=0.5)
+
+	builder.double_time()
+
+	positions = sorted(pattern.steps.keys())
+
+	# Positions should be halved: 0, 12, 24, 36.
+	assert positions == [0, 12, 24, 36]
+
+	# Durations should be halved too.
+	original_duration = int(0.5 * subsequence.constants.MIDI_QUARTER_NOTE)  # 12
+
+	for pos in positions:
+		for note in pattern.steps[pos].notes:
+			assert note.duration == original_duration // 2
+
+
+def test_half_time_doubles_positions () -> None:
+
+	"""half_time() should expand notes and drop those that exceed the pattern boundary."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# Place notes at beats 0, 1, 2, 3 (pulses 0, 24, 48, 72).
+	builder.hit(60, beats=[0, 1, 2, 3], velocity=100, duration=0.25)
+
+	builder.half_time()
+
+	total_pulses = int(4 * subsequence.constants.MIDI_QUARTER_NOTE)  # 96
+	positions = sorted(pattern.steps.keys())
+
+	# Doubled: 0, 48, 96, 144 — but 96 and 144 >= total_pulses, so dropped.
+	assert positions == [0, 48]
+
+	# Durations should be doubled.
+	original_duration = int(0.25 * subsequence.constants.MIDI_QUARTER_NOTE)  # 6
+
+	for pos in positions:
+		for note in pattern.steps[pos].notes:
+			assert note.duration == original_duration * 2
+
+
+def test_shift_wraps_around () -> None:
+
+	"""shift() should rotate note positions and wrap past the end back to the start."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# Place notes at steps 0, 4, 8, 12 on a 16-step grid.
+	builder.hit_steps(60, steps=[0, 4, 8, 12], velocity=100)
+
+	# Shift by 4 steps = 1 beat = 24 pulses.
+	builder.shift(4)
+
+	positions = sorted(pattern.steps.keys())
+
+	# Original: 0, 24, 48, 72 → shifted: 24, 48, 72, 0 (96 wraps to 0).
+	assert positions == [0, 24, 48, 72]
+
+
+def test_shift_negative () -> None:
+
+	"""Negative shift should move notes earlier, wrapping from start to end."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# Place a single note at beat 0 (pulse 0).
+	builder.note(60, beat=0, velocity=100)
+
+	# Shift by -4 steps = -24 pulses → wraps to 72.
+	builder.shift(-4)
+
+	assert 72 in pattern.steps
+	assert 0 not in pattern.steps
+
+
+def test_transpose_shifts_pitches () -> None:
+
+	"""transpose() should shift all pitches by the given number of semitones."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.note(60, beat=0, velocity=100)
+	builder.note(64, beat=1, velocity=100)
+	builder.note(67, beat=2, velocity=100)
+
+	builder.transpose(12)
+
+	pitches = sorted(
+		note.pitch
+		for step in pattern.steps.values()
+		for note in step.notes
+	)
+
+	assert pitches == [72, 76, 79]
+
+
+def test_transpose_clamps_to_midi_range () -> None:
+
+	"""transpose() should clamp pitches to 0-127."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# +20 would take 120 → 140, but should clamp to 127.
+	builder.note(120, beat=0, velocity=100)
+	builder.transpose(20)
+
+	assert pattern.steps[0].notes[0].pitch == 127
+
+	# Test downward clamping separately.
+	pattern2, builder2 = _make_builder(length=4)
+	builder2.note(5, beat=0, velocity=100)
+	builder2.transpose(-20)
+
+	assert pattern2.steps[0].notes[0].pitch == 0
+
+
+def test_transpose_negative () -> None:
+
+	"""transpose() with negative semitones should shift down."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.note(72, beat=0, velocity=100)
+
+	builder.transpose(-12)
+
+	assert pattern.steps[0].notes[0].pitch == 60
+
+
+def test_invert_mirrors_around_pivot () -> None:
+
+	"""invert() should mirror pitches around the pivot note."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# C=60, E=64, G=67
+	builder.note(60, beat=0, velocity=100)
+	builder.note(64, beat=1, velocity=100)
+	builder.note(67, beat=2, velocity=100)
+
+	# Invert around E (64): 60→68, 64→64, 67→61
+	builder.invert(pivot=64)
+
+	pitches = []
+
+	for pos in sorted(pattern.steps.keys()):
+		pitches.append(pattern.steps[pos].notes[0].pitch)
+
+	assert pitches == [68, 64, 61]
+
+
+def test_invert_clamps_to_midi_range () -> None:
+
+	"""invert() should clamp pitches to 0-127."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.note(10, beat=0, velocity=100)
+
+	# Invert around 120: 120 + (120 - 10) = 230 → clamp to 127.
+	builder.invert(pivot=120)
+
+	assert pattern.steps[0].notes[0].pitch == 127
+
+
+def test_every_fires_on_matching_cycle () -> None:
+
+	"""every() should apply the transform when cycle is a multiple of n."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 4,
+	)
+
+	builder.note(60, beat=0, velocity=100)
+
+	# Cycle 4 % 4 == 0, so this should fire.
+	builder.every(4, lambda p: p.transpose(12))
+
+	assert pattern.steps[0].notes[0].pitch == 72
+
+
+def test_every_skips_non_matching_cycle () -> None:
+
+	"""every() should skip the transform when cycle is not a multiple of n."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 3,
+	)
+
+	builder.note(60, beat=0, velocity=100)
+
+	# Cycle 3 % 4 != 0, so this should NOT fire.
+	builder.every(4, lambda p: p.transpose(12))
+
+	assert pattern.steps[0].notes[0].pitch == 60
+
+
+def test_every_fires_on_cycle_zero () -> None:
+
+	"""every() should fire on cycle 0 (the first cycle)."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0,
+	)
+
+	builder.note(60, beat=0, velocity=100)
+
+	builder.every(8, lambda p: p.reverse())
+
+	# Reverse should have fired — note at pulse 0 moves to total_pulses - 1.
+	total_pulses = int(4 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	assert (total_pulses - 1) in pattern.steps
+	assert 0 not in pattern.steps
