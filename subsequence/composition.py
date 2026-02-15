@@ -252,22 +252,34 @@ class _InjectedChord:
 
 		return base + offset  # type: ignore[no-any-return]
 
-	def tones (self, root: int, inversion: int = 0) -> typing.List[int]:
+	def tones (self, root: int, inversion: int = 0, count: typing.Optional[int] = None) -> typing.List[int]:
 
 		"""Return MIDI note numbers transposed to the correct chord root.
 
 		When voice leading is active, the best inversion is chosen
 		automatically and the ``inversion`` parameter is ignored.
+
+		When ``count`` is set, the chord intervals cycle into higher
+		octaves until ``count`` notes are produced.
 		"""
 
 		midi_root = self.root_midi(root)
 		intervals = self._chord.intervals()
 
 		if self._voice_leading_state is not None:
-			return self._voice_leading_state.next(intervals, midi_root)
+			base = self._voice_leading_state.next(intervals, midi_root)
+			if count is not None and count > len(base):
+				n = len(base)
+				base_intervals = [p - base[0] for p in base]
+				return [base[0] + base_intervals[i % n] + 12 * (i // n) for i in range(count)]
+			return base
 
 		if inversion != 0:
 			intervals = subsequence.voicings.invert_chord(intervals, inversion)
+
+		if count is not None:
+			n = len(intervals)
+			return [midi_root + intervals[i % n] + 12 * (i // n) for i in range(count)]
 
 		return [midi_root + interval for interval in intervals]
 

@@ -101,7 +101,7 @@ class Chord:
 		return CHORD_INTERVALS[self.quality]
 
 
-	def tones (self, root: int, inversion: int = 0) -> typing.List[int]:
+	def tones (self, root: int, inversion: int = 0, count: typing.Optional[int] = None) -> typing.List[int]:
 
 		"""Return MIDI note numbers for chord tones starting from a root.
 
@@ -109,6 +109,9 @@ class Chord:
 			root: MIDI root note number (default 60 = middle C)
 			inversion: Chord inversion (0 = root position, 1 = first, 2 = second, ...).
 				Wraps around for values >= number of notes.
+			count: Number of notes to return. When set, the chord intervals cycle
+				into higher octaves until ``count`` notes are produced. When ``None``
+				(default), returns the natural chord tones.
 
 		Returns:
 			List of MIDI note numbers for chord tones
@@ -118,7 +121,7 @@ class Chord:
 			chord = Chord(root_pc=0, quality="major")  # C major
 			chord.tones(root=60)               # [60, 64, 67] — root position
 			chord.tones(root=60, inversion=1)  # [60, 63, 68] — first inversion
-			chord.tones(root=60, inversion=2)  # [60, 65, 69] — second inversion
+			chord.tones(root=60, count=5)      # [60, 64, 67, 72, 76] — 5 notes cycling upward
 			```
 		"""
 
@@ -126,6 +129,10 @@ class Chord:
 
 		if inversion != 0:
 			intervals = subsequence.voicings.invert_chord(intervals, inversion)
+
+		if count is not None:
+			n = len(intervals)
+			return [root + intervals[i % n] + 12 * (i // n) for i in range(count)]
 
 		return [root + interval for interval in intervals]
 

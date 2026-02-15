@@ -1,3 +1,4 @@
+import subsequence.chords
 import subsequence.voicings
 
 
@@ -203,3 +204,76 @@ def test_state_size_change_resets () -> None:
 
 	# State should now have the seventh chord voicing.
 	assert state.previous_voicing == [60, 64, 67, 70]
+
+
+# ─── Chord.tones() count parameter ─────────────────────────────
+
+
+def test_tones_count_matches_natural () -> None:
+
+	"""count equal to natural note count should match default."""
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	assert chord.tones(root=60, count=3) == chord.tones(root=60)
+
+
+def test_tones_count_extends_triad () -> None:
+
+	"""count > 3 on a triad should cycle intervals into higher octaves."""
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	# C major: [0, 4, 7] -> 5 notes: C E G C' E'
+	assert chord.tones(root=60, count=5) == [60, 64, 67, 72, 76]
+
+
+def test_tones_count_extends_two_octaves () -> None:
+
+	"""count=7 on a triad should span two full octaves plus the root."""
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	assert chord.tones(root=60, count=7) == [60, 64, 67, 72, 76, 79, 84]
+
+
+def test_tones_count_one () -> None:
+
+	"""count=1 should return just the root."""
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	assert chord.tones(root=60, count=1) == [60]
+
+
+def test_tones_count_with_inversion () -> None:
+
+	"""count should work together with inversion."""
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	# First inversion intervals: [0, 3, 8]
+	# 5 notes: 60, 63, 68, 72, 75
+	result = chord.tones(root=60, inversion=1, count=5)
+
+	assert result == [60, 63, 68, 72, 75]
+
+
+def test_tones_count_seventh_chord () -> None:
+
+	"""count should extend seventh chords correctly."""
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="dominant_7th")
+
+	# [0, 4, 7, 10] -> 6 notes: C E G Bb C' E'
+	assert chord.tones(root=60, count=6) == [60, 64, 67, 70, 72, 76]
+
+
+def test_tones_count_minor () -> None:
+
+	"""count should extend minor triads correctly."""
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="minor")
+
+	# [0, 3, 7] -> 5 notes: C Eb G C' Eb'
+	assert chord.tones(root=60, count=5) == [60, 63, 67, 72, 75]

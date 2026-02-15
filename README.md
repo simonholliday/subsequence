@@ -314,6 +314,19 @@ chords = subsequence.harmony.ChordPattern(
 
 For standalone use, `subsequence.voicings` provides `invert_chord()`, `voice_lead()`, and `VoiceLeadingState`.
 
+### Extended arpeggios
+
+By default, `chord.tones()` returns one note per chord tone (3 for triads, 4 for sevenths). Pass `count` to cycle the intervals into higher octaves for longer arpeggios:
+
+```python
+@composition.pattern(channel=0, length=4)
+def arp (p, chord):
+    tones = chord.tones(root=64, count=5)  # 5 notes cycling upward
+    p.arpeggio(tones, step=0.25, velocity=90)
+```
+
+`count` works with `inversion` — the extended notes continue upward from the inverted voicing.
+
 ## Seed and deterministic randomness
 
 Set a seed to make all random behavior repeatable:
