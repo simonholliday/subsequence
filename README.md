@@ -317,9 +317,13 @@ For standalone use, `subsequence.voicings` provides `invert_chord()`, `voice_lea
 
 ### Extended arpeggios
 
-By default, `chord.tones()` returns one note per chord tone (3 for triads, 4 for sevenths). Pass `count` to cycle the intervals into higher octaves for longer arpeggios:
+By default, `chord.tones()` and `p.chord()` return one note per chord tone (3 for triads, 4 for sevenths). Pass `count` to cycle the intervals into higher octaves:
 
 ```python
+@composition.pattern(channel=0, length=4)
+def pad (p, chord):
+    p.chord(chord, root=52, velocity=90, sustain=True, count=4)  # always 4 notes
+
 @composition.pattern(channel=0, length=4)
 def arp (p, chord):
     tones = chord.tones(root=64, count=5)  # 5 notes cycling upward

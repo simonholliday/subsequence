@@ -293,7 +293,7 @@ class PatternBuilder:
 			duration_beats = duration
 		)
 
-	def chord (self, chord_obj: typing.Any, root: int, velocity: int = 90, sustain: bool = False, duration: float = 1.0, inversion: int = 0) -> None:
+	def chord (self, chord_obj: typing.Any, root: int, velocity: int = 90, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None) -> None:
 
 		"""Place a chord at beat 0 using the chord's intervals.
 
@@ -309,6 +309,9 @@ class PatternBuilder:
 			duration: Note duration in beats (default 1.0, ignored if sustain=True)
 			inversion: Chord inversion (0 = root position, 1 = first, 2 = second, ...).
 				Ignored when voice leading is active.
+			count: Number of notes to produce. When set, chord intervals cycle into
+				higher octaves until ``count`` notes are produced. When ``None``
+				(default), returns the natural chord tones.
 
 		Example:
 			```python
@@ -319,10 +322,13 @@ class PatternBuilder:
 
 			# Manual inversion
 			p.chord(chord, root=60, inversion=1)  # first inversion
+
+			# Always 4 notes, even for triads
+			p.chord(chord, root=52, velocity=90, duration=4, count=4)
 			```
 		"""
 
-		pitches = chord_obj.tones(root=root, inversion=inversion)
+		pitches = chord_obj.tones(root=root, inversion=inversion, count=count)
 
 		if sustain:
 			duration = float(self._pattern.length)
