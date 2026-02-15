@@ -216,7 +216,7 @@ class Sequencer:
 			elapsed_pulses=0
 		)
 
-		logger.info(f"BPM transition: {self.current_bpm} → {target_bpm} over {bars} bars")
+		logger.info(f"BPM transition: {self.current_bpm:.2f} → {target_bpm:.2f} over {bars} bars")
 
 
 	def add_callback (self, callback: typing.Callable[[int], typing.Coroutine]) -> None:
