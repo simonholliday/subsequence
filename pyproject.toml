@@ -8,9 +8,10 @@ version = "0.1.0"
 description = "A generative MIDI sequencer"
 readme = "README.md"
 authors = [{ name = "Si", email = "si@example.com" }]
-license = { text = "MIT" }
+license = { text = "AGPL-3.0-or-later" }
 classifiers = [
     "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 ]
 dependencies = [
     "mido",

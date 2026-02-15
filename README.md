@@ -23,6 +23,7 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 - [Extra utilities](#extra-utilities)
 - [Feature Roadmap](#feature-roadmap)
 - [Tests](#tests)
+- [License](#license)
 
 ## What it does
 
@@ -546,6 +547,16 @@ mypy subsequence/
 ```
 
 Type checking runs automatically in CI on all pull requests.
+
+## License
+
+Subsequence is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPLv3).
+
+You are free to use, modify, and distribute this software under the terms of the AGPL. If you run a modified version of Subsequence as part of a network service, you must make the source code available to its users.
+
+### Commercial licensing
+
+If you wish to use Subsequence in a proprietary or closed-source product without the obligations of the AGPL, please contact [simon.holliday@protonmail.com] to discuss a commercial license.
 
 [^markov]: A [Markov chain](https://en.wikipedia.org/wiki/Markov_chain) is a system where each state (here, a chord) transitions to the next based on weighted probabilities. Subsequence adds "gravity" — a configurable pull that draws progressions back toward the home key, so harmony drifts but never gets lost.
 [^vdc]: Velocity values are spread using a [van der Corput sequence](https://en.wikipedia.org/wiki/Van_der_Corput_sequence) — a low-discrepancy series that distributes values more evenly than pure randomness, producing a more natural, musical feel.
