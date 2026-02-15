@@ -180,7 +180,7 @@ class Display:
 		parts: typing.List[str] = []
 		comp = self._composition
 
-		parts.append(f"{comp.bpm} BPM")
+		parts.append(f"{round(comp._sequencer.current_bpm)} BPM")
 
 		if comp.key:
 			parts.append(f"Key: {comp.key}")

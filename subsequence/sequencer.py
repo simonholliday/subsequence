@@ -79,6 +79,17 @@ class ScheduledCallback:
 	next_fire_pulse: int
 
 
+@dataclasses.dataclass
+class BpmTransition:
+
+	"""State for a gradual BPM transition."""
+
+	start_bpm: float
+	target_bpm: float
+	total_pulses: int
+	elapsed_pulses: int = 0
+
+
 class Sequencer:
 
 	"""
@@ -88,7 +99,7 @@ class Sequencer:
 	def __init__ (
 		self,
 		output_device_name: typing.Optional[str] = None,
-		initial_bpm: int = 125,
+		initial_bpm: float = 125,
 		input_device_name: typing.Optional[str] = None,
 		clock_follow: bool = False
 	) -> None:
@@ -113,10 +124,11 @@ class Sequencer:
 		self.pulses_per_beat = subsequence.constants.MIDI_QUARTER_NOTE
 
 		# Timing variables
-		self.current_bpm = 0
+		self.current_bpm: float = 0
 		self.seconds_per_beat = 0.0
 		self.seconds_per_pulse = 0.0
 		self.running = False
+		self._bpm_transition: typing.Optional[BpmTransition] = None
 
 		self.set_bpm(initial_bpm)
 
@@ -151,12 +163,12 @@ class Sequencer:
 		self.callbacks: typing.List[typing.Callable[[int], typing.Coroutine]] = []
 
 
-	def set_bpm (self, bpm: int) -> None:
+	def set_bpm (self, bpm: float) -> None:
 
-		"""Set the tempo and recalculate timing constants.
+		"""Set the tempo instantly and recalculate timing constants.
 
-		When clock_follow is enabled, BPM is determined by the external clock
-		source and this method has no effect.
+		Cancels any active BPM transition. When clock_follow is enabled, BPM is
+		determined by the external clock source and this method has no effect.
 		"""
 
 		if self.clock_follow and self.running:
@@ -166,11 +178,45 @@ class Sequencer:
 		if bpm <= 0:
 			raise ValueError("BPM must be positive")
 
+		self._bpm_transition = None
 		self.current_bpm = bpm
 		self.seconds_per_beat = 60.0 / self.current_bpm
 		self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
 
 		logger.info(f"BPM set to {self.current_bpm}")
+
+
+	def set_target_bpm (self, target_bpm: float, bars: int) -> None:
+
+		"""Set a target BPM and transition smoothly over the specified bars.
+
+		BPM is updated every pulse for a continuous ramp — no audible jumps.
+
+		Parameters:
+			target_bpm: The BPM to transition to
+			bars: Number of bars over which to transition
+		"""
+
+		if self.clock_follow and self.running:
+			logger.info("BPM is controlled by external clock — set_target_bpm() ignored")
+			return
+
+		if target_bpm <= 0:
+			raise ValueError("Target BPM must be positive")
+
+		if bars <= 0:
+			raise ValueError("Transition bars must be positive")
+
+		total_pulses = bars * self.pulses_per_beat * 4
+
+		self._bpm_transition = BpmTransition(
+			start_bpm=self.current_bpm,
+			target_bpm=target_bpm,
+			total_pulses=total_pulses,
+			elapsed_pulses=0
+		)
+
+		logger.info(f"BPM transition: {self.current_bpm} → {target_bpm} over {bars} bars")
 
 
 	def add_callback (self, callback: typing.Callable[[int], typing.Coroutine]) -> None:
@@ -562,6 +608,23 @@ class Sequencer:
 	async def _advance_pulse (self) -> None:
 
 		"""Reschedule patterns, process events, and increment the pulse counter."""
+
+		if self._bpm_transition is not None:
+			self._bpm_transition.elapsed_pulses += 1
+
+			if self._bpm_transition.elapsed_pulses >= self._bpm_transition.total_pulses:
+				target = self._bpm_transition.target_bpm
+				self._bpm_transition = None
+				self.set_bpm(target)
+			else:
+				progress = self._bpm_transition.elapsed_pulses / self._bpm_transition.total_pulses
+				interpolated = (
+					self._bpm_transition.start_bpm +
+					(self._bpm_transition.target_bpm - self._bpm_transition.start_bpm) * progress
+				)
+				self.current_bpm = interpolated
+				self.seconds_per_beat = 60.0 / self.current_bpm
+				self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
 
 		await self._maybe_reschedule_patterns(self.pulse_count)
 		await self._process_pulse(self.pulse_count)

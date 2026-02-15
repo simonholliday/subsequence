@@ -506,7 +506,7 @@ class Composition:
 	Top-level composition object that owns the sequencer, harmonic state, and pattern registry.
 	"""
 
-	def __init__ (self, output_device: typing.Optional[str] = None, bpm: int = 120, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> None:
+	def __init__ (self, output_device: typing.Optional[str] = None, bpm: float = 120, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> None:
 
 		"""Initialize a composition with MIDI output device, tempo, and optional key.
 
@@ -731,12 +731,12 @@ class Composition:
 			send_host = send_host
 		)
 
-	def set_bpm (self, bpm: int) -> None:
+	def set_bpm (self, bpm: float) -> None:
 
-		"""Change the tempo while the composition is playing.
+		"""Change the tempo instantly while the composition is playing.
 
-		When ``clock_follow`` is enabled, BPM is controlled by the external clock
-		source and this method has no effect.
+		Cancels any active BPM transition. When ``clock_follow`` is enabled,
+		BPM is controlled by the external clock source and this method has no effect.
 
 		Parameters:
 			bpm: New tempo in beats per minute
@@ -751,6 +751,25 @@ class Composition:
 
 		if not self._clock_follow:
 			self.bpm = bpm
+
+	def target_bpm (self, bpm: float, bars: int) -> None:
+
+		"""Set a target BPM and transition smoothly over the specified bars.
+
+		BPM ramps continuously from the current value to the target — no
+		audible jumps at bar boundaries. New calls override any active transition.
+
+		Parameters:
+			bpm: The target BPM
+			bars: Number of bars over which to transition
+
+		Example:
+			```python
+			composition.target_bpm(140, bars=8)
+			```
+		"""
+
+		self._sequencer.set_target_bpm(bpm, bars)
 
 	def live_info (self) -> typing.Dict[str, typing.Any]:
 
@@ -794,7 +813,7 @@ class Composition:
 			})
 
 		return {
-			"bpm": self._sequencer.current_bpm if self._clock_follow else self.bpm,
+			"bpm": self._sequencer.current_bpm,
 			"key": self.key,
 			"bar": self._builder_bar,
 			"section": section_info,
@@ -1180,7 +1199,7 @@ class Composition:
 			def _send_osc_status (bar: int) -> None:
 				if self._osc_server:
 					self._osc_server.send("/bar", bar)
-					self._osc_server.send("/bpm", self.bpm)
+					self._osc_server.send("/bpm", self._sequencer.current_bpm)
 					
 					if self._harmonic_state:
 						self._osc_server.send("/chord", self._harmonic_state.current_chord.name())

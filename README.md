@@ -442,7 +442,9 @@ Connected to Subsequence on 127.0.0.1:5555
 **Change tempo** - hear the difference immediately:
 
 ```python
->>> composition.set_bpm(140)
+>>> composition.set_bpm(140)           # instant jump
+OK
+>>> composition.target_bpm(140, bars=8) # smooth ramp over 8 bars
 OK
 ```
 
