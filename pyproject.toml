@@ -26,9 +26,39 @@ test = [
 docs = [
     "pdoc>=14.0.0",
 ]
+dev = [
+    "mypy>=1.8.0",
+]
 
 [project.scripts]
 subsequence = "subsequence.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["subsequence*"]
+
+[tool.setuptools.package-data]
+subsequence = ["py.typed"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+show_error_context = true
+pretty = true
+
+[[tool.mypy.overrides]]
+module = "mido.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "rtmidi.*"
+ignore_missing_imports = true

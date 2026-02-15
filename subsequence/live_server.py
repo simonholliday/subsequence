@@ -21,6 +21,9 @@ import logging
 import traceback
 import typing
 
+if typing.TYPE_CHECKING:
+	from subsequence.composition import Composition
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ class LiveServer:
 
 	"""Async TCP server that evaluates Python code inside a running composition."""
 
-	def __init__ (self, composition: typing.Any, port: int = 5555) -> None:
+	def __init__ (self, composition: "Composition", port: int = 5555) -> None:
 
 		"""Store a reference to the composition and the port to listen on."""
 

@@ -1,16 +1,21 @@
+from __future__ import annotations
+
 import typing
 
-import subsequence.constants
+from subsequence.constants import MIDI_QUARTER_NOTE
+
+if typing.TYPE_CHECKING:
+	import subsequence.pattern
 
 
 NoteType = typing.TypeVar("NoteType")
 
 
 def apply_swing (
-	steps: typing.Dict[int, typing.Any],
+	steps: typing.Dict[int, subsequence.pattern.Step],
 	swing_ratio: float = 2.0,
-	pulses_per_quarter: int = subsequence.constants.MIDI_QUARTER_NOTE
-) -> typing.Dict[int, typing.Any]:
+	pulses_per_quarter: int = MIDI_QUARTER_NOTE
+) -> typing.Dict[int, subsequence.pattern.Step]:
 
 	"""
 	Apply swing timing to a step dictionary keyed by pulse positions.
@@ -25,7 +30,7 @@ def apply_swing (
 	t1 = (swing_ratio / (swing_ratio + 1.0)) * pulses_per_quarter
 	t2 = pulses_per_quarter - t1
 
-	new_steps: typing.Dict[int, typing.Any] = {}
+	new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
 
 	for old_pulse, note_list in steps.items():
 
@@ -35,7 +40,7 @@ def apply_swing (
 
 		else:
 			container_type = None
-			notes = note_list
+			notes = note_list  # type: ignore[assignment]
 
 		quarter_index = old_pulse // pulses_per_quarter
 		within_quarter = old_pulse % pulses_per_quarter
@@ -47,16 +52,16 @@ def apply_swing (
 		else:
 			offset_in_second_eighth = within_quarter - straight_eighth_boundary
 			fraction_through_second = offset_in_second_eighth / float(straight_eighth_boundary)
-			new_pulse = quarter_index * pulses_per_quarter + t1 + fraction_through_second * t2
+			new_pulse = quarter_index * pulses_per_quarter + t1 + fraction_through_second * t2  # type: ignore[assignment]
 
 		new_pulse = int(round(new_pulse))
 
 		if new_pulse not in new_steps:
-			new_steps[new_pulse] = container_type() if container_type else []
+			new_steps[new_pulse] = container_type() if container_type else []  # type: ignore[assignment]
 
 		if container_type:
 			new_steps[new_pulse].notes.extend(notes)
 		else:
-			new_steps[new_pulse].extend(notes)
+			new_steps[new_pulse].extend(notes)  # type: ignore[attr-defined]
 
 	return new_steps

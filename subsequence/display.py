@@ -22,6 +22,9 @@ import logging
 import sys
 import typing
 
+if typing.TYPE_CHECKING:
+	from subsequence.composition import Composition
+
 
 class DisplayLogHandler (logging.Handler):
 
@@ -70,7 +73,7 @@ class Display:
 		```
 	"""
 
-	def __init__ (self, composition: typing.Any) -> None:
+	def __init__ (self, composition: "Composition") -> None:
 
 		"""Store composition reference for reading playback state.
 

@@ -536,6 +536,17 @@ Async tests use `pytest-asyncio`. Install test dependencies with:
 pip install -e .[test]
 ```
 
+### Type Checking
+
+This project uses mypy for static type checking. Run locally with:
+
+```bash
+pip install -e .[dev]
+mypy subsequence/
+```
+
+Type checking runs automatically in CI on all pull requests.
+
 [^markov]: A [Markov chain](https://en.wikipedia.org/wiki/Markov_chain) is a system where each state (here, a chord) transitions to the next based on weighted probabilities. Subsequence adds "gravity" — a configurable pull that draws progressions back toward the home key, so harmony drifts but never gets lost.
 [^vdc]: Velocity values are spread using a [van der Corput sequence](https://en.wikipedia.org/wiki/Van_der_Corput_sequence) — a low-discrepancy series that distributes values more evenly than pure randomness, producing a more natural, musical feel.
 [^stochastic]: "Stochastic" means governed by probability. These tools give you controlled randomness — results that sound intentional rather than arbitrary.

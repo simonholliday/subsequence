@@ -91,8 +91,8 @@ class WeightedGraph (typing.Generic[NodeType]):
 		roll = rng.uniform(0, total_weight)
 		accum = 0.0
 
-		for target, weight in adjusted:
-			accum += weight
+		for target, adj_weight in adjusted:
+			accum += adj_weight
 			if roll <= accum:
 				return target
 

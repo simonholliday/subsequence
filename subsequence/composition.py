@@ -11,6 +11,7 @@ import subsequence.display
 import subsequence.harmonic_state
 import subsequence.live_server
 import subsequence.pattern
+import subsequence.pattern_builder
 import subsequence.sequencer
 import subsequence.weighted_graph
 
@@ -161,12 +162,14 @@ class FormState:
 		self._bar_in_section += 1
 		self._total_bars += 1
 
+		assert self._current is not None, "Form state invariant: current should not be None when not finished"
 		_, current_bars = self._current
 
 		if self._bar_in_section >= current_bars:
 
 			if self._graph is not None:
 				# Graph mode: choose next section via weighted graph.
+				assert self._current is not None
 				current_name = self._current[0]
 
 				if current_name in self._terminal_sections:
@@ -175,6 +178,7 @@ class FormState:
 					self._current = None
 					return True
 
+				assert self._section_bars is not None
 				next_name = self._graph.choose_next(current_name, self._rng)
 				self._current = (next_name, self._section_bars[next_name])
 				self._section_index += 1
@@ -184,6 +188,7 @@ class FormState:
 			else:
 				# Iterator mode.
 				try:
+					assert self._iterator is not None
 					self._current = next(self._iterator)
 					self._section_index += 1
 					self._bar_in_section = 0
@@ -243,7 +248,7 @@ class _InjectedChord:
 
 		offset = (self._chord.root_pc - self._key_root_pc) % 12
 
-		return base + offset
+		return base + offset  # type: ignore[no-any-return]
 
 	def tones (self, root: int) -> typing.List[int]:
 
@@ -259,7 +264,7 @@ class _InjectedChord:
 		Forward to the underlying chord's intervals.
 		"""
 
-		return self._chord.intervals()
+		return self._chord.intervals()  # type: ignore[no-any-return]
 
 	def name (self) -> str:
 
@@ -267,14 +272,14 @@ class _InjectedChord:
 		Forward to the underlying chord's name.
 		"""
 
-		return self._chord.name()
+		return self._chord.name()  # type: ignore[no-any-return]
 
 
 async def schedule_harmonic_clock (
 	sequencer: subsequence.sequencer.Sequencer,
 	harmonic_state: subsequence.harmonic_state.HarmonicState,
 	cycle_beats: int,
-	reschedule_lookahead: int = 1
+	reschedule_lookahead: float = 1
 ) -> None:
 
 	"""
@@ -419,6 +424,7 @@ async def run_until_stopped (sequencer: subsequence.sequencer.Sequencer) -> None
 	for sig in (signal.SIGINT, signal.SIGTERM):
 		loop.add_signal_handler(sig, _request_stop)
 
+	assert sequencer.task is not None, "Sequencer task should exist after start()"
 	await asyncio.wait(
 		[asyncio.create_task(stop_event.wait()), sequencer.task],
 		return_when = asyncio.FIRST_COMPLETED
@@ -506,7 +512,7 @@ class Composition:
 
 		self._harmonic_state: typing.Optional[subsequence.harmonic_state.HarmonicState] = None
 		self._harmony_cycle_beats: typing.Optional[int] = None
-		self._harmony_reschedule_lookahead: int = 1
+		self._harmony_reschedule_lookahead: float = 1
 		self._pending_patterns: typing.List[_PendingPattern] = []
 		self._pending_scheduled: typing.List[_PendingScheduled] = []
 		self._form_state: typing.Optional[FormState] = None
@@ -965,7 +971,7 @@ class Composition:
 
 		if wants_chord:
 
-			def merged_builder (p: typing.Any, chord: typing.Any) -> None:
+			def merged_builder (p: subsequence.pattern_builder.PatternBuilder, chord: _InjectedChord) -> None:
 
 				for fn in builder_fns:
 					if _fn_has_parameter(fn, "chord"):
@@ -975,7 +981,7 @@ class Composition:
 
 		else:
 
-			def merged_builder (p: typing.Any) -> None:
+			def merged_builder (p: subsequence.pattern_builder.PatternBuilder) -> None:  # type: ignore[misc]
 
 				for fn in builder_fns:
 					fn(p)

@@ -23,8 +23,8 @@ class PatternLike (typing.Protocol):
 	"""
 
 	channel: int
-	length: int
-	reschedule_lookahead: int
+	length: float
+	reschedule_lookahead: float
 	steps: typing.Dict[int, typing.Any]
 
 
@@ -129,7 +129,7 @@ class Sequencer:
 		self._waiting_for_start: bool = False
 
 		self.event_queue: typing.List[MidiEvent] = []
-		self.task = None
+		self.task: typing.Optional[asyncio.Task] = None
 		self.start_time = 0.0
 		self.pulse_count = 0
 		self.current_bar: int = -1
@@ -409,7 +409,7 @@ class Sequencer:
 		"""
 
 		await self.start()
-		
+
 		try:
 			if self.task:
 				await self.task
@@ -461,7 +461,7 @@ class Sequencer:
 		await self.panic()
 
 		if self.midi_out:
-			self.midi_out.close()
+			self.midi_out.close()  # type: ignore[unreachable]
 
 		if self.midi_in:
 			self.midi_in.close()
@@ -480,7 +480,7 @@ class Sequencer:
 			self.callback_queue = []
 			self._callback_counter = itertools.count()
 
-		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
+		self.active_notes = set()
 
 		await self.events.emit_async("stop")
 
@@ -564,6 +564,8 @@ class Sequencer:
 		Transport messages (``start``, ``stop``, ``continue``) control sequencer state.
 		The loop waits for a ``start`` or ``continue`` before processing clock ticks.
 		"""
+
+		assert self._midi_input_queue is not None, "MIDI input queue must be initialized for external clock"
 
 		while self.running:
 
@@ -701,7 +703,7 @@ class Sequencer:
 		async with self.queue_lock:
 			for channel, note in list(self.active_notes):
 				if self.midi_out:
-					self.midi_out.send(mido.Message('note_off', channel=channel, note=note, velocity=0))
+					self.midi_out.send(mido.Message('note_off', channel=channel, note=note, velocity=0))  # type: ignore[unreachable]
 			self.active_notes.clear()
 
 
@@ -713,7 +715,7 @@ class Sequencer:
 
 		if self.midi_out:
 
-			try:
+			try:  # type: ignore[unreachable]
 
 				msg = mido.Message(
 					event.message_type,
@@ -741,7 +743,7 @@ class Sequencer:
 
 		if self.midi_out:
 
-			try:
+			try:  # type: ignore[unreachable]
 
 				# 2. Send "All Notes Off" (CC 123) and "All Sound Off" (CC 120) to all 16 channels
 				for channel in range(16):
