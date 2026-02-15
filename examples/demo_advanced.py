@@ -12,7 +12,7 @@ need something the Composition API doesn't expose.
 
 How to read this file
 ─────────────────────
-1. MIDI Setup      — Device name and channel assignments (same as demo.py).
+1. MIDI Setup      — Channel assignments (same as demo.py).
 2. Sequencer       — Create the low-level sequencer with a tempo.
 3. Harmony         — Create a HarmonicState and schedule it on a beat clock.
 4. Form            — Create a FormState and schedule it to advance each bar.
@@ -60,9 +60,7 @@ logger = logging.getLogger(__name__)
 # ─── MIDI Setup ──────────────────────────────────────────────────────
 #
 # These values are specific to YOUR studio. Change them to match your
-# MIDI interface and instrument channel assignments.
-
-MIDI_OUTPUT_DEVICE = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
+# instrument channel assignments.
 
 DRUMS_MIDI_CHANNEL = 9       # Channel 10 in 1-indexed MIDI (standard drums)
 EP_MIDI_CHANNEL = 11          # Electric piano / pad synth
@@ -436,7 +434,6 @@ async def main () -> None:
 	# ─── Sequencer ───────────────────────────────────────────────────
 
 	seq = subsequence.sequencer.Sequencer(
-		output_device_name = MIDI_OUTPUT_DEVICE,
 		initial_bpm = 125
 	)
 

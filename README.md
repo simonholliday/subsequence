@@ -49,8 +49,7 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 ```
 pip install -e .
 ```
-2. Edit `examples/demo.py` to set your MIDI output device name
-3. Run the demo (drums + evolving dark minor harmony in E):
+2. Run the demo (drums + evolving dark minor harmony in E):
 ```
 python examples/demo.py
 ```
@@ -62,12 +61,11 @@ The `Composition` class is the main entry point. Define your MIDI setup, create 
 ```python
 import subsequence
 
-MIDI_OUTPUT_DEVICE = "Your MIDI Device:Port"
 DRUMS_CHANNEL = 9
 SYNTH_CHANNEL = 0
 DRUM_NOTE_MAP = {"kick": 36, "snare": 38, "hh": 42}
 
-composition = subsequence.Composition(output_device=MIDI_OUTPUT_DEVICE, bpm=120, key="E")
+composition = subsequence.Composition(bpm=120, key="E")
 composition.harmony(style="dark_minor", cycle_beats=4, gravity=0.8)
 
 @composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
@@ -84,7 +82,9 @@ if __name__ == "__main__":
     composition.play()
 ```
 
-MIDI channels, device names, and drum note mappings are defined by the musician in their composition file — the module does not ship studio-specific constants.
+When `output_device` is omitted, Subsequence auto-discovers available MIDI devices. If only one device is connected it is used automatically; if several are found you are prompted to choose. To skip the prompt, pass the device name directly: `Composition(output_device="Your Device:Port", ...)`.
+
+MIDI channels and drum note mappings are defined by the musician in their composition file — the module does not ship studio-specific constants.
 
 Patterns are plain Python functions, so anything you can express in Python is fair game. A few more features:
 
@@ -125,7 +125,6 @@ import subsequence.harmonic_state
 import subsequence.pattern
 import subsequence.sequencer
 
-MIDI_OUTPUT_DEVICE = "Your MIDI Device:Port"
 DRUMS_CHANNEL = 9
 SYNTH_CHANNEL = 0
 DRUM_KICK = 36
@@ -170,9 +169,7 @@ class ChordPadPattern (subsequence.pattern.Pattern):
 
 
 async def main () -> None:
-    seq = subsequence.sequencer.Sequencer(
-        output_device_name=MIDI_OUTPUT_DEVICE, initial_bpm=120
-    )
+    seq = subsequence.sequencer.Sequencer(initial_bpm=120)
     harmonic_state = subsequence.harmonic_state.HarmonicState(
         key_name="E", graph_style="dark_minor", key_gravity_blend=0.8
     )
@@ -281,7 +278,7 @@ composition.form(my_form())
 Set a seed to make all random behavior repeatable:
 
 ```python
-composition = subsequence.Composition(output_device=MIDI_OUTPUT_DEVICE, bpm=125, key="E", seed=42)
+composition = subsequence.Composition(bpm=125, key="E", seed=42)
 # OR
 composition.seed(42)
 ```
@@ -442,10 +439,9 @@ Subsequence can follow an external MIDI clock instead of running its own. This l
 ### Enable clock following
 
 ```python
-MIDI_OUTPUT_DEVICE = "Your MIDI Device:Port"
-MIDI_INPUT_DEVICE = "Your MIDI Device:Port"  # Can be the same device
+MIDI_INPUT_DEVICE = "Your MIDI Device:Port"
 
-composition = subsequence.Composition(output_device=MIDI_OUTPUT_DEVICE, bpm=120, key="E")
+composition = subsequence.Composition(bpm=120, key="E")
 
 # Follow external clock and respect transport (start/stop/continue)
 composition.midi_input(device=MIDI_INPUT_DEVICE, clock_follow=True)
@@ -468,9 +464,8 @@ Without `clock_follow` (the default), `midi_input()` opens the input port but do
 
 ```python
 seq = subsequence.sequencer.Sequencer(
-    output_device_name="...",
     initial_bpm=120,
-    input_device_name="...",
+    input_device_name="Your MIDI Device:Port",
     clock_follow=True
 )
 ```
@@ -479,9 +474,8 @@ seq = subsequence.sequencer.Sequencer(
 
 The `examples/` directory contains self-documenting compositions demonstrating different techniques and musical styles. Each file includes detailed comments explaining its structure, harmony, form, and pattern design. To run an example:
 
-1. Edit the MIDI device name at the top of the file
-2. Run: `python examples/filename.py`
-3. Press Ctrl+C to stop
+1. Run: `python examples/filename.py`
+2. Press Ctrl+C to stop
 
 Current examples include dark minor harmony with graph-based form, polyrhythmic arpeggios with float pattern lengths, dark techno with Euclidean rhythms, Jarre-inspired electronic suites, and jazz fusion with coprime polyrhythms.
 

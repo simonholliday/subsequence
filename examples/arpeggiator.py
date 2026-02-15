@@ -32,9 +32,8 @@ Pattern overview
 
 How to run
 ──────────
-1. Set MIDI_OUTPUT_DEVICE below to your MIDI interface name.
-2. Adjust channel numbers to match your studio routing.
-3. Run: python examples/arpeggiator.py
+1. Adjust channel numbers below to match your studio routing.
+2. Run: python examples/arpeggiator.py
 4. Press Ctrl+C to stop.
 
 Tweakable parameters
@@ -58,10 +57,8 @@ import subsequence.sequence_utils
 
 # ─── MIDI Setup ──────────────────────────────────────────────────────
 #
-# Change these to match your MIDI interface and instrument routing.
+# Change these to match your instrument routing.
 # Channel numbers are 0-indexed (MIDI channel 1 = 0, channel 10 = 9).
-
-MIDI_OUTPUT_DEVICE = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
 
 # Tonal instruments — each gets its own arpeggio pattern.
 MIDI_CHANNEL_MOOG_MATRIARCH = 0    # Fast sixteenth-note arpeggio
@@ -93,7 +90,6 @@ DRM1_DRUM_MAP = {
 # with evolving harmony as the structure.
 
 composition = subsequence.Composition(
-	output_device = MIDI_OUTPUT_DEVICE,
 	bpm = 120,
 	key = "C",
 	seed = 42,

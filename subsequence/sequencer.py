@@ -87,7 +87,7 @@ class Sequencer:
 
 	def __init__ (
 		self,
-		output_device_name: str,
+		output_device_name: typing.Optional[str] = None,
 		initial_bpm: int = 125,
 		input_device_name: typing.Optional[str] = None,
 		clock_follow: bool = False
@@ -96,7 +96,9 @@ class Sequencer:
 		"""Initialize the sequencer with MIDI devices and initial BPM.
 
 		Parameters:
-			output_device_name: MIDI output device name
+			output_device_name: MIDI output device name. When omitted, auto-discovers
+				available devices — uses the only device if one is found, or prompts
+				the user to choose if multiple are available.
 			initial_bpm: Tempo in BPM (ignored when clock_follow is True)
 			input_device_name: Optional MIDI input device name for clock/transport
 			clock_follow: When True, follow external MIDI clock instead of internal clock
@@ -191,26 +193,67 @@ class Sequencer:
 
 	def _init_midi_output (self) -> None:
 
-		"""
-		Initialize the MIDI output port.
+		"""Initialize the MIDI output port.
+
+		When ``output_device_name`` was provided, opens that device directly.
+		When omitted, auto-discovers available devices: uses the only one if
+		exactly one is found, or prompts the user to choose if several exist.
 		"""
 
 		try:
 
 			outputs = mido.get_output_names()
-
 			logger.info(f"Available MIDI outputs: {outputs}")
 
-			if self.output_device_name in outputs:
+			if not outputs:
+				logger.error("No MIDI output devices found.")
+				return
+
+			# Explicit device requested.
+			if self.output_device_name is not None:
+
+				if self.output_device_name in outputs:
+					self.midi_out = mido.open_output(self.output_device_name)
+					logger.info(f"Opened MIDI output: {self.output_device_name}")
+				else:
+					logger.error(
+						f"MIDI output device '{self.output_device_name}' not found. "
+						f"Available devices: {outputs}"
+					)
+
+				return
+
+			# Auto-discover: one device — use it.
+			if len(outputs) == 1:
+				self.output_device_name = outputs[0]
 				self.midi_out = mido.open_output(self.output_device_name)
-				logger.info(f"Opened MIDI output: {self.output_device_name}")
+				logger.info(f"One MIDI output found — using '{self.output_device_name}'")
+				return
 
-			else:
-				logger.warning(f"MIDI output device '{self.output_device_name}' not found.")
+			# Auto-discover: multiple devices — prompt user.
+			print("\nAvailable MIDI output devices:\n")
 
-				if outputs:
-					self.midi_out = mido.open_output(outputs[0])
-					logger.warning(f"Fallback to: {outputs[0]}")
+			for i, name in enumerate(outputs, 1):
+				print(f"  {i}. {name}")
+
+			print()
+
+			while True:
+				try:
+					choice = int(input(f"Select a device (1-{len(outputs)}): "))
+					if 1 <= choice <= len(outputs):
+						break
+				except (ValueError, EOFError):
+					pass
+				print(f"Enter a number between 1 and {len(outputs)}.")
+
+			self.output_device_name = outputs[choice - 1]
+			self.midi_out = mido.open_output(self.output_device_name)
+			logger.info(f"Opened MIDI output: {self.output_device_name}")
+
+			print(f"\nTip: To skip this prompt, pass the device name directly:\n")
+			print(f"  Sequencer(output_device_name=\"{self.output_device_name}\")")
+			print(f"  Composition(output_device=\"{self.output_device_name}\")\n")
 
 		except Exception as e:
 			logger.error(f"Failed to open MIDI output: {e}")

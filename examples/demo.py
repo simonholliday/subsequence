@@ -9,7 +9,7 @@ The module handles scheduling, async, and MIDI plumbing.
 
 How to read this file
 ─────────────────────
-1. MIDI Setup     — Tell the module which device and channels to use.
+1. MIDI Setup     — Tell the module which channels to use.
 2. Composition    — Create a composition with a tempo and key.
 3. Harmony        — Choose a chord graph and how often chords change.
 4. Form           — Define the large-scale structure (sections and bar counts).
@@ -50,9 +50,7 @@ logging.basicConfig(level=logging.INFO)
 # ─── MIDI Setup ──────────────────────────────────────────────────────
 #
 # These values are specific to YOUR studio. Change them to match your
-# MIDI interface and instrument channel assignments.
-
-MIDI_OUTPUT_DEVICE = "Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
+# instrument channel assignments.
 
 DRUMS_MIDI_CHANNEL = 9       # Channel 10 in 1-indexed MIDI (standard drums)
 EP_MIDI_CHANNEL = 11          # Electric piano / pad synth
@@ -72,7 +70,6 @@ DRUM_NOTE_MAP = {
 # ─── Composition ─────────────────────────────────────────────────────
 
 composition = subsequence.Composition(
-	output_device = MIDI_OUTPUT_DEVICE,
 	bpm = 125,
 	key = "E"
 )

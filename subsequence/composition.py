@@ -478,12 +478,14 @@ class Composition:
 	Top-level composition object that owns the sequencer, harmonic state, and pattern registry.
 	"""
 
-	def __init__ (self, output_device: str, bpm: int = 120, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> None:
+	def __init__ (self, output_device: typing.Optional[str] = None, bpm: int = 120, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> None:
 
 		"""Initialize a composition with MIDI output device, tempo, and optional key.
 
 		Parameters:
-			output_device: MIDI output device name (e.g., `"Device Name:Port 1 16:0"`)
+			output_device: MIDI output device name (e.g., `"Device Name:Port 1 16:0"`).
+				When omitted, auto-discovers available devices — uses the only device
+				if one is found, or prompts the user to choose if multiple are available.
 			bpm: Tempo in beats per minute (default 120)
 			key: Root key name (e.g., `"C"`, `"F#"`, `"Bb"`). Required if using `harmony()`.
 			seed: Optional random seed. When set, all randomness (chord progressions, form
