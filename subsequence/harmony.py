@@ -2,6 +2,7 @@ import logging
 import typing
 
 import subsequence.chords
+import subsequence.constants.velocity
 import subsequence.harmonic_state
 import subsequence.pattern
 import subsequence.voicings
@@ -21,7 +22,7 @@ class ChordPattern (subsequence.pattern.Pattern):
 		harmonic_state: subsequence.harmonic_state.HarmonicState,
 		length: int = 4,
 		root_midi: int = 52,
-		velocity: int = 90,
+		velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
 		reschedule_lookahead: int = 1,
 		channel: typing.Optional[int] = None,
 		voice_leading: bool = False

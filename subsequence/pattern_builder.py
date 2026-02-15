@@ -3,6 +3,7 @@ import random
 import typing
 
 import subsequence.constants
+import subsequence.constants.velocity
 import subsequence.pattern
 import subsequence.sequence_utils
 
@@ -93,7 +94,7 @@ class PatternBuilder:
 
 		return self._drum_note_map[pitch]
 
-	def note (self, pitch: typing.Union[int, str], beat: float, velocity: int = 100, duration: float = 0.25) -> None:
+	def note (self, pitch: typing.Union[int, str], beat: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> None:
 
 		"""Place a single note at a beat position.
 
@@ -128,7 +129,7 @@ class PatternBuilder:
 			duration_beats = duration
 		)
 
-	def hit (self, pitch: typing.Union[int, str], beats: typing.List[float], velocity: int = 100, duration: float = 0.1) -> None:
+	def hit (self, pitch: typing.Union[int, str], beats: typing.List[float], velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1) -> None:
 
 		"""
 		Place short hits at one or more beat positions.
@@ -137,7 +138,7 @@ class PatternBuilder:
 		for beat in beats:
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 
-	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: int = 100, duration: float = 0.1, step_count: int = 16, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> None:
+	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, step_count: int = 16, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""Place short hits at specific step positions on a subdivided grid.
 
@@ -239,7 +240,7 @@ class PatternBuilder:
 			beat = step_idx * step_duration
 			self.note(pitch=pitches_list[i], beat=beat, velocity=velocities_list[i], duration=durations_list[i])
 
-	def fill (self, pitch: typing.Union[int, str], step: float, velocity: int = 100, duration: float = 0.25) -> None:
+	def fill (self, pitch: typing.Union[int, str], step: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> None:
 
 		"""
 		Fill the pattern with evenly-spaced notes at the given step interval.
@@ -254,7 +255,7 @@ class PatternBuilder:
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 			beat += step
 
-	def arpeggio (self, pitches: typing.Union[typing.List[int], typing.List[str]], step: float = 0.25, velocity: int = 100, duration: typing.Optional[float] = None) -> None:
+	def arpeggio (self, pitches: typing.Union[typing.List[int], typing.List[str]], step: float = 0.25, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None) -> None:
 
 		"""Cycle through a list of pitches at regular intervals to create an arpeggio.
 
@@ -293,7 +294,7 @@ class PatternBuilder:
 			duration_beats = duration
 		)
 
-	def chord (self, chord_obj: typing.Any, root: int, velocity: int = 90, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None) -> None:
+	def chord (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None) -> None:
 
 		"""Place a chord at beat 0 using the chord's intervals.
 
@@ -361,7 +362,7 @@ class PatternBuilder:
 
 		self._pattern.apply_swing(swing_ratio=ratio)
 
-	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = 100, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
+	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""Generate a Euclidean rhythm and place hits at the resulting beat positions.
 
@@ -406,7 +407,7 @@ class PatternBuilder:
 
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 
-	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = 100, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
+	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""Generate a Bresenham rhythm and place hits at the resulting beat positions.
 
@@ -458,7 +459,7 @@ class PatternBuilder:
 		for position in positions_to_remove:
 			del self._pattern.steps[position]
 
-	def velocity_shape (self, low: int = 60, high: int = 120) -> None:
+	def velocity_shape (self, low: int = subsequence.constants.velocity.VELOCITY_SHAPE_LOW, high: int = subsequence.constants.velocity.VELOCITY_SHAPE_HIGH) -> None:
 
 		"""Apply a van der Corput velocity distribution to existing notes.
 

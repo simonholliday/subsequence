@@ -2,6 +2,7 @@ import dataclasses
 import typing
 
 import subsequence.constants
+import subsequence.constants.velocity
 import subsequence.swing
 
 
@@ -66,7 +67,7 @@ class Pattern:
 		self.steps[position].notes.append(note)
 
 
-	def add_sequence (self, sequence: typing.List[int], step_duration: int, pitch: int, velocity: typing.Union[int, typing.List[int]] = 100, note_duration: int = 6) -> None:
+	def add_sequence (self, sequence: typing.List[int], step_duration: int, pitch: int, velocity: typing.Union[int, typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, note_duration: int = 6) -> None:
 
 		"""
 		Add a sequence of notes to the pattern.
@@ -118,7 +119,7 @@ class Pattern:
 		)
 
 
-	def add_sequence_beats (self, sequence: typing.List[int], step_beats: float, pitch: int, velocity: typing.Union[int, typing.List[int]] = 100, note_duration_beats: float = 0.25, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+	def add_sequence_beats (self, sequence: typing.List[int], step_beats: float, pitch: int, velocity: typing.Union[int, typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, note_duration_beats: float = 0.25, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
 
 		"""
 		Add a sequence of notes using beat durations.
@@ -150,7 +151,7 @@ class Pattern:
 			note_duration = note_duration
 		)
 
-	def add_arpeggio_beats (self, pitches: typing.List[int], step_beats: float, velocity: int = 100, duration_beats: typing.Optional[float] = None, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+	def add_arpeggio_beats (self, pitches: typing.List[int], step_beats: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration_beats: typing.Optional[float] = None, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
 
 		"""
 		Add an arpeggio that cycles through pitches at regular intervals.
