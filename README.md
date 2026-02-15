@@ -20,6 +20,7 @@ Subsequence is built for **MIDI-literate musicians who can write some simple Pyt
 - [Terminal display](#terminal-display)
 - [Live coding](#live-coding)
 - [MIDI input & external clock](#midi-input--external-clock)
+- [OSC integration](#osc-integration)
 - [Examples](#examples)
 - [Extra utilities](#extra-utilities)
 - [Feature Roadmap](#feature-roadmap)
@@ -514,7 +515,53 @@ When `clock_follow=True`:
 
 Without `clock_follow` (the default), `midi_input()` opens the input port but does not act on clock or transport messages. This prepares for future MIDI CC mapping.
 
+## OSC integration
+
+Subsequence includes Open Sound Control (OSC) support for remote control and state broadcasting. This is useful for connecting to modular synth environments (like VCV Rack or Reaktor), custom touch interfaces (TouchOSC), or other creative coding tools.
+
+### Enable OSC
+
+Start the OSC server before calling `play()`:
+
+```python
+composition.osc(receive_port=9000, send_port=9001, send_host="127.0.0.1")
+composition.play()
+```
+
+### Receiving (Control)
+
+The server listens for incoming UDP messages (default port 9000) and maps them to composition actions:
+
+| Address | Argument | Action |
+|---------|----------|--------|
+| `/bpm` | `int` | Set composition tempo |
+| `/mute/<name>` | (none) | Mute a pattern by its function name |
+| `/unmute/<name>` | (none) | Unmute a pattern |
+| `/data/<key>` | `any` | Update a value in `composition.data` |
+
+Custom handlers can be registered via `composition._osc_server.map(address, handler)`.
+
+### Sending (Status)
+
+Subsequence automatically broadcasts its state via OSC (default port 9001) at the start of every bar:
+
+| Address | Type | Description |
+|---------|------|-------------|
+| `/bar` | `int` | Current global bar count |
+| `/bpm` | `int` | Current tempo |
+| `/chord` | `str` | Current chord name (e.g. `"Em7"`) |
+| `/section` | `str` | Current section name (if form is configured) |
+
 ### Direct API
+
+```python
+osc_server = subsequence.osc.OscServer(
+    composition, receive_port=9000, send_port=9001
+)
+await osc_server.start()
+```
+
+### MIDI input: Direct API
 
 ```python
 seq = subsequence.sequencer.Sequencer(
@@ -547,6 +594,7 @@ Current examples include aeolian minor harmony with graph-based form, polyrhythm
 - `subsequence.constants.durations` provides beat-based duration constants. Import as `import subsequence.constants.durations as dur` and write `length = 9 * dur.SIXTEENTH` or `step = dur.DOTTED_EIGHTH` instead of raw floats. Constants: `THIRTYSECOND`, `SIXTEENTH`, `DOTTED_SIXTEENTH`, `TRIPLET_EIGHTH`, `EIGHTH`, `DOTTED_EIGHTH`, `TRIPLET_QUARTER`, `QUARTER`, `DOTTED_QUARTER`, `HALF`, `DOTTED_HALF`, `WHOLE`.
 - `subsequence.constants.gm_drums` provides the General MIDI Level 1 drum note map. `GM_DRUM_MAP` can be passed as `drum_note_map`; individual constants like `KICK_1` are also available.
 - `subsequence.constants.pulses` provides pulse-based MIDI timing constants used internally by the engine.
+- `subsequence.osc` provides the OSC server/client for bi-directional communication.
 - `subsequence.live_server` provides the TCP eval server for live coding. Started internally by `composition.live()`.
 - `subsequence.live_client` provides the interactive REPL client. Run with `python -m subsequence.live_client`.
 - `subsequence.composition` provides the `Composition` class and internal scheduling helpers.

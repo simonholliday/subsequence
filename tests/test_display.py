@@ -37,7 +37,7 @@ def test_format_status_with_harmony (patch_midi: None) -> None:
 	"""Status line should include the current chord when harmony is configured."""
 
 	comp = _make_composition(patch_midi)
-	comp.harmony(style="dark_minor", cycle_beats=4)
+	comp.harmony(style="aeolian_minor", cycle_beats=4)
 
 	display = subsequence.display.Display(comp)
 	status = display._format_status()
@@ -68,7 +68,7 @@ def test_format_status_full (patch_midi: None) -> None:
 	"""Status line should include all components when form and harmony are configured."""
 
 	comp = _make_composition(patch_midi)
-	comp.harmony(style="dark_minor", cycle_beats=4)
+	comp.harmony(style="aeolian_minor", cycle_beats=4)
 
 	comp.form({
 		"intro": (4, [("verse", 1)]),

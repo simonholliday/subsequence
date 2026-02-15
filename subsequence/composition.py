@@ -10,6 +10,7 @@ import subsequence.chord_graphs
 import subsequence.display
 import subsequence.harmonic_state
 import subsequence.live_server
+import subsequence.osc
 import subsequence.pattern
 import subsequence.pattern_builder
 import subsequence.sequencer
@@ -553,6 +554,7 @@ class Composition:
 		self._input_device: typing.Optional[str] = None
 		self._clock_follow: bool = False
 		self.data: typing.Dict[str, typing.Any] = {}
+		self._osc_server: typing.Optional[subsequence.osc.OscServer] = None
 
 	def harmony (
 		self,
@@ -702,6 +704,32 @@ class Composition:
 
 		self._live_server = subsequence.live_server.LiveServer(self, port=port)
 		self._is_live = True
+
+	def osc (self, receive_port: int = 9000, send_port: int = 9001, send_host: str = "127.0.0.1") -> None:
+
+		"""Enable Open Sound Control (OSC) for remote control and state broadcasting.
+
+		Starts a UDP server that listens for control messages and sends state updates.
+
+		Parameters:
+			receive_port: UDP port to listen on (default 9000)
+			send_port: UDP port to send status updates to (default 9001)
+			send_host: Hostname/IP to send updates to (default "127.0.0.1")
+
+		Example:
+			```python
+			# Enable OSC before play()
+			composition.osc(receive_port=9000, send_port=9001)
+			composition.play()
+			```
+		"""
+
+		self._osc_server = subsequence.osc.OscServer(
+			self,
+			receive_port = receive_port,
+			send_port = send_port,
+			send_host = send_host
+		)
 
 	def set_bpm (self, bpm: int) -> None:
 
@@ -1146,10 +1174,31 @@ class Composition:
 		if self._live_server is not None:
 			await self._live_server.start()
 
+		if self._osc_server is not None:
+			await self._osc_server.start()
+
+			def _send_osc_status (bar: int) -> None:
+				if self._osc_server:
+					self._osc_server.send("/bar", bar)
+					self._osc_server.send("/bpm", self.bpm)
+					
+					if self._harmonic_state:
+						self._osc_server.send("/chord", self._harmonic_state.current_chord.name())
+					
+					if self._form_state:
+						info = self._form_state.get_section_info()
+						if info:
+							self._osc_server.send("/section", info.name)
+
+			self._sequencer.on_event("bar", _send_osc_status)
+
 		await run_until_stopped(self._sequencer)
 
 		if self._live_server is not None:
 			await self._live_server.stop()
+
+		if self._osc_server is not None:
+			await self._osc_server.stop()
 
 		if self._display is not None:
 			self._display.stop()
