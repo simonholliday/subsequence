@@ -635,18 +635,16 @@ class Sequencer:
 
 		"""Playback loop driven by the internal wall clock."""
 
+		next_pulse_time = self.start_time
+
 		while self.running:
 
 			current_time = time.perf_counter()
-			elapsed_time = current_time - self.start_time
 
-			# Use cached timing values
-			target_pulse = int(elapsed_time / self.seconds_per_pulse)
-
-			self._check_bar_change(target_pulse, pulses_per_bar)
-
-			while self.pulse_count <= target_pulse:
+			while current_time >= next_pulse_time:
+				self._check_bar_change(self.pulse_count, pulses_per_bar)
 				await self._advance_pulse()
+				next_pulse_time += self.seconds_per_pulse
 
 			# Check if queue is empty and we are past the last event
 			async with self.queue_lock:
@@ -655,11 +653,10 @@ class Sequencer:
 					self.running = False
 					break
 
-			next_pulse_target_time = (self.pulse_count * self.seconds_per_pulse) + self.start_time
-			sleep_time = next_pulse_target_time - time.perf_counter()
+			sleep_time = next_pulse_time - time.perf_counter()
 
 			if sleep_time > 0:
-				await asyncio.sleep(max(0, sleep_time))
+				await asyncio.sleep(sleep_time)
 
 
 	async def _run_loop_external_clock (self, pulses_per_bar: int) -> None:
