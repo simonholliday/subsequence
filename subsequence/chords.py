@@ -16,6 +16,8 @@ Chord qualities: `"major"`, `"minor"`, `"diminished"`, `"augmented"`, `"dominant
 import dataclasses
 import typing
 
+import subsequence.voicings
+
 
 NOTE_NAME_TO_PC: typing.Dict[str, int] = {
 	"C": 0,
@@ -99,12 +101,14 @@ class Chord:
 		return CHORD_INTERVALS[self.quality]
 
 
-	def tones (self, root: int) -> typing.List[int]:
+	def tones (self, root: int, inversion: int = 0) -> typing.List[int]:
 
 		"""Return MIDI note numbers for chord tones starting from a root.
 
 		Parameters:
 			root: MIDI root note number (default 60 = middle C)
+			inversion: Chord inversion (0 = root position, 1 = first, 2 = second, ...).
+				Wraps around for values >= number of notes.
 
 		Returns:
 			List of MIDI note numbers for chord tones
@@ -112,14 +116,18 @@ class Chord:
 		Example:
 			```python
 			chord = Chord(root_pc=0, quality="major")  # C major
-			tones = chord.tones(root=60)  # [60, 64, 67] = C, E, G
-
-			chord = Chord(root_pc=7, quality="minor_7th")  # G minor 7
-			tones = chord.tones(root=55)  # [55, 58, 62, 65] = G, Bb, D, F
+			chord.tones(root=60)               # [60, 64, 67] — root position
+			chord.tones(root=60, inversion=1)  # [60, 63, 68] — first inversion
+			chord.tones(root=60, inversion=2)  # [60, 65, 69] — second inversion
 			```
 		"""
 
-		return [root + interval for interval in self.intervals()]
+		intervals = self.intervals()
+
+		if inversion != 0:
+			intervals = subsequence.voicings.invert_chord(intervals, inversion)
+
+		return [root + interval for interval in intervals]
 
 
 	def name (self) -> str:

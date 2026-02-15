@@ -293,9 +293,13 @@ class PatternBuilder:
 			duration_beats = duration
 		)
 
-	def chord (self, chord_obj: typing.Any, root: int, velocity: int = 90, sustain: bool = False, duration: float = 1.0) -> None:
+	def chord (self, chord_obj: typing.Any, root: int, velocity: int = 90, sustain: bool = False, duration: float = 1.0, inversion: int = 0) -> None:
 
 		"""Place a chord at beat 0 using the chord's intervals.
+
+		When the pattern has ``voice_leading=True``, the inversion is chosen
+		automatically to minimise pitch movement — the ``inversion`` parameter
+		is ignored in that case.
 
 		Parameters:
 			chord_obj: A `Chord` object (automatically injected if the pattern accepts a `chord` parameter)
@@ -303,6 +307,8 @@ class PatternBuilder:
 			velocity: MIDI velocity 0-127 (default 90)
 			sustain: If True, duration spans the entire pattern length (default False)
 			duration: Note duration in beats (default 1.0, ignored if sustain=True)
+			inversion: Chord inversion (0 = root position, 1 = first, 2 = second, ...).
+				Ignored when voice leading is active.
 
 		Example:
 			```python
@@ -310,10 +316,13 @@ class PatternBuilder:
 			def chords(p, chord):
 				# chord is automatically injected
 				p.chord(chord, root=60, velocity=90, sustain=True)
+
+			# Manual inversion
+			p.chord(chord, root=60, inversion=1)  # first inversion
 			```
 		"""
 
-		pitches = chord_obj.tones(root=root)
+		pitches = chord_obj.tones(root=root, inversion=inversion)
 
 		if sustain:
 			duration = float(self._pattern.length)

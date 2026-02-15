@@ -15,6 +15,7 @@ Subsequence is built for **MIDI-literate musicians who can write some simple Pyt
 - [Composition API](#composition-api)
 - [Direct Pattern API](#direct-pattern-api)
 - [Form (sections)](#form-sections)
+- [Chord inversions and voice leading](#chord-inversions-and-voice-leading)
 - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
 - [Terminal display](#terminal-display)
 - [Live coding](#live-coding)
@@ -28,7 +29,7 @@ Subsequence is built for **MIDI-literate musicians who can write some simple Pyt
 ## What it does
 
 - **Patterns as functions.** Each pattern is a Python function that builds a full cycle of notes. The sequencer calls it fresh each cycle, so patterns can evolve - reading the current chord, section, cycle count, or external data to decide what to play.
-- **Harmonic intelligence.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted probabilities.[^markov] Four built-in harmonic palettes - `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, and `"dark_techno"` - or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord.
+- **Harmonic intelligence.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted probabilities.[^markov] Four built-in harmonic palettes - `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, and `"dark_techno"` - or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord. Chord inversions and voice leading keep voices moving smoothly between changes.
 - **Compositional form.** Define the large-scale structure - intro, verse, chorus, bridge - as a weighted graph, a linear list, or a generator function that yields sections one at a time. Sections follow weighted paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior.
 - **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
 - **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for Elektron-style conditional triggers.
@@ -273,6 +274,46 @@ composition.form(my_form())
 
 `p.bar` is always available (regardless of form) and tracks the global bar count since playback started.
 
+## Chord inversions and voice leading
+
+By default, chords are played in root position. You can request a specific inversion, or enable automatic voice leading so each chord picks the inversion closest to the previous one.
+
+### Manual inversions
+
+Pass `inversion` to `p.chord()` or `chord.tones()`:
+
+```python
+@composition.pattern(channel=0, length=4)
+def chords (p, chord):
+    p.chord(chord, root=52, velocity=90, sustain=True, inversion=1)  # first inversion
+```
+
+Inversion 0 is root position, 1 is first inversion, 2 is second, and so on. Values wrap around for chords with fewer notes.
+
+### Automatic voice leading
+
+Add `voice_leading=True` to the pattern decorator. The injected chord will automatically choose the inversion with the smallest total pitch movement from the previous chord:
+
+```python
+@composition.pattern(channel=0, length=4, voice_leading=True)
+def chords (p, chord):
+    p.chord(chord, root=52, velocity=90, sustain=True)
+```
+
+Each pattern tracks voice leading independently — a bass line and a pad can voice-lead at their own pace.
+
+### Direct Pattern API
+
+`ChordPattern` accepts `voice_leading=True`:
+
+```python
+chords = subsequence.harmony.ChordPattern(
+    harmonic_state=harmonic_state, root_midi=52, velocity=90, channel=0, voice_leading=True
+)
+```
+
+For standalone use, `subsequence.voicings` provides `invert_chord()`, `voice_lead()`, and `VoiceLeadingState`.
+
 ## Seed and deterministic randomness
 
 Set a seed to make all random behavior repeatable:
@@ -486,6 +527,7 @@ Current examples include dark minor harmony with graph-based form, polyrhythmic 
 - `subsequence.intervals` contains interval and scale definitions for harmonic work.
 - `subsequence.markov_chain` provides a generic weighted Markov chain utility.
 - `subsequence.event_emitter` supports sync/async events used by the sequencer.
+- `subsequence.voicings` provides chord inversions and voice leading. `invert_chord()` rotates intervals; `VoiceLeadingState` picks the closest inversion to the previous chord automatically.
 - `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, `"dark_techno"`.
 - `subsequence.weighted_graph` provides a generic weighted graph used for transitions.
 - `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
@@ -514,7 +556,6 @@ Planned features, roughly in order of priority.
 ### Future ideas
 
 - Jupyter notebook mode for interactive examples
-- Chord inversions and voice leading
 - Embeddable engine mode (run as a library inside games or installations)
 - MIDI file export for capturing sessions into a DAW
 

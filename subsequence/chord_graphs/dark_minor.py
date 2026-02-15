@@ -30,10 +30,7 @@ class DarkMinor (subsequence.chord_graphs.ChordGraph):
 
 		"""Build a dark minor-key graph with Phrygian and aeolian elements."""
 
-		if key_name not in subsequence.chords.NOTE_NAME_TO_PC:
-			raise ValueError(f"Unknown key name: {key_name}")
-
-		key_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
+		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
 		# Natural minor scale: 0, 2, 3, 5, 7, 8, 10
 		tonic = subsequence.chords.Chord(root_pc=key_pc, quality="minor")
@@ -106,17 +103,16 @@ class DarkMinor (subsequence.chord_graphs.ChordGraph):
 
 		"""Return minor-key diatonic and functional chord sets."""
 
-		key_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
+		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
 		# Natural minor diatonic triads.
-		natural_minor_intervals = [0, 2, 3, 5, 7, 8, 10]
-		natural_minor_qualities = ["minor", "diminished", "major", "minor", "minor", "major", "major"]
-
-		diatonic: typing.Set[subsequence.chords.Chord] = set()
-
-		for interval, quality in zip(natural_minor_intervals, natural_minor_qualities):
-			root_pc = (key_pc + interval) % 12
-			diatonic.add(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
+		diatonic: typing.Set[subsequence.chords.Chord] = set(
+			subsequence.chord_graphs.build_diatonic_chords(
+				key_pc,
+				[0, 2, 3, 5, 7, 8, 10],
+				["minor", "diminished", "major", "minor", "minor", "major", "major"]
+			)
+		)
 
 		# Harmonic minor V (major) and bII (Phrygian).
 		dominant_pc = (key_pc + 7) % 12

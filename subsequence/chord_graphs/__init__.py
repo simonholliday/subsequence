@@ -36,19 +36,57 @@ class ChordGraph (abc.ABC):
 		...
 
 
+def validate_key_name (key_name: str) -> int:
+
+	"""Validate a key name and return its pitch class.
+
+	Raises ValueError if the key name is not recognised.
+
+	Parameters:
+		key_name: Note name (e.g., ``"C"``, ``"F#"``, ``"Bb"``)
+
+	Returns:
+		Pitch class integer (0-11)
+	"""
+
+	if key_name not in subsequence.chords.NOTE_NAME_TO_PC:
+		raise ValueError(f"Unknown key name: {key_name}")
+
+	return subsequence.chords.NOTE_NAME_TO_PC[key_name]
+
+
+def build_diatonic_chords (key_pc: int, scale_intervals: typing.List[int], degree_qualities: typing.List[str]) -> typing.List[subsequence.chords.Chord]:
+
+	"""Build chords for each scale degree.
+
+	Parameters:
+		key_pc: Root pitch class (0-11)
+		scale_intervals: Semitone offset for each degree (e.g., ``[0, 2, 4, 5, 7, 9, 11]`` for major)
+		degree_qualities: Chord quality for each degree (e.g., ``["major", "minor", ...]``)
+
+	Returns:
+		List of Chord objects, one per scale degree
+	"""
+
+	chords: typing.List[subsequence.chords.Chord] = []
+
+	for degree, quality in enumerate(degree_qualities):
+		root_pc = (key_pc + scale_intervals[degree]) % 12
+		chords.append(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
+
+	return chords
+
+
 def _major_key_gravity_sets (key_name: str) -> typing.Tuple[typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]]:
 
 	"""Return diatonic and functional chord sets for a major key."""
 
-	key_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
+	key_pc = validate_key_name(key_name)
 	scale_intervals = [0, 2, 4, 5, 7, 9, 11]
 	degree_qualities = ["major", "minor", "minor", "major", "major", "minor", "diminished"]
 
-	diatonic: typing.Set[subsequence.chords.Chord] = set()
-
-	for degree, quality in enumerate(degree_qualities):
-		root_pc = (key_pc + scale_intervals[degree]) % 12
-		diatonic.add(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
+	chords = build_diatonic_chords(key_pc, scale_intervals, degree_qualities)
+	diatonic: typing.Set[subsequence.chords.Chord] = set(chords)
 
 	# Functional set: I, ii, V, V7.
 	function_intervals = [0, 2, 7]

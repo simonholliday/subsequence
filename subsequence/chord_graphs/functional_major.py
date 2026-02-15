@@ -26,18 +26,13 @@ class DiatonicMajor (subsequence.chord_graphs.ChordGraph):
 
 		"""Build the graph for a given major key."""
 
-		if key_name not in subsequence.chords.NOTE_NAME_TO_PC:
-			raise ValueError(f"Unknown key name: {key_name}")
+		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		key_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
-		scale_intervals = [0, 2, 4, 5, 7, 9, 11]
-		degree_qualities = ["major", "minor", "minor", "major", "major", "minor", "diminished"]
-
-		chords: typing.List[subsequence.chords.Chord] = []
-
-		for degree, quality in enumerate(degree_qualities):
-			root_pc = (key_pc + scale_intervals[degree]) % 12
-			chords.append(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
+		chords = subsequence.chord_graphs.build_diatonic_chords(
+			key_pc,
+			[0, 2, 4, 5, 7, 9, 11],
+			["major", "minor", "minor", "major", "major", "minor", "diminished"]
+		)
 
 		tonic = chords[0]
 		supertonic = chords[1]

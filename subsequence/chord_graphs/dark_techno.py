@@ -24,10 +24,7 @@ class DarkTechno (subsequence.chord_graphs.ChordGraph):
 
 		"""Build a minimal all-minor graph with Phrygian and plagal motion."""
 
-		if key_name not in subsequence.chords.NOTE_NAME_TO_PC:
-			raise ValueError(f"Unknown key name: {key_name}")
-
-		key_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
+		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
 		# Four chords, all minor.
 		tonic = subsequence.chords.Chord(root_pc=key_pc, quality="minor")
@@ -60,7 +57,7 @@ class DarkTechno (subsequence.chord_graphs.ChordGraph):
 
 		"""Return all-minor diatonic and functional chord sets."""
 
-		key_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
+		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
 		# All four chords are diatonic to this dark palette.
 		diatonic: typing.Set[subsequence.chords.Chord] = set()

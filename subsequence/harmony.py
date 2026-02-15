@@ -4,6 +4,7 @@ import typing
 import subsequence.chords
 import subsequence.harmonic_state
 import subsequence.pattern
+import subsequence.voicings
 
 
 logger = logging.getLogger(__name__)
@@ -22,11 +23,21 @@ class ChordPattern (subsequence.pattern.Pattern):
 		root_midi: int = 52,
 		velocity: int = 90,
 		reschedule_lookahead: int = 1,
-		channel: typing.Optional[int] = None
+		channel: typing.Optional[int] = None,
+		voice_leading: bool = False
 	) -> None:
 
-		"""
-		Initialize a chord pattern driven by composition-level harmony.
+		"""Initialize a chord pattern driven by composition-level harmony.
+
+		Parameters:
+			harmonic_state: Shared harmonic state that provides chord changes
+			length: Pattern length in beats (default 4)
+			root_midi: Base MIDI note number for the chord root (default 52)
+			velocity: MIDI velocity 0-127 (default 90)
+			reschedule_lookahead: Reschedule lookahead in beats (default 1)
+			channel: MIDI channel (0-15, required)
+			voice_leading: When True, each chord automatically picks the
+				inversion closest to the previous chord for smooth movement
 		"""
 
 		if channel is None:
@@ -44,6 +55,9 @@ class ChordPattern (subsequence.pattern.Pattern):
 		self.key_root_midi = root_midi
 		self.velocity = velocity
 		self.current_chord = self.harmonic_state.get_current_chord()
+		self._voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = (
+			subsequence.voicings.VoiceLeadingState() if voice_leading else None
+		)
 
 		self._build_current_chord()
 
@@ -68,13 +82,15 @@ class ChordPattern (subsequence.pattern.Pattern):
 		chord_root_midi = self._get_chord_root_midi(self.current_chord)
 		chord_intervals = self.current_chord.intervals()
 
-		# Root-position voicing: chord notes ascend from the root.
-		# To add inversions later, rotate chord_intervals or adjust chord_root_midi
-		# to keep voices closer between transitions.
-		for interval in chord_intervals:
+		if self._voice_leading_state is not None:
+			pitches = self._voice_leading_state.next(chord_intervals, chord_root_midi)
+		else:
+			pitches = [chord_root_midi + interval for interval in chord_intervals]
+
+		for pitch in pitches:
 			self.add_note_beats(
 				beat_position = 0.0,
-				pitch = chord_root_midi + interval,
+				pitch = pitch,
 				velocity = self.velocity,
 				duration_beats = float(self.length)
 			)

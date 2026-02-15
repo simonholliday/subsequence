@@ -13,6 +13,7 @@ import subsequence.live_server
 import subsequence.pattern
 import subsequence.pattern_builder
 import subsequence.sequencer
+import subsequence.voicings
 import subsequence.weighted_graph
 
 
@@ -231,7 +232,7 @@ class _InjectedChord:
 	Wraps a Chord with key context so tones() transposes correctly.
 	"""
 
-	def __init__ (self, chord: typing.Any, key_root_pc: int) -> None:
+	def __init__ (self, chord: typing.Any, key_root_pc: int, voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = None) -> None:
 
 		"""
 		Store the chord and key root pitch class for transposition.
@@ -239,6 +240,7 @@ class _InjectedChord:
 
 		self._chord = chord
 		self._key_root_pc = key_root_pc
+		self._voice_leading_state = voice_leading_state
 
 	def root_midi (self, base: int) -> int:
 
@@ -250,13 +252,24 @@ class _InjectedChord:
 
 		return base + offset  # type: ignore[no-any-return]
 
-	def tones (self, root: int) -> typing.List[int]:
+	def tones (self, root: int, inversion: int = 0) -> typing.List[int]:
 
-		"""
-		Return MIDI note numbers transposed to the correct chord root.
+		"""Return MIDI note numbers transposed to the correct chord root.
+
+		When voice leading is active, the best inversion is chosen
+		automatically and the ``inversion`` parameter is ignored.
 		"""
 
-		return [self.root_midi(root) + interval for interval in self._chord.intervals()]
+		midi_root = self.root_midi(root)
+		intervals = self._chord.intervals()
+
+		if self._voice_leading_state is not None:
+			return self._voice_leading_state.next(intervals, midi_root)
+
+		if inversion != 0:
+			intervals = subsequence.voicings.invert_chord(intervals, inversion)
+
+		return [midi_root + interval for interval in intervals]
 
 	def intervals (self) -> typing.List[int]:
 
@@ -445,7 +458,8 @@ class _PendingPattern:
 		channel: int,
 		length: float,
 		drum_note_map: typing.Optional[typing.Dict[str, int]],
-		reschedule_lookahead: float
+		reschedule_lookahead: float,
+		voice_leading: bool = False
 	) -> None:
 
 		"""
@@ -457,6 +471,7 @@ class _PendingPattern:
 		self.length = length
 		self.drum_note_map = drum_note_map
 		self.reschedule_lookahead = reschedule_lookahead
+		self.voice_leading = voice_leading
 
 
 class _PendingScheduled:
@@ -873,7 +888,8 @@ class Composition:
 		channel: int,
 		length: float = 4,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
-		reschedule_lookahead: float = 1
+		reschedule_lookahead: float = 1,
+		voice_leading: bool = False
 	) -> typing.Callable:
 
 		"""Decorator that registers a builder function as a repeating pattern.
@@ -886,6 +902,9 @@ class Composition:
 			length: Pattern length in beats (default 4)
 			drum_note_map: Optional dict mapping string names to MIDI note numbers (e.g., `{"kick": 36}`)
 			reschedule_lookahead: Reschedule lookahead in beats (default 1)
+			voice_leading: When True, the injected chord automatically picks the
+				inversion closest to the previous chord so that voices move smoothly.
+				Each pattern tracks its own voice leading state independently.
 
 		Example:
 			```python
@@ -894,10 +913,10 @@ class Composition:
 				p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
 				p.hit_steps("snare", [4, 12], velocity=100)
 
-			@composition.pattern(channel=0, length=4)
-			def melody(p, chord):
-				# chord is automatically injected
-				p.note(chord.tones(root=60)[0], beat=0, velocity=90)
+			@composition.pattern(channel=0, length=4, voice_leading=True)
+			def chords(p, chord):
+				# chord is automatically injected with voice leading
+				p.chord(chord, root=52, velocity=90, sustain=True)
 			```
 		"""
 
@@ -921,7 +940,8 @@ class Composition:
 				channel = channel,
 				length = length,
 				drum_note_map = drum_note_map,
-				reschedule_lookahead = reschedule_lookahead
+				reschedule_lookahead = reschedule_lookahead,
+				voice_leading = voice_leading
 			)
 
 			self._pending_patterns.append(pending)
@@ -936,7 +956,8 @@ class Composition:
 		channel: int,
 		length: float = 4,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
-		reschedule_lookahead: float = 1
+		reschedule_lookahead: float = 1,
+		voice_leading: bool = False
 	) -> None:
 
 		"""Register multiple builder functions as a single layered pattern.
@@ -993,7 +1014,8 @@ class Composition:
 			channel = channel,
 			length = length,
 			drum_note_map = drum_note_map,
-			reschedule_lookahead = reschedule_lookahead
+			reschedule_lookahead = reschedule_lookahead,
+			voice_leading = voice_leading
 		)
 
 		self._pending_patterns.append(pending)
@@ -1152,6 +1174,9 @@ class Composition:
 				self._cycle_count = 0
 				self._rng = pattern_rng
 				self._muted = False
+				self._voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = (
+					subsequence.voicings.VoiceLeadingState() if pending.voice_leading else None
+				)
 
 				self._rebuild()
 
@@ -1185,7 +1210,7 @@ class Composition:
 					if self._wants_chord and composition_ref._harmonic_state is not None:
 						chord = composition_ref._harmonic_state.get_current_chord()
 						key_root_pc = composition_ref._harmonic_state.key_root_pc
-						injected = _InjectedChord(chord, key_root_pc)
+						injected = _InjectedChord(chord, key_root_pc, self._voice_leading_state)
 						self._builder_fn(builder, injected)
 
 					else:

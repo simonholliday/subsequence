@@ -16,14 +16,11 @@ def _build_major_key_chords (key_pc: int) -> typing.Dict[str, subsequence.chords
 
 	"""Return common functional chords for a major key root."""
 
-	scale_intervals = [0, 2, 4, 5, 7, 9, 11]
-	degree_qualities = ["major", "minor", "minor", "major", "major", "minor", "diminished"]
-
-	chords: typing.List[subsequence.chords.Chord] = []
-
-	for degree, quality in enumerate(degree_qualities):
-		root_pc = (key_pc + scale_intervals[degree]) % 12
-		chords.append(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
+	chords = subsequence.chord_graphs.build_diatonic_chords(
+		key_pc,
+		[0, 2, 4, 5, 7, 9, 11],
+		["major", "minor", "minor", "major", "major", "minor", "diminished"]
+	)
 
 	return {
 		"I": chords[0],
@@ -120,8 +117,7 @@ class TurnaroundModulation (subsequence.chord_graphs.ChordGraph):
 
 		"""Build the global turnaround graph for all 12 keys."""
 
-		if key_name not in subsequence.chords.NOTE_NAME_TO_PC:
-			raise ValueError(f"Unknown key name: {key_name}")
+		tonic_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
 		graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = subsequence.weighted_graph.WeightedGraph()
 
@@ -129,8 +125,6 @@ class TurnaroundModulation (subsequence.chord_graphs.ChordGraph):
 			chords = _build_major_key_chords(key_pc)
 			_add_turnaround_edges(graph, chords, self.include_dominant_7th)
 			_add_minor_turnaround(graph, key_pc, self.minor_turnaround_weight, self.include_dominant_7th)
-
-		tonic_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
 		tonic = subsequence.chords.Chord(root_pc=tonic_pc, quality="major")
 
 		return graph, tonic
