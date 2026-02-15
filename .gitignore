@@ -18,3 +18,7 @@ build/
 
 # Documentation build output
 docs/html/
+
+# Work in progress
+
+examples_in_progress/
