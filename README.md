@@ -1,12 +1,12 @@
 # Subsequence
 
-**A generative MIDI sequencer for Python.** Write patterns as simple functions — each one rebuilds every cycle, so it can respond to the current chord, the current section, or data from an external source.
+**A generative MIDI sequencer for Python.** Write patterns as simple functions - each one rebuilds every cycle, so it can respond to the current chord, the current section, or data from an external source.
 
-Chord progressions drift and evolve with adjustable pull toward home. Define large-scale form — intro, verse, chorus, bridge — and let sections follow weighted paths so the structure is familiar but never identical. Run patterns at different lengths and polyrhythms emerge on their own.
+Chord progressions drift and evolve with adjustable pull toward home. Define large-scale form - intro, verse, chorus, bridge - and let sections follow weighted paths so the structure is familiar but never identical. Run patterns at different lengths and polyrhythms emerge on their own.
 
-Set a seed and get the same music every time — tweak and re-run until it's right. Change patterns, tempo, and chords while the music plays. Sync to a MIDI clock from your DAW or drum machine.
+Set a seed and get the same music every time - tweak and re-run until it's right. Change patterns, tempo, and chords while the music plays. Sync to a MIDI clock from your DAW or drum machine.
 
-Subsequence is built for **MIDI-literate musicians who can write some Python**. Patterns are plain Python functions with full access to conditionals, randomness, and external data. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with. Two dependencies, pure MIDI output — route it to any hardware or software synth you already use. Everything is code, and code is versionable, shareable, and comparable.
+Subsequence is built for **MIDI-literate musicians who can write some simple Python code**. Patterns are plain Python functions with full access to conditionals, randomness, and external data. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with. Two dependencies, pure MIDI output - route it to any hardware or software synth you already use. Everything is code, and code is versionable, shareable, and comparable.
 
 ## Contents
 
@@ -27,19 +27,19 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 
 ## What it does
 
-- **Patterns as functions.** Each pattern is a Python function that builds a full cycle of notes. The sequencer calls it fresh each cycle, so patterns can evolve — reading the current chord, section, cycle count, or external data to decide what to play.
-- **Harmonic intelligence.** Chord progressions drift and evolve, with adjustable pull toward home — each chord leads to the next based on weighted probabilities.[^markov] Four built-in harmonic palettes — `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, and `"dark_techno"` — or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord.
-- **Compositional form.** Define the large-scale structure — intro, verse, chorus, bridge — as a weighted graph, a linear list, or a generator function that yields sections one at a time. Sections follow weighted paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior.
+- **Patterns as functions.** Each pattern is a Python function that builds a full cycle of notes. The sequencer calls it fresh each cycle, so patterns can evolve - reading the current chord, section, cycle count, or external data to decide what to play.
+- **Harmonic intelligence.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted probabilities.[^markov] Four built-in harmonic palettes - `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, and `"dark_techno"` - or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord.
+- **Compositional form.** Define the large-scale structure - intro, verse, chorus, bridge - as a weighted graph, a linear list, or a generator function that yields sections one at a time. Sections follow weighted paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior.
 - **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
 - **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for Elektron-style conditional triggers.
-- **Randomness tools.**[^stochastic] Weighted random choice, no-repeat shuffle, random walks, and probability gates — controlled randomness that sounds intentional, not arbitrary. All available in `subsequence.sequence_utils`.
-- **Deterministic seeding.** Set `seed=42` on your Composition and every random decision — chord progressions, form transitions, pattern randomness — becomes repeatable. Run the same code twice, get the same music. Use `p.rng` in your patterns for seeded randomness.
-- **Polyrhythms** emerge naturally by running patterns with different lengths. Pattern length can be any number — use `length=9` for 9 quarter notes, `length=10.5` for 21 eighth notes. Patterns can even change length on rebuild via `p.set_length()`.
-- **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Functions run in the background automatically. Store results in `composition.data` and read them from any pattern — connect music to APIs, sensors, files, or anything Python can reach.
+- **Randomness tools.**[^stochastic] Weighted random choice, no-repeat shuffle, random walks, and probability gates - controlled randomness that sounds intentional, not arbitrary. All available in `subsequence.sequence_utils`.
+- **Deterministic seeding.** Set `seed=42` on your Composition and every random decision - chord progressions, form transitions, pattern randomness - becomes repeatable. Run the same code twice, get the same music. Use `p.rng` in your patterns for seeded randomness.
+- **Polyrhythms** emerge naturally by running patterns with different lengths. Pattern length can be any number - use `length=9` for 9 quarter notes, `length=10.5` for 21 eighth notes. Patterns can even change length on rebuild via `p.set_length()`.
+- **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Functions run in the background automatically. Store results in `composition.data` and read them from any pattern - connect music to APIs, sensors, files, or anything Python can reach.
 - **Terminal visualization.** A persistent status line showing the current bar, section, chord, BPM, and key. Enabled with `composition.display()`. Log messages scroll cleanly above it without disruption.
-- **Two API levels.** The Composition API is straightforward — most musicians will never need anything else. The Direct Pattern API gives power users full control over patterns, harmony, and scheduling.
-- **Pattern transforms.** Reverse, double-time, half-time, shift, transpose, and invert — applied after placing notes. `p.every(4, lambda p: p.reverse())` applies a transform every 4th cycle. `composition.layer()` merges multiple builder functions into one pattern. Place notes first, then reshape them.
-- **Live coding.** Modify a running composition without stopping playback. A built-in server accepts Python code from the bundled command-line client, an editor, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state — all while the music plays. Enable with `composition.live()`.
+- **Two API levels.** The Composition API is straightforward - most musicians will never need anything else. The Direct Pattern API gives power users full control over patterns, harmony, and scheduling.
+- **Pattern transforms.** Reverse, double-time, half-time, shift, transpose, and invert - applied after placing notes. `p.every(4, lambda p: p.reverse())` applies a transform every 4th cycle. `composition.layer()` merges multiple builder functions into one pattern. Place notes first, then reshape them.
+- **Live coding.** Modify a running composition without stopping playback. A built-in server accepts Python code from the bundled command-line client, an editor, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state - all while the music plays. Enable with `composition.live()`.
 - **External clock follower.** Sync to an external MIDI clock from a DAW, drum machine, or hardware sequencer. Transport messages (start, stop, continue) are respected automatically. Enable with `composition.midi_input(device, clock_follow=True)`.
 - **Events** let you react to sequencer milestones (`"bar"`, `"start"`, `"stop"`) via `composition.on_event()`.
 - **Pure MIDI.** No audio synthesis, no dependencies beyond `mido` and `python-rtmidi`. Route MIDI to any hardware or software synth.
@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
 When `output_device` is omitted, Subsequence auto-discovers available MIDI devices. If only one device is connected it is used automatically; if several are found you are prompted to choose. To skip the prompt, pass the device name directly: `Composition(output_device="Your Device:Port", ...)`.
 
-MIDI channels and drum note mappings are defined by the musician in their composition file — the module does not ship studio-specific constants.
+MIDI channels and drum note mappings are defined by the musician in their composition file - the module does not ship studio-specific constants.
 
 Patterns are plain Python functions, so anything you can express in Python is fair game. A few more features:
 
@@ -99,7 +99,7 @@ def melody (p):
         durations=[0.5, 0.25, 0.25, 0.5],
     )
 
-# Per-step probability — each hi-hat has a 70% chance of playing.
+# Per-step probability - each hi-hat has a 70% chance of playing.
 @composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
 def hats (p):
     p.hit_steps("hh", list(range(16)), velocity=80, probability=0.7)
@@ -113,7 +113,7 @@ composition.schedule(fetch_data, cycle_beats=32)
 
 ## Direct Pattern API
 
-The Direct Pattern API gives you full control over the sequencer, harmony, and scheduling. Patterns are classes instead of decorated functions — you manage the event loop yourself.
+The Direct Pattern API gives you full control over the sequencer, harmony, and scheduling. Patterns are classes instead of decorated functions - you manage the event loop yourself.
 
 This example produces the same music as the Composition API example above (kick, snare, hi-hats, and chord pad in E dark minor at 120 BPM):
 
@@ -188,21 +188,21 @@ For the full version with form, external data, and five patterns, see `examples/
 
 ### Choosing an API
 
-The Composition API is built on top of the Direct Pattern API — both produce the same MIDI output using the same engine.
+The Composition API is built on top of the Direct Pattern API - both produce the same MIDI output using the same engine.
 
-**Composition API** is the recommended starting point. Patterns are simple functions, chords and section info are injected automatically, and scheduling is handled for you. The `PatternBuilder` inside `@composition.pattern()` gives you all the same musical tools — chords, arpeggios, euclidean rhythms, transforms, per-step control via `sequence()` — so most musicians will never need the Direct API.
+**Composition API** is the recommended starting point. Patterns are simple functions, chords and section info are injected automatically, and scheduling is handled for you. The `PatternBuilder` inside `@composition.pattern()` gives you all the same musical tools - chords, arpeggios, euclidean rhythms, transforms, per-step control via `sequence()` - so most musicians will never need the Direct API.
 
-**Direct Pattern API** is for when you need things the Composition API doesn't expose: persistent pattern state across rebuild cycles, custom async scheduling, direct access to the event loop, or raw pulse-level timing. Use it for the entire composition — `examples/demo_advanced.py` shows the full setup.
+**Direct Pattern API** is for when you need things the Composition API doesn't expose: persistent pattern state across rebuild cycles, custom async scheduling, direct access to the event loop, or raw pulse-level timing. Use it for the entire composition - `examples/demo_advanced.py` shows the full setup.
 
 ### Advanced: accessing internal state
 
 The `Composition` object stores its harmonic and form state internally. After calling `harmony()` and `form()`:
 
-- `composition._harmonic_state` — the `HarmonicState` object (same one patterns read from)
-- `composition._form_state` — the `FormState` object (same one `p.section` reads from)
-- `composition._sequencer` — the underlying `Sequencer` instance
+- `composition._harmonic_state` - the `HarmonicState` object (same one patterns read from)
+- `composition._form_state` - the `FormState` object (same one `p.section` reads from)
+- `composition._sequencer` - the underlying `Sequencer` instance
 
-These are internal attributes (underscore-prefixed) but accessible for advanced use. If you need Pattern subclasses alongside decorated patterns, the simplest approach is to use the Direct Pattern API for the entire composition — create a `HarmonicState` and `FormState` manually, then pass them to both simple helper patterns and complex Pattern subclasses. `examples/demo.py` and `examples/demo_advanced.py` produce the same music using each API.
+These are internal attributes (underscore-prefixed) but accessible for advanced use. If you need Pattern subclasses alongside decorated patterns, the simplest approach is to use the Direct Pattern API for the entire composition - create a `HarmonicState` and `FormState` manually, then pass them to both simple helper patterns and complex Pattern subclasses. `examples/demo.py` and `examples/demo_advanced.py` produce the same music using each API.
 
 ## Form (sections)
 
@@ -210,7 +210,7 @@ Define the large-scale structure of your composition with `composition.form()`. 
 
 ### Graph-based form
 
-A dict defines a weighted transition graph. Each section has a bar count and a list of `(next_section, weight)` transitions. Weights control probability — `3:1` means 75%/25%. Sections with an empty list `[]` self-loop forever. Sections with `None` are terminal — the form ends after they complete.
+A dict defines a weighted transition graph. Each section has a bar count and a list of `(next_section, weight)` transitions. Weights control probability - `3:1` means 75%/25%. Sections with an empty list `[]` self-loop forever. Sections with `None` are terminal - the form ends after they complete.
 
 ```python
 # Intro plays once, then never returns. The outro ends the piece.
@@ -227,7 +227,7 @@ composition.form({
 def drums (p):
     p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
 
-    # Mute snare outside the chorus — the pattern keeps cycling silently.
+    # Mute snare outside the chorus - the pattern keeps cycling silently.
     if not p.section or p.section.name != "chorus":
         return
 
@@ -288,7 +288,7 @@ When a seed is set, chord progressions, form transitions, and all pattern random
 ```python
 @composition.pattern(channel=9, length=4, drum_note_map=DRUM_NOTE_MAP)
 def drums (p):
-    # p.rng replaces random.randint/random.choice — deterministic when seeded.
+    # p.rng replaces random.randint/random.choice - deterministic when seeded.
     density = p.rng.choice([3, 5, 7])
     p.euclidean("kick", pulses=density)
 
@@ -296,7 +296,7 @@ def drums (p):
     p.hit_steps("hh_closed", list(range(16)), velocity=80, probability=0.7)
 ```
 
-`p.rng` is always available, even without a seed — in that case it's a fresh unseeded `random.Random`.
+`p.rng` is always available, even without a seed - in that case it's a fresh unseeded `random.Random`.
 
 ### Stochastic utilities
 
@@ -304,12 +304,12 @@ def drums (p):
 
 | Function | Description |
 |----------|-------------|
-| `weighted_choice(options, rng)` | Pick from `(value, weight)` pairs — biased selection |
+| `weighted_choice(options, rng)` | Pick from `(value, weight)` pairs - biased selection |
 | `shuffled_choices(pool, n, rng)` | N items with no adjacent repeats (Max/MSP `urn`) |
 | `random_walk(n, low, high, step, rng)` | Values that drift by small steps (Max/MSP `drunk`) |
 | `probability_gate(sequence, probability, rng)` | Filter a binary sequence by probability |
 
-All require an explicit `rng` parameter — use `p.rng` in pattern builders:
+All require an explicit `rng` parameter - use `p.rng` in pattern builders:
 
 ```python
 # Wandering hi-hat velocity
@@ -347,7 +347,7 @@ composition.display(enabled=False)
 
 ## Live coding
 
-Modify a running composition without stopping playback. Subsequence includes a TCP eval server that accepts Python code from any source — the bundled REPL client, an editor plugin, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state — all while the music plays.
+Modify a running composition without stopping playback. Subsequence includes a TCP eval server that accepts Python code from any source - the bundled REPL client, an editor plugin, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state - all while the music plays.
 
 ### Enable the server
 
@@ -373,21 +373,21 @@ Connected to Subsequence on 127.0.0.1:5555
 
 ### What you can do
 
-**Query state** — see what's playing right now:
+**Query state** - see what's playing right now:
 
 ```python
 >>> composition.live_info()
 {'bpm': 120, 'key': 'E', 'bar': 34, 'section': {'name': 'chorus', 'bar': 2, 'bars': 8, 'progress': 0.25}, 'chord': 'Em7', 'patterns': [{'name': 'drums', 'channel': 9, 'length': 4.0, 'cycle': 17, 'muted': False}, ...], 'data': {}}
 ```
 
-**Change tempo** — hear the difference immediately:
+**Change tempo** - hear the difference immediately:
 
 ```python
 >>> composition.set_bpm(140)
 OK
 ```
 
-**Mute and unmute patterns** — patterns keep cycling silently, so they stay in sync:
+**Mute and unmute patterns** - patterns keep cycling silently, so they stay in sync:
 
 ```python
 >>> composition.mute("hats")
@@ -396,14 +396,14 @@ OK
 OK
 ```
 
-**Modify shared data** — any value patterns read from `composition.data`:
+**Modify shared data** - any value patterns read from `composition.data`:
 
 ```python
 >>> composition.data["intensity"] = 0.8
 OK
 ```
 
-**Hot-swap a pattern** — redefine the builder function and it takes effect on the next cycle:
+**Hot-swap a pattern** - redefine the builder function and it takes effect on the next cycle:
 
 ```python
 >>> @composition.pattern(channel=9, length=4, drum_note_map=DRUM_NOTE_MAP)
@@ -414,7 +414,7 @@ OK
 OK
 ```
 
-The running pattern keeps its cycle count, RNG state, and scheduling position — only the builder logic changes.
+The running pattern keeps its cycle count, RNG state, and scheduling position - only the builder logic changes.
 
 ### Use from any tool
 
@@ -430,7 +430,7 @@ python -c "import socket; s=socket.socket(); s.connect(('127.0.0.1',5555)); s.se
 
 ### Input validation
 
-All code is validated as syntactically correct Python before execution. If you send a typo or malformed code, the server returns a `SyntaxError` traceback — nothing is executed, and the running composition is never affected.
+All code is validated as syntactically correct Python before execution. If you send a typo or malformed code, the server returns a `SyntaxError` traceback - nothing is executed, and the running composition is never affected.
 
 ## MIDI input & external clock
 
@@ -456,7 +456,7 @@ When `clock_follow=True`:
 - A MIDI **start** message resets to pulse 0 and begins counting
 - A MIDI **continue** message resumes from the current position
 - BPM is estimated from incoming tick intervals (for display only)
-- `set_bpm()` has no effect — tempo is determined by the external clock
+- `set_bpm()` has no effect - tempo is determined by the external clock
 
 Without `clock_follow` (the default), `midi_input()` opens the input port but does not act on clock or transport messages. This prepares for future MIDI CC mapping.
 
@@ -552,6 +552,6 @@ You are free to use, modify, and distribute this software under the terms of the
 
 If you wish to use Subsequence in a proprietary or closed-source product without the obligations of the AGPL, please contact [simon.holliday@protonmail.com] to discuss a commercial license.
 
-[^markov]: A [Markov chain](https://en.wikipedia.org/wiki/Markov_chain) is a system where each state (here, a chord) transitions to the next based on weighted probabilities. Subsequence adds "gravity" — a configurable pull that draws progressions back toward the home key, so harmony drifts but never gets lost.
-[^vdc]: Velocity values are spread using a [van der Corput sequence](https://en.wikipedia.org/wiki/Van_der_Corput_sequence) — a low-discrepancy series that distributes values more evenly than pure randomness, producing a more natural, musical feel.
-[^stochastic]: "Stochastic" means governed by probability. These tools give you controlled randomness — results that sound intentional rather than arbitrary.
+[^markov]: A [Markov chain](https://en.wikipedia.org/wiki/Markov_chain) is a system where each state (here, a chord) transitions to the next based on weighted probabilities. Subsequence adds "gravity" - a configurable pull that draws progressions back toward the home key, so harmony drifts but never gets lost.
+[^vdc]: Velocity values are spread using a [van der Corput sequence](https://en.wikipedia.org/wiki/Van_der_Corput_sequence) - a low-discrepancy series that distributes values more evenly than pure randomness, producing a more natural, musical feel.
+[^stochastic]: "Stochastic" means governed by probability. These tools give you controlled randomness - results that sound intentional rather than arbitrary.
