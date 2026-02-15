@@ -13,12 +13,13 @@ Subsequence is built for **MIDI-literate musicians who can write some Python**. 
 - [What it does](#what-it-does)
 - [Quick start](#quick-start)
 - [Composition API](#composition-api)
+- [Direct Pattern API](#direct-pattern-api)
 - [Form (sections)](#form-sections)
 - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
 - [Terminal display](#terminal-display)
 - [Live coding](#live-coding)
 - [MIDI input & external clock](#midi-input--external-clock)
-- [Demo details](#demo-details)
+- [Examples](#examples)
 - [Extra utilities](#extra-utilities)
 - [Feature Roadmap](#feature-roadmap)
 - [Tests](#tests)
@@ -59,40 +60,37 @@ The `Composition` class is the main entry point. Define your MIDI setup, create 
 
 ```python
 import subsequence
-import subsequence.sequence_utils
 
 MIDI_OUTPUT_DEVICE = "Your MIDI Device:Port"
-DRUMS_MIDI_CHANNEL = 9
-DRUM_NOTE_MAP = {"kick": 36, "snare": 38, "hh_closed": 42}
+DRUMS_CHANNEL = 9
+SYNTH_CHANNEL = 0
+DRUM_NOTE_MAP = {"kick": 36, "snare": 38, "hh": 42}
 
-composition = subsequence.Composition(output_device=MIDI_OUTPUT_DEVICE, bpm=125, key="E", seed=42)
-composition.harmony(style="dark_minor", cycle_beats=4, dominant_7th=True, gravity=0.8)
+composition = subsequence.Composition(output_device=MIDI_OUTPUT_DEVICE, bpm=120, key="E")
+composition.harmony(style="dark_minor", cycle_beats=4, gravity=0.8)
 
-# Schedule a repeating task — sync functions run in a thread pool automatically.
-def fetch_data ():
-    composition.data["value"] = some_external_api()
-
-composition.schedule(fetch_data, cycle_beats=32)  # Every 8 bars (32 beats)
-
-@composition.pattern(channel=DRUMS_MIDI_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
+@composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
 def drums (p):
-    # Fixed four-on-the-floor kick on a 16-step grid.
     p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
+    p.hit_steps("snare", [4, 12], velocity=100)
+    p.hit_steps("hh", list(range(16)), velocity=80)
 
-    # Hi-hats with per-step probability — some steps randomly drop out.
-    p.hit_steps("hh_closed", list(range(16)), velocity=80, probability=0.8)
+@composition.pattern(channel=SYNTH_CHANNEL, length=4)
+def chords (p, chord):
+    p.chord(chord, root=52, velocity=90, sustain=True)
 
-    # Euclidean snare with random density, rolled +4 for backbeat offset.
-    # p.rng is seeded — same output every run when composition has a seed.
-    if p.cycle > 3:
-        snare_seq = subsequence.sequence_utils.generate_euclidean_sequence(16, p.rng.randint(1, 6))
-        snare_steps = subsequence.sequence_utils.sequence_to_indices(snare_seq)
-        p.hit_steps("snare", subsequence.sequence_utils.roll(snare_steps, 4, 16), velocity=100)
+if __name__ == "__main__":
+    composition.play()
+```
 
-# Place notes at specific steps with per-step pitch, velocity, duration control.
+MIDI channels, device names, and drum note mappings are defined by the musician in their composition file — the module does not ship studio-specific constants.
+
+Patterns are plain Python functions, so anything you can express in Python is fair game. A few more features:
+
+```python
+# Per-step pitch, velocity, and duration control.
 @composition.pattern(channel=0, length=4)
 def melody (p):
-    # Ascending phrase with accent on first note
     p.sequence(
         steps=[0, 4, 8, 12],
         pitches=[60, 64, 67, 72],
@@ -100,16 +98,113 @@ def melody (p):
         durations=[0.5, 0.25, 0.25, 0.5],
     )
 
-@composition.pattern(channel=6, length=4)
-def chords (p, chord):
-    p.chord(chord, root=52, velocity=90, sustain=True)
+# Per-step probability — each hi-hat has a 70% chance of playing.
+@composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
+def hats (p):
+    p.hit_steps("hh", list(range(16)), velocity=80, probability=0.7)
 
-if __name__ == "__main__":
-    composition.on_event("bar", lambda bar: print(f"Bar {bar + 1}"))
-    composition.play()
+# Schedule a repeating background task (runs in a thread pool).
+def fetch_data ():
+    composition.data["value"] = some_external_api()
+
+composition.schedule(fetch_data, cycle_beats=32)
 ```
 
-MIDI channels, device names, and drum note mappings are defined by the musician in their composition file — the module does not ship studio-specific constants.
+## Direct Pattern API
+
+The Direct Pattern API gives you full control over the sequencer, harmony, and scheduling. Patterns are classes instead of decorated functions — you manage the event loop yourself.
+
+This example produces the same music as the Composition API example above (kick, snare, hi-hats, and chord pad in E dark minor at 120 BPM):
+
+```python
+import asyncio
+import subsequence.composition
+import subsequence.constants
+import subsequence.harmonic_state
+import subsequence.pattern
+import subsequence.sequencer
+
+MIDI_OUTPUT_DEVICE = "Your MIDI Device:Port"
+DRUMS_CHANNEL = 9
+SYNTH_CHANNEL = 0
+DRUM_KICK = 36
+DRUM_SNARE = 38
+DRUM_HH = 42
+
+
+class DrumPattern (subsequence.pattern.Pattern):
+
+    def __init__ (self) -> None:
+        super().__init__(channel=DRUMS_CHANNEL, length=4)
+        self._build_pattern()
+
+    def _build_pattern (self) -> None:
+        self.steps = {}
+        step = subsequence.constants.MIDI_SIXTEENTH_NOTE
+        self.add_sequence([1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0], step_duration=step, pitch=DRUM_KICK, velocity=127)
+        self.add_sequence([0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0], step_duration=step, pitch=DRUM_SNARE, velocity=100)
+        self.add_sequence([1]*16, step_duration=step, pitch=DRUM_HH, velocity=80)
+
+    def on_reschedule (self) -> None:
+        self._build_pattern()
+
+
+class ChordPadPattern (subsequence.pattern.Pattern):
+
+    def __init__ (self, harmonic_state) -> None:
+        super().__init__(channel=SYNTH_CHANNEL, length=4)
+        self.harmonic_state = harmonic_state
+        self._build_pattern()
+
+    def _build_pattern (self) -> None:
+        self.steps = {}
+        chord = self.harmonic_state.get_current_chord()
+        root = self.harmonic_state.get_chord_root_midi(52, chord)
+        duration = int(self.length * subsequence.constants.MIDI_QUARTER_NOTE)
+        for interval in chord.intervals():
+            self.add_note(0, root + interval, 90, duration)
+
+    def on_reschedule (self) -> None:
+        self._build_pattern()
+
+
+async def main () -> None:
+    seq = subsequence.sequencer.Sequencer(
+        output_device_name=MIDI_OUTPUT_DEVICE, initial_bpm=120
+    )
+    harmonic_state = subsequence.harmonic_state.HarmonicState(
+        key_name="E", graph_style="dark_minor", key_gravity_blend=0.8
+    )
+    await subsequence.composition.schedule_harmonic_clock(seq, harmonic_state, cycle_beats=4)
+
+    drums = DrumPattern()
+    chords = ChordPadPattern(harmonic_state=harmonic_state)
+    await subsequence.composition.schedule_patterns(seq, [drums, chords])
+    await subsequence.composition.run_until_stopped(seq)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+For the full version with form, external data, and five patterns, see `examples/demo_advanced.py`.
+
+### Choosing an API
+
+The Composition API is built on top of the Direct Pattern API — both produce the same MIDI output using the same engine.
+
+**Composition API** is the recommended starting point. Patterns are simple functions, chords and section info are injected automatically, and scheduling is handled for you. The `PatternBuilder` inside `@composition.pattern()` gives you all the same musical tools — chords, arpeggios, euclidean rhythms, transforms, per-step control via `sequence()` — so most musicians will never need the Direct API.
+
+**Direct Pattern API** is for when you need things the Composition API doesn't expose: persistent pattern state across rebuild cycles, custom async scheduling, direct access to the event loop, or raw pulse-level timing. Use it for the entire composition — `examples/demo_advanced.py` shows the full setup.
+
+### Advanced: accessing internal state
+
+The `Composition` object stores its harmonic and form state internally. After calling `harmony()` and `form()`:
+
+- `composition._harmonic_state` — the `HarmonicState` object (same one patterns read from)
+- `composition._form_state` — the `FormState` object (same one `p.section` reads from)
+- `composition._sequencer` — the underlying `Sequencer` instance
+
+These are internal attributes (underscore-prefixed) but accessible for advanced use. If you need Pattern subclasses alongside decorated patterns, the simplest approach is to use the Direct Pattern API for the entire composition — create a `HarmonicState` and `FormState` manually, then pass them to both simple helper patterns and complex Pattern subclasses. `examples/demo.py` and `examples/demo_advanced.py` produce the same music using each API.
 
 ## Form (sections)
 
