@@ -512,7 +512,8 @@ Planned features, roughly in order of priority.
 ### Medium priority
 
 - **Mini-notation.** An optional string shorthand (e.g., `"x . x [x x]"`) that compiles to `hit_steps` calls for quick rhythm entry.
-- **MIDI CC mapping.** Map a hardware knob to `composition.data` so Subsequence feels like a hybrid hardware/software instrument. (MIDI input port is already supported via `composition.midi_input()`.)
+- **MIDI CC mapping.** Map hardware knobs and controllers to `composition.data` via event handlers (e.g., "map CC 1 to probability") so Subsequence feels like a hybrid hardware/software instrument for live performance. MIDI input port and clock following are already supported via `composition.midi_input()`.
+- **Performance profiling.** Optional debug mode to log timing for each `on_reschedule()` call, helping identify custom pattern logic that may cause timing jitter or performance issues.
 - **Ableton Link.** Peer-to-peer network sync with DAWs and other Link-enabled devices.
 
 ### Future ideas
