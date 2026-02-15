@@ -1,10 +1,13 @@
 import random
 import typing
 
-import subsequence.chord_graphs
-import subsequence.chord_graphs.dark_minor
-import subsequence.chord_graphs.dark_techno
+import subsequence.chord_graphs.aeolian_minor
+import subsequence.chord_graphs.chromatic_mediant
+import subsequence.chord_graphs.dorian_minor
 import subsequence.chord_graphs.functional_major
+import subsequence.chord_graphs.lydian_major
+import subsequence.chord_graphs.phrygian_minor
+import subsequence.chord_graphs.suspended
 import subsequence.chord_graphs.turnaround_global
 import subsequence.chords
 import subsequence.weighted_graph
@@ -31,15 +34,35 @@ def _resolve_graph_style (
 			minor_turnaround_weight = minor_turnaround_weight
 		)
 
-	if style == "dark_minor":
+	if style in ("aeolian_minor", "dark_minor"):
 
-		return subsequence.chord_graphs.dark_minor.DarkMinor(
+		return subsequence.chord_graphs.aeolian_minor.AeolianMinor(
 			include_dominant_7th = include_dominant_7th
 		)
 
-	if style == "dark_techno":
+	if style in ("phrygian_minor", "dark_techno"):
 
-		return subsequence.chord_graphs.dark_techno.DarkTechno()
+		return subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
+
+	if style == "lydian_major":
+
+		return subsequence.chord_graphs.lydian_major.LydianMajor(
+			include_dominant_7th = include_dominant_7th
+		)
+
+	if style == "dorian_minor":
+
+		return subsequence.chord_graphs.dorian_minor.DorianMinor(
+			include_dominant_7th = include_dominant_7th
+		)
+
+	if style == "chromatic_mediant":
+
+		return subsequence.chord_graphs.chromatic_mediant.ChromaticMediant()
+
+	if style == "suspended":
+
+		return subsequence.chord_graphs.suspended.Suspended()
 
 	raise ValueError(f"Unknown graph style: {style}")
 

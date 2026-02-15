@@ -567,7 +567,7 @@ class Composition:
 		"""Configure the harmonic state and chord change cycle for this composition.
 
 		Parameters:
-			style: Chord graph style — `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, or a `ChordGraph` instance
+			style: Chord graph style — `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, or a `ChordGraph` instance
 			cycle_beats: How often chords change (in beats, default 4)
 			dominant_7th: Include dominant seventh chords (default True)
 			gravity: Key gravity blend 0.0-1.0 (default 1.0). Higher values favor chords closer to the tonic.
@@ -577,7 +577,7 @@ class Composition:
 		Example:
 			```python
 			composition.harmony(
-				style="dark_minor",
+				style="aeolian_minor",
 				cycle_beats=4,
 				dominant_7th=True,
 				gravity=0.8

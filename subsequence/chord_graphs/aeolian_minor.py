@@ -11,14 +11,23 @@ WEIGHT_COMMON = subsequence.chord_graphs.WEIGHT_COMMON
 WEIGHT_DECEPTIVE = subsequence.chord_graphs.WEIGHT_DECEPTIVE
 WEIGHT_WEAK = subsequence.chord_graphs.WEIGHT_WEAK
 
-# Dark-minor-specific weights.
+# Minor-specific weights.
 WEIGHT_PHRYGIAN = 5
 WEIGHT_PLAGAL = 4
 
 
-class DarkMinor (subsequence.chord_graphs.ChordGraph):
+class AeolianMinor (subsequence.chord_graphs.ChordGraph):
 
-	"""Minor-key graph with Phrygian, aeolian, and chromatic elements for dark electronic music."""
+	"""Natural minor (Aeolian) graph with Phrygian and harmonic minor elements.
+
+	Focuses on the interplay between the natural minor scale and its
+	common variations:
+	- Aeolian (i, iv, v, bVI, bVII)
+	- Harmonic Minor (V, vii°) for stronger cadences
+	- Phrygian (bII) for tension
+
+	Suitable for a wide range of minor-key styles.
+	"""
 
 	def __init__ (self, include_dominant_7th: bool = True) -> None:
 
@@ -28,7 +37,7 @@ class DarkMinor (subsequence.chord_graphs.ChordGraph):
 
 	def build (self, key_name: str) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
 
-		"""Build a dark minor-key graph with Phrygian and aeolian elements."""
+		"""Build an Aeolian minor-key graph."""
 
 		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 

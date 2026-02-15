@@ -82,7 +82,7 @@ composition = subsequence.Composition(
 # "chord" parameter automatically receives the current chord.
 
 composition.harmony(
-	style = "dark_minor",
+	style = "aeolian_minor",
 	cycle_beats = 4 * dur.QUARTER,
 	dominant_7th = True,
 	gravity = 0.8,

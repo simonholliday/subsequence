@@ -445,7 +445,7 @@ async def main () -> None:
 
 	harmonic_state = subsequence.harmonic_state.HarmonicState(
 		key_name = "E",
-		graph_style = "dark_minor",
+		graph_style = "aeolian_minor",
 		include_dominant_7th = True,
 		key_gravity_blend = 0.8,
 		minor_turnaround_weight = 0.25

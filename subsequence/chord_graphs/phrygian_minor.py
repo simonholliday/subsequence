@@ -10,19 +10,19 @@ WEIGHT_MEDIUM = subsequence.chord_graphs.WEIGHT_MEDIUM
 WEIGHT_WEAK = subsequence.chord_graphs.WEIGHT_WEAK
 
 
-class DarkTechno (subsequence.chord_graphs.ChordGraph):
+class PhrygianMinor (subsequence.chord_graphs.ChordGraph):
 
-	"""All-minor chord graph for dark and hard techno.
+	"""Minor chord graph utilizing Phrygian and Plagal motion.
 
-	Only four chords, all minor quality — dark techno barely moves
-	harmonically. The Phrygian bII (half-step above tonic) is the
-	signature dark cadence. Use with high gravity (0.9+) so the
-	harmony sits on the tonic most of the time with occasional drifts.
+	Consists of four minor chords: i, bii, iv, v.
+	The Phrygian bII (major) is replaced here by a minor bii for a darker,
+	more modal sound often found in techno and minimal repetition.
+	The Phrygian cadence (bii -> i) is the primary resolution.
 	"""
 
 	def build (self, key_name: str) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
 
-		"""Build a minimal all-minor graph with Phrygian and plagal motion."""
+		"""Build a minimal all-minor Phrygian graph."""
 
 		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
@@ -39,7 +39,7 @@ class DarkTechno (subsequence.chord_graphs.ChordGraph):
 		graph.add_transition(tonic, subdominant, WEIGHT_MEDIUM)
 		graph.add_transition(tonic, natural_dominant, WEIGHT_WEAK)
 
-		# --- Phrygian cadence: bII -> i (strongest resolution) ---
+		# --- Phrygian cadence: bii -> i (strongest resolution) ---
 		graph.add_transition(flat_two, tonic, WEIGHT_STRONG)
 		graph.add_transition(flat_two, natural_dominant, WEIGHT_WEAK)
 
@@ -59,14 +59,14 @@ class DarkTechno (subsequence.chord_graphs.ChordGraph):
 
 		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		# All four chords are diatonic to this dark palette.
+		# All four chords are diatonic to this palette.
 		diatonic: typing.Set[subsequence.chords.Chord] = set()
 
 		for interval in [0, 1, 5, 7]:
 			root_pc = (key_pc + interval) % 12
 			diatonic.add(subsequence.chords.Chord(root_pc=root_pc, quality="minor"))
 
-		# Functional set: tonic, bII (Phrygian), subdominant.
+		# Functional set: tonic, bii (Phrygian), subdominant.
 		functional: typing.Set[subsequence.chords.Chord] = set()
 
 		for interval in [0, 1, 5]:

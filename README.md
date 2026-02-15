@@ -29,7 +29,7 @@ Subsequence is built for **MIDI-literate musicians who can write some simple Pyt
 ## What it does
 
 - **Patterns as functions.** Each pattern is a Python function that builds a full cycle of notes. The sequencer calls it fresh each cycle, so patterns can evolve - reading the current chord, section, cycle count, or external data to decide what to play.
-- **Harmonic intelligence.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted probabilities.[^markov] Four built-in harmonic palettes - `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, and `"dark_techno"` - or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord. Chord inversions and voice leading keep voices moving smoothly between changes.
+- **Harmonic intelligence.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted probabilities.[^markov] Six built-in harmonic palettes - `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, `"phrygian_minor"`, `"lydian_major"`, and `"dorian_minor"` - or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord. Chord inversions and voice leading keep voices moving smoothly between changes.
 - **Compositional form.** Define the large-scale structure - intro, verse, chorus, bridge - as a weighted graph, a linear list, or a generator function that yields sections one at a time. Sections follow weighted paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior.
 - **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
 - **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for Elektron-style conditional triggers.
@@ -50,7 +50,7 @@ Subsequence is built for **MIDI-literate musicians who can write some simple Pyt
 ```
 pip install -e .
 ```
-2. Run the demo (drums + evolving dark minor harmony in E):
+3. Run the demo (drums + evolving aeolian minor harmony in E):
 ```
 python examples/demo.py
 ```
@@ -67,7 +67,7 @@ SYNTH_CHANNEL = 0
 DRUM_NOTE_MAP = {"kick": 36, "snare": 38, "hh": 42}
 
 composition = subsequence.Composition(bpm=120, key="E")
-composition.harmony(style="dark_minor", cycle_beats=4, gravity=0.8)
+composition.harmony(style="aeolian_minor", cycle_beats=4, gravity=0.8)
 
 @composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
 def drums (p):
@@ -116,7 +116,7 @@ composition.schedule(fetch_data, cycle_beats=32)
 
 The Direct Pattern API gives you full control over the sequencer, harmony, and scheduling. Patterns are classes instead of decorated functions - you manage the event loop yourself.
 
-This example produces the same music as the Composition API example above (kick, snare, hi-hats, and chord pad in E dark minor at 120 BPM):
+This example produces the same music as the Composition API example above (kick, snare, hi-hats, and chord pad in E aeolian minor at 120 BPM):
 
 ```python
 import asyncio
@@ -172,7 +172,7 @@ class ChordPadPattern (subsequence.pattern.Pattern):
 async def main () -> None:
     seq = subsequence.sequencer.Sequencer(initial_bpm=120)
     harmonic_state = subsequence.harmonic_state.HarmonicState(
-        key_name="E", graph_style="dark_minor", key_gravity_blend=0.8
+        key_name="E", graph_style="aeolian_minor", key_gravity_blend=0.8
     )
     await subsequence.composition.schedule_harmonic_clock(seq, harmonic_state, cycle_beats=4)
 
@@ -531,7 +531,7 @@ The `examples/` directory contains self-documenting compositions demonstrating d
 1. Run: `python examples/filename.py`
 2. Press Ctrl+C to stop
 
-Current examples include dark minor harmony with graph-based form, polyrhythmic arpeggios with float pattern lengths, dark techno with Euclidean rhythms, Jarre-inspired electronic suites, and jazz fusion with coprime polyrhythms.
+Current examples include aeolian minor harmony with graph-based form, polyrhythmic arpeggios with float pattern lengths, phrygian minor with Euclidean rhythms, Jarre-inspired electronic suites, and jazz fusion with coprime polyrhythms.
 
 ## Extra utilities
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
@@ -541,7 +541,7 @@ Current examples include dark minor harmony with graph-based form, polyrhythmic 
 - `subsequence.markov_chain` provides a generic weighted Markov chain utility.
 - `subsequence.event_emitter` supports sync/async events used by the sequencer.
 - `subsequence.voicings` provides chord inversions and voice leading. `invert_chord()` rotates intervals; `VoiceLeadingState` picks the closest inversion to the previous chord automatically.
-- `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"dark_minor"`, `"dark_techno"`.
+- `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, `"phrygian_minor"`, `"lydian_major"`, `"dorian_minor"`, `"suspended"`, `"chromatic_mediant"`.
 - `subsequence.weighted_graph` provides a generic weighted graph used for transitions.
 - `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
 - `subsequence.constants.durations` provides beat-based duration constants. Import as `import subsequence.constants.durations as dur` and write `length = 9 * dur.SIXTEENTH` or `step = dur.DOTTED_EIGHTH` instead of raw floats. Constants: `THIRTYSECOND`, `SIXTEENTH`, `DOTTED_SIXTEENTH`, `TRIPLET_EIGHTH`, `EIGHTH`, `DOTTED_EIGHTH`, `TRIPLET_QUARTER`, `QUARTER`, `DOTTED_QUARTER`, `HALF`, `DOTTED_HALF`, `WHOLE`.

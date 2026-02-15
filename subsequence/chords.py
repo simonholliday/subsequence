@@ -64,6 +64,8 @@ CHORD_INTERVALS: typing.Dict[str, typing.List[int]] = {
 	"major_7th": [0, 4, 7, 11],
 	"minor_7th": [0, 3, 7, 10],
 	"half_diminished_7th": [0, 3, 6, 10],
+	"sus2": [0, 2, 7],
+	"sus4": [0, 5, 7],
 }
 
 CHORD_SUFFIX: typing.Dict[str, str] = {
@@ -75,6 +77,8 @@ CHORD_SUFFIX: typing.Dict[str, str] = {
 	"major_7th": "maj7",
 	"minor_7th": "m7",
 	"half_diminished_7th": "m7b5",
+	"sus2": "sus2",
+	"sus4": "sus4",
 }
 
 
