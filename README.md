@@ -89,6 +89,17 @@ def drums (p):
         snare_steps = subsequence.sequence_utils.sequence_to_indices(snare_seq)
         p.hit_steps("snare", subsequence.sequence_utils.roll(snare_steps, 4, 16), velocity=100)
 
+# Place notes at specific steps with per-step pitch, velocity, duration control.
+@composition.pattern(channel=0, length=4)
+def melody (p):
+    # Ascending phrase with accent on first note
+    p.sequence(
+        steps=[0, 4, 8, 12],
+        pitches=[60, 64, 67, 72],
+        velocities=[127, 100, 110, 100],
+        durations=[0.5, 0.25, 0.25, 0.5],
+    )
+
 @composition.pattern(channel=6, length=4)
 def chords (p, chord):
     p.chord(chord, root=52, velocity=90, sustain=True)
@@ -368,22 +379,15 @@ seq = subsequence.sequencer.Sequencer(
 )
 ```
 
-## Demo details
+## Examples
 
-### demo.py — Dark minor composition with form
-The demo (`examples/demo.py`) uses the Composition API to schedule drums (kick, snare, hats), chord pads, a cycling arpeggio, and a 16th-note bassline — all on a unified 16-step grid. The form is a weighted graph: the intro (4 bars) plays once then moves to the verse. From the verse (8 bars), the form transitions to the chorus (75%) or a bridge (25%). The chorus (8 bars) leads to a breakdown (67%) or back to the verse (33%). The bridge (4 bars) always goes to the chorus. The breakdown (4 bars) always returns to the verse. The intro never comes back. Each pattern reads `p.section` to control its behavior: the kick always plays, the snare only enters during the chorus, hats are muted during the intro, and chord pads build intensity through each section via `p.section.progress`. A scheduled task fetches the ISS position every 8 bars and stores normalized latitude/longitude in `composition.data`; the snare pattern reads `longitude_norm` to modulate its maximum density. A shared harmonic state advances chords on a 4-beat clock, and any pattern with a `chord` parameter automatically receives the current chord when it rebuilds. The advanced demo (`examples/demo_advanced.py`) shows the same composition using direct `Pattern` subclassing for power users. Press Ctrl+C to stop.
+The `examples/` directory contains self-documenting compositions demonstrating different techniques and musical styles. Each file includes detailed comments explaining its structure, harmony, form, and pattern design. To run an example:
 
-### arpeggiator.py — Polyrhythmic arpeggios
-The arpeggiator (`examples/arpeggiator.py`) demonstrates polyrhythmic capabilities with seven patterns cycling at six different lengths. A steady 4-beat drum pattern anchors the piece while arpeggios at 3, 5, 7, and 10.5 beats weave around it, creating 3:4, 5:4, and 7:4 polyrhythms. A second drum pattern runs on a 6-beat / 12-step triplet grid using General MIDI drum names from `subsequence.constants.gm_drums`. The 10.5-beat bass arpeggio demonstrates float length support (21 eighth notes). Turnaround harmony drifts between keys for infinite evolution. Full phase alignment takes 420+ beats, so the piece always sounds fresh.
+1. Edit the MIDI device name at the top of the file
+2. Run: `python examples/filename.py`
+3. Press Ctrl+C to stop
 
-### dark_techno.py — Dark, hard techno
-A dark techno composition (`examples/dark_techno.py`) built for three instruments: Vermona DRM1 MKIV drums, Moog Minitaur bass, and Moog Matriarch lead. 140 BPM in E minor using the `"dark_techno"` chord graph — four all-minor chords with Phrygian half-step motion as the signature harmonic event. High gravity (0.9) keeps the harmony sitting on the tonic most of the time. The form loops infinitely: an intro (16 bars of kick and hats), a groove (32 bars with full kit, offbeat sub-bass, and a sparse Euclidean lead), and a breakdown (8 bars where the kick drops out and the bass sustains a single note). Patterns evolve slowly — ghost kicks, chromatic bass dips, and rotating lead rhythms keep things moving without ever breaking the groove.
-
-### sequinoxe.py — Electronic suite (Jarre-inspired)
-An atmospheric electronic suite (`examples/sequinoxe.py`) inspired by Jean-Michel Jarre's Oxygène, Équinoxe, and Les Champs Magnétiques. Five instruments: Moog Matriarch (cascading two-octave arpeggio that starts as a sustained pad), Moog Minitaur (pulsing eighth-note bass), PWM Malevolent (Euclidean stabs), Vermona DRM1 (syncopated drums — not four-on-the-floor), and Roland TR8S (shaker/ride/cowbell texture via GM drum map). 112 BPM in D minor using the `dark_minor` graph with gravity at 0.75 for natural harmonic drift. The form builds like a Jarre suite: a 16-bar atmosphere (pad only) unfolds into a 16-bar build (arpeggio emerges, bass and sparse drums enter), then a 32-bar peak (full arrangement). The peak has a 33% chance of drifting to a stripped 16-bar section before building again.
-
-### kind_of_bleep.py — Jazz fusion (Miles Davis meets Squarepusher)
-An experimental jazz fusion piece (`examples/kind_of_bleep.py`) for three instruments: Modal Voce EP (rootless jazz voicings and angular melodic fragments), Vermona DRM1 (core jazz kit with ghost notes), and Roland TR8S (jazz ride and polyrhythmic breakbeats via GM). 142 BPM in Eb using the `turnaround` graph with dominant sevenths and minor turnaround weight — ii-V-I progressions drifting through all twelve keys. The percussion is built for complexity: six overlapping patterns at four different cycle lengths (3, 4, 5, and 7 beats) create interlocking polyrhythms whose combined cycle is 420 beats. The form oscillates between Miles-like space (sparse EP and ride) and Squarepusher-style chaos (dense breakbeats, ghost notes, glitch textures on coprime cycles).
+Current examples include dark minor harmony with graph-based form, polyrhythmic arpeggios with float pattern lengths, dark techno with Euclidean rhythms, Jarre-inspired electronic suites, and jazz fusion with coprime polyrhythms.
 
 ## Extra utilities
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.

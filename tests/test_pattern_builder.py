@@ -1015,3 +1015,225 @@ def test_every_fires_on_cycle_zero () -> None:
 
 	assert (total_pulses - 1) in pattern.steps
 	assert 0 not in pattern.steps
+
+
+# --- sequence() ---
+
+
+def test_sequence_places_per_step_pitches () -> None:
+
+	"""sequence() should place different pitches at each step position."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.sequence(
+		steps=[0, 4, 8, 12],
+		pitches=[60, 64, 67, 72],
+	)
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	expected = {0: 60, ppq: 64, ppq * 2: 67, ppq * 3: 72}
+
+	for pulse, expected_pitch in expected.items():
+		assert pulse in pattern.steps
+		assert pattern.steps[pulse].notes[0].pitch == expected_pitch
+
+
+def test_sequence_scalar_pitch_expands () -> None:
+
+	"""A single int pitch should be applied to all steps."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.sequence([0, 4, 8, 12], pitches=60)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 4
+
+	for step in pattern.steps.values():
+		assert step.notes[0].pitch == 60
+
+
+def test_sequence_scalar_velocity_expands () -> None:
+
+	"""Default velocity=100 should apply to all steps."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.sequence([0, 4, 8, 12], pitches=[60, 64, 67, 72])
+
+	for step in pattern.steps.values():
+		assert step.notes[0].velocity == 100
+
+
+def test_sequence_scalar_duration_expands () -> None:
+
+	"""Default duration=0.1 should apply to all steps."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.sequence([0, 4, 8, 12], pitches=[60, 64, 67, 72])
+
+	expected_dur = int(0.1 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	for step in pattern.steps.values():
+		assert step.notes[0].duration == expected_dur
+
+
+def test_sequence_per_step_velocities () -> None:
+
+	"""Per-step velocity lists should set different velocities at each position."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.sequence(
+		steps=[0, 4, 8, 12],
+		pitches=60,
+		velocities=[127, 90, 110, 80],
+	)
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	expected = {0: 127, ppq: 90, ppq * 2: 110, ppq * 3: 80}
+
+	for pulse, expected_vel in expected.items():
+		assert pattern.steps[pulse].notes[0].velocity == expected_vel
+
+
+def test_sequence_list_longer_truncates () -> None:
+
+	"""A pitches list longer than steps should be truncated."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# 2 steps but 4 pitches — extra values should be ignored.
+	builder.sequence([0, 4], pitches=[60, 64, 67, 72])
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 2
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	assert pattern.steps[0].notes[0].pitch == 60
+	assert pattern.steps[ppq].notes[0].pitch == 64
+
+
+def test_sequence_list_shorter_repeats_last () -> None:
+
+	"""A pitches list shorter than steps should repeat the last value."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# 4 steps but only 2 pitches — last value (64) fills remaining.
+	builder.sequence([0, 4, 8, 12], pitches=[60, 64])
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+
+	assert pattern.steps[0].notes[0].pitch == 60
+	assert pattern.steps[ppq].notes[0].pitch == 64
+	assert pattern.steps[ppq * 2].notes[0].pitch == 64
+	assert pattern.steps[ppq * 3].notes[0].pitch == 64
+
+
+def test_sequence_empty_steps_raises () -> None:
+
+	"""An empty steps list should raise ValueError."""
+
+	pattern, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="steps list cannot be empty"):
+		builder.sequence([], pitches=60)
+
+
+def test_sequence_empty_pitches_list_raises () -> None:
+
+	"""An empty pitches list should raise ValueError."""
+
+	pattern, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="pitches list cannot be empty"):
+		builder.sequence([0, 4], pitches=[])
+
+
+def test_sequence_custom_step_count () -> None:
+
+	"""step_count=8 should map steps to correct beat positions."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# step_count=8 over 4 beats = 0.5 beats per step.
+	builder.sequence([0, 2, 4, 6], pitches=60, step_count=8)
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	expected_pulses = [0, ppq, ppq * 2, ppq * 3]
+
+	assert sorted(pattern.steps.keys()) == expected_pulses
+
+
+def test_sequence_probability_zero_places_none () -> None:
+
+	"""probability=0.0 should place no notes."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.sequence([0, 4, 8, 12], pitches=60, probability=0.0)
+
+	assert len(pattern.steps) == 0
+
+
+def test_sequence_probability_one_places_all () -> None:
+
+	"""probability=1.0 should place all notes."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.sequence([0, 4, 8, 12], pitches=60, probability=1.0)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 4
+
+
+def test_sequence_with_drum_names () -> None:
+
+	"""String pitches should resolve via the drum note map."""
+
+	drum_map = {"kick": 36, "snare": 38}
+	pattern, builder = _make_builder(drum_note_map=drum_map)
+
+	builder.sequence([0, 4, 8, 12], pitches=["kick", "snare", "kick", "snare"])
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+
+	assert pattern.steps[0].notes[0].pitch == 36
+	assert pattern.steps[ppq].notes[0].pitch == 38
+	assert pattern.steps[ppq * 2].notes[0].pitch == 36
+	assert pattern.steps[ppq * 3].notes[0].pitch == 38
+
+
+def test_sequence_truncation_logs_warning (caplog) -> None:
+
+	"""Truncating a longer list should log a warning."""
+
+	import logging
+
+	pattern, builder = _make_builder(length=4)
+
+	with caplog.at_level(logging.WARNING, logger="subsequence.pattern_builder"):
+		builder.sequence([0, 4], pitches=[60, 64, 67, 72])
+
+	assert "truncating" in caplog.text
+
+
+def test_sequence_repeat_logs_warning (caplog) -> None:
+
+	"""Repeating the last value for a shorter list should log a warning."""
+
+	import logging
+
+	pattern, builder = _make_builder(length=4)
+
+	with caplog.at_level(logging.WARNING, logger="subsequence.pattern_builder"):
+		builder.sequence([0, 4, 8, 12], pitches=[60, 64])
+
+	assert "repeating last value" in caplog.text

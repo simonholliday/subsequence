@@ -1,9 +1,40 @@
+import logging
 import random
 import typing
 
 import subsequence.constants
 import subsequence.pattern
 import subsequence.sequence_utils
+
+logger = logging.getLogger(__name__)
+
+
+def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
+
+	"""Expand a scalar to a list of length n, or adjust a list to length n.
+
+	If value is a scalar (int, float, or str), returns [value] * n.
+	If value is a list longer than n, truncates and logs a warning.
+	If value is a list shorter than n, repeats the last value and logs a warning.
+	"""
+
+	if isinstance(value, (int, float, str)):
+		return [value] * n
+
+	result = list(value)
+
+	if len(result) == 0:
+		raise ValueError(f"sequence(): {name} list cannot be empty")
+
+	if len(result) > n:
+		logger.warning("sequence(): %s has %d values but only %d steps — truncating", name, len(result), n)
+		return result[:n]
+
+	if len(result) < n:
+		logger.warning("sequence(): %s has %d values but %d steps — repeating last value", name, len(result), n)
+		return result + [result[-1]] * (n - len(result))
+
+	return result
 
 
 class PatternBuilder:
@@ -144,6 +175,69 @@ class PatternBuilder:
 
 			beat = i * step_duration
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
+
+	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.List[int]] = 100, durations: typing.Union[float, typing.List[float]] = 0.1, step_count: int = 16, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> None:
+
+		"""Place notes at specific step positions with per-step pitch, velocity, and duration.
+
+		Like a hardware step sequencer: define which steps fire, then what plays at each one.
+		Any of ``pitches``, ``velocities``, or ``durations`` can be a single value (applied to every
+		step) or a list (one value per step).
+
+		If a list is shorter than ``steps``, the last value is repeated. If longer, the list is
+		truncated. Both cases log a warning.
+
+		Parameters:
+			steps: List of step indices on the grid (e.g., ``[0, 4, 8, 12]``)
+			pitches: MIDI note number(s) or drum name(s) — scalar or per-step list
+			velocities: MIDI velocity 0-127 — scalar or per-step list (default 100)
+			durations: Note duration in beats — scalar or per-step list (default 0.1)
+			step_count: Grid subdivisions per pattern (default 16 = sixteenth notes)
+			probability: Chance of each hit sounding, 0.0-1.0 (default 1.0 = all hits)
+			rng: Random number generator (default: ``self.rng``)
+
+		Example:
+			```python
+			# Ascending melodic phrase
+			p.sequence([0, 4, 8, 12], pitches=[60, 64, 67, 72])
+
+			# Full per-step control
+			p.sequence(
+			    steps=[0, 2, 4, 6, 8, 10, 12, 14],
+			    pitches=[60, 62, 64, 65, 67, 69, 71, 72],
+			    velocities=[127, 100, 110, 90, 120, 95, 105, 85],
+			    durations=[0.5, 0.25, 0.5, 0.25, 0.5, 0.25, 0.5, 0.25],
+			)
+
+			# Drum pattern with per-step velocity accents
+			p.sequence(
+			    steps=[0, 4, 8, 12],
+			    pitches="kick",
+			    velocities=[127, 90, 110, 90],
+			)
+			```
+		"""
+
+		if not steps:
+			raise ValueError("steps list cannot be empty")
+
+		if rng is None:
+			rng = self.rng
+
+		n = len(steps)
+		pitches_list = _expand_sequence_param("pitches", pitches, n)
+		velocities_list = _expand_sequence_param("velocities", velocities, n)
+		durations_list = _expand_sequence_param("durations", durations, n)
+
+		step_duration = self._pattern.length / step_count
+
+		for i, step_idx in enumerate(steps):
+
+			if probability < 1.0 and rng.random() >= probability:
+				continue
+
+			beat = step_idx * step_duration
+			self.note(pitch=pitches_list[i], beat=beat, velocity=velocities_list[i], duration=durations_list[i])
 
 	def fill (self, pitch: typing.Union[int, str], step: float, velocity: int = 100, duration: float = 0.25) -> None:
 
