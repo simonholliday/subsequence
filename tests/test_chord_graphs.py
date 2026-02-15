@@ -155,26 +155,6 @@ def test_harmonic_state_new_string_names () -> None:
 	assert state_phrygian.current_chord.quality == "minor"
 
 
-def test_harmonic_state_legacy_aliases () -> None:
-
-	"""HarmonicState should still accept old string names as aliases."""
-
-	state_fm = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
-
-	assert state_fm.current_chord.quality == "major"
-
-	state_tg = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="turnaround_global")
-
-	assert state_tg.current_chord.quality == "major"
-
-	# These are now aliases to the new graphs.
-	state_dm = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="dark_minor")
-	assert state_dm.current_chord.quality == "minor"
-
-	state_dt = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="dark_techno")
-	assert state_dt.current_chord.quality == "minor"
-
-
 def test_phrygian_minor_all_chords_are_minor () -> None:
 
 	"""Every chord in the phrygian_minor graph must be minor quality."""

@@ -34,13 +34,13 @@ def _resolve_graph_style (
 			minor_turnaround_weight = minor_turnaround_weight
 		)
 
-	if style in ("aeolian_minor", "dark_minor"):
+	if style == "aeolian_minor":
 
 		return subsequence.chord_graphs.aeolian_minor.AeolianMinor(
 			include_dominant_7th = include_dominant_7th
 		)
 
-	if style in ("phrygian_minor", "dark_techno"):
+	if style == "phrygian_minor":
 
 		return subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
 
