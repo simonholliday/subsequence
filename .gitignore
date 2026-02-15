@@ -17,7 +17,7 @@ build/
 *.log
 
 # Documentation build output
-docs/html/
+docs/
 
 # Work in progress
 
