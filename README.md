@@ -23,10 +23,10 @@ Subsequence integrates the **Narmour Implication-Realization model**, a theory o
 By encoding these principles, Subsequence generates melodies that feel structured and intentional, satisfying the listener's innate expectations of musical grammar.
 
 ### The "System Architect" Workflow
-Subsequence is not an "AI Music Generator" that gives you a finished song from a prompt. It is a workbench for **Algorithmic Composition**.
+Subsequence is a workbench for **Algorithmic Composition**, not an "AI Music Generator".
 
-*   **Don't Prompt. Architect.** You define the rules, the probabilities, and the structure. You are the designer of the system.
-*   **Code is the Interface.** Patterns are plain Python functions. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with.
+*   **Don't Prompt. Architect.** You define the composition, the computer provides the processing power. You are the composer and conductor, not a spectator.
+*   **Code is the Interface.** Patterns are plain text files, meaning your music is versionable, shareable, and collaborative by default. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with.
 *   **Deterministic Control.** Set a seed and get the exact same "random" results every time. Tweak your code and re-run to perfect the output, just like compiling software.
 
 Subsequence connects to your existing world. Sync it to your DAW's clock, or let it drive your Eurorack system. It provides the logic; you provide the sound.
@@ -52,6 +52,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - [Extra utilities](#extra-utilities)
 - [Feature Roadmap](#feature-roadmap)
 - [Tests](#tests)
+- [About the Author](#about-the-author)
 - [License](#license)
 
 ## What it does
@@ -875,6 +876,14 @@ mypy subsequence/
 ```
 
 Type checking runs automatically in CI on all pull requests.
+
+## About the Author
+
+Subequence was created by me, Simon Holliday ([https://simonholliday.com](https://simonholliday.com)), a senior technologist and a junior (but trying) musician. From running an electronic music label in the 2000s to prototyping new passive SONAR techniques for defence research, my work has often explored the intersection of code and sound.
+
+Subsequence was iterated over a series of separate proof-of-concept projects during 2025, and pulled together into this new codebase in Spring 2026.
+
+It is built to create music the way I like to think about creating it: as an evolving system with intent, not just a loop.
 
 ## License
 
