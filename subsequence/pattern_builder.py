@@ -557,7 +557,38 @@ class PatternBuilder:
 			for note in step.notes:
 				note.velocity = int(low + (high - low) * vdc_value)
 
-	# ─── Pattern Transforms ─────────────────────────────────────────
+	def legato (self, ratio: float = 1.0) -> None:
+		
+		"""
+		Adjust note durations to fill the gap until the next note.
+		
+		Parameters:
+			ratio: How much of the gap to fill (0.0 to 1.0). 
+				1.0 is full legato, < 1.0 is staccato.
+		"""
+		
+		if not self._pattern.steps:
+			return
+
+		sorted_positions = sorted(self._pattern.steps.keys())
+		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
+		
+		for i, position in enumerate(sorted_positions):
+			
+			# Calculate gap to next note
+			if i < len(sorted_positions) - 1:
+				gap = sorted_positions[i + 1] - position
+			else:
+				# Wrap around: gap is distance to end + distance to first note
+				gap = (total_pulses - position) + sorted_positions[0]
+
+			# Apply ratio and enforce minimum duration
+			new_duration = max(1, int(gap * ratio))
+			
+			step = self._pattern.steps[position]
+			for note in step.notes:
+				note.duration = new_duration
+
 	#
 	# These methods transform existing notes after they have been placed.
 	# Call them at the end of your builder function, after all notes are
