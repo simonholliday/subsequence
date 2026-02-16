@@ -594,8 +594,11 @@ class Composition:
 		'NIR strength' (melodic inertia based on Narmour's model).
 
 		Parameters:
-			style: The harmonic style to use. Built-in: "functional_major", 
-				"diatonic_major", "turnaround", "aeolian_minor".
+			style: The harmonic style to use. Built-in: "functional_major"
+				(alias "diatonic_major"), "turnaround", "aeolian_minor",
+				"phrygian_minor", "lydian_major", "dorian_minor",
+				"chromatic_mediant", "suspended", "mixolydian", "whole_tone",
+				"diminished". See README for full descriptions.
 			cycle_beats: How many beats each chord lasts (default 4).
 			dominant_7th: Whether to include V7 chords (default True).
 			gravity: Key gravity (0.0 to 1.0). High values stay closer to the root chord.
