@@ -31,22 +31,32 @@ def _fn_has_parameter (fn: typing.Callable, name: str) -> bool:
 
 class SectionInfo:
 
-	"""Immutable snapshot of the current section state.
-
-	Patterns read `p.section` to decide what to play in each section.
+	"""
+	An immutable snapshot of the current section in the compositional form.
+	
+	Patterns read `p.section` to make context-aware decisions, such as increasing
+	intensity as a section progresses or playing variation only in certain blocks.
+	
+	Attributes:
+		name: The string name of the section (e.g., "verse").
+		bar: The current bar index within this section (0-indexed).
+		bars: Total number of bars in this section.
+		index: The global index of this section in the form's timeline.
 
 	Example:
 		```python
-		@composition.pattern(channel=9, length=4, drum_note_map=DRUM_NOTE_MAP)
+		@composition.pattern(channel=9)
 		def drums(p):
-			# Always play kick
-			p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
+			# Always play a basic kick
+			p.hit_steps("kick", [0, 8])
 
-			# Only play snare during chorus
+			# Only add snare and hats during the "chorus"
 			if p.section and p.section.name == "chorus":
-				# Build intensity through the section
-				vel = int(80 + 20 * p.section.progress)
-				p.hit_steps("snare", [4, 12], velocity=vel)
+				p.hit_steps("snare", [4, 12])
+				
+				# Use .progress (0.0 to 1.0) to build a riser
+				vel = int(60 + 40 * p.section.progress)
+				p.hit_steps("hh", list(range(16)), velocity=vel)
 		```
 	"""
 
@@ -504,30 +514,37 @@ class _PendingScheduled:
 class Composition:
 
 	"""
-	Top-level composition object that owns the sequencer, harmonic state, and pattern registry.
+	The top-level controller for a musical piece.
+	
+	The `Composition` object manages the global clock (Sequencer), the harmonic
+	progression (HarmonicState), the song structure (FormState), and all MIDI patterns.
+	It serves as the main entry point for defining your music.
+	
+	Typical workflow:
+	1. Initialize `Composition` with BPM and Key.
+	2. Define harmony and form (optional).
+	3. Register patterns using the `@composition.pattern` decorator.
+	4. Call `composition.play()` to start the music.
 	"""
 
 	def __init__ (self, output_device: typing.Optional[str] = None, bpm: float = 120, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> None:
 
-		"""Initialize a composition with MIDI output device, tempo, and optional key.
+		"""
+		Initialize a new composition.
 
 		Parameters:
-			output_device: MIDI output device name (e.g., `"Device Name:Port 1 16:0"`).
-				When omitted, auto-discovers available devices — uses the only device
-				if one is found, or prompts the user to choose if multiple are available.
-			bpm: Tempo in beats per minute (default 120)
-			key: Root key name (e.g., `"C"`, `"F#"`, `"Bb"`). Required if using `harmony()`.
-			seed: Optional random seed. When set, all randomness (chord progressions, form
-				transitions, pattern builder functions) becomes deterministic and repeatable.
+			output_device: The name of the MIDI output port to use. If `None`, 
+				Subsequence will attempt to find a device, prompting if necessary.
+			bpm: Initial tempo in beats per minute (default 120).
+			key: The root key of the piece (e.g., "C", "F#", "Bb").
+				Required if you plan to use `harmony()`.
+			seed: An optional integer for deterministic randomness. When set, 
+				every random decision (chord choices, drum probability, etc.) 
+				will be identical on every run.
 
 		Example:
 			```python
-			composition = subsequence.Composition(
-				output_device="Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0",
-				bpm=125,
-				key="E",
-				seed=42
-			)
+			comp = subsequence.Composition(bpm=128, key="Eb", seed=123)
 			```
 		"""
 
@@ -569,25 +586,29 @@ class Composition:
 		reschedule_lookahead: float = 1
 	) -> None:
 
-		"""Configure the harmonic state and chord change cycle for this composition.
+		"""
+		Configure the harmonic logic and chord change intervals.
+
+		Subsequence uses a weighted transition graph to choose the next chord.
+		You can influence these choices using 'gravity' (favoring the tonic) and
+		'NIR strength' (melodic inertia based on Narmour's model).
 
 		Parameters:
-			style: Chord graph style — `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, or a `ChordGraph` instance
-			cycle_beats: How often chords change (in beats, default 4)
-			dominant_7th: Include dominant seventh chords (default True)
-			gravity: Key gravity blend 0.0-1.0 (default 1.0). Higher values favor chords closer to the tonic.
-			nir_strength: Melodic inertia strength 0.0-1.0 (default 0.5). Controls how strongly chord transitions follow Narmour's Implication-Realization model (large leaps trigger reversal, small steps trigger continuation).
-			minor_weight: Weight for minor vs major turnarounds 0.0-1.0 (default 0.0, turnaround graph only)
-			reschedule_lookahead: Reschedule lookahead in beats (default 1)
+			style: The harmonic style to use. Built-in: "functional_major", 
+				"diatonic_major", "turnaround", "aeolian_minor".
+			cycle_beats: How many beats each chord lasts (default 4).
+			dominant_7th: Whether to include V7 chords (default True).
+			gravity: Key gravity (0.0 to 1.0). High values stay closer to the root chord.
+			nir_strength: Melodic inertia (0.0 to 1.0). Influences chord movement 
+				expectations.
+			minor_weight: For "turnaround" style, influences major vs minor feel.
+			reschedule_lookahead: How many beats in advance to calculate the 
+				next chord.
 
 		Example:
 			```python
-			composition.harmony(
-				style="aeolian_minor",
-				cycle_beats=4,
-				dominant_7th=True,
-				gravity=0.8
-			)
+			# A moody minor progression that changes every 8 beats
+			comp.harmony(style="aeolian_minor", cycle_beats=8, gravity=0.4)
 			```
 		"""
 
@@ -616,19 +637,20 @@ class Composition:
 
 	def seed (self, value: int) -> None:
 
-		"""Set a random seed for deterministic, repeatable output.
+		"""
+		Set a random seed for deterministic, repeatable playback.
 
-		When set, all randomness — chord progressions, form transitions, and pattern
-		builder functions — produces the same results on every run. Pattern builders
-		access the seeded RNG via ``p.rng``.
+		If a seed is set, Subsequence will produce the exact same sequence 
+		every time you run the script. This is vital for finishing tracks or 
+		reproducing a specific 'performance'.
 
 		Parameters:
-			value: Integer seed value
+			value: An integer seed.
 
 		Example:
 			```python
-			composition.seed(42)
-			composition.play()  # same output every time
+			# Fix the randomness
+			comp.seed(42)
 			```
 		"""
 
@@ -636,19 +658,15 @@ class Composition:
 
 	def display (self, enabled: bool = True) -> None:
 
-		"""Enable or disable the live terminal status line.
+		"""
+		Enable or disable the live terminal dashboard.
 
-		When enabled, a persistent status line shows the current bar, section,
-		chord, BPM, and key. Log messages scroll above it without disruption.
+		When enabled, Subsequence uses a safe logging handler that allows a 
+		persistent status line (BPM, Key, Bar, Section, Chord) to stay at 
+		the bottom of the terminal while logs scroll above it.
 
 		Parameters:
-			enabled: Turn the display on (True) or off (False)
-
-		Example:
-			```python
-			composition.display()  # enable before play()
-			composition.play()
-			```
+			enabled: Whether to show the display (default True).
 		"""
 
 		if enabled:
@@ -658,26 +676,19 @@ class Composition:
 
 	def midi_input (self, device: str, clock_follow: bool = False) -> None:
 
-		"""Configure MIDI input for receiving external clock and transport control.
-
-		When ``clock_follow`` is enabled, the sequencer follows incoming MIDI
-		clock ticks instead of using its own internal clock. The BPM set in
-		the constructor is ignored — tempo is determined by the external
-		source. MIDI start, stop, and continue messages control transport.
-
-		When ``clock_follow`` is disabled (default), the input port is opened
-		but no clock or transport messages are acted on.
+		"""
+		Configure MIDI input for external sync and MIDI messages.
 
 		Parameters:
-			device: MIDI input device name (e.g., ``"Device Name:Port 1 16:0"``)
-			clock_follow: Follow external MIDI clock for timing (default False)
+			device: The name of the MIDI input port.
+			clock_follow: If True, Subsequence will slave its clock to incoming 
+				MIDI Ticks. It will also follow MIDI Start/Stop/Continue 
+				commands.
 
 		Example:
 			```python
-			composition.midi_input(
-				device="Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0",
-				clock_follow=True
-			)
+			# Slave Subsequence to an external hardware sequencer
+			comp.midi_input("Scarlett 2i4", clock_follow=True)
 			```
 		"""
 
@@ -686,25 +697,15 @@ class Composition:
 
 	def live (self, port: int = 5555) -> None:
 
-		"""Enable the live coding server for runtime interaction.
+		"""
+		Enable the live coding eval server.
 
-		Starts a TCP eval server on ``localhost`` that accepts Python code from
-		any source — the bundled REPL client, an editor plugin, or a raw socket.
-		The server launches when ``play()`` is called and stops when playback ends.
+		This allows you to connect to a running composition using the 
+		`subsequence.live_client` REPL and hot-swap pattern code or 
+		modify variables in real-time.
 
 		Parameters:
-			port: TCP port to listen on (default 5555)
-
-		Example:
-			```python
-			composition.live()      # enable before play()
-			composition.display()
-			composition.play()
-			```
-
-			Then in another terminal::
-
-				python -m subsequence.live_client
+			port: The TCP port to listen on (default 5555).
 		"""
 
 		self._live_server = subsequence.live_server.LiveServer(self, port=port)
@@ -712,21 +713,16 @@ class Composition:
 
 	def osc (self, receive_port: int = 9000, send_port: int = 9001, send_host: str = "127.0.0.1") -> None:
 
-		"""Enable Open Sound Control (OSC) for remote control and state broadcasting.
+		"""
+		Enable bi-directional Open Sound Control (OSC).
 
-		Starts a UDP server that listens for control messages and sends state updates.
+		Subsequence will listen for commands (like `/bpm` or `/mute`) and 
+		broadcast its internal state (like `/chord` or `/bar`) over UDP.
 
 		Parameters:
-			receive_port: UDP port to listen on (default 9000)
-			send_port: UDP port to send status updates to (default 9001)
-			send_host: Hostname/IP to send updates to (default "127.0.0.1")
-
-		Example:
-			```python
-			# Enable OSC before play()
-			composition.osc(receive_port=9000, send_port=9001)
-			composition.play()
-			```
+			receive_port: Port to listen for incoming OSC messages (default 9000).
+			send_port: Port to send state updates to (default 9001).
+			send_host: The IP address to send updates to (default "127.0.0.1").
 		"""
 
 		self._osc_server = subsequence.osc.OscServer(
@@ -738,18 +734,11 @@ class Composition:
 
 	def set_bpm (self, bpm: float) -> None:
 
-		"""Change the tempo instantly while the composition is playing.
-
-		Cancels any active BPM transition. When ``clock_follow`` is enabled,
-		BPM is controlled by the external clock source and this method has no effect.
+		"""
+		Instantly change the tempo.
 
 		Parameters:
-			bpm: New tempo in beats per minute
-
-		Example:
-			```python
-			composition.set_bpm(140)
-			```
+			bpm: The new tempo in beats per minute.
 		"""
 
 		self._sequencer.set_bpm(bpm)
@@ -759,18 +748,13 @@ class Composition:
 
 	def target_bpm (self, bpm: float, bars: int) -> None:
 
-		"""Set a target BPM and transition smoothly over the specified bars.
-
-		BPM ramps continuously from the current value to the target — no
-		audible jumps at bar boundaries. New calls override any active transition.
-
-		Parameters:
-			bpm: The target BPM
-			bars: Number of bars over which to transition
+		"""
+		Smoothly ramp the tempo to a target value over a number of bars.
 
 		Example:
 			```python
-			composition.target_bpm(140, bars=8)
+			# Accelerate to 140 BPM over the next 8 bars
+			comp.target_bpm(140, bars=8)
 			```
 		"""
 
@@ -778,16 +762,11 @@ class Composition:
 
 	def live_info (self) -> typing.Dict[str, typing.Any]:
 
-		"""Return a snapshot of the running composition state.
-
-		Returns a dict with: ``bpm``, ``key``, ``bar``, ``section``, ``chord``,
-		``patterns`` (list of dicts), and ``data``.
-
-		Example:
-			```python
-			info = composition.live_info()
-			print(info["bpm"], info["chord"])
-			```
+		"""
+		Return a dictionary containing the current state of the composition.
+		
+		Includes BPM, key, current bar, active section, current chord, 
+		running patterns, and custom data.
 		"""
 
 		section_info = None
@@ -831,15 +810,14 @@ class Composition:
 
 	def mute (self, name: str) -> None:
 
-		"""Mute a running pattern by name. The pattern keeps scheduling but produces no notes.
+		"""
+		Mute a running pattern by name.
+		
+		The pattern continues to 'run' and increment its cycle count in 
+		the background, but it will not produce any MIDI notes until unmuted.
 
 		Parameters:
-			name: The function name of the pattern to mute
-
-		Example:
-			```python
-			composition.mute("hats")
-			```
+			name: The function name of the pattern to mute.
 		"""
 
 		if name not in self._running_patterns:
@@ -850,15 +828,8 @@ class Composition:
 
 	def unmute (self, name: str) -> None:
 
-		"""Unmute a previously muted pattern.
-
-		Parameters:
-			name: The function name of the pattern to unmute
-
-		Example:
-			```python
-			composition.unmute("hats")
-			```
+		"""
+		Unmute a previously muted pattern.
 		"""
 
 		if name not in self._running_patterns:
@@ -869,30 +840,17 @@ class Composition:
 
 	def schedule (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int = 1) -> None:
 
-		"""Register a function to run on a repeating beat-based cycle.
+		"""
+		Register a custom function to run on a repeating beat-based cycle.
 
-		Sync functions automatically run in a thread pool so they never block the MIDI clock.
-		Async functions run directly on the event loop.
+		Subsequence automatically runs synchronous functions in a thread pool 
+		so they don't block the timing-critical MIDI clock. Async functions 
+		are run directly on the event loop.
 
 		Parameters:
-			fn: Function to call on each cycle (sync or async)
-			cycle_beats: How often to call the function (in beats)
-			reschedule_lookahead: Reschedule lookahead in beats (default 1)
-
-		Example:
-			```python
-			# Sync function (runs in thread pool automatically)
-			def fetch_data():
-				composition.data["value"] = some_external_api()
-
-			composition.schedule(fetch_data, cycle_beats=32)  # Every 8 bars
-
-			# Async function (runs directly)
-			async def async_task():
-				composition.data["value"] = await some_async_api()
-
-			composition.schedule(async_task, cycle_beats=16)
-			```
+			fn: The function to call.
+			cycle_beats: How often to call it (e.g., 4 = every bar).
+			reschedule_lookahead: How far in advance to schedule the next call.
 		"""
 
 		self._pending_scheduled.append(_PendingScheduled(fn, cycle_beats, reschedule_lookahead))
@@ -908,40 +866,28 @@ class Composition:
 		start: typing.Optional[str] = None
 	) -> None:
 
-		"""Define the compositional form as a sequence of sections or a weighted section graph.
+		"""
+		Define the structure (sections) of the composition.
 
-		Three modes:
-		- **Dict** (graph): Weighted section transitions. Format: `{section_name: (bars, [(next_section, weight), ...])}`
-		- **List**: Linear sequence. With `loop=True`, cycles back to the start.
-		- **Generator**: Yields `(name, bars)` tuples for stochastic structures.
+		You can define form in three ways:
+		1. **Graph (Dict)**: Dynamic transitions based on weights.
+		2. **Sequence (List)**: A fixed order of sections.
+		3. **Generator**: A Python generator that yields `(name, bars)` pairs.
 
 		Parameters:
-			sections: Dict (graph), list, or generator of `(name, bars)` tuples
-			loop: For lists only — cycle back to start after the last section (default False)
-			start: For dicts only — initial section name (default: first dict key)
+			sections: The form definition (Dict, List, or Generator).
+			loop: Whether to cycle back to the start (List mode only).
+			start: The section to start with (Graph mode only).
 
 		Example:
 			```python
-			# Graph-based form — intro plays once, then never returns
-			composition.form({
-				"intro":     (4, [("verse", 1)]),
-				"verse":     (8, [("chorus", 3), ("bridge", 1)]),
-				"chorus":    (8, [("breakdown", 2), ("verse", 1)]),
-				"bridge":    (4, [("chorus", 1)]),
-				"breakdown": (4, [("verse", 1)]),
-			}, start="intro")
-
-			# List-based form with loop
-			composition.form([("intro", 4), ("verse", 8), ("chorus", 8)], loop=True)
-
-			# Generator form
-			def my_form():
-				yield ("intro", 4)
-				while True:
-					yield ("verse", random.choice([8, 16]))
-					yield ("chorus", 8)
-
-			composition.form(my_form())
+			# A simple pop structure
+			comp.form([
+				("verse", 8),
+				("chorus", 8),
+				("verse", 8),
+				("chorus", 16)
+			])
 			```
 		"""
 
@@ -956,31 +902,25 @@ class Composition:
 		voice_leading: bool = False
 	) -> typing.Callable:
 
-		"""Decorator that registers a builder function as a repeating pattern.
+		"""
+		Register a function as a repeating MIDI pattern.
 
-		The builder function receives a `PatternBuilder` (`p`) and optionally a `chord` parameter
-		(automatically injected if present and harmony is configured).
+		The decorated function will be called once per cycle to 'rebuild' its 
+		content. This allows for generative logic that evolves over time.
 
 		Parameters:
-			channel: MIDI channel (0-15)
-			length: Pattern length in beats (default 4)
-			drum_note_map: Optional dict mapping string names to MIDI note numbers (e.g., `{"kick": 36}`)
-			reschedule_lookahead: Reschedule lookahead in beats (default 1)
-			voice_leading: When True, the injected chord automatically picks the
-				inversion closest to the previous chord so that voices move smoothly.
-				Each pattern tracks its own voice leading state independently.
+			channel: MIDI channel (0-15).
+			length: Duration of the loop in beats (default 4).
+			drum_note_map: Optional mapping for drum instruments.
+			reschedule_lookahead: Beats in advance to compute the next cycle.
+			voice_leading: If True, chords in this pattern will automatically 
+				use inversions that minimize voice movement.
 
 		Example:
 			```python
-			@composition.pattern(channel=9, length=4, drum_note_map={"kick": 36, "snare": 38})
-			def drums(p):
-				p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
-				p.hit_steps("snare", [4, 12], velocity=100)
-
-			@composition.pattern(channel=0, length=4, voice_leading=True)
-			def chords(p, chord):
-				# chord is automatically injected with voice leading
-				p.chord(chord, root=52, velocity=90, sustain=True)
+			@comp.pattern(channel=0)
+			def bass(p):
+				p.seq("60 . . 60", velocity=80)
 			```
 		"""
 
@@ -1024,34 +964,11 @@ class Composition:
 		voice_leading: bool = False
 	) -> None:
 
-		"""Register multiple builder functions as a single layered pattern.
-
-		Each builder function runs sequentially on the same PatternBuilder, so their notes
-		merge into one pattern. This is useful for composing reusable rhythm or melody
-		fragments without creating separate MIDI patterns.
-
-		Transforms like ``dropout()`` or ``swing()`` called in any builder affect the
-		combined result. If you need transforms to apply to only one layer, use separate
-		patterns instead.
-
-		Parameters:
-			*builder_fns: Two or more builder functions (each takes a PatternBuilder, and optionally a chord)
-			channel: MIDI channel (0-15)
-			length: Pattern length in beats (default 4)
-			drum_note_map: Optional dict mapping string names to MIDI note numbers
-			reschedule_lookahead: Reschedule lookahead in beats (default 1)
-
-		Example:
-			```python
-			def kick (p):
-				p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
-
-			def hats (p):
-				p.hit_steps("hh_closed", list(range(16)), velocity=80)
-				p.velocity_shape(low=60, high=100)
-
-			composition.layer(kick, hats, channel=9, length=4, drum_note_map=DRUM_NOTE_MAP)
-			```
+		"""
+		Combine multiple functions into a single MIDI pattern.
+		
+		This is useful for composing complex patterns out of reusable 
+		building blocks (e.g., a 'kick' function and a 'snare' function).
 		"""
 
 		wants_chord = any(_fn_has_parameter(fn, "chord") for fn in builder_fns)
@@ -1086,16 +1003,12 @@ class Composition:
 
 	def play (self) -> None:
 
-		"""Start playback, blocking until stopped via Ctrl+C or signal.
-
-		Schedules all registered patterns, harmonic state (if configured), form state (if configured),
-		and scheduled tasks. Runs the sequencer loop until interrupted.
-
-		Example:
-			```python
-			if __name__ == "__main__":
-				composition.play()  # Press Ctrl+C to stop
-			```
+		"""
+		Start the composition.
+		
+		This call blocks until the program is interrupted (e.g., via Ctrl+C).
+		It initializes the MIDI hardware, launches the background sequencer, 
+		and begins playback.
 		"""
 
 		try:

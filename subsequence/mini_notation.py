@@ -24,15 +24,31 @@ def parse (notation: str, total_duration: float = 4.0) -> typing.List[ParsedEven
 	"""
 	Parse a mini-notation string into a list of timed events.
 
-	Syntax:
-		- Space-separated items are distributed evenly over the duration.
-		- `[...]` groups items into a single step (subdivision).
-		- `~` or `.` is a rest.
-		- `_` extends the previous note (legato/sustain).
-	
+	Mini-notation is a concise way to express rhythmic and melodic phrases. 
+	It distributes events evenly across the specified duration.
+
+	**Syntax:**
+	- `x y z`: Items separated by spaces are distributed across the total duration.
+	- `[a b]`: Groups items into a single subdivided step.
+	- `~` or `.`: A rest.
+	- `_`: Extends the previous note (sustain).
+
+	Parameters:
+		notation: The string to parse.
+		total_duration: The duration (in beats) to distribute the 
+			events over (default 4.0).
+
+	Returns:
+		A list of `ParsedEvent` objects with calculated times and durations.
+
 	Example:
-		parse("k s [k k] s", 4.0)
-		-> k (0.0), s (1.0), k (2.0), k (2.5), s (3.0)
+		```python
+		# Distributes kick on beats 1 and 3, snare on 2 and 4
+		parse("kick snare kick snare", 4.0)
+		
+		# Subdivisions: kick on 1, snare on 2.1 and 2.2
+		parse("kick [snare snare]", 2.0)
+		```
 	"""
 
 	tokens = _tokenize(notation)

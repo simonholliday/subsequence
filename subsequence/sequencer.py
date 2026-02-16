@@ -93,7 +93,10 @@ class BpmTransition:
 class Sequencer:
 
 	"""
-	Plays any scheduled patterns with a rock-solid stable clock.
+	The engine that drives Subsequence timing and MIDI output.
+	
+	The `Sequencer` maintains a stable clock (internal or external), 
+	handles the scheduling of MIDI events, and triggers pattern rebuilds.
 	"""
 
 	def __init__ (
@@ -165,10 +168,11 @@ class Sequencer:
 
 	def set_bpm (self, bpm: float) -> None:
 
-		"""Set the tempo instantly and recalculate timing constants.
-
-		Cancels any active BPM transition. When clock_follow is enabled, BPM is
-		determined by the external clock source and this method has no effect.
+		"""
+		Instantly change the tempo.
+		
+		Note: If `clock_follow` is enabled and the sequencer is running, 
+		this method will be ignored as the tempo is slaved to the external source.
 		"""
 
 		if self.clock_follow and self.running:
@@ -188,13 +192,8 @@ class Sequencer:
 
 	def set_target_bpm (self, target_bpm: float, bars: int) -> None:
 
-		"""Set a target BPM and transition smoothly over the specified bars.
-
-		BPM is updated every pulse for a continuous ramp — no audible jumps.
-
-		Parameters:
-			target_bpm: The BPM to transition to
-			bars: Number of bars over which to transition
+		"""
+		Smoothly transition to a new tempo over a fixed number of bars.
 		"""
 
 		if self.clock_follow and self.running:

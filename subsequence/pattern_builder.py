@@ -43,7 +43,14 @@ def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 class PatternBuilder:
 
 	"""
-	Provides high-level musical methods for building pattern content.
+	The musician's 'palette' for creating musical content.
+	
+	A `PatternBuilder` instance (commonly named `p`) is passed to every 
+	pattern function. It provides methods for placing notes, generating rhythms, 
+	and transforming the resulting sequence (e.g., swinging, reversing, or transposing).
+
+	Rhythm in Subsequence is typically expressed in **beats** (where 1.0 is a 
+	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
 	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None) -> None:
@@ -67,22 +74,15 @@ class PatternBuilder:
 
 	def set_length (self, length: float) -> None:
 
-		"""Change the pattern length for the current and future cycles.
+		"""
+		Dynamically change the length of the pattern.
 
-		The new length takes effect immediately for any notes placed after this call,
-		and the sequencer will use the new length when scheduling the next cycle.
+		The new length takes effect immediately for any subsequent notes 
+		placed in the current builder call, and will be used by the 
+		sequencer for next cycle's scheduling.
 
 		Parameters:
-			length: New pattern length in beats
-
-		Example:
-			```python
-			@composition.pattern(channel=0, length=4)
-			def melody(p):
-				if p.section and p.section.name == "breakdown":
-					p.set_length(2)  # half-time during breakdown
-				p.fill(60, step=0.5)
-			```
+			length: New pattern length in beats (e.g., 4.0 for a bar).
 		"""
 
 		self._pattern.length = length
@@ -106,23 +106,22 @@ class PatternBuilder:
 
 	def note (self, pitch: typing.Union[int, str], beat: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> None:
 
-		"""Place a single note at a beat position.
-
-		Negative beat values wrap to the end of the pattern (e.g., `-1` = last beat).
+		"""
+		Place a single MIDI note at a specific beat position.
 
 		Parameters:
-			pitch: MIDI note number or drum note map key (e.g., `"kick"`)
-			beat: Beat position (0.0 = start of pattern)
-			velocity: MIDI velocity 0-127 (default 100)
-			duration: Note duration in beats (default 0.25)
+			pitch: MIDI note number (0-127) or a drum name string from 
+				the pattern's `drum_note_map`.
+			beat: The beat position (0.0 is the start). Negative values 
+				wrap from the end (e.g., -1.0 is one beat before the end).
+			velocity: MIDI velocity (0-127, default 100).
+			duration: Note duration in beats (default 0.25).
 
 		Example:
 			```python
-			# Place a note at beat 0
-			p.note(pitch=60, beat=0, velocity=90, duration=0.5)
-
-			# Place a drum hit using the drum note map
-			p.note(pitch="kick", beat=0, velocity=127)
+			p.note(60, beat=0, velocity=110)      # Middle C on beat 1
+			p.note("kick", beat=1.0)               # Kick on beat 2
+			p.note(67, beat=-0.5, duration=0.5)  # G on the 'and' of the last beat
 			```
 		"""
 
@@ -142,7 +141,12 @@ class PatternBuilder:
 	def hit (self, pitch: typing.Union[int, str], beats: typing.List[float], velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1) -> None:
 
 		"""
-		Place short hits at one or more beat positions.
+		Place multiple short 'hits' at a list of beat positions.
+		
+		Example:
+			```python
+			p.hit("snare", [1, 3])  # Standard backbeat
+			```
 		"""
 
 		for beat in beats:
@@ -150,27 +154,23 @@ class PatternBuilder:
 
 	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, step_count: int = 16, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> None:
 
-		"""Place short hits at specific step positions on a subdivided grid.
-
-		The default `step_count=16` creates a sixteenth-note grid over a 4-beat pattern,
-		where step 0 = beat 0, step 4 = beat 1, step 8 = beat 2, step 12 = beat 3.
+		"""
+		Place short hits at specific step (grid) positions.
 
 		Parameters:
-			pitch: MIDI note number or drum note map key (e.g., `"kick"`)
-			steps: List of step indices (e.g., `[0, 4, 8, 12]` for quarter notes on a 16-step grid)
-			velocity: MIDI velocity 0-127 (default 100)
-			duration: Note duration in beats (default 0.1)
-			step_count: Grid subdivisions per pattern (default 16 = sixteenth notes)
-			probability: Chance of each hit sounding, 0.0-1.0 (default 1.0 = all hits)
-			rng: Random number generator (default: ``self.rng``)
+			pitch: MIDI note number or drum name.
+			steps: A list of grid indices (0 to `step_count - 1`).
+			velocity: MIDI velocity (0-127).
+			duration: Note duration in beats.
+			step_count: How many grid steps the pattern is divided into 
+				(default 16, which means sixteenth notes in a 4-beat bar).
+			probability: Chance (0.0 to 1.0) that each hit will play.
+			rng: Optional random generator (overrides the pattern's seed).
 
 		Example:
 			```python
-			# Four-on-the-floor kick on a 16-step grid
-			p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
-
-			# Hi-hats with 80% probability per step
-			p.hit_steps("hh", list(range(16)), velocity=80, probability=0.8)
+			# Typical sixteenth-note hi-hats with some probability variation
+			p.hit_steps("hh", range(16), velocity=70, probability=0.8)
 			```
 		"""
 
@@ -189,44 +189,19 @@ class PatternBuilder:
 
 	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.List[int]] = 100, durations: typing.Union[float, typing.List[float]] = 0.1, step_count: int = 16, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> None:
 
-		"""Place notes at specific step positions with per-step pitch, velocity, and duration.
-
-		Like a hardware step sequencer: define which steps fire, then what plays at each one.
-		Any of ``pitches``, ``velocities``, or ``durations`` can be a single value (applied to every
-		step) or a list (one value per step).
-
-		If a list is shorter than ``steps``, the last value is repeated. If longer, the list is
-		truncated. Both cases log a warning.
+		"""
+		A multi-parameter step sequencer.
+		
+		Define which grid steps fire, and then provide a list of pitches, 
+		velocities, and durations. If you provide a list for any parameter, 
+		Subsequence will step through it as it places each note.
 
 		Parameters:
-			steps: List of step indices on the grid (e.g., ``[0, 4, 8, 12]``)
-			pitches: MIDI note number(s) or drum name(s) — scalar or per-step list
-			velocities: MIDI velocity 0-127 — scalar or per-step list (default 100)
-			durations: Note duration in beats — scalar or per-step list (default 0.1)
-			step_count: Grid subdivisions per pattern (default 16 = sixteenth notes)
-			probability: Chance of each hit sounding, 0.0-1.0 (default 1.0 = all hits)
-			rng: Random number generator (default: ``self.rng``)
-
-		Example:
-			```python
-			# Ascending melodic phrase
-			p.sequence([0, 4, 8, 12], pitches=[60, 64, 67, 72])
-
-			# Full per-step control
-			p.sequence(
-			    steps=[0, 2, 4, 6, 8, 10, 12, 14],
-			    pitches=[60, 62, 64, 65, 67, 69, 71, 72],
-			    velocities=[127, 100, 110, 90, 120, 95, 105, 85],
-			    durations=[0.5, 0.25, 0.5, 0.25, 0.5, 0.25, 0.5, 0.25],
-			)
-
-			# Drum pattern with per-step velocity accents
-			p.sequence(
-			    steps=[0, 4, 8, 12],
-			    pitches="kick",
-			    velocities=[127, 90, 110, 90],
-			)
-			```
+			steps: List of grid indices to trigger.
+			pitches: Pitch or list of pitches.
+			velocities: Velocity or list of velocities (default 100).
+			durations: Duration or list of durations (default 0.1).
+			step_count: Grid resolution (default 16).
 		"""
 
 		if not steps:
@@ -253,32 +228,30 @@ class PatternBuilder:
 	def seq (self, notation: str, pitch: typing.Union[str, int, None] = None, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY) -> None:
 
 		"""
-		Generate notes from a mini-notation string.
+		Build a pattern using an expressive string-based 'mini-notation'.
 
-		The string defines the rhythm. Events are distributed evenly over the pattern's length.
-		
-		Syntax:
-			- Space-separated items are distributed evenly over the duration.
-			- `[...]` groups items into a single step (subdivision).
-			- `~` or `.` is a rest.
-			- `_` extends the previous note (legato/sustain).
+		The notation distributes events evenly across the current pattern length.
 
-		If `pitch` is provided (e.g. `pitch="kick"` or `pitch=60`), the symbols in the
-		notation string are treated as triggers for that pitch.
-		
-		If `pitch` is None (the default), the symbols in the notation string are
-		interpreted as pitches (either drum names or note numbers).
+		**Syntax:**
+		- `x y z`: Items separated by spaces are distributed across the bar.
+		- `[a b]`: Groups items into a single subdivided step.
+		- `~` or `.`: A rest.
+		- `_`: Extends the previous note (sustain).
+
+		Parameters:
+			notation: The mini-notation string.
+			pitch: If provided, all symbols in the string are triggers for 
+				this specific pitch. If `None`, symbols are interpreted as 
+				pitches (e.g., "60" or "kick").
+			velocity: MIDI velocity (default 100).
 
 		Example:
 			```python
-			# Rhythm for a drum (symbols are triggers)
-			p.seq("x x [x x] x", pitch="kick")
+			# Simple kick rhythm
+			p.seq("kick . [kick kick] .")
 
-			# Melody (symbols are pitches)
-			p.seq("60 62 [64 65] 67")
-			
-			# Drum pattern (symbols are drum names)
-			p.seq("kick snare [kick kick] snare")
+			# Subdivided melody
+			p.seq("60 [62 64] 67 60")
 			```
 		"""
 
@@ -306,7 +279,12 @@ class PatternBuilder:
 	def fill (self, pitch: typing.Union[int, str], step: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> None:
 
 		"""
-		Fill the pattern with evenly-spaced notes at the given step interval.
+		Fill the pattern with a note repeating at a fixed beat interval.
+
+		Example:
+			```python
+			p.fill("hh", step=0.25)  # sixteenth notes
+			```
 		"""
 
 		if step <= 0:
@@ -320,22 +298,13 @@ class PatternBuilder:
 
 	def arpeggio (self, pitches: typing.Union[typing.List[int], typing.List[str]], step: float = 0.25, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None) -> None:
 
-		"""Cycle through a list of pitches at regular intervals to create an arpeggio.
-
-		Parameters:
-			pitches: List of MIDI note numbers or drum note map keys
-			step: Interval between notes in beats (default 0.25 = sixteenth notes)
-			velocity: MIDI velocity 0-127 (default 100)
-			duration: Note duration in beats (default: same as step)
+		"""
+		Cycle through a list of pitches at regular beat intervals.
 
 		Example:
 			```python
-			# Sixteenth-note arpeggio from chord tones
-			tones = chord.tones(root=60)  # [60, 64, 67] for C major
-			p.arpeggio(tones, step=0.25, velocity=90)
-
-			# Slower eighth-note arpeggio
-			p.arpeggio([60, 64, 67, 72], step=0.5, velocity=100)
+			# Arpeggiate the current chord tones
+			p.arpeggio(chord.tones(60), step=0.25)
 			```
 		"""
 
@@ -359,37 +328,22 @@ class PatternBuilder:
 
 	def chord (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None) -> None:
 
-		"""Place a chord at beat 0 using the chord's intervals.
+		"""
+		Place a chord at the start of the pattern.
 
-		When the pattern has ``voice_leading=True``, the inversion is chosen
-		automatically to minimise pitch movement — the ``inversion`` parameter
-		is ignored in that case.
+		Note: If the pattern was registered with `voice_leading=True`, 
+		this method automatically chooses the best inversion.
 
 		Parameters:
-			chord_obj: A `Chord` object (automatically injected if the pattern accepts a `chord` parameter)
-			root: MIDI root note number
-			velocity: MIDI velocity 0-127 (default 90)
-			sustain: If True, duration spans the entire pattern length (default False)
-			duration: Note duration in beats (default 1.0, ignored if sustain=True)
-			inversion: Chord inversion (0 = root position, 1 = first, 2 = second, ...).
-				Ignored when voice leading is active.
-			count: Number of notes to produce. When set, chord intervals cycle into
-				higher octaves until ``count`` notes are produced. When ``None``
-				(default), returns the natural chord tones.
-
-		Example:
-			```python
-			@composition.pattern(channel=0, length=4)
-			def chords(p, chord):
-				# chord is automatically injected
-				p.chord(chord, root=60, velocity=90, sustain=True)
-
-			# Manual inversion
-			p.chord(chord, root=60, inversion=1)  # first inversion
-
-			# Always 4 notes, even for triads
-			p.chord(chord, root=52, velocity=90, duration=4, count=4)
-			```
+			chord_obj: The chord to play (usually the `chord` parameter 
+				passed to your pattern function).
+			root: MIDI root note (e.g., 60 for Middle C).
+			velocity: MIDI velocity (default 90).
+			sustain: If True, the notes last for the entire pattern duration.
+			duration: Note duration in beats (default 1.0).
+			inversion: Specific chord inversion (ignored if voice leading is on).
+			count: Number of notes to play (cycles tones if higher than 
+				the chord's natural size).
 		"""
 
 		pitches = chord_obj.tones(root=root, inversion=inversion, count=count)
@@ -407,46 +361,36 @@ class PatternBuilder:
 
 	def swing (self, ratio: float = 2.0) -> None:
 
-		"""Apply swing timing to all placed notes.
-
-		Delays every other note by a ratio. A ratio of 2.0 creates classic "triplet swing"
-		where off-beats land on the third triplet.
+		"""
+		Apply a 'swing' offset to all notes in the pattern.
 
 		Parameters:
-			ratio: Swing ratio (default 2.0). Higher values = more swing.
-
-		Example:
-			```python
-			# Place eighth notes, then apply triplet swing
-			p.hit_steps("hh", list(range(8)), velocity=80, step_count=8)
-			p.swing(ratio=2.0)
-			```
+			ratio: The swing ratio. 2.0 is standard triplet swing (the 
+				off-beat is delayed to the third triplet).
 		"""
 
 		self._pattern.apply_swing(swing_ratio=ratio)
 
 	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
 
-		"""Generate a Euclidean rhythm and place hits at the resulting beat positions.
-
-		Euclidean rhythms distribute `pulses` evenly across the pattern length. The algorithm
-		is based on Bjorklund's algorithm and creates rhythms used in traditional music worldwide.
+		"""
+		Generate a Euclidean rhythm.
+		
+		This distributes a fixed number of 'pulses' as evenly as possible 
+		across the pattern. This produces many of the world's most 
+		common musical rhythms.
 
 		Parameters:
-			pitch: MIDI note number or drum note map key
-			pulses: Number of evenly-distributed hits
-			velocity: MIDI velocity 0-127 (default 100)
-			duration: Note duration in beats (default 0.1)
-			dropout: Probability 0.0-1.0 of randomly removing hits (default 0.0)
-			rng: Random number generator for dropout (default: ``self.rng``)
+			pitch: MIDI note or drum name.
+			pulses: Total number of notes to place.
+			velocity: MIDI velocity.
+			duration: Note duration.
+			dropout: Probability (0.0 to 1.0) of skipping each pulse.
 
 		Example:
 			```python
-			# Classic Euclidean(16,3) rhythm (common in African music)
-			p.euclidean(pitch=36, pulses=3, velocity=127)
-
-			# Euclidean(16,5) with some randomness
-			p.euclidean(pitch=38, pulses=5, velocity=100, dropout=0.1)
+			# A classic 3-against-16 rhythm
+			p.euclidean("kick", pulses=3)
 			```
 		"""
 
@@ -472,15 +416,11 @@ class PatternBuilder:
 
 	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
 
-		"""Generate a Bresenham rhythm and place hits at the resulting beat positions.
-
-		Parameters:
-			pitch: MIDI note number or drum note map key
-			pulses: Number of evenly-distributed hits
-			velocity: MIDI velocity 0-127 (default 100)
-			duration: Note duration in beats (default 0.1)
-			dropout: Probability 0.0-1.0 of randomly removing hits (default 0.0)
-			rng: Random number generator for dropout (default: ``self.rng``)
+		"""
+		Generate a rhythm using the Bresenham line algorithm.
+		
+		This is an alternative to Euclidean rhythms that often results in 
+		slightly different (but still mathematically even) distributions.
 		"""
 
 		if rng is None:
@@ -506,7 +446,12 @@ class PatternBuilder:
 	def dropout (self, probability: float, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""
-		Randomly remove notes from the pattern based on a probability.
+		Randomly remove notes from the pattern.
+		
+		This operates on all notes currently placed in the builder.
+
+		Parameters:
+			probability: The chance (0.0 to 1.0) of any given note being removed.
 		"""
 
 		if rng is None:
@@ -524,21 +469,16 @@ class PatternBuilder:
 
 	def velocity_shape (self, low: int = subsequence.constants.velocity.VELOCITY_SHAPE_LOW, high: int = subsequence.constants.velocity.VELOCITY_SHAPE_HIGH) -> None:
 
-		"""Apply a van der Corput velocity distribution to existing notes.
+		"""
+		Apply organic velocity variation to all notes in the pattern.
 
-		Creates organic-sounding velocity variation using the van der Corput low-discrepancy sequence.
-		This distributes velocities more evenly than pure randomness.
+		Uses a van der Corput sequence to distribute velocities evenly 
+		across the specified range, which often sounds more 'human' than 
+		purely random velocity variation.
 
 		Parameters:
-			low: Minimum velocity (default 60)
-			high: Maximum velocity (default 120)
-
-		Example:
-			```python
-			# Place hi-hats, then shape velocities for a natural feel
-			p.hit_steps("hh", list(range(16)), velocity=80)
-			p.velocity_shape(low=60, high=100)
-			```
+			low: Minimum velocity (default 60).
+			high: Maximum velocity (default 120).
 		"""
 
 		positions = sorted(self._pattern.steps.keys())
@@ -564,16 +504,8 @@ class PatternBuilder:
 
 	def reverse (self) -> None:
 
-		"""Mirror all note positions in time, reversing the pattern.
-
-		A note at the start of the pattern moves to the end, and vice versa.
-		Notes at the same position stay together.
-
-		Example:
-			```python
-			p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
-			p.reverse()  # kick now hits on steps 12, 8, 4, 0 (from the listener's perspective)
-			```
+		"""
+		Flip the pattern backwards in time.
 		"""
 
 		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
@@ -592,16 +524,8 @@ class PatternBuilder:
 
 	def double_time (self) -> None:
 
-		"""Compress all notes into the first half of the pattern, doubling the speed.
-
-		Positions and durations are halved. The second half of the pattern is left empty,
-		creating space for variation or layering.
-
-		Example:
-			```python
-			p.fill(60, step=0.5)       # 8 eighth notes across 4 beats
-			p.double_time()             # now 8 sixteenth notes in the first 2 beats
-			```
+		"""
+		Compress all notes into the first half of the pattern, doubling the speed.
 		"""
 
 		old_steps = self._pattern.steps
@@ -627,16 +551,9 @@ class PatternBuilder:
 
 	def half_time (self) -> None:
 
-		"""Expand all notes to double their time position, halving the speed.
-
-		Positions and durations are doubled. Notes whose doubled position would exceed
-		the pattern length are dropped.
-
-		Example:
-			```python
-			p.fill(60, step=0.25)      # 16 sixteenth notes across 4 beats
-			p.half_time()               # now 8 eighth notes in the first 4 beats, rest dropped
-			```
+		"""
+		Expand all notes by factor of 2, halving the speed. 
+		Notes that fall outside the pattern length are removed.
 		"""
 
 		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
@@ -666,22 +583,12 @@ class PatternBuilder:
 
 	def shift (self, steps: int, step_count: int = 16) -> None:
 
-		"""Rotate the pattern by a number of grid steps, wrapping around.
-
-		Uses the same grid concept as ``hit_steps()`` — the default 16-step grid
-		divides the pattern into sixteenth notes. Positive values shift right
-		(later in time), negative values shift left (earlier).
+		"""
+		Rotate the pattern by a number of grid steps.
 
 		Parameters:
-			steps: Number of grid steps to shift (positive = right, negative = left)
-			step_count: Grid subdivisions per pattern (default 16, matching ``hit_steps()``)
-
-		Example:
-			```python
-			# Shift a snare pattern by 4 steps (one beat) for a backbeat
-			p.euclidean("snare", pulses=4)
-			p.shift(4)
-			```
+			steps: Positive values shift right, negative values shift left.
+			step_count: The grid resolution (default 16).
 		"""
 
 		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
@@ -703,18 +610,11 @@ class PatternBuilder:
 
 	def transpose (self, semitones: int) -> None:
 
-		"""Shift all note pitches up or down by the given number of semitones.
-
-		Pitches are clamped to the MIDI range 0-127.
+		"""
+		Shift all note pitches up or down.
 
 		Parameters:
-			semitones: Number of semitones to shift (positive = up, negative = down)
-
-		Example:
-			```python
-			p.arpeggio([60, 64, 67], step=0.25)
-			p.transpose(12)   # up one octave
-			```
+			semitones: Positive for up, negative for down.
 		"""
 
 		for step in self._pattern.steps.values():
@@ -724,19 +624,8 @@ class PatternBuilder:
 
 	def invert (self, pivot: int = 60) -> None:
 
-		"""Invert all pitches around a pivot note, mirroring intervals.
-
-		A note 3 semitones above the pivot becomes 3 semitones below, and vice versa.
-		Pitches are clamped to the MIDI range 0-127.
-
-		Parameters:
-			pivot: MIDI note number to invert around (default 60 = middle C)
-
-		Example:
-			```python
-			p.arpeggio([60, 64, 67], step=0.25)   # C E G
-			p.invert(pivot=64)                      # becomes 68 64 61 (Ab E Db)
-			```
+		"""
+		Invert all pitches around a pivot note.
 		"""
 
 		for step in self._pattern.steps.values():
@@ -746,24 +635,18 @@ class PatternBuilder:
 
 	def every (self, n: int, fn: typing.Callable[["PatternBuilder"], None]) -> None:
 
-		"""Apply a transform function every Nth cycle.
-
-		A convenience wrapper around ``p.cycle``. Fires on cycle 0 (the first cycle)
-		and every N cycles after that.
+		"""
+		Apply a transformation every Nth cycle.
 
 		Parameters:
-			n: Apply the transform when cycle is a multiple of n
-			fn: A function that receives this PatternBuilder and calls transform methods on it
+			n: The cycle frequency (e.g., 4 = every 4th bar).
+			fn: A function (often a lambda) that receives the builder and 
+				calls further methods.
 
 		Example:
 			```python
-			p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
-
-			# Reverse the pattern every 4th cycle
+			# Reverse every 4th bar
 			p.every(4, lambda p: p.reverse())
-
-			# Combine transforms in a single lambda
-			p.every(8, lambda p: (p.double_time(), p.transpose(12)))
 			```
 		"""
 

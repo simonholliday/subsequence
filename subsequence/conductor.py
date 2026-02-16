@@ -16,7 +16,10 @@ class Signal:
 class LFO(Signal):
 
 	"""
-	Low-Frequency Oscillator (LFO) that generates periodic waveforms.
+	A Low-Frequency Oscillator for generating periodic modulation signals.
+	
+	LFOs are used to create cyclical changes (like a 'swell' or 'vibrato') 
+	over many bars.
 	"""
 
 	def __init__ (self, shape: str = "sine", cycle_beats: float = 16.0, min_val: float = 0.0, max_val: float = 1.0, phase: float = 0.0) -> None:
@@ -25,11 +28,11 @@ class LFO(Signal):
 		Initialize an LFO.
 		
 		Parameters:
-			shape: "sine", "triangle", "saw", "square"
-			cycle_beats: Duration of one full cycle in beats
-			min_val: Minimum output value
-			max_val: Maximum output value
-			phase: Phase shift (0.0-1.0)
+			shape: The waveform shape ("sine", "triangle", "saw", "square").
+			cycle_beats: How many beats for one full cycle (e.g., 16.0 = 4 bars).
+			min_val: The bottom of the LFO range (default 0.0).
+			max_val: The top of the LFO range (default 1.0).
+			phase: Phase offset (0.0 to 1.0).
 		"""
 		
 		self.shape = shape
@@ -76,7 +79,7 @@ class LFO(Signal):
 class Line(Signal):
 
 	"""
-	Linear ramp from start to end over a duration.
+	A linear 'ramp' signal that moves from one value to another over time.
 	"""
 
 	def __init__ (self, start_val: float, end_val: float, duration_beats: float, start_beat: float = 0.0, loop: bool = False) -> None:
@@ -85,11 +88,11 @@ class Line(Signal):
 		Initialize a linear ramp.
 		
 		Parameters:
-			start_val: Initial value
-			end_val: Final value
-			duration_beats: Duration to reach end_val
-			start_beat: Global beat time when the ramp begins
-			loop: Whether to repeat the ramp
+			start_val: Initial value.
+			end_val: Target value.
+			duration_beats: How long it takes to reach the target (in beats).
+			start_beat: Global beat time when the ramp should start (default 0).
+			loop: Whether to jump back to start_val and repeat (default False).
 		"""
 		
 		self.start_val = start_val
@@ -121,7 +124,12 @@ class Line(Signal):
 class Conductor:
 
 	"""
-	Registry for global automation signals.
+	A registry for global automation signals.
+	
+	The `Conductor` allows you to define time-varying signals (like LFOs or 
+	ramps) that are available to all pattern builders. This is ideal for 
+	modulating parameters (like velocity or filter cutoff) over long 
+	compositional timeframes.
 	"""
 
 	def __init__ (self) -> None:
@@ -130,7 +138,12 @@ class Conductor:
 	def lfo (self, name: str, shape: str = "sine", cycle_beats: float = 16.0, min_val: float = 0.0, max_val: float = 1.0, phase: float = 0.0) -> None:
 		
 		"""
-		Create or update a named LFO signal.
+		Register a named LFO signal.
+		
+		Example:
+			```python
+			comp.conductor.lfo("swell", shape="sine", cycle_beats=32)
+			```
 		"""
 		
 		self._signals[name] = LFO(shape, cycle_beats, min_val, max_val, phase)
@@ -138,7 +151,12 @@ class Conductor:
 	def line (self, name: str, start_val: float, end_val: float, duration_beats: float, start_beat: float = 0.0, loop: bool = False) -> None:
 		
 		"""
-		Create or update a named ramp signal.
+		Register a named linear ramp signal.
+		
+		Example:
+			```python
+			comp.conductor.line("fadein", start_val=0, end_val=1, duration_beats=64)
+			```
 		"""
 		
 		self._signals[name] = Line(start_val, end_val, duration_beats, start_beat, loop)
@@ -146,7 +164,9 @@ class Conductor:
 	def get (self, name: str, beat: float) -> float:
 		
 		"""
-		Get the value of a named signal at the current beat time.
+		Retrieve the value of a signal at a specific beat time.
+		
+		Pattern builders usually call this using `p.c.get("name", p.bar * 4)`.
 		"""
 		
 		if name not in self._signals:
