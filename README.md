@@ -1,8 +1,10 @@
 # Subsequence
 
-**A generative MIDI sequencer for Python.** Write patterns as simple functions - each one rebuilds every cycle, so it can respond to the current chord, the current section, or data from an external source.
+**A Stateful Generative MIDI Sequencer for Python.** Subsequence combines the immediate workflow of a hardware sequencer with the architectural depth of Python code. Unlike stateless libraries, it 'compiles' each cycle ahead of time, allowing for deterministic control, context-aware harmony, and complex macro-structures.
 
-Chord progressions drift and evolve with adjustable pull toward home. Define large-scale form - intro, verse, chorus, bridge - and let sections follow weighted paths so the structure is familiar but never identical. Run patterns at different lengths and polyrhythms emerge on their own.
+It is designed for the **System Architect** - the musician who wants to build a machine that plays itself, with memory, evolution, and intention.
+
+Standard generative tools often produce random notes that lack tonal gravity or structural coherence. Subsequence prioritizes **musicality**: functional harmony, voice leading, and long-form structure are built-in primitives, not afterthoughts. It is a complete environment for **algorithmic composition** where you write patterns as simple functions that respond to the current chord, section, and cycle count.
 
 Set a seed and get the same music every time - tweak and re-run until it's right. Change patterns, tempo, and chords while the music plays. Sync to a MIDI clock from your DAW or drum machine.
 
@@ -30,8 +32,8 @@ Subsequence is built for **MIDI-literate musicians who can write some simple Pyt
 ## What it does
 
 - **Patterns as functions.** Each pattern is a Python function that builds a full cycle of notes. The sequencer calls it fresh each cycle, so patterns can evolve - reading the current chord, section, cycle count, or external data to decide what to play.
-- **Harmonic intelligence.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted probabilities.[^markov] Six built-in harmonic palettes - `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, `"phrygian_minor"`, `"lydian_major"`, and `"dorian_minor"` - or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord. Chord inversions and voice leading keep voices moving smoothly between changes.
-- **Compositional form.** Define the large-scale structure - intro, verse, chorus, bridge - as a weighted graph, a linear list, or a generator function that yields sections one at a time. Sections follow weighted paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior.
+- **Context-Aware Harmony.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted **harmonic probability**.[^markov] Six built-in harmonic palettes - `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, `"phrygian_minor"`, `"lydian_major"`, and `"dorian_minor"` - or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord. Chord inversions and voice leading keep voices moving smoothly between changes.
+- **Architectural Sequencing.** Define the large-scale form - intro, verse, chorus, bridge - as a **Weighted Transition Graph**. Sections follow probabilistic paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior, ensuring the song has structure, not just loops.
 - **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
 - **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for step-based conditional triggers.
 - **Randomness tools.**[^stochastic] Weighted random choice, no-repeat shuffle, random walks, and probability gates - controlled randomness that sounds intentional, not arbitrary. All available in `subsequence.sequence_utils`.
@@ -329,7 +331,7 @@ def chords (p, chord):
     p.chord(chord, root=52, velocity=90, sustain=True)
 ```
 
-Each pattern tracks voice leading independently — a bass line and a pad can voice-lead at their own pace.
+Each pattern tracks voice leading independently - a bass line and a pad can voice-lead at their own pace.
 
 ### Direct Pattern API
 
@@ -358,7 +360,7 @@ def arp (p, chord):
     p.arpeggio(tones, step=0.25, velocity=90)
 ```
 
-`count` works with `inversion` — the extended notes continue upward from the inverted voicing.
+`count` works with `inversion` - the extended notes continue upward from the inverted voicing.
 
 ## Seed and deterministic randomness
 
@@ -638,20 +640,20 @@ Planned features, roughly in order of priority.
 
 ### High priority
 
-- **Example library.** A handful of short compositions in different styles (techno, ambient, jazz, minimal) so musicians can hear what the tool can do before investing time.
+- **Example library.** A handful of short compositions in different styles so musicians can hear what the tool can do before investing time.
 
 ### Medium priority
 
+- **Advanced Harmonic Gravity.** Physics-based pitch-class weighting based on **Narmour's Implication-Realization** model (registral direction, intervallic difference, closure). This will allow melodies to have "inertia" and "gravity" relative to the current chord and previous notes.
 - **Mini-notation.** An optional string shorthand (e.g., `"x . x [x x]"`) that compiles to `hit_steps` calls for quick rhythm entry.
-- **MIDI CC mapping.** Map hardware knobs and controllers to `composition.data` via event handlers (e.g., "map CC 1 to probability") so Subsequence feels like a hybrid hardware/software instrument for live performance. MIDI input port and clock following are already supported via `composition.midi_input()`.
+- **MIDI CC mapping.** Map hardware knobs and controllers to `composition.data` via event handlers (e.g., "map CC 1 to probability") so Subsequence feels like a hybrid hardware/software instrument for live performance. This enables full **MIDI CC automation** of any Python variable. MIDI input port and clock following are already supported via `composition.midi_input()`.
 - **Performance profiling.** Optional debug mode to log timing for each `on_reschedule()` call, helping identify custom pattern logic that may cause timing jitter or performance issues.
 - **Network Sync.** Peer-to-peer network sync with DAWs and other Link-enabled devices.
 
 ### Future ideas
 
-- Jupyter notebook mode for interactive examples
-- Embeddable engine mode (run as a library inside games or installations)
 - MIDI file export for capturing sessions into a DAW
+- Embeddable engine mode (run as a library inside games or installations)
 
 ## Tests
 This project uses `pytest`.
