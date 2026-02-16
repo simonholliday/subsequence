@@ -77,6 +77,7 @@ class HarmonicState:
 		graph_style: typing.Union[str, subsequence.chord_graphs.ChordGraph] = "functional_major",
 		include_dominant_7th: bool = True,
 		key_gravity_blend: float = 1.0,
+		nir_strength: float = 0.5,
 		minor_turnaround_weight: float = 0.0,
 		rng: typing.Optional[random.Random] = None
 	) -> None:
@@ -86,12 +87,16 @@ class HarmonicState:
 		if key_gravity_blend < 0 or key_gravity_blend > 1:
 			raise ValueError("Key gravity blend must be between 0 and 1")
 
+		if nir_strength < 0 or nir_strength > 1:
+			raise ValueError("NIR strength must be between 0 and 1")
+
 		if minor_turnaround_weight < 0 or minor_turnaround_weight > 1:
 			raise ValueError("Minor turnaround weight must be between 0 and 1")
 
 		self.key_name = key_name
 		self.key_root_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
 		self.key_gravity_blend = key_gravity_blend
+		self.nir_strength = nir_strength
 
 		if isinstance(graph_style, str):
 			chord_graph = _resolve_graph_style(graph_style, include_dominant_7th, minor_turnaround_weight)
@@ -165,7 +170,13 @@ class HarmonicState:
 		if target.root_pc == self.key_root_pc:
 			score += 0.2
 
-		return score
+		# --- Rule D: Proximity ---
+		# General preference for small intervals (≤ 3 semitones).
+		if target_interval > 0 and target_interval <= 3:
+			score += 0.3
+
+		# Scale the boost portion by nir_strength (score starts at 1.0, boost is the excess)
+		return 1.0 + (score - 1.0) * self.nir_strength
 
 	def step (self) -> subsequence.chords.Chord:
 

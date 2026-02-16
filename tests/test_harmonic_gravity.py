@@ -179,3 +179,76 @@ def test_calculate_nir_score_closure () -> None:
 
 	# Tonic return usually gets a small boost for closure
 	assert score_tonic > score_other
+
+
+def test_calculate_nir_score_proximity () -> None:
+
+	"""
+	Test Rule D: Proximity
+	Small intervals (≤ 3 semitones) get a general boost.
+	"""
+
+	hs = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=1.0)
+
+	# History: C (0) -> E (4). Interval = 4 (neutral zone).
+	c = subsequence.chords.Chord(root_pc=0, quality="major")
+	e = subsequence.chords.Chord(root_pc=4, quality="minor")
+
+	hs.history = [c]
+	source = e
+
+	# Target 1: F (5). E->F is +1 semitone (small, proximate).
+	target_close = subsequence.chords.Chord(root_pc=5, quality="major")
+
+	# Target 2: Bb (10). E->Bb is +6 semitones (large, not proximate).
+	target_far = subsequence.chords.Chord(root_pc=10, quality="major")
+
+	score_close = hs._calculate_nir_score(source, target_close)
+	score_far = hs._calculate_nir_score(source, target_far)
+
+	assert score_close > 1.0
+	assert score_close > score_far
+
+
+def test_nir_strength_zero_disables () -> None:
+
+	"""With nir_strength=0.0, all NIR scores should return 1.0 (neutral)."""
+
+	hs = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=0.0)
+
+	c = subsequence.chords.Chord(root_pc=0, quality="major")
+	d = subsequence.chords.Chord(root_pc=2, quality="minor")
+	e = subsequence.chords.Chord(root_pc=4, quality="minor")
+
+	hs.history = [c]
+
+	# C -> D is a small step (+2), D -> E continues (+2).
+	# At full strength this would get boosted. At 0.0 it should be neutral.
+	score = hs._calculate_nir_score(d, e)
+	assert score == 1.0
+
+
+def test_nir_strength_scales_boost () -> None:
+
+	"""With nir_strength=0.5, boosts should be halved compared to nir_strength=1.0."""
+
+	c = subsequence.chords.Chord(root_pc=0, quality="major")
+	d = subsequence.chords.Chord(root_pc=2, quality="minor")
+	e = subsequence.chords.Chord(root_pc=4, quality="minor")
+
+	hs_full = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=1.0)
+	hs_full.history = [c]
+	score_full = hs_full._calculate_nir_score(d, e)
+
+	hs_half = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=0.5)
+	hs_half.history = [c]
+	score_half = hs_half._calculate_nir_score(d, e)
+
+	# Both should be boosted above 1.0
+	assert score_full > 1.0
+	assert score_half > 1.0
+
+	# Half-strength boost should be half the full-strength boost
+	boost_full = score_full - 1.0
+	boost_half = score_half - 1.0
+	assert abs(boost_half - boost_full * 0.5) < 0.001

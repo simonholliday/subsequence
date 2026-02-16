@@ -562,6 +562,7 @@ class Composition:
 		cycle_beats: int = 4,
 		dominant_7th: bool = True,
 		gravity: float = 1.0,
+		nir_strength: float = 0.5,
 		minor_weight: float = 0.0,
 		reschedule_lookahead: float = 1
 	) -> None:
@@ -573,6 +574,7 @@ class Composition:
 			cycle_beats: How often chords change (in beats, default 4)
 			dominant_7th: Include dominant seventh chords (default True)
 			gravity: Key gravity blend 0.0-1.0 (default 1.0). Higher values favor chords closer to the tonic.
+			nir_strength: Melodic inertia strength 0.0-1.0 (default 0.5). Controls how strongly chord transitions follow Narmour's Implication-Realization model (large leaps trigger reversal, small steps trigger continuation).
 			minor_weight: Weight for minor vs major turnarounds 0.0-1.0 (default 0.0, turnaround graph only)
 			reschedule_lookahead: Reschedule lookahead in beats (default 1)
 
@@ -595,6 +597,7 @@ class Composition:
 			graph_style = style,
 			include_dominant_7th = dominant_7th,
 			key_gravity_blend = gravity,
+			nir_strength = nir_strength,
 			minor_turnaround_weight = minor_weight
 		)
 

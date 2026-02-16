@@ -362,6 +362,94 @@ def arp (p, chord):
 
 `count` works with `inversion` - the extended notes continue upward from the inverted voicing.
 
+## Harmony and chord graphs
+
+Subsequence generates chord progressions using **weighted transition graphs**. Each chord has weighted edges to its possible successors, so the progression is probabilistic but musically constrained. On top of the base graph weights, two gravity systems shape which chord is chosen next.
+
+### The `harmony()` method
+
+```python
+composition.harmony(
+    style="aeolian_minor",
+    cycle_beats=4,
+    gravity=0.8,
+    nir_strength=0.5,
+)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `style` | str or ChordGraph | `"functional_major"` | Built-in name or custom ChordGraph instance |
+| `cycle_beats` | int | `4` | Beats per chord change |
+| `dominant_7th` | bool | `True` | Include dominant 7th chords |
+| `gravity` | float | `1.0` | Key gravity blend (0.0 = functional chords only, 1.0 = full diatonic set) |
+| `nir_strength` | float | `0.5` | Melodic inertia (0.0 = off, 1.0 = full). Controls how strongly transitions follow Narmour's Implication-Realization model |
+| `minor_weight` | float | `0.0` | Minor turnaround weight (turnaround graph only) |
+
+### Built-in chord graphs
+
+| Style | Character |
+|-------|-----------|
+| `"diatonic_major"` / `"functional_major"` | Standard major key (I-ii-iii-IV-V-vi-vii) |
+| `"turnaround"` | Jazz turnaround with optional modulation to relative minor |
+| `"aeolian_minor"` | Natural minor with Phrygian cadence option |
+| `"phrygian_minor"` | Dark, minimal palette (i-bII-iv-v) |
+| `"lydian_major"` | Bright, floating (#IV colour) |
+| `"dorian_minor"` | Minor with major IV (soul, funk) |
+| `"chromatic_mediant"` | Film-score style third-relation shifts |
+| `"suspended"` | Ambiguous sus2/sus4 palette |
+
+### Harmonic gravity
+
+Three layers influence which chord comes next:
+
+1. **Graph weights** - the base transition probabilities defined by the chord graph. A strong cadence (e.g. V-I) has a higher weight than a deceptive resolution (e.g. V-vi).
+2. **Key gravity** - the `gravity` parameter blends between functional pull (tonic, subdominant, dominant) and full diatonic pull (all scale chords). At `0.0` only the primary functions are boosted; at `1.0` any diatonic chord gets a lift.
+3. **Melodic inertia (NIR)** - the `nir_strength` parameter applies Narmour's Implication-Realization model to chord root motion:
+   - **Reversal**: Large leaps (> 4 semitones) imply a change of direction and a smaller following interval
+   - **Continuation**: Small steps (< 3 semitones) imply continued motion in the same direction
+   - **Proximity**: Small intervals (1-3 semitones) are generally preferred
+   - **Closure**: Return to tonic gets a gentle boost
+
+At `nir_strength=0.0` the NIR system is disabled entirely. At `1.0` it applies full weight. The default `0.5` gives moderate melodic inertia without overwhelming the graph's own voice.
+
+### Creating a custom chord graph
+
+Subclass `ChordGraph` and implement two methods: `build()` returns a weighted transition graph and the tonic chord, `gravity_sets()` returns the diatonic and functional chord sets for key gravity weighting.
+
+```python
+import subsequence
+
+class PowerChords (subsequence.chord_graphs.ChordGraph):
+
+    def build (self, key_name):
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
+        I  = subsequence.chords.Chord(root_pc=key_pc, quality="major")
+        IV = subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="major")
+        V  = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="major")
+
+        graph = subsequence.weighted_graph.WeightedGraph()
+        graph.add_transition(I, IV, 4)
+        graph.add_transition(I, V, 3)
+        graph.add_transition(IV, V, 5)
+        graph.add_transition(IV, I, 2)
+        graph.add_transition(V, I, 6)   # Strong resolution
+        graph.add_transition(V, IV, 2)
+        return graph, I
+
+    def gravity_sets (self, key_name):
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
+        I  = subsequence.chords.Chord(root_pc=key_pc, quality="major")
+        IV = subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="major")
+        V  = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="major")
+        all_chords = {I, IV, V}
+        return all_chords, {I, V}  # (diatonic, functional)
+
+composition.harmony(style=PowerChords(), cycle_beats=4, gravity=0.8)
+```
+
+Higher edge weights mean a transition is more likely. Use the constants `WEIGHT_STRONG` (6), `WEIGHT_MEDIUM` (4), `WEIGHT_COMMON` (3), `WEIGHT_DECEPTIVE` (2), `WEIGHT_WEAK` (1) from `subsequence.chord_graphs` for consistency with the built-in graphs.
+
 ## Seed and deterministic randomness
 
 Set a seed to make all random behavior repeatable:
