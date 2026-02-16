@@ -509,19 +509,19 @@ composition.harmony(
 | `"whole_tone"` | Symmetrical augmented palette; dreamlike drift (IDM, ambient) |
 | `"diminished"` | Minor-third symmetry; angular, disorienting (dark, experimental) |
 
-### Harmonic gravity
+### Harmonic gravity and melodic inertia
 
 Three layers influence which chord comes next:
 
-1. **Graph weights** - the base transition probabilities defined by the chord graph. A strong cadence (e.g. V-I) has a higher weight than a deceptive resolution (e.g. V-vi).
-2. **Key gravity** - the `gravity` parameter blends between functional pull (tonic, subdominant, dominant) and full diatonic pull (all scale chords). At `0.0` only the primary functions are boosted; at `1.0` any diatonic chord gets a lift.
-3. **Melodic inertia (NIR)** - the `nir_strength` parameter applies Narmour's Implication-Realization model to chord root motion:
-   - **Reversal**: Large leaps (> 4 semitones) imply a change of direction and a smaller following interval
-   - **Continuation**: Small steps (< 3 semitones) imply continued motion in the same direction
-   - **Proximity**: Small intervals (1-3 semitones) are generally preferred
-   - **Closure**: Return to tonic gets a gentle boost
+1.  **Graph weights** - the base transition probabilities defined by the chord graph. A strong cadence (e.g. V-I) has a higher weight than a deceptive resolution (e.g. V-vi).
+2.  **Key gravity** - blends between functional pull (tonic, subdominant, dominant) and full diatonic pull. It ensures the progression retains a sense of home.
+3.  **Melodic inertia (Narmour)** - applies **'cognitive expectation'** principles to the root motion of the chords. It models the listener's innate sense of musical grammar:
+    *   **Process (A+A):** A series of small steps in one direction implies a continuation in that same direction. The melody gathers momentum.
+    *   **Gap-Fill (Reversal):** A large leap (> 4 semitones) stretches the "elastic" of pitch space, implying a change of direction to fill the gap.
+    *   **Proximity:** Small intervals (1-3 semitones) are generally preferred over large leaps.
+    *   **Closure:** Return to tonic gets a gentle boost.
 
-At `nir_strength=0.0` the NIR system is disabled entirely. At `1.0` it applies full weight. The default `0.5` gives moderate melodic inertia without overwhelming the graph's own voice.
+At `nir_strength=0.0` the system is purely probabilistic (Markov). At `1.0` it is heavily driven by these cognitive rules. The default `0.5` balances structural surprise with melodic coherence.
 
 ### Creating a custom chord graph
 
