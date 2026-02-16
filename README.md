@@ -375,16 +375,17 @@ composition.conductor.line("intensity", start_val=0.0, end_val=1.0, duration_bea
 
 ### Using Signals in Patterns
 
-Pattern builders access the conductor via `p.c` (short for `p.conductor`). Request the value of any signal by name and beat time:
+Use `p.signal(name)` to read a conductor signal at the current bar:
 
 ```python
 @composition.pattern(channel=0, length=4)
 def pads(p):
-    # Get signal value at the current bar (1 bar = 4 beats)
-    dynamics = p.c.get("swell", p.bar * 4)
+    dynamics = p.signal("swell")
 
     p.chord(chord, root=60, velocity=int(60 + 60 * dynamics))
 ```
+
+For explicit beat control, use `p.c.get(name, beat)` directly.
 
 ## Chord inversions and voice leading
 

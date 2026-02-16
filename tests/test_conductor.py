@@ -1,6 +1,8 @@
 
 import pytest
 import subsequence.conductor
+import subsequence.pattern
+import subsequence.pattern_builder
 
 
 def test_lfo_sine ():
@@ -182,3 +184,33 @@ def test_missing_signal ():
 
 	conductor = subsequence.conductor.Conductor()
 	assert conductor.get("ghost", 0.0) == 0.0
+
+
+def test_signal_helper ():
+
+	"""Test p.signal() reads the conductor at the current bar."""
+
+	conductor = subsequence.conductor.Conductor()
+	conductor.lfo("tri", shape="triangle", cycle_beats=16.0)
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4.0)
+
+	# bar=2 -> beat=8 -> progress 8/16=0.5 -> triangle peak = 1.0
+	builder = subsequence.pattern_builder.PatternBuilder(pattern, cycle=0, conductor=conductor, bar=2)
+
+	assert builder.signal("tri") == 1.0
+
+	# bar=0 -> beat=0 -> triangle start = 0.0
+	builder_zero = subsequence.pattern_builder.PatternBuilder(pattern, cycle=0, conductor=conductor, bar=0)
+
+	assert builder_zero.signal("tri") == 0.0
+
+
+def test_signal_helper_no_conductor ():
+
+	"""Test p.signal() returns 0.0 when no conductor is attached."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4.0)
+	builder = subsequence.pattern_builder.PatternBuilder(pattern, cycle=0)
+
+	assert builder.signal("anything") == 0.0

@@ -67,10 +67,23 @@ class PatternBuilder:
 
 	@property
 	def c (self) -> typing.Optional[subsequence.conductor.Conductor]:
-		
+
 		"""Alias for self.conductor."""
-		
+
 		return self.conductor
+
+	def signal (self, name: str) -> float:
+
+		"""Read a conductor signal at the current bar.
+
+		Shorthand for ``p.c.get(name, p.bar * 4)``. Returns 0.0 if
+		no conductor is attached or the signal is not defined.
+		"""
+
+		if self.conductor is None:
+			return 0.0
+
+		return self.conductor.get(name, self.bar * 4)
 
 	def set_length (self, length: float) -> None:
 

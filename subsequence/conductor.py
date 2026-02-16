@@ -171,8 +171,11 @@ class Conductor:
 		
 		"""
 		Retrieve the value of a signal at a specific beat time.
-		
-		Pattern builders usually call this using `p.c.get("name", p.bar * 4)`.
+
+		Most patterns should use ``p.signal("name")`` instead, which
+		calls this method with the current bar time automatically.
+		Use ``get()`` directly when you need a beat time other than
+		the current bar.
 		"""
 		
 		if name not in self._signals:
