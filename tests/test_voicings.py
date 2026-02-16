@@ -109,9 +109,9 @@ def test_voice_lead_picks_closest () -> None:
 
 	# Previous: C major root position [60, 64, 67]
 	# Target: F major (root 65). Inversions:
-	#   root:  [65, 69, 72] — cost = |65-60| + |69-64| + |72-67| = 5+5+5 = 15
-	#   1st:   [65+0, 65+3, 65+8] = [65, 68, 73] — cost = 5+4+6 = 15
-	#   2nd:   [65+0, 65+5, 65+9] = [65, 70, 74] — cost = 5+6+7 = 18
+	#   root:  [65, 69, 72] - cost = |65-60| + |69-64| + |72-67| = 5+5+5 = 15
+	#   1st:   [65+0, 65+3, 65+8] = [65, 68, 73] - cost = 5+4+6 = 15
+	#   2nd:   [65+0, 65+5, 65+9] = [65, 70, 74] - cost = 5+6+7 = 18
 	# Root and 1st both cost 15. Root wins (checked first).
 	result = subsequence.voicings.voice_lead([0, 4, 7], 65, [60, 64, 67])
 
@@ -124,9 +124,9 @@ def test_voice_lead_prefers_smaller_movement () -> None:
 
 	# Previous: first inversion C major = [64, 67, 72]
 	# Target: F major (root 65). Inversions:
-	#   root:  [65, 69, 72] — cost = |65-64| + |69-67| + |72-72| = 1+2+0 = 3
-	#   1st:   [65, 68, 73] — cost = 1+1+1 = 3
-	#   2nd:   [65, 70, 74] — cost = 1+3+2 = 6
+	#   root:  [65, 69, 72] - cost = |65-64| + |69-67| + |72-72| = 1+2+0 = 3
+	#   1st:   [65, 68, 73] - cost = 1+1+1 = 3
+	#   2nd:   [65, 70, 74] - cost = 1+3+2 = 6
 	# Root and 1st tie at 3, root wins (first checked).
 	result = subsequence.voicings.voice_lead([0, 4, 7], 65, [64, 67, 72])
 
@@ -179,9 +179,9 @@ def test_state_persists_across_calls () -> None:
 	v2 = state.next([0, 3, 7], 62)
 
 	# D minor inversions relative to [60, 64, 67]:
-	#   root:  [62, 65, 69] — cost = 2+1+2 = 5
-	#   1st:   [62, 66, 71] — cost = 2+2+4 = 8
-	#   2nd:   [62, 67, 69] — cost = 2+3+2 = 7
+	#   root:  [62, 65, 69] - cost = 2+1+2 = 5
+	#   1st:   [62, 66, 71] - cost = 2+2+4 = 8
+	#   2nd:   [62, 67, 69] - cost = 2+3+2 = 7
 	assert v2 == [62, 65, 69]
 
 	# Third call should use v2 as the reference.
@@ -197,7 +197,7 @@ def test_state_size_change_resets () -> None:
 	# Triad.
 	state.next([0, 4, 7], 60)
 
-	# Seventh chord — different size, falls back to root position.
+	# Seventh chord - different size, falls back to root position.
 	v2 = state.next([0, 4, 7, 10], 60)
 
 	assert v2 == [60, 64, 67, 70]

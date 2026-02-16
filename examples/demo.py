@@ -1,5 +1,5 @@
 """
-Subsequence Demo — Composition API
+Subsequence Demo - Composition API
 
 A generative composition in dark E minor.
 
@@ -9,15 +9,15 @@ The module handles scheduling, async, and MIDI plumbing.
 
 How to read this file
 ─────────────────────
-1. MIDI Setup     — Tell the module which channels to use.
-2. Composition    — Create a composition with a tempo and key.
-3. Harmony        — Choose a chord graph and how often chords change.
-4. Form           — Define the large-scale structure (sections and bar counts).
-5. External Data  — Schedule a background task that feeds data into patterns.
-6. Patterns       — Decorated functions that build one bar of notes each cycle.
+1. MIDI Setup     - Tell the module which channels to use.
+2. Composition    - Create a composition with a tempo and key.
+3. Harmony        - Choose a chord graph and how often chords change.
+4. Form           - Define the large-scale structure (sections and bar counts).
+5. External Data  - Schedule a background task that feeds data into patterns.
+6. Patterns       - Decorated functions that build one bar of notes each cycle.
                     They receive a PatternBuilder (p) and optionally a chord.
                     Use p.section to react to the current section.
-7. Play           — Start the sequencer. Press Ctrl+C to stop.
+7. Play           - Start the sequencer. Press Ctrl+C to stop.
 
 Musical overview
 ────────────────
@@ -28,7 +28,7 @@ verse (33%). The bridge (4 bars) always goes to the chorus. The breakdown
 (4 bars) always leads back to the verse. The intro never returns.
 
 During the intro only the kick plays. The verse adds hats and pads. The
-chorus adds everything — snare, arpeggio, and bass. The bridge and
+chorus adds everything - snare, arpeggio, and bass. The bridge and
 breakdown strip back to hats and a quiet pad. Chord changes happen every
 bar (4 beats) via the dark_minor graph centred on E.
 """
@@ -57,7 +57,7 @@ EP_MIDI_CHANNEL = 11          # Electric piano / pad synth
 SYNTH_MIDI_CHANNEL = 0       # Lead / arpeggio synth
 BASS_MIDI_CHANNEL = 5        # Bass synth
 
-# Drum note map — maps human-readable names to MIDI note numbers.
+# Drum note map - maps human-readable names to MIDI note numbers.
 # These depend on your drum machine or sample library.
 DRUM_NOTE_MAP = {
 	"kick":      36,
@@ -95,7 +95,7 @@ composition.harmony(
 # The form defines the large-scale structure as a weighted graph.
 # Each section has a bar count and a list of (next_section, weight)
 # transitions. The intro plays once, then the form follows the graph
-# — the intro never returns. Dead-end sections (empty transitions)
+# - the intro never returns. Dead-end sections (empty transitions)
 # self-loop.
 #
 # Patterns read p.section.name to decide what to play in each section.
@@ -144,11 +144,11 @@ composition.schedule(fetch_iss, cycle_beats=32 * dur.QUARTER)
 def kick_snare (p):
 	"""
 	Four-on-the-floor kick with a euclidean snare.
-	The snare only plays in the chorus — otherwise this pattern is
+	The snare only plays in the chorus - otherwise this pattern is
 	kick-only, which works as a sparse foundation for other sections.
 	"""
 
-	# Fixed kick on every beat — steps 0, 4, 8, 12 on the 16-step grid.
+	# Fixed kick on every beat - steps 0, 4, 8, 12 on the 16-step grid.
 	p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
 
 	# Snare only during the chorus.
@@ -166,7 +166,7 @@ def kick_snare (p):
 def hats (p):
 	"""
 	Bresenham hi-hats with stochastic dropout and velocity shaping.
-	Plays in verse, chorus, and breakdown — muted during the intro.
+	Plays in verse, chorus, and breakdown - muted during the intro.
 	"""
 
 	# Silent during intro.
@@ -230,7 +230,7 @@ def motif (p, chord):
 def bass (p, chord):
 	"""
 	A 16th-note bassline on the chord root.
-	Only plays during the chorus — other sections have no bass.
+	Only plays during the chorus - other sections have no bass.
 	"""
 
 	if not p.section or p.section.name != "chorus":

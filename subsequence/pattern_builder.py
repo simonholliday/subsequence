@@ -30,11 +30,11 @@ def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 		raise ValueError(f"sequence(): {name} list cannot be empty")
 
 	if len(result) > n:
-		logger.warning("sequence(): %s has %d values but only %d steps — truncating", name, len(result), n)
+		logger.warning("sequence(): %s has %d values but only %d steps - truncating", name, len(result), n)
 		return result[:n]
 
 	if len(result) < n:
-		logger.warning("sequence(): %s has %d values but %d steps — repeating last value", name, len(result), n)
+		logger.warning("sequence(): %s has %d values but %d steps - repeating last value", name, len(result), n)
 		return result + [result[-1]] * (n - len(result))
 
 	return result
@@ -113,7 +113,7 @@ class PatternBuilder:
 			raise ValueError(f"String pitch '{pitch}' requires a drum_note_map, but none was provided")
 
 		if pitch not in self._drum_note_map:
-			raise ValueError(f"Unknown drum name '{pitch}' — not found in drum_note_map")
+			raise ValueError(f"Unknown drum name '{pitch}' - not found in drum_note_map")
 
 		return self._drum_note_map[pitch]
 

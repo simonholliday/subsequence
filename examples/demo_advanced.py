@@ -1,9 +1,9 @@
 """
-Subsequence Advanced Demo — Direct Pattern API
+Subsequence Advanced Demo - Direct Pattern API
 
 The same generative composition as demo.py, but using direct Pattern
 subclassing instead of the Composition decorator API. This is the
-"power user" approach — you manage the sequencer, harmonic state,
+"power user" approach - you manage the sequencer, harmonic state,
 and form state yourself, gaining full control over scheduling and
 pattern internals.
 
@@ -12,21 +12,21 @@ need something the Composition API doesn't expose.
 
 How to read this file
 ─────────────────────
-1. MIDI Setup      — Channel assignments (same as demo.py).
-2. Sequencer       — Create the low-level sequencer with a tempo.
-3. Harmony         — Create a HarmonicState and schedule it on a beat clock.
-4. Form            — Create a FormState and schedule it to advance each bar.
-5. External Data   — Schedule a background task via the module helper.
-6. Pattern Classes — Subclass Pattern directly. Override _build_pattern()
+1. MIDI Setup      - Channel assignments (same as demo.py).
+2. Sequencer       - Create the low-level sequencer with a tempo.
+3. Harmony         - Create a HarmonicState and schedule it on a beat clock.
+4. Form            - Create a FormState and schedule it to advance each bar.
+5. External Data   - Schedule a background task via the module helper.
+6. Pattern Classes - Subclass Pattern directly. Override _build_pattern()
                      to populate notes and on_reschedule() to rebuild each
                      cycle. Read the FormState yourself for section awareness.
-7. Main            — Wire everything together and run until Ctrl+C.
+7. Main            - Wire everything together and run until Ctrl+C.
 
 Musical overview
 ────────────────
 Identical to demo.py: the form is a graph where the intro (4 bars)
 plays once then moves to the verse. From there, the form follows
-weighted transitions — verse leads to chorus (75%) or bridge (25%),
+weighted transitions - verse leads to chorus (75%) or bridge (25%),
 chorus goes to breakdown (67%) or verse (33%), bridge always goes
 to chorus, and breakdown always returns to verse. The intro never
 returns. The kick always plays. The snare enters in the chorus with
@@ -67,7 +67,7 @@ EP_MIDI_CHANNEL = 11          # Electric piano / pad synth
 SYNTH_MIDI_CHANNEL = 0       # Lead / arpeggio synth
 BASS_MIDI_CHANNEL = 5        # Bass synth
 
-# Drum note map — maps names to MIDI note numbers.
+# Drum note map - maps names to MIDI note numbers.
 # These depend on your drum machine or sample library.
 DRUM_KICK = 36
 DRUM_SNARE = 38
@@ -79,8 +79,8 @@ DRUM_HH_OPEN = 46
 #
 # Each pattern is a subclass of Pattern. The key methods are:
 #
-#   _build_pattern()   — Clear self.steps and populate notes for one cycle.
-#   on_reschedule()    — Called by the sequencer before each new cycle.
+#   _build_pattern()   - Clear self.steps and populate notes for one cycle.
+#   on_reschedule()    - Called by the sequencer before each new cycle.
 #                        Increment your cycle counter and call _build_pattern().
 #
 # Unlike the Composition API (where the module injects chords and section
@@ -125,7 +125,7 @@ class KickSnarePattern (subsequence.pattern.Pattern):
 
 		step_duration = subsequence.constants.MIDI_SIXTEENTH_NOTE
 
-		# Fixed kick on every beat — steps 0, 4, 8, 12 on the 16-step grid.
+		# Fixed kick on every beat - steps 0, 4, 8, 12 on the 16-step grid.
 		kick_sequence = [0] * 16
 		for idx in [0, 4, 8, 12]:
 			kick_sequence[idx] = 1
@@ -462,7 +462,7 @@ async def main () -> None:
 	#
 	# Create a graph-based FormState and schedule it to advance each
 	# bar. The intro plays once, then the form follows weighted
-	# transitions — it never returns to the intro. Patterns hold a
+	# transitions - it never returns to the intro. Patterns hold a
 	# reference and call get_section_info() to decide what to play.
 
 	form_state = subsequence.composition.FormState({
@@ -540,7 +540,7 @@ async def main () -> None:
 		"""Log bar number and current section for visibility."""
 
 		section = form_state.get_section_info()
-		section_name = section.name if section else "—"
+		section_name = section.name if section else " - "
 		logger.info(f"Bar {bar + 1}  [{section_name}]")
 
 	seq.on_event("bar", on_bar)

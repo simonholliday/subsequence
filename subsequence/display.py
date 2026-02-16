@@ -14,7 +14,7 @@ The status line updates every bar and looks like::
 
 	125 BPM  Key: E  Bar: 17  [chorus 1/8]  Chord: Em7
 
-Components adapt to what's configured — the section is omitted if no form is set,
+Components adapt to what's configured - the section is omitted if no form is set,
 and the chord is omitted if no harmony is configured.
 """
 
@@ -142,7 +142,7 @@ class Display:
 		"""Rebuild and redraw the status line for the current bar.
 
 		Parameters:
-			bar: The bar number (passed by the ``"bar"`` event, not used directly —
+			bar: The bar number (passed by the ``"bar"`` event, not used directly  - 
 				state is read from the composition).
 		"""
 

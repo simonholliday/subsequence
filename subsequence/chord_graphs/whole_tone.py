@@ -15,7 +15,7 @@ class WholeTone (subsequence.chord_graphs.ChordGraph):
 	"""Symmetrical whole-tone chord graph.
 
 	Scale: 0, 2, 4, 6, 8, 10 (six equally-spaced pitches).
-	All chords are augmented triads. Every position is equivalent —
+	All chords are augmented triads. Every position is equivalent  - 
 	there is no functional hierarchy, only proximity.
 
 	Step-wise motion (whole step) is weighted highest, thirds next,
@@ -70,7 +70,7 @@ class WholeTone (subsequence.chord_graphs.ChordGraph):
 		for r in roots:
 			diatonic.add(subsequence.chords.Chord(root_pc=r, quality="augmented"))
 
-		# Minimal functional pull — only the tonic augmented chord.
+		# Minimal functional pull - only the tonic augmented chord.
 		functional: typing.Set[subsequence.chords.Chord] = set()
 		functional.add(subsequence.chords.Chord(root_pc=key_pc, quality="augmented"))
 

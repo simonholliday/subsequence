@@ -74,7 +74,7 @@ async def test_sequencer_opens_input_port (patch_midi: None) -> None:
 	await seq.stop()
 
 
-# --- Clock follow —- pulse counting ---
+# --- Clock follow  - - pulse counting ---
 
 
 @pytest.mark.asyncio
@@ -122,7 +122,7 @@ async def test_clock_follow_waits_for_start (patch_midi: None) -> None:
 
 	await seq.start()
 
-	# Send clock ticks without a start — should be ignored.
+	# Send clock ticks without a start - should be ignored.
 	for _ in range(10):
 		seq._midi_input_queue.put_nowait(mido.Message("clock"))
 
@@ -165,7 +165,7 @@ async def test_transport_start_resets_position (patch_midi: None) -> None:
 	for _ in range(48):
 		seq._midi_input_queue.put_nowait(mido.Message("clock"))
 
-	# Second start — resets pulse_count.
+	# Second start - resets pulse_count.
 	seq._midi_input_queue.put_nowait(mido.Message("start"))
 
 	for _ in range(10):
@@ -221,7 +221,7 @@ async def test_transport_continue_resumes (patch_midi: None) -> None:
 	await seq.start()
 
 	# The sequencer starts waiting for a start/continue.
-	# Send continue instead of start — should resume from pulse 0 (initial position).
+	# Send continue instead of start - should resume from pulse 0 (initial position).
 	seq._midi_input_queue.put_nowait(mido.Message("continue"))
 
 	for _ in range(12):
@@ -281,7 +281,7 @@ async def test_set_bpm_noop_in_clock_follow (patch_midi: None) -> None:
 	seq.set_bpm(100)
 	assert seq.current_bpm == 100
 
-	# Start the sequencer — now set_bpm should be ignored.
+	# Start the sequencer - now set_bpm should be ignored.
 	await seq.start()
 
 	seq.set_bpm(200)

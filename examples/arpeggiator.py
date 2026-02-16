@@ -1,5 +1,5 @@
 """
-Subsequence — Polyrhythmic Arpeggiator
+Subsequence - Polyrhythmic Arpeggiator
 
 A generative composition built around interlocking polyrhythms. Seven
 patterns cycle at five different lengths, creating a web of shifting
@@ -8,7 +8,7 @@ accents that never quite repeats.
 How it works
 ────────────
 Each pattern has its own cycle length in beats. The sequencer runs them
-all independently — when a short pattern loops back to beat 0, the longer
+all independently - when a short pattern loops back to beat 0, the longer
 ones are still mid-cycle. This creates polyrhythms: a 3-beat arpeggio
 against a 4-beat drum pattern creates a 3:4 feel; a 5-beat arpeggio adds
 a 5:4 layer on top.
@@ -60,7 +60,7 @@ import subsequence.sequence_utils
 # Change these to match your instrument routing.
 # Channel numbers are 0-indexed (MIDI channel 1 = 0, channel 10 = 9).
 
-# Tonal instruments — each gets its own arpeggio pattern.
+# Tonal instruments - each gets its own arpeggio pattern.
 MIDI_CHANNEL_MOOG_MATRIARCH = 0    # Fast sixteenth-note arpeggio
 MIDI_CHANNEL_MODEL_D = 3           # Eighth-note arpeggio
 MIDI_CHANNEL_CARBON_8 = 4          # Dotted-eighth arpeggio
@@ -72,7 +72,7 @@ MIDI_CHANNEL_VERMONA_DRM1 = 9      # Reference drums (standard beat)
 MIDI_CHANNEL_ROLAND_TR8S = 10      # Polyrhythmic drums (GM notes)
 
 # Drum note map for the Vermona DRM1.
-# This is specific to YOUR drum machine — change these to match
+# This is specific to YOUR drum machine - change these to match
 # your instrument's note assignments.
 DRM1_DRUM_MAP = {
 	"kick":      36,
@@ -86,7 +86,7 @@ DRM1_DRUM_MAP = {
 # The turnaround harmony graph enables modulation between all 12 major
 # and minor keys via ii-V-I progressions. Gravity pulls the harmony
 # back toward the home key, but it will wander. Chords change every
-# 4 beats (one bar). No form is defined — the piece plays indefinitely
+# 4 beats (one bar). No form is defined - the piece plays indefinitely
 # with evolving harmony as the structure.
 
 composition = subsequence.Composition(
@@ -108,7 +108,7 @@ composition.harmony(
 #
 # A completely static 4-beat pattern on a 16-step grid. This is the
 # stable anchor that every other pattern plays against. No variation,
-# no evolution — just a solid beat so you can hear how the polyrhythms
+# no evolution - just a solid beat so you can hear how the polyrhythms
 # shift against it.
 #
 # The grid:  0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15
@@ -129,7 +129,7 @@ def reference_drums (p):
 # ─── Polyrhythmic Drums (Roland TR8S) ────────────────────────────────
 #
 # A 6-beat pattern on a 12-step grid (triplet eighth notes). This
-# creates a 3:2 feel against the 4-beat reference drums — the TR8S
+# creates a 3:2 feel against the 4-beat reference drums - the TR8S
 # pattern completes every 6 beats while the DRM1 completes every 4,
 # so they align every 12 beats (3 DRM1 cycles = 2 TR8S cycles).
 #
@@ -160,7 +160,7 @@ def tr8s_drums (p):
 # ─── Chords (Voce EP) ───────────────────────────────────────────────
 #
 # Sustained chords that follow the harmonic state. This is the
-# harmonic anchor — it tells your ear what key and chord you're in
+# harmonic anchor - it tells your ear what key and chord you're in
 # while the arpeggios weave around it. The voicing sits around
 # middle C (MIDI note 52) so it doesn't crowd the bass or treble
 # arpeggios.
@@ -179,7 +179,7 @@ def chords (p, chord):
 # sixteenth-note speed. Three chord tones × 3 octaves = 9 notes per
 # cycle, so the pattern length is 9 sixteenth notes (2.25 beats).
 #
-# Against the 4-beat drums this creates a 9:16 polyrhythm — one of
+# Against the 4-beat drums this creates a 9:16 polyrhythm - one of
 # the most complex ratios in the piece. The arpeggio's downbeat
 # shifts constantly, never landing in the same place twice for a
 # very long time.
@@ -203,7 +203,7 @@ def matriarch_arp (p, chord):
 #
 # A slower 5-beat arpeggio at eighth-note speed. With 5 quarter notes
 # at eighth-note steps, that's 10 notes per cycle. The 5:4 polyrhythm
-# against the drums creates a wide, spacious feel — the arpeggio
+# against the drums creates a wide, spacious feel - the arpeggio
 # "drifts" against the beat, landing on different subdivisions each bar.
 #
 # Voiced around C4 (MIDI 60) for a clear mid-range tone, well above
@@ -241,7 +241,7 @@ def carbon8_arp (p, chord):
 # ─── Bass Arpeggio: Minitaur (21 eighth notes) ──────────────────────
 #
 # A bass arpeggio with a length of 21 eighth notes. This demonstrates
-# Subsequence's float length support — 21 eighth notes = 10.5 quarter
+# Subsequence's float length support - 21 eighth notes = 10.5 quarter
 # notes, which doesn't divide evenly into standard 4-beat bars.
 #
 # The result is a bass line that constantly shifts its downbeat

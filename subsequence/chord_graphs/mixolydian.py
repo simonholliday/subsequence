@@ -68,7 +68,7 @@ class Mixolydian (subsequence.chord_graphs.ChordGraph):
 		graph.add_transition(tonic, submediant, WEIGHT_WEAK)
 		graph.add_transition(minor_dominant, submediant, WEIGHT_WEAK)
 
-		# --- Mediant (diminished — rare, colour) ---
+		# --- Mediant (diminished - rare, colour) ---
 		graph.add_transition(mediant, subdominant, WEIGHT_WEAK)
 		graph.add_transition(mediant, tonic, WEIGHT_WEAK)
 		graph.add_transition(supertonic, mediant, WEIGHT_WEAK)

@@ -21,7 +21,7 @@ class DorianMinor (subsequence.chord_graphs.ChordGraph):
 	The natural 6th (instead of the aeolian b6) gives minor harmony a
 	warmer, more hopeful quality. The IV chord (major subdominant in a
 	minor key) is the defining Dorian sound. No harmonic-minor dominant V
-	is used — the graph stays purely modal.
+	is used - the graph stays purely modal.
 
 	Good for lo-fi, neo-soul, chill electronic, jazz, and funk.
 	"""
@@ -30,7 +30,7 @@ class DorianMinor (subsequence.chord_graphs.ChordGraph):
 
 		"""Configure whether to include dominant seventh chords.
 
-		Defaults to False because Dorian is modal — dominant 7ths
+		Defaults to False because Dorian is modal - dominant 7ths
 		introduce functional tonal pull that weakens the modal feel.
 		"""
 
@@ -93,7 +93,7 @@ class DorianMinor (subsequence.chord_graphs.ChordGraph):
 		graph.add_transition(submediant_dim, tonic, WEIGHT_WEAK)
 
 		if self.include_dominant_7th:
-			# Harmonic minor dominant — optional tonal color.
+			# Harmonic minor dominant - optional tonal color.
 			dominant_7th = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="dominant_7th")
 
 			graph.add_transition(natural_dominant, dominant_7th, WEIGHT_WEAK)

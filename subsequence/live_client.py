@@ -6,7 +6,7 @@ Usage::
     python -m subsequence.live_client --port 5555
 
 The client connects to a live server started by ``composition.live()`` and
-provides an interactive Python prompt. Multi-line blocks are supported —
+provides an interactive Python prompt. Multi-line blocks are supported  - 
 type a line ending with ``:`` and the client will wait for more input.
 
 Press Ctrl+C to cancel the current input. Press Ctrl+D to quit.

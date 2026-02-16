@@ -547,7 +547,7 @@ def test_layer_with_chord_injection (patch_midi: None) -> None:
 
 	composition.layer(bass, rhythm, channel=0, length=4)
 
-	# Build with a harmony state active — chord injection should work.
+	# Build with a harmony state active - chord injection should work.
 	pattern = composition._build_pattern_from_pending(composition._pending_patterns[0])
 
 	# Both builders should have contributed notes.

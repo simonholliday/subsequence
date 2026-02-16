@@ -38,9 +38,9 @@ def invert_chord (intervals: typing.List[int], inversion: int) -> typing.List[in
 
 	Example:
 		```python
-		invert_chord([0, 4, 7], 0)  # [0, 4, 7]  — root position
-		invert_chord([0, 4, 7], 1)  # [0, 3, 8]  — first inversion
-		invert_chord([0, 4, 7], 2)  # [0, 5, 9]  — second inversion
+		invert_chord([0, 4, 7], 0)  # [0, 4, 7]  - root position
+		invert_chord([0, 4, 7], 1)  # [0, 3, 8]  - first inversion
+		invert_chord([0, 4, 7], 2)  # [0, 5, 9]  - second inversion
 		```
 	"""
 
@@ -82,7 +82,7 @@ def voice_lead (intervals: typing.List[int], root_midi: int, previous_voicing: t
 	if n == 0:
 		return []
 
-	# No previous voicing or size mismatch — return root position.
+	# No previous voicing or size mismatch - return root position.
 	if previous_voicing is None or len(previous_voicing) != n:
 		return [root_midi + i for i in intervals]
 

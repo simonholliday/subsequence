@@ -166,7 +166,7 @@ subsequence    </h1>
 </span><span id="Composition-500"><a href="#Composition-500"><span class="linenos"> 500</span></a>
 </span><span id="Composition-501"><a href="#Composition-501"><span class="linenos"> 501</span></a><span class="sd">		Parameters:</span>
 </span><span id="Composition-502"><a href="#Composition-502"><span class="linenos"> 502</span></a><span class="sd">			output_device: MIDI output device name (e.g., `&quot;Device Name:Port 1 16:0&quot;`).</span>
-</span><span id="Composition-503"><a href="#Composition-503"><span class="linenos"> 503</span></a><span class="sd">				When omitted, auto-discovers available devices — uses the only device</span>
+</span><span id="Composition-503"><a href="#Composition-503"><span class="linenos"> 503</span></a><span class="sd">				When omitted, auto-discovers available devices - uses the only device</span>
 </span><span id="Composition-504"><a href="#Composition-504"><span class="linenos"> 504</span></a><span class="sd">				if one is found, or prompts the user to choose if multiple are available.</span>
 </span><span id="Composition-505"><a href="#Composition-505"><span class="linenos"> 505</span></a><span class="sd">			bpm: Tempo in beats per minute (default 120)</span>
 </span><span id="Composition-506"><a href="#Composition-506"><span class="linenos"> 506</span></a><span class="sd">			key: Root key name (e.g., `&quot;C&quot;`, `&quot;F#&quot;`, `&quot;Bb&quot;`). Required if using `harmony()`.</span>
@@ -222,7 +222,7 @@ subsequence    </h1>
 </span><span id="Composition-556"><a href="#Composition-556"><span class="linenos"> 556</span></a><span class="w">		</span><span class="sd">&quot;&quot;&quot;Configure the harmonic state and chord change cycle for this composition.</span>
 </span><span id="Composition-557"><a href="#Composition-557"><span class="linenos"> 557</span></a>
 </span><span id="Composition-558"><a href="#Composition-558"><span class="linenos"> 558</span></a><span class="sd">		Parameters:</span>
-</span><span id="Composition-559"><a href="#Composition-559"><span class="linenos"> 559</span></a><span class="sd">			style: Chord graph style — `&quot;diatonic_major&quot;`, `&quot;turnaround&quot;`, `&quot;dark_minor&quot;`, or a `ChordGraph` instance</span>
+</span><span id="Composition-559"><a href="#Composition-559"><span class="linenos"> 559</span></a><span class="sd">			style: Chord graph style - `&quot;diatonic_major&quot;`, `&quot;turnaround&quot;`, `&quot;dark_minor&quot;`, or a `ChordGraph` instance</span>
 </span><span id="Composition-560"><a href="#Composition-560"><span class="linenos"> 560</span></a><span class="sd">			cycle_beats: How often chords change (in beats, default 4)</span>
 </span><span id="Composition-561"><a href="#Composition-561"><span class="linenos"> 561</span></a><span class="sd">			dominant_7th: Include dominant seventh chords (default True)</span>
 </span><span id="Composition-562"><a href="#Composition-562"><span class="linenos"> 562</span></a><span class="sd">			gravity: Key gravity blend 0.0-1.0 (default 1.0). Higher values favor chords closer to the tonic.</span>
@@ -241,7 +241,7 @@ subsequence    </h1>
 </span><span id="Composition-575"><a href="#Composition-575"><span class="linenos"> 575</span></a><span class="sd">		&quot;&quot;&quot;</span>
 </span><span id="Composition-576"><a href="#Composition-576"><span class="linenos"> 576</span></a>
 </span><span id="Composition-577"><a href="#Composition-577"><span class="linenos"> 577</span></a>		<span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="Composition-578"><a href="#Composition-578"><span class="linenos"> 578</span></a>			<span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Cannot configure harmony without a key — set key in the Composition constructor&quot;</span><span class="p">)</span>
+</span><span id="Composition-578"><a href="#Composition-578"><span class="linenos"> 578</span></a>			<span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Cannot configure harmony without a key - set key in the Composition constructor&quot;</span><span class="p">)</span>
 </span><span id="Composition-579"><a href="#Composition-579"><span class="linenos"> 579</span></a>
 </span><span id="Composition-580"><a href="#Composition-580"><span class="linenos"> 580</span></a>		<span class="bp">self</span><span class="o">.</span><span class="n">_harmonic_state</span> <span class="o">=</span> <span class="n">subsequence</span><span class="o">.</span><span class="n">harmonic_state</span><span class="o">.</span><span class="n">HarmonicState</span><span class="p">(</span>
 </span><span id="Composition-581"><a href="#Composition-581"><span class="linenos"> 581</span></a>			<span class="n">key_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">key</span><span class="p">,</span>
@@ -266,8 +266,8 @@ subsequence    </h1>
 </span><span id="Composition-600"><a href="#Composition-600"><span class="linenos"> 600</span></a>
 </span><span id="Composition-601"><a href="#Composition-601"><span class="linenos"> 601</span></a><span class="w">		</span><span class="sd">&quot;&quot;&quot;Set a random seed for deterministic, repeatable output.</span>
 </span><span id="Composition-602"><a href="#Composition-602"><span class="linenos"> 602</span></a>
-</span><span id="Composition-603"><a href="#Composition-603"><span class="linenos"> 603</span></a><span class="sd">		When set, all randomness — chord progressions, form transitions, and pattern</span>
-</span><span id="Composition-604"><a href="#Composition-604"><span class="linenos"> 604</span></a><span class="sd">		builder functions — produces the same results on every run. Pattern builders</span>
+</span><span id="Composition-603"><a href="#Composition-603"><span class="linenos"> 603</span></a><span class="sd">		When set, all randomness - chord progressions, form transitions, and pattern</span>
+</span><span id="Composition-604"><a href="#Composition-604"><span class="linenos"> 604</span></a><span class="sd">		builder functions - produces the same results on every run. Pattern builders</span>
 </span><span id="Composition-605"><a href="#Composition-605"><span class="linenos"> 605</span></a><span class="sd">		access the seeded RNG via ``p.rng``.</span>
 </span><span id="Composition-606"><a href="#Composition-606"><span class="linenos"> 606</span></a>
 </span><span id="Composition-607"><a href="#Composition-607"><span class="linenos"> 607</span></a><span class="sd">		Parameters:</span>
@@ -310,7 +310,7 @@ subsequence    </h1>
 </span><span id="Composition-644"><a href="#Composition-644"><span class="linenos"> 644</span></a>
 </span><span id="Composition-645"><a href="#Composition-645"><span class="linenos"> 645</span></a><span class="sd">		When ``clock_follow`` is enabled, the sequencer follows incoming MIDI</span>
 </span><span id="Composition-646"><a href="#Composition-646"><span class="linenos"> 646</span></a><span class="sd">		clock ticks instead of using its own internal clock. The BPM set in</span>
-</span><span id="Composition-647"><a href="#Composition-647"><span class="linenos"> 647</span></a><span class="sd">		the constructor is ignored — tempo is determined by the external</span>
+</span><span id="Composition-647"><a href="#Composition-647"><span class="linenos"> 647</span></a><span class="sd">		the constructor is ignored - tempo is determined by the external</span>
 </span><span id="Composition-648"><a href="#Composition-648"><span class="linenos"> 648</span></a><span class="sd">		source. MIDI start, stop, and continue messages control transport.</span>
 </span><span id="Composition-649"><a href="#Composition-649"><span class="linenos"> 649</span></a>
 </span><span id="Composition-650"><a href="#Composition-650"><span class="linenos"> 650</span></a><span class="sd">		When ``clock_follow`` is disabled (default), the input port is opened</span>
@@ -337,7 +337,7 @@ subsequence    </h1>
 </span><span id="Composition-671"><a href="#Composition-671"><span class="linenos"> 671</span></a><span class="w">		</span><span class="sd">&quot;&quot;&quot;Enable the live coding server for runtime interaction.</span>
 </span><span id="Composition-672"><a href="#Composition-672"><span class="linenos"> 672</span></a>
 </span><span id="Composition-673"><a href="#Composition-673"><span class="linenos"> 673</span></a><span class="sd">		Starts a TCP eval server on ``localhost`` that accepts Python code from</span>
-</span><span id="Composition-674"><a href="#Composition-674"><span class="linenos"> 674</span></a><span class="sd">		any source — the bundled REPL client, an editor plugin, or a raw socket.</span>
+</span><span id="Composition-674"><a href="#Composition-674"><span class="linenos"> 674</span></a><span class="sd">		any source - the bundled REPL client, an editor plugin, or a raw socket.</span>
 </span><span id="Composition-675"><a href="#Composition-675"><span class="linenos"> 675</span></a><span class="sd">		The server launches when ``play()`` is called and stops when playback ends.</span>
 </span><span id="Composition-676"><a href="#Composition-676"><span class="linenos"> 676</span></a>
 </span><span id="Composition-677"><a href="#Composition-677"><span class="linenos"> 677</span></a><span class="sd">		Parameters:</span>
@@ -520,12 +520,12 @@ subsequence    </h1>
 </span><span id="Composition-854"><a href="#Composition-854"><span class="linenos"> 854</span></a>
 </span><span id="Composition-855"><a href="#Composition-855"><span class="linenos"> 855</span></a><span class="sd">		Parameters:</span>
 </span><span id="Composition-856"><a href="#Composition-856"><span class="linenos"> 856</span></a><span class="sd">			sections: Dict (graph), list, or generator of `(name, bars)` tuples</span>
-</span><span id="Composition-857"><a href="#Composition-857"><span class="linenos"> 857</span></a><span class="sd">			loop: For lists only — cycle back to start after the last section (default False)</span>
-</span><span id="Composition-858"><a href="#Composition-858"><span class="linenos"> 858</span></a><span class="sd">			start: For dicts only — initial section name (default: first dict key)</span>
+</span><span id="Composition-857"><a href="#Composition-857"><span class="linenos"> 857</span></a><span class="sd">			loop: For lists only - cycle back to start after the last section (default False)</span>
+</span><span id="Composition-858"><a href="#Composition-858"><span class="linenos"> 858</span></a><span class="sd">			start: For dicts only - initial section name (default: first dict key)</span>
 </span><span id="Composition-859"><a href="#Composition-859"><span class="linenos"> 859</span></a>
 </span><span id="Composition-860"><a href="#Composition-860"><span class="linenos"> 860</span></a><span class="sd">		Example:</span>
 </span><span id="Composition-861"><a href="#Composition-861"><span class="linenos"> 861</span></a><span class="sd">			```python</span>
-</span><span id="Composition-862"><a href="#Composition-862"><span class="linenos"> 862</span></a><span class="sd">			# Graph-based form — intro plays once, then never returns</span>
+</span><span id="Composition-862"><a href="#Composition-862"><span class="linenos"> 862</span></a><span class="sd">			# Graph-based form - intro plays once, then never returns</span>
 </span><span id="Composition-863"><a href="#Composition-863"><span class="linenos"> 863</span></a><span class="sd">			composition.form({</span>
 </span><span id="Composition-864"><a href="#Composition-864"><span class="linenos"> 864</span></a><span class="sd">				&quot;intro&quot;:     (4, [(&quot;verse&quot;, 1)]),</span>
 </span><span id="Composition-865"><a href="#Composition-865"><span class="linenos"> 865</span></a><span class="sd">				&quot;verse&quot;:     (8, [(&quot;chorus&quot;, 3), (&quot;bridge&quot;, 1)]),</span>
@@ -752,7 +752,7 @@ subsequence    </h1>
 </span><span id="Composition-1086"><a href="#Composition-1086"><span class="linenos">1086</span></a>				<span class="n">reschedule_lookahead</span> <span class="o">=</span> <span class="mi">1</span>
 </span><span id="Composition-1087"><a href="#Composition-1087"><span class="linenos">1087</span></a>			<span class="p">)</span>
 </span><span id="Composition-1088"><a href="#Composition-1088"><span class="linenos">1088</span></a>
-</span><span id="Composition-1089"><a href="#Composition-1089"><span class="linenos">1089</span></a>		<span class="c1"># Bar counter — always active so p.bar is available to all builders.</span>
+</span><span id="Composition-1089"><a href="#Composition-1089"><span class="linenos">1089</span></a>		<span class="c1"># Bar counter - always active so p.bar is available to all builders.</span>
 </span><span id="Composition-1090"><a href="#Composition-1090"><span class="linenos">1090</span></a>		<span class="k">def</span><span class="w"> </span><span class="nf">_advance_builder_bar</span> <span class="p">(</span><span class="n">pulse</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 </span><span id="Composition-1091"><a href="#Composition-1091"><span class="linenos">1091</span></a>			<span class="bp">self</span><span class="o">.</span><span class="n">_builder_bar</span> <span class="o">+=</span> <span class="mi">1</span>
 </span><span id="Composition-1092"><a href="#Composition-1092"><span class="linenos">1092</span></a>
@@ -884,7 +884,7 @@ subsequence    </h1>
 </span><span id="Composition-1218"><a href="#Composition-1218"><span class="linenos">1218</span></a>						<span class="bp">self</span><span class="o">.</span><span class="n">_builder_fn</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span>
 </span><span id="Composition-1219"><a href="#Composition-1219"><span class="linenos">1219</span></a>
 </span><span id="Composition-1220"><a href="#Composition-1220"><span class="linenos">1220</span></a>				<span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-</span><span id="Composition-1221"><a href="#Composition-1221"><span class="linenos">1221</span></a>					<span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;Error in pattern builder &#39;</span><span class="si">%s</span><span class="s2">&#39; (cycle </span><span class="si">%d</span><span class="s2">) — pattern will be silent this cycle&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_builder_fn</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">current_cycle</span><span class="p">)</span>
+</span><span id="Composition-1221"><a href="#Composition-1221"><span class="linenos">1221</span></a>					<span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;Error in pattern builder &#39;</span><span class="si">%s</span><span class="s2">&#39; (cycle </span><span class="si">%d</span><span class="s2">) - pattern will be silent this cycle&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_builder_fn</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">current_cycle</span><span class="p">)</span>
 </span><span id="Composition-1222"><a href="#Composition-1222"><span class="linenos">1222</span></a>
 </span><span id="Composition-1223"><a href="#Composition-1223"><span class="linenos">1223</span></a>			<span class="k">def</span><span class="w"> </span><span class="nf">on_reschedule</span> <span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 </span><span id="Composition-1224"><a href="#Composition-1224"><span class="linenos">1224</span></a>
@@ -918,7 +918,7 @@ subsequence    </h1>
 </span><span id="Composition.__init__-500"><a href="#Composition.__init__-500"><span class="linenos">500</span></a>
 </span><span id="Composition.__init__-501"><a href="#Composition.__init__-501"><span class="linenos">501</span></a><span class="sd">		Parameters:</span>
 </span><span id="Composition.__init__-502"><a href="#Composition.__init__-502"><span class="linenos">502</span></a><span class="sd">			output_device: MIDI output device name (e.g., `&quot;Device Name:Port 1 16:0&quot;`).</span>
-</span><span id="Composition.__init__-503"><a href="#Composition.__init__-503"><span class="linenos">503</span></a><span class="sd">				When omitted, auto-discovers available devices — uses the only device</span>
+</span><span id="Composition.__init__-503"><a href="#Composition.__init__-503"><span class="linenos">503</span></a><span class="sd">				When omitted, auto-discovers available devices - uses the only device</span>
 </span><span id="Composition.__init__-504"><a href="#Composition.__init__-504"><span class="linenos">504</span></a><span class="sd">				if one is found, or prompts the user to choose if multiple are available.</span>
 </span><span id="Composition.__init__-505"><a href="#Composition.__init__-505"><span class="linenos">505</span></a><span class="sd">			bpm: Tempo in beats per minute (default 120)</span>
 </span><span id="Composition.__init__-506"><a href="#Composition.__init__-506"><span class="linenos">506</span></a><span class="sd">			key: Root key name (e.g., `&quot;C&quot;`, `&quot;F#&quot;`, `&quot;Bb&quot;`). Required if using `harmony()`.</span>
@@ -967,7 +967,7 @@ subsequence    </h1>
 
 <p>Parameters:
         output_device: MIDI output device name (e.g., <code>"Device Name:Port 1 16:0"</code>).
-                When omitted, auto-discovers available devices — uses the only device
+                When omitted, auto-discovers available devices - uses the only device
                 if one is found, or prompts the user to choose if multiple are available.
         bpm: Tempo in beats per minute (default 120)
         key: Root key name (e.g., <code>"C"</code>, <code>"F#"</code>, <code>"Bb"</code>). Required if using <code><a href="#Composition.harmony">harmony()</a></code>.
@@ -1058,7 +1058,7 @@ subsequence    </h1>
 </span><span id="Composition.harmony-556"><a href="#Composition.harmony-556"><span class="linenos">556</span></a><span class="w">		</span><span class="sd">&quot;&quot;&quot;Configure the harmonic state and chord change cycle for this composition.</span>
 </span><span id="Composition.harmony-557"><a href="#Composition.harmony-557"><span class="linenos">557</span></a>
 </span><span id="Composition.harmony-558"><a href="#Composition.harmony-558"><span class="linenos">558</span></a><span class="sd">		Parameters:</span>
-</span><span id="Composition.harmony-559"><a href="#Composition.harmony-559"><span class="linenos">559</span></a><span class="sd">			style: Chord graph style — `&quot;diatonic_major&quot;`, `&quot;turnaround&quot;`, `&quot;dark_minor&quot;`, or a `ChordGraph` instance</span>
+</span><span id="Composition.harmony-559"><a href="#Composition.harmony-559"><span class="linenos">559</span></a><span class="sd">			style: Chord graph style - `&quot;diatonic_major&quot;`, `&quot;turnaround&quot;`, `&quot;dark_minor&quot;`, or a `ChordGraph` instance</span>
 </span><span id="Composition.harmony-560"><a href="#Composition.harmony-560"><span class="linenos">560</span></a><span class="sd">			cycle_beats: How often chords change (in beats, default 4)</span>
 </span><span id="Composition.harmony-561"><a href="#Composition.harmony-561"><span class="linenos">561</span></a><span class="sd">			dominant_7th: Include dominant seventh chords (default True)</span>
 </span><span id="Composition.harmony-562"><a href="#Composition.harmony-562"><span class="linenos">562</span></a><span class="sd">			gravity: Key gravity blend 0.0-1.0 (default 1.0). Higher values favor chords closer to the tonic.</span>
@@ -1077,7 +1077,7 @@ subsequence    </h1>
 </span><span id="Composition.harmony-575"><a href="#Composition.harmony-575"><span class="linenos">575</span></a><span class="sd">		&quot;&quot;&quot;</span>
 </span><span id="Composition.harmony-576"><a href="#Composition.harmony-576"><span class="linenos">576</span></a>
 </span><span id="Composition.harmony-577"><a href="#Composition.harmony-577"><span class="linenos">577</span></a>		<span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="Composition.harmony-578"><a href="#Composition.harmony-578"><span class="linenos">578</span></a>			<span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Cannot configure harmony without a key — set key in the Composition constructor&quot;</span><span class="p">)</span>
+</span><span id="Composition.harmony-578"><a href="#Composition.harmony-578"><span class="linenos">578</span></a>			<span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Cannot configure harmony without a key - set key in the Composition constructor&quot;</span><span class="p">)</span>
 </span><span id="Composition.harmony-579"><a href="#Composition.harmony-579"><span class="linenos">579</span></a>
 </span><span id="Composition.harmony-580"><a href="#Composition.harmony-580"><span class="linenos">580</span></a>		<span class="bp">self</span><span class="o">.</span><span class="n">_harmonic_state</span> <span class="o">=</span> <span class="n">subsequence</span><span class="o">.</span><span class="n">harmonic_state</span><span class="o">.</span><span class="n">HarmonicState</span><span class="p">(</span>
 </span><span id="Composition.harmony-581"><a href="#Composition.harmony-581"><span class="linenos">581</span></a>			<span class="n">key_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">key</span><span class="p">,</span>
@@ -1095,7 +1095,7 @@ subsequence    </h1>
             <div class="docstring"><p>Configure the harmonic state and chord change cycle for this composition.</p>
 
 <p>Parameters:
-        style: Chord graph style — <code>"diatonic_major"</code>, <code>"turnaround"</code>, <code>"dark_minor"</code>, or a <code>ChordGraph</code> instance
+        style: Chord graph style - <code>"diatonic_major"</code>, <code>"turnaround"</code>, <code>"dark_minor"</code>, or a <code>ChordGraph</code> instance
         cycle_beats: How often chords change (in beats, default 4)
         dominant_7th: Include dominant seventh chords (default True)
         gravity: Key gravity blend 0.0-1.0 (default 1.0). Higher values favor chords closer to the tonic.
@@ -1159,8 +1159,8 @@ subsequence    </h1>
 </span><span id="Composition.seed-600"><a href="#Composition.seed-600"><span class="linenos">600</span></a>
 </span><span id="Composition.seed-601"><a href="#Composition.seed-601"><span class="linenos">601</span></a><span class="w">		</span><span class="sd">&quot;&quot;&quot;Set a random seed for deterministic, repeatable output.</span>
 </span><span id="Composition.seed-602"><a href="#Composition.seed-602"><span class="linenos">602</span></a>
-</span><span id="Composition.seed-603"><a href="#Composition.seed-603"><span class="linenos">603</span></a><span class="sd">		When set, all randomness — chord progressions, form transitions, and pattern</span>
-</span><span id="Composition.seed-604"><a href="#Composition.seed-604"><span class="linenos">604</span></a><span class="sd">		builder functions — produces the same results on every run. Pattern builders</span>
+</span><span id="Composition.seed-603"><a href="#Composition.seed-603"><span class="linenos">603</span></a><span class="sd">		When set, all randomness - chord progressions, form transitions, and pattern</span>
+</span><span id="Composition.seed-604"><a href="#Composition.seed-604"><span class="linenos">604</span></a><span class="sd">		builder functions - produces the same results on every run. Pattern builders</span>
 </span><span id="Composition.seed-605"><a href="#Composition.seed-605"><span class="linenos">605</span></a><span class="sd">		access the seeded RNG via ``p.rng``.</span>
 </span><span id="Composition.seed-606"><a href="#Composition.seed-606"><span class="linenos">606</span></a>
 </span><span id="Composition.seed-607"><a href="#Composition.seed-607"><span class="linenos">607</span></a><span class="sd">		Parameters:</span>
@@ -1179,8 +1179,8 @@ subsequence    </h1>
 
             <div class="docstring"><p>Set a random seed for deterministic, repeatable output.</p>
 
-<p>When set, all randomness — chord progressions, form transitions, and pattern
-builder functions — produces the same results on every run. Pattern builders
+<p>When set, all randomness - chord progressions, form transitions, and pattern
+builder functions - produces the same results on every run. Pattern builders
 access the seeded RNG via <code>p.rng</code>.</p>
 
 <p>Parameters:
@@ -1270,7 +1270,7 @@ chord, BPM, and key. Log messages scroll above it without disruption.</p>
 </span><span id="Composition.midi_input-644"><a href="#Composition.midi_input-644"><span class="linenos">644</span></a>
 </span><span id="Composition.midi_input-645"><a href="#Composition.midi_input-645"><span class="linenos">645</span></a><span class="sd">		When ``clock_follow`` is enabled, the sequencer follows incoming MIDI</span>
 </span><span id="Composition.midi_input-646"><a href="#Composition.midi_input-646"><span class="linenos">646</span></a><span class="sd">		clock ticks instead of using its own internal clock. The BPM set in</span>
-</span><span id="Composition.midi_input-647"><a href="#Composition.midi_input-647"><span class="linenos">647</span></a><span class="sd">		the constructor is ignored — tempo is determined by the external</span>
+</span><span id="Composition.midi_input-647"><a href="#Composition.midi_input-647"><span class="linenos">647</span></a><span class="sd">		the constructor is ignored - tempo is determined by the external</span>
 </span><span id="Composition.midi_input-648"><a href="#Composition.midi_input-648"><span class="linenos">648</span></a><span class="sd">		source. MIDI start, stop, and continue messages control transport.</span>
 </span><span id="Composition.midi_input-649"><a href="#Composition.midi_input-649"><span class="linenos">649</span></a>
 </span><span id="Composition.midi_input-650"><a href="#Composition.midi_input-650"><span class="linenos">650</span></a><span class="sd">		When ``clock_follow`` is disabled (default), the input port is opened</span>
@@ -1298,7 +1298,7 @@ chord, BPM, and key. Log messages scroll above it without disruption.</p>
 
 <p>When <code>clock_follow</code> is enabled, the sequencer follows incoming MIDI
 clock ticks instead of using its own internal clock. The BPM set in
-the constructor is ignored — tempo is determined by the external
+the constructor is ignored - tempo is determined by the external
 source. MIDI start, stop, and continue messages control transport.</p>
 
 <p>When <code>clock_follow</code> is disabled (default), the input port is opened
@@ -1338,7 +1338,7 @@ but no clock or transport messages are acted on.</p>
 </span><span id="Composition.live-671"><a href="#Composition.live-671"><span class="linenos">671</span></a><span class="w">		</span><span class="sd">&quot;&quot;&quot;Enable the live coding server for runtime interaction.</span>
 </span><span id="Composition.live-672"><a href="#Composition.live-672"><span class="linenos">672</span></a>
 </span><span id="Composition.live-673"><a href="#Composition.live-673"><span class="linenos">673</span></a><span class="sd">		Starts a TCP eval server on ``localhost`` that accepts Python code from</span>
-</span><span id="Composition.live-674"><a href="#Composition.live-674"><span class="linenos">674</span></a><span class="sd">		any source — the bundled REPL client, an editor plugin, or a raw socket.</span>
+</span><span id="Composition.live-674"><a href="#Composition.live-674"><span class="linenos">674</span></a><span class="sd">		any source - the bundled REPL client, an editor plugin, or a raw socket.</span>
 </span><span id="Composition.live-675"><a href="#Composition.live-675"><span class="linenos">675</span></a><span class="sd">		The server launches when ``play()`` is called and stops when playback ends.</span>
 </span><span id="Composition.live-676"><a href="#Composition.live-676"><span class="linenos">676</span></a>
 </span><span id="Composition.live-677"><a href="#Composition.live-677"><span class="linenos">677</span></a><span class="sd">		Parameters:</span>
@@ -1364,7 +1364,7 @@ but no clock or transport messages are acted on.</p>
             <div class="docstring"><p>Enable the live coding server for runtime interaction.</p>
 
 <p>Starts a TCP eval server on <code>localhost</code> that accepts Python code from
-any source — the bundled REPL client, an editor plugin, or a raw socket.
+any source - the bundled REPL client, an editor plugin, or a raw socket.
 The server launches when <code><a href="#Composition.play">play()</a></code> is called and stops when playback ends.</p>
 
 <p>Parameters:
@@ -1726,12 +1726,12 @@ Async functions run directly on the event loop.</p>
 </span><span id="Composition.form-854"><a href="#Composition.form-854"><span class="linenos">854</span></a>
 </span><span id="Composition.form-855"><a href="#Composition.form-855"><span class="linenos">855</span></a><span class="sd">		Parameters:</span>
 </span><span id="Composition.form-856"><a href="#Composition.form-856"><span class="linenos">856</span></a><span class="sd">			sections: Dict (graph), list, or generator of `(name, bars)` tuples</span>
-</span><span id="Composition.form-857"><a href="#Composition.form-857"><span class="linenos">857</span></a><span class="sd">			loop: For lists only — cycle back to start after the last section (default False)</span>
-</span><span id="Composition.form-858"><a href="#Composition.form-858"><span class="linenos">858</span></a><span class="sd">			start: For dicts only — initial section name (default: first dict key)</span>
+</span><span id="Composition.form-857"><a href="#Composition.form-857"><span class="linenos">857</span></a><span class="sd">			loop: For lists only - cycle back to start after the last section (default False)</span>
+</span><span id="Composition.form-858"><a href="#Composition.form-858"><span class="linenos">858</span></a><span class="sd">			start: For dicts only - initial section name (default: first dict key)</span>
 </span><span id="Composition.form-859"><a href="#Composition.form-859"><span class="linenos">859</span></a>
 </span><span id="Composition.form-860"><a href="#Composition.form-860"><span class="linenos">860</span></a><span class="sd">		Example:</span>
 </span><span id="Composition.form-861"><a href="#Composition.form-861"><span class="linenos">861</span></a><span class="sd">			```python</span>
-</span><span id="Composition.form-862"><a href="#Composition.form-862"><span class="linenos">862</span></a><span class="sd">			# Graph-based form — intro plays once, then never returns</span>
+</span><span id="Composition.form-862"><a href="#Composition.form-862"><span class="linenos">862</span></a><span class="sd">			# Graph-based form - intro plays once, then never returns</span>
 </span><span id="Composition.form-863"><a href="#Composition.form-863"><span class="linenos">863</span></a><span class="sd">			composition.form({</span>
 </span><span id="Composition.form-864"><a href="#Composition.form-864"><span class="linenos">864</span></a><span class="sd">				&quot;intro&quot;:     (4, [(&quot;verse&quot;, 1)]),</span>
 </span><span id="Composition.form-865"><a href="#Composition.form-865"><span class="linenos">865</span></a><span class="sd">				&quot;verse&quot;:     (8, [(&quot;chorus&quot;, 3), (&quot;bridge&quot;, 1)]),</span>
@@ -1770,13 +1770,13 @@ Async functions run directly on the event loop.</p>
 
 <p>Parameters:
         sections: Dict (graph), list, or generator of <code>(name, bars)</code> tuples
-        loop: For lists only — cycle back to start after the last section (default False)
-        start: For dicts only — initial section name (default: first dict key)</p>
+        loop: For lists only - cycle back to start after the last section (default False)
+        start: For dicts only - initial section name (default: first dict key)</p>
 
 <p>Example:</p>
 
 <pre><code>    <div class="pdoc-code codehilite">
-<pre><span></span><code><span class="c1"># Graph-based form — intro plays once, then never returns</span>
+<pre><span></span><code><span class="c1"># Graph-based form - intro plays once, then never returns</span>
 <span class="n">composition</span><span class="o">.</span><span class="n">form</span><span class="p">({</span>
         <span class="s2">&quot;intro&quot;</span><span class="p">:</span>     <span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="p">[(</span><span class="s2">&quot;verse&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)]),</span>
         <span class="s2">&quot;verse&quot;</span><span class="p">:</span>     <span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="p">[(</span><span class="s2">&quot;chorus&quot;</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;bridge&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)]),</span>

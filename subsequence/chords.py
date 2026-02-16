@@ -123,9 +123,9 @@ class Chord:
 		Example:
 			```python
 			chord = Chord(root_pc=0, quality="major")  # C major
-			chord.tones(root=60)               # [60, 64, 67] — root position
-			chord.tones(root=60, inversion=1)  # [60, 63, 68] — first inversion
-			chord.tones(root=60, count=5)      # [60, 64, 67, 72, 76] — 5 notes cycling upward
+			chord.tones(root=60)               # [60, 64, 67] - root position
+			chord.tones(root=60, inversion=1)  # [60, 63, 68] - first inversion
+			chord.tones(root=60, count=5)      # [60, 64, 67, 72, 76] - 5 notes cycling upward
 			```
 		"""
 

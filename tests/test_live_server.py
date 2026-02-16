@@ -272,7 +272,7 @@ def test_mute_unmute (patch_midi: None) -> None:
 
 	assert len(pattern.steps) > 0
 
-	# Mute — next rebuild should produce empty steps.
+	# Mute - next rebuild should produce empty steps.
 	comp.mute("my_builder")
 
 	assert pattern._muted is True
@@ -281,7 +281,7 @@ def test_mute_unmute (patch_midi: None) -> None:
 
 	assert len(pattern.steps) == 0
 
-	# Unmute — next rebuild should restore notes.
+	# Unmute - next rebuild should restore notes.
 	comp.unmute("my_builder")
 
 	assert pattern._muted is False
@@ -486,7 +486,7 @@ async def test_sys_exit_caught (composition: subsequence.Composition) -> None:
 
 	assert "SystemExit" in result
 
-	# Server should still be alive — send another command.
+	# Server should still be alive - send another command.
 	result = await _send_recv(reader, writer, "1 + 1")
 	assert result == "2"
 
@@ -504,7 +504,7 @@ async def test_eval_does_not_block_event_loop (composition: subsequence.Composit
 	await server.start()
 	port = server._server.sockets[0].getsockname()[1]
 
-	# Open two connections — one sends a slow eval, the other pings.
+	# Open two connections - one sends a slow eval, the other pings.
 	slow_reader, slow_writer = await asyncio.open_connection("127.0.0.1", port)
 	fast_reader, fast_writer = await asyncio.open_connection("127.0.0.1", port)
 
@@ -522,7 +522,7 @@ async def test_eval_does_not_block_event_loop (composition: subsequence.Composit
 	assert fast_result == "2"
 
 	# The fast eval should complete well before the 0.5s sleep finishes.
-	assert fast_duration < 0.3, f"Fast eval took {fast_duration:.2f}s — event loop was blocked"
+	assert fast_duration < 0.3, f"Fast eval took {fast_duration:.2f}s - event loop was blocked"
 
 	# Wait for the slow eval to finish.
 	slow_chunks: list[bytes] = []

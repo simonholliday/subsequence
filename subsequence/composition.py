@@ -186,7 +186,7 @@ class FormState:
 				current_name = self._current[0]
 
 				if current_name in self._terminal_sections:
-					# Terminal section — form ends.
+					# Terminal section - form ends.
 					self._finished = True
 					self._current = None
 					return True
@@ -613,7 +613,7 @@ class Composition:
 		"""
 
 		if self.key is None:
-			raise ValueError("Cannot configure harmony without a key — set key in the Composition constructor")
+			raise ValueError("Cannot configure harmony without a key - set key in the Composition constructor")
 
 		self._harmonic_state = subsequence.harmonic_state.HarmonicState(
 			key_name = self.key,
@@ -1062,7 +1062,7 @@ class Composition:
 				reschedule_lookahead = 1
 			)
 
-		# Bar counter — always active so p.bar is available to all builders.
+		# Bar counter - always active so p.bar is available to all builders.
 		def _advance_builder_bar (pulse: int) -> None:
 			self._builder_bar += 1
 
@@ -1216,7 +1216,7 @@ class Composition:
 						self._builder_fn(builder)
 
 				except Exception:
-					logger.exception("Error in pattern builder '%s' (cycle %d) — pattern will be silent this cycle", self._builder_fn.__name__, current_cycle)
+					logger.exception("Error in pattern builder '%s' (cycle %d) - pattern will be silent this cycle", self._builder_fn.__name__, current_cycle)
 
 			def on_reschedule (self) -> None:
 

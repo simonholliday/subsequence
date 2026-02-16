@@ -2,7 +2,7 @@
 
 Start the server by calling ``composition.live()`` before ``composition.play()``.
 The server listens on a TCP port (default 5555) and accepts Python code from any
-source — the bundled REPL client, an editor plugin, or a raw socket connection.
+source - the bundled REPL client, an editor plugin, or a raw socket connection.
 
 Protocol
 ────────
@@ -11,7 +11,7 @@ receives this sentinel, evaluates the code, and sends the result (or error
 traceback) followed by ``\\x04``.
 
 Security note: the server binds to ``localhost`` only. It executes arbitrary
-Python in the composition's process — this is intentional for live coding, but
+Python in the composition's process - this is intentional for live coding, but
 the port should not be exposed to untrusted networks.
 """
 
@@ -132,7 +132,7 @@ class LiveServer:
 
 		"""Validate, then eval/exec the code string. Return the result or error traceback."""
 
-		# Validate syntax before executing — never run invalid code.
+		# Validate syntax before executing - never run invalid code.
 		try:
 			compile(code, "<live>", "exec")
 		except SyntaxError:
@@ -183,7 +183,7 @@ def _blocked (name: str) -> typing.Callable:
 	"""Return a function that raises RuntimeError when called."""
 
 	def _raise (*args: typing.Any, **kwargs: typing.Any) -> None:
-		raise RuntimeError(f"{name}() is not available in live mode — it would block the sequencer.")
+		raise RuntimeError(f"{name}() is not available in live mode - it would block the sequencer.")
 
 	_raise.__name__ = name
 	_raise.__qualname__ = name

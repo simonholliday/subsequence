@@ -16,7 +16,7 @@ WEIGHT_COLOUR = 5
 
 class Suspended (subsequence.chord_graphs.ChordGraph):
 
-	"""Open harmony using suspended chords — no major or minor thirds.
+	"""Open harmony using suspended chords - no major or minor thirds.
 
 	All chords are sus2 or sus4, creating ambiguous, open textures.
 	Same-root sus2 ↔ sus4 movement (colour change without root movement)

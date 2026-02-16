@@ -90,7 +90,7 @@ async def test_safe_callback_does_not_block () -> None:
 
 	wrapped = subsequence.composition._make_safe_callback(slow_fn)
 
-	# Call and immediately check — should not have run yet.
+	# Call and immediately check - should not have run yet.
 	wrapped(0)
 	assert len(completed) == 0
 

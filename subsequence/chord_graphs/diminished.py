@@ -24,7 +24,7 @@ class Diminished (subsequence.chord_graphs.ChordGraph):
 	Diminished chords connect to each other by minor thirds (the defining
 	rotation). Dominant 7th chords sit a half step above each diminished
 	chord, acting as tension points. The result is angular, disorienting,
-	and cyclical — useful for dark techno, industrial, and experimental
+	and cyclical - useful for dark techno, industrial, and experimental
 	electronic music.
 	"""
 

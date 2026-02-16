@@ -154,7 +154,7 @@ def weighted_choice (options: typing.List[typing.Tuple[T, float]], rng: random.R
 
 	"""Pick one item from a list of (value, weight) pairs.
 
-	Weights are relative — they don't need to sum to 1.0. Higher weight means
+	Weights are relative - they don't need to sum to 1.0. Higher weight means
 	higher probability of selection.
 
 	Parameters:

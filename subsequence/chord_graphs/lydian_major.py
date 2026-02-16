@@ -20,7 +20,7 @@ class LydianMajor (subsequence.chord_graphs.ChordGraph):
 	"""Lydian-flavored major harmony with a raised fourth degree.
 
 	The raised 4th (#4) gives a bright, floating quality. The II chord
-	(major, a whole step above tonic) is the defining Lydian sound —
+	(major, a whole step above tonic) is the defining Lydian sound  - 
 	the I ↔ II "shimmer" is the strongest motion in the graph. The
 	natural IV chord is absent entirely, keeping the harmony purely modal.
 

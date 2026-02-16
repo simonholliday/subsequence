@@ -6,7 +6,7 @@ drum machines, and DAWs.
 
 Two ways to use this module:
 
-1. **As a drum_note_map** — pass ``GM_DRUM_MAP`` to the ``drum_note_map`` parameter
+1. **As a drum_note_map** - pass ``GM_DRUM_MAP`` to the ``drum_note_map`` parameter
    of ``@composition.pattern()`` and use human-readable names like ``"kick_1"``
    or ``"snare_1"`` in your pattern builder calls::
 
@@ -16,7 +16,7 @@ Two ways to use this module:
        def drums (p):
            p.hit_steps("kick_1", [0, 4, 8, 12], velocity=127)
 
-2. **As constants** — reference note numbers directly::
+2. **As constants** - reference note numbers directly::
 
        import subsequence.constants.gm_drums
 

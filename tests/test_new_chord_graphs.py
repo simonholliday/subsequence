@@ -20,7 +20,7 @@ import subsequence.harmonic_state
 
 def _assert_no_dead_ends (graph_obj: subsequence.chord_graphs.ChordGraph, key: str) -> int:
 
-	"""BFS from tonic — every reachable chord must have outgoing transitions. Returns node count."""
+	"""BFS from tonic - every reachable chord must have outgoing transitions. Returns node count."""
 
 	graph, tonic = graph_obj.build(key)
 
@@ -141,7 +141,7 @@ class TestLydianMajor:
 		assert tonic in diatonic
 		assert tonic in functional
 
-		# II (D major) — the Lydian signature — should be functional.
+		# II (D major) - the Lydian signature - should be functional.
 		supertonic = subsequence.chords.Chord(root_pc=2, quality="major")
 
 		assert supertonic in functional
@@ -437,12 +437,12 @@ class TestMixolydian:
 
 	def test_no_dominant_major (self) -> None:
 
-		"""v should be minor (not V major) — Mixolydian avoids dominant function."""
+		"""v should be minor (not V major) - Mixolydian avoids dominant function."""
 
 		graph_obj = subsequence.chord_graphs.mixolydian.Mixolydian()
 		graph, tonic = graph_obj.build("C")
 
-		# Walk all reachable chords — G major (root_pc=7) should not appear.
+		# Walk all reachable chords - G major (root_pc=7) should not appear.
 		dominant_major = subsequence.chords.Chord(root_pc=7, quality="major")
 
 		visited = set()

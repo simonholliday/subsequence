@@ -2,9 +2,9 @@
 
 This package contains three sets of constants:
 
-- ``subsequence.constants.pulses`` — Pulse-based MIDI timing (internal engine use)
-- ``subsequence.constants.durations`` — Beat-based durations for pattern lengths and steps
-- ``subsequence.constants.gm_drums`` — General MIDI Level 1 drum note map
+- ``subsequence.constants.pulses`` - Pulse-based MIDI timing (internal engine use)
+- ``subsequence.constants.durations`` - Beat-based durations for pattern lengths and steps
+- ``subsequence.constants.gm_drums`` - General MIDI Level 1 drum note map
 
 Pulse constants are re-exported here for backwards compatibility, so
 ``subsequence.constants.MIDI_QUARTER_NOTE`` continues to work.

@@ -404,7 +404,7 @@ def test_form_state_graph_dead_end_self_loops () -> None:
 
 	assert form.get_section_info().name == "end"
 
-	# Advance through "end" — should self-loop.
+	# Advance through "end" - should self-loop.
 	form.advance()
 	form.advance()
 
@@ -417,7 +417,7 @@ def test_form_state_graph_dead_end_self_loops () -> None:
 
 def test_form_state_graph_never_finishes () -> None:
 
-	"""Graph-based form should never exhaust — it always has a next section."""
+	"""Graph-based form should never exhaust - it always has a next section."""
 
 	form = subsequence.composition.FormState({
 		"A": (1, [("B", 1)]),
@@ -524,7 +524,7 @@ def test_form_state_graph_terminal_section () -> None:
 
 	assert form.get_section_info().name == "outro"
 
-	# Advance through outro (2 bars) — form should end.
+	# Advance through outro (2 bars) - form should end.
 	form.advance()
 	form.advance()
 

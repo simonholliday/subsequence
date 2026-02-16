@@ -16,7 +16,7 @@ WEIGHT_MEDIANT = 5
 
 class ChromaticMediant (subsequence.chord_graphs.ChordGraph):
 
-	"""Chromatic third-related harmony — roots move by major or minor thirds.
+	"""Chromatic third-related harmony - roots move by major or minor thirds.
 
 	All transitions connect chords whose roots are a major or minor third
 	apart, creating dramatic, colorful shifts that sound both surprising
@@ -32,7 +32,7 @@ class ChromaticMediant (subsequence.chord_graphs.ChordGraph):
 
 		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		# Core chords — major and minor triads at third-related intervals.
+		# Core chords - major and minor triads at third-related intervals.
 		tonic = subsequence.chords.Chord(root_pc=key_pc, quality="major")
 		flat_mediant = subsequence.chords.Chord(root_pc=(key_pc + 3) % 12, quality="major")
 		mediant = subsequence.chords.Chord(root_pc=(key_pc + 4) % 12, quality="major")

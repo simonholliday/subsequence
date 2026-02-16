@@ -822,7 +822,7 @@ def test_half_time_doubles_positions () -> None:
 	total_pulses = int(4 * subsequence.constants.MIDI_QUARTER_NOTE)  # 96
 	positions = sorted(pattern.steps.keys())
 
-	# Doubled: 0, 48, 96, 144 — but 96 and 144 >= total_pulses, so dropped.
+	# Doubled: 0, 48, 96, 144 - but 96 and 144 >= total_pulses, so dropped.
 	assert positions == [0, 48]
 
 	# Durations should be doubled.
@@ -1010,7 +1010,7 @@ def test_every_fires_on_cycle_zero () -> None:
 
 	builder.every(8, lambda p: p.reverse())
 
-	# Reverse should have fired — note at pulse 0 moves to total_pulses - 1.
+	# Reverse should have fired - note at pulse 0 moves to total_pulses - 1.
 	total_pulses = int(4 * subsequence.constants.MIDI_QUARTER_NOTE)
 
 	assert (total_pulses - 1) in pattern.steps
@@ -1106,7 +1106,7 @@ def test_sequence_list_longer_truncates () -> None:
 
 	pattern, builder = _make_builder(length=4)
 
-	# 2 steps but 4 pitches — extra values should be ignored.
+	# 2 steps but 4 pitches - extra values should be ignored.
 	builder.sequence([0, 4], pitches=[60, 64, 67, 72])
 
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
@@ -1124,7 +1124,7 @@ def test_sequence_list_shorter_repeats_last () -> None:
 
 	pattern, builder = _make_builder(length=4)
 
-	# 4 steps but only 2 pitches — last value (64) fills remaining.
+	# 4 steps but only 2 pitches - last value (64) fills remaining.
 	builder.sequence([0, 4, 8, 12], pitches=[60, 64])
 
 	ppq = subsequence.constants.MIDI_QUARTER_NOTE

@@ -111,7 +111,7 @@ class Sequencer:
 
 		Parameters:
 			output_device_name: MIDI output device name. When omitted, auto-discovers
-				available devices — uses the only device if one is found, or prompts
+				available devices - uses the only device if one is found, or prompts
 				the user to choose if multiple are available.
 			initial_bpm: Tempo in BPM (ignored when clock_follow is True)
 			input_device_name: Optional MIDI input device name for clock/transport
@@ -176,7 +176,7 @@ class Sequencer:
 		"""
 
 		if self.clock_follow and self.running:
-			logger.info("BPM is controlled by external clock — set_bpm() ignored")
+			logger.info("BPM is controlled by external clock - set_bpm() ignored")
 			return
 
 		if bpm <= 0:
@@ -197,7 +197,7 @@ class Sequencer:
 		"""
 
 		if self.clock_follow and self.running:
-			logger.info("BPM is controlled by external clock — set_target_bpm() ignored")
+			logger.info("BPM is controlled by external clock - set_target_bpm() ignored")
 			return
 
 		if target_bpm <= 0:
@@ -268,14 +268,14 @@ class Sequencer:
 
 				return
 
-			# Auto-discover: one device — use it.
+			# Auto-discover: one device - use it.
 			if len(outputs) == 1:
 				self.output_device_name = outputs[0]
 				self.midi_out = mido.open_output(self.output_device_name)
-				logger.info(f"One MIDI output found — using '{self.output_device_name}'")
+				logger.info(f"One MIDI output found - using '{self.output_device_name}'")
 				return
 
-			# Auto-discover: multiple devices — prompt user.
+			# Auto-discover: multiple devices - prompt user.
 			print("\nAvailable MIDI output devices:\n")
 
 			for i, name in enumerate(outputs, 1):
@@ -575,7 +575,7 @@ class Sequencer:
 
 	async def _run_loop (self) -> None:
 
-		"""Main playback loop — delegates to internal or external clock mode."""
+		"""Main playback loop - delegates to internal or external clock mode."""
 
 		self.start_time = time.perf_counter()
 		self.pulse_count = 0
