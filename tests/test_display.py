@@ -282,3 +282,48 @@ def test_composition_display_disable (patch_midi: None) -> None:
 	comp.display(enabled=False)
 
 	assert comp._display is None
+
+
+def test_format_status_with_conductor_signals (patch_midi: None) -> None:
+
+	"""Status line should include conductor signal names and formatted values."""
+
+	comp = _make_composition(patch_midi)
+	comp.conductor.lfo("swell", shape="triangle", cycle_beats=16.0)
+	comp.conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=32.0)
+
+	display = subsequence.display.Display(comp)
+	status = display._format_status()
+
+	assert "Swell:" in status
+	assert "Ramp:" in status
+
+
+def test_format_status_no_conductor_signals (patch_midi: None) -> None:
+
+	"""Status line should not contain signal info when none are registered."""
+
+	comp = _make_composition(patch_midi)
+	display = subsequence.display.Display(comp)
+	status = display._format_status()
+
+	# Should contain standard parts but no signal formatting.
+	assert "125 BPM" in status
+	assert ":" not in status.split("Key:")[-1].split("Bar:")[0].strip()
+
+
+def test_conductor_signals_sorted (patch_midi: None) -> None:
+
+	"""Conductor signals should appear in alphabetical order."""
+
+	comp = _make_composition(patch_midi)
+	comp.conductor.lfo("zebra", shape="sine", cycle_beats=16.0)
+	comp.conductor.lfo("alpha", shape="sine", cycle_beats=16.0)
+
+	display = subsequence.display.Display(comp)
+	status = display._format_status()
+
+	alpha_pos = status.index("Alpha:")
+	zebra_pos = status.index("Zebra:")
+
+	assert alpha_pos < zebra_pos

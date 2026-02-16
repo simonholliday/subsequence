@@ -1237,3 +1237,118 @@ def test_sequence_repeat_logs_warning (caplog) -> None:
 		builder.sequence([0, 4, 8, 12], pitches=[60, 64])
 
 	assert "repeating last value" in caplog.text
+
+
+# --- Strum ---
+
+
+def test_strum_places_notes_with_offset () -> None:
+
+	"""Strum with offset=0.1 should place notes at beats 0.0, 0.1, 0.2."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=4, quality="major")
+
+	builder.strum(chord, root=52, velocity=90, offset=0.1)
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+
+	expected_pulses = [
+		int(0.0 * ppq),
+		int(0.1 * ppq),
+		int(0.2 * ppq),
+	]
+
+	positions = sorted(pattern.steps.keys())
+
+	assert positions == expected_pulses
+	assert len(positions) == 3
+
+	# All notes present.
+	pitches = sorted(
+		note.pitch
+		for pos in positions
+		for note in pattern.steps[pos].notes
+	)
+
+	assert pitches == [52, 56, 59]
+
+
+def test_strum_direction_down () -> None:
+
+	"""direction='down' should reverse pitch order (highest first at beat 0)."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=4, quality="major")
+
+	builder.strum(chord, root=52, velocity=90, offset=0.1, direction="down")
+
+	positions = sorted(pattern.steps.keys())
+
+	# First note (beat 0) should be the highest pitch.
+	first_pitch = pattern.steps[positions[0]].notes[0].pitch
+	last_pitch = pattern.steps[positions[-1]].notes[0].pitch
+
+	assert first_pitch > last_pitch
+
+
+def test_strum_with_count () -> None:
+
+	"""count=5 should produce 5 notes with extended octave tones."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	builder.strum(chord, root=60, velocity=90, offset=0.1, count=5)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert total_notes == 5
+
+
+def test_strum_default_direction_is_up () -> None:
+
+	"""Default direction should be 'up' (first note is lowest pitch)."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=4, quality="major")
+
+	builder.strum(chord, root=52, velocity=90, offset=0.1)
+
+	positions = sorted(pattern.steps.keys())
+
+	first_pitch = pattern.steps[positions[0]].notes[0].pitch
+	last_pitch = pattern.steps[positions[-1]].notes[0].pitch
+
+	assert first_pitch < last_pitch
+
+
+def test_strum_invalid_offset () -> None:
+
+	"""offset=0 and offset<0 should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="offset must be positive"):
+		builder.strum(chord, root=60, offset=0)
+
+	with pytest.raises(ValueError, match="offset must be positive"):
+		builder.strum(chord, root=60, offset=-0.1)
+
+
+def test_strum_invalid_direction () -> None:
+
+	"""Invalid direction should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="direction must be"):
+		builder.strum(chord, root=60, direction="sideways")

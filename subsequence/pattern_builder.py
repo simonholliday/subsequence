@@ -372,6 +372,55 @@ class PatternBuilder:
 				duration_beats = duration
 			)
 
+	def strum (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, offset: float = 0.05, direction: str = "up") -> None:
+
+		"""
+		Play a chord with a small time offset between each note (strum effect).
+
+		Works exactly like ``chord()`` but staggers the notes instead of
+		playing them simultaneously. The first note always lands on beat 0;
+		subsequent notes are delayed by ``offset`` beats each.
+
+		Parameters:
+			chord_obj: The chord to play (usually the ``chord`` parameter
+				passed to your pattern function).
+			root: MIDI root note (e.g., 60 for Middle C).
+			velocity: MIDI velocity (default 90).
+			sustain: If True, the notes last for the entire pattern duration.
+			duration: Note duration in beats (default 1.0).
+			inversion: Specific chord inversion (ignored if voice leading is on).
+			count: Number of notes to play (cycles tones if higher than
+				the chord's natural size).
+			offset: Time in beats between each note onset (default 0.05).
+			direction: ``"up"`` for low-to-high, ``"down"`` for high-to-low.
+
+		Example:
+			```python
+			# Gentle upward strum
+			p.strum(chord, root=52, velocity=85, offset=0.06)
+
+			# Fast downward strum
+			p.strum(chord, root=52, direction="down", offset=0.03)
+			```
+		"""
+
+		if offset <= 0:
+			raise ValueError("offset must be positive")
+
+		if direction not in ("up", "down"):
+			raise ValueError(f"direction must be 'up' or 'down', got '{direction}'")
+
+		pitches = chord_obj.tones(root=root, inversion=inversion, count=count)
+
+		if direction == "down":
+			pitches = list(reversed(pitches))
+
+		if sustain:
+			duration = float(self._pattern.length)
+
+		for i, pitch in enumerate(pitches):
+			self.note(pitch=pitch, beat=i * offset, velocity=velocity, duration=duration)
+
 	def swing (self, ratio: float = 2.0) -> None:
 
 		"""

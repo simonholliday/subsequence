@@ -201,4 +201,12 @@ class Display:
 			chord = comp._harmonic_state.get_current_chord()
 			parts.append(f"Chord: {chord.name()}")
 
+		# Conductor signals (when any are registered).
+		conductor = comp.conductor
+		if conductor._signals:
+			beat = comp._builder_bar * 4
+			for name in sorted(conductor._signals):
+				value = conductor.get(name, beat)
+				parts.append(f"{name.title()}: {value:.2f}")
+
 		return "  ".join(parts)

@@ -419,7 +419,7 @@ By default, chords are played in root position. You can request a specific inver
 
 ### Manual inversions
 
-Pass `inversion` to `p.chord()` or `chord.tones()`:
+Pass `inversion` to `p.chord()`, `p.strum()`, or `chord.tones()`:
 
 ```python
 @composition.pattern(channel=0, length=4)
@@ -428,6 +428,32 @@ def chords (p, chord):
 ```
 
 Inversion 0 is root position, 1 is first inversion, 2 is second, and so on. Values wrap around for chords with fewer notes.
+
+### Strummed chords
+
+`p.strum()` works exactly like `p.chord()` but staggers the notes with a small time offset between each one - like strumming a guitar. The first note always lands on the beat; subsequent notes are delayed by `offset` beats each.
+
+```python
+@composition.pattern(channel=0, length=4)
+def guitar (p, chord):
+    # Gentle upward strum (low to high)
+    p.strum(chord, root=52, velocity=85, offset=0.06)
+
+    # Fast downward strum (high to low)
+    p.strum(chord, root=52, direction="down", offset=0.03)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `chord_obj` | Chord | required | The chord to strum |
+| `root` | int | required | MIDI root note |
+| `velocity` | int | 90 | MIDI velocity |
+| `duration` | float | 1.0 | Note duration in beats |
+| `offset` | float | 0.05 | Time in beats between each note onset |
+| `direction` | str | `"up"` | `"up"` = low→high, `"down"` = high→low |
+| `inversion` | int | 0 | Chord inversion (ignored with voice leading) |
+| `count` | int or None | None | Number of notes (cycles into octaves if > chord size) |
+| `sustain` | bool | False | If True, notes last the entire pattern duration |
 
 ### Automatic voice leading
 
@@ -622,10 +648,10 @@ composition.play()
 The status line updates every bar and looks like:
 
 ```
-125 BPM  Key: E  Bar: 17  [chorus 1/8]  Chord: Em7
+125 BPM  Key: E  Bar: 17  [chorus 1/8]  Chord: Em7  Swell: 0.42  Tide: 0.78
 ```
 
-When form is not configured, the section is omitted. When harmony is not configured, the chord is omitted. Log messages scroll cleanly above the status line without disruption.
+Components adapt to what's configured - the section is omitted if no form is set, the chord is omitted if no harmony is configured, and conductor signals only appear when registered. Log messages scroll cleanly above the status line without disruption.
 
 To disable:
 
