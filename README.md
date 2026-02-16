@@ -16,12 +16,15 @@ Subsequence is built for **MIDI-literate musicians who can write some simple Pyt
 - [Quick start](#quick-start)
 - [Composition API](#composition-api)
 - [Direct Pattern API](#direct-pattern-api)
-- [Form (sections)](#form-sections)
+- [Mini-notation](#mini-notation)
+- [Form and sections](#form-and-sections)
+- [The Conductor](#the-conductor)
 - [Chord inversions and voice leading](#chord-inversions-and-voice-leading)
+- [Harmony and chord graphs](#harmony-and-chord-graphs)
 - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
 - [Terminal display](#terminal-display)
 - [Live coding](#live-coding)
-- [MIDI input & external clock](#midi-input--external-clock)
+- [MIDI input and external clock](#midi-input-and-external-clock)
 - [OSC integration](#osc-integration)
 - [Examples](#examples)
 - [Extra utilities](#extra-utilities)
@@ -288,7 +291,7 @@ def _build_pattern(self):
     p.seq("x . x [x x]", pitch=36)
 ```
 
-## Form (sections)
+## Form and sections
 
 Define the large-scale structure of your composition with `composition.form()`. Patterns read `p.section` to decide what to play.
 
@@ -357,7 +360,7 @@ composition.form(my_form())
 
 `p.bar` is always available (regardless of form) and tracks the global bar count since playback started.
 
-## The Conductor (Global Automation)
+## The Conductor
 
 Patterns often feel static when they just loop. **The Conductor** provides global signals (LFOs and automation lines) that patterns can read to modulate parameters over time.
 
@@ -696,7 +699,7 @@ python -c "import socket; s=socket.socket(); s.connect(('127.0.0.1',5555)); s.se
 
 All code is validated as syntactically correct Python before execution. If you send a typo or malformed code, the server returns a `SyntaxError` traceback - nothing is executed, and the running composition is never affected.
 
-## MIDI input & external clock
+## MIDI input and external clock
 
 Subsequence can follow an external MIDI clock instead of running its own. This lets you sync with a DAW, drum machine, or any device that sends MIDI clock. Transport messages (start, stop, continue) are respected automatically.
 
