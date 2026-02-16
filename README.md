@@ -33,7 +33,7 @@ Subsequence is built for **MIDI-literate musicians who can write some simple Pyt
 - **Harmonic intelligence.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted probabilities.[^markov] Six built-in harmonic palettes - `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, `"phrygian_minor"`, `"lydian_major"`, and `"dorian_minor"` - or create your own `ChordGraph`. Patterns that accept a `chord` parameter automatically receive the current chord. Chord inversions and voice leading keep voices moving smoothly between changes.
 - **Compositional form.** Define the large-scale structure - intro, verse, chorus, bridge - as a weighted graph, a linear list, or a generator function that yields sections one at a time. Sections follow weighted paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior.
 - **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
-- **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for Elektron-style conditional triggers.
+- **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for step-based conditional triggers.
 - **Randomness tools.**[^stochastic] Weighted random choice, no-repeat shuffle, random walks, and probability gates - controlled randomness that sounds intentional, not arbitrary. All available in `subsequence.sequence_utils`.
 - **Deterministic seeding.** Set `seed=42` on your Composition and every random decision - chord progressions, form transitions, pattern randomness - becomes repeatable. Run the same code twice, get the same music. Use `p.rng` in your patterns for seeded randomness.
 - **Polyrhythms** emerge naturally by running patterns with different lengths. Pattern length can be any number - use `length=9` for 9 quarter notes, `length=10.5` for 21 eighth notes. Patterns can even change length on rebuild via `p.set_length()`.
@@ -188,15 +188,43 @@ if __name__ == "__main__":
 
 For the full version with form, external data, and five patterns, see `examples/demo_advanced.py`.
 
-### Choosing an API
+### API Comparison
 
-The Composition API is built on top of the Direct Pattern API - both produce the same MIDI output using the same engine.
+| Feature | Composition API | Direct Pattern API |
+|---------|-----------------|--------------------|
+| **Primary Paradigm** | Declarative / Functional | Object-Oriented (OO) |
+| **User Code** | Decorated functions | Pattern subclasses |
+| **Complexity** | Low (Musician-friendly) | Medium (Developer-friendly) |
+| **Lifecycle** | Automated (`play()`) | Manual (`asyncio.run()`) |
+| **State** | Stateless builders | Persistent instance variables |
 
-**Composition API** is the recommended starting point. Patterns are simple functions, chords and section info are injected automatically, and scheduling is handled for you. The `PatternBuilder` inside `@composition.pattern()` gives you all the same musical tools - chords, arpeggios, euclidean rhythms, transforms, per-step control via `sequence()` - so most musicians will never need the Direct API.
+**1. Composition API** (`composition.py`)
+This is the recommended starting point for most musicians. It handles the boring stuff (async loop, MIDI device discovery, clock management) so you can focus on writing patterns.
+*   **Best for:** Rapid prototyping, standard song forms, live coding.
+*   **Limitation:** Patterns are stateless functions that get rebuilt from scratch every cycle. To keep state (like a counter), you need global variables or closures.
 
-**Direct Pattern API** is for when you need things the Composition API doesn't expose: persistent pattern state across rebuild cycles, custom async scheduling, direct access to the event loop, or raw pulse-level timing. Use it for the entire composition - `examples/demo_advanced.py` shows the full setup.
+**2. Direct Pattern API** (`pattern.py`)
+This gives you full control by letting you subclass `Pattern` directly. It's for power users who need features the Composition API abstracts away.
+*   **Unique Capabilities:**
+    *   **Persistent State:** Store variables in `self` that persist across cycles (e.g., an evolving density counter).
+    *   **Incremental Updates:** In `on_reschedule()`, you can modify existing notes instead of clearing `self.steps`.
+    *   **Custom Scheduling:** Launch async tasks that don't align with the pattern's cycle.
+    *   **Multiple Contexts:** Run multiple independent sequencers or harmonic states.
 
-### Advanced: accessing internal state
+*   **Example:** A pattern that gets denser every cycle:
+    ```python
+    class EvolvingPattern(subsequence.pattern.Pattern):
+        def __init__(self):
+            super().__init__(channel=0, length=4)
+            self.density = 0.5 
+
+        def on_reschedule(self):
+            self.density += 0.05  # State persists!
+            self.steps = {}       # Clear old notes
+            self.euclidean(pulses=int(16 * self.density))
+    ```
+
+### Accessing internal state
 
 The `Composition` object stores its harmonic and form state internally. After calling `harmony()` and `form()`:
 
@@ -204,7 +232,7 @@ The `Composition` object stores its harmonic and form state internally. After ca
 - `composition._form_state` - the `FormState` object (same one `p.section` reads from)
 - `composition._sequencer` - the underlying `Sequencer` instance
 
-These are internal attributes (underscore-prefixed) but accessible for advanced use. If you need Pattern subclasses alongside decorated patterns, the simplest approach is to use the Direct Pattern API for the entire composition - create a `HarmonicState` and `FormState` manually, then pass them to both simple helper patterns and complex Pattern subclasses. `examples/demo.py` and `examples/demo_advanced.py` produce the same music using each API.
+If you need `Pattern` subclasses alongside decorated patterns, the simplest approach is to use the Direct Pattern API for the entire composition - create a `HarmonicState` and `FormState` manually, then pass them to both simple helper patterns and complex Pattern subclasses. `examples/demo.py` and `examples/demo_advanced.py` produce the same music using each API.
 
 ## Form (sections)
 
@@ -364,8 +392,8 @@ def drums (p):
 | Function | Description |
 |----------|-------------|
 | `weighted_choice(options, rng)` | Pick from `(value, weight)` pairs - biased selection |
-| `shuffled_choices(pool, n, rng)` | N items with no adjacent repeats (Max/MSP `urn`) |
-| `random_walk(n, low, high, step, rng)` | Values that drift by small steps (Max/MSP `drunk`) |
+| `shuffled_choices(pool, n, rng)` | N items with no adjacent repeats (classic `urn` algorithm) |
+| `random_walk(n, low, high, step, rng)` | Values that drift by small steps (classic `drunk` algorithm) |
 | `probability_gate(sequence, probability, rng)` | Filter a binary sequence by probability |
 
 All require an explicit `rng` parameter - use `p.rng` in pattern builders:
@@ -523,7 +551,7 @@ Without `clock_follow` (the default), `midi_input()` opens the input port but do
 
 ## OSC integration
 
-Subsequence includes Open Sound Control (OSC) support for remote control and state broadcasting. This is useful for connecting to modular synth environments (like VCV Rack or Reaktor), custom touch interfaces (TouchOSC), or other creative coding tools.
+Subsequence includes Open Sound Control (OSC) support for remote control and state broadcasting. This is useful for connecting to modular synth environments, custom touch interfaces, or other creative coding tools.
 
 ### Enable OSC
 
@@ -584,8 +612,6 @@ The `examples/` directory contains self-documenting compositions demonstrating d
 1. Run: `python examples/filename.py`
 2. Press Ctrl+C to stop
 
-Current examples include aeolian minor harmony with graph-based form, polyrhythmic arpeggios with float pattern lengths, phrygian minor with Euclidean rhythms, Jarre-inspired electronic suites, and jazz fusion with coprime polyrhythms.
-
 ## Extra utilities
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
@@ -619,7 +645,7 @@ Planned features, roughly in order of priority.
 - **Mini-notation.** An optional string shorthand (e.g., `"x . x [x x]"`) that compiles to `hit_steps` calls for quick rhythm entry.
 - **MIDI CC mapping.** Map hardware knobs and controllers to `composition.data` via event handlers (e.g., "map CC 1 to probability") so Subsequence feels like a hybrid hardware/software instrument for live performance. MIDI input port and clock following are already supported via `composition.midi_input()`.
 - **Performance profiling.** Optional debug mode to log timing for each `on_reschedule()` call, helping identify custom pattern logic that may cause timing jitter or performance issues.
-- **Ableton Link.** Peer-to-peer network sync with DAWs and other Link-enabled devices.
+- **Network Sync.** Peer-to-peer network sync with DAWs and other Link-enabled devices.
 
 ### Future ideas
 
