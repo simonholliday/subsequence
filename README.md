@@ -443,18 +443,6 @@ def guitar (p, chord):
     p.strum(chord, root=52, direction="down", offset=0.03)
 ```
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `chord_obj` | Chord | required | The chord to strum |
-| `root` | int | required | MIDI root note |
-| `velocity` | int | 90 | MIDI velocity |
-| `duration` | float | 1.0 | Note duration in beats |
-| `offset` | float | 0.05 | Time in beats between each note onset |
-| `direction` | str | `"up"` | `"up"` = low→high, `"down"` = high→low |
-| `inversion` | int | 0 | Chord inversion (ignored with voice leading) |
-| `count` | int or None | None | Number of notes (cycles into octaves if > chord size) |
-| `sustain` | bool | False | If True, notes last the entire pattern duration |
-
 ### Automatic voice leading
 
 Add `voice_leading=True` to the pattern decorator. The injected chord will automatically choose the inversion with the smallest total pitch movement from the previous chord:
