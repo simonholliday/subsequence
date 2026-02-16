@@ -1,6 +1,6 @@
 # Subsequence
 
-**A Stateful Generative MIDI Sequencer for Python.** Subsequence combines the immediate workflow of a hardware sequencer with the architectural depth of Python code. It is designed for the **System Architect** - the musician who wants to build a machine that plays itself with memory, evolution, and intention.
+**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence combines the immediate workflow of a hardware sequencer with the architectural depth of Python code. It is designed for the **System Architect** - the musician who wants to build a machine that plays with memory, evolution, and intention.
 
 Unlike stateless libraries that loop forever, Subsequence 'compiles' each cycle ahead of time. This stateful architecture allows for context-aware harmony, long-form structure, and determinism. You can build complex, evolving systems where a pattern knows what happened in the previous bar, or compose traditional linear pieces with fixed notes and sections.
 
