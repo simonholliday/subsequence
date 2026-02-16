@@ -16,6 +16,7 @@ import subsequence.pattern_builder
 import subsequence.sequencer
 import subsequence.voicings
 import subsequence.weighted_graph
+import subsequence.conductor
 
 
 logger = logging.getLogger(__name__)
@@ -555,6 +556,7 @@ class Composition:
 		self._clock_follow: bool = False
 		self.data: typing.Dict[str, typing.Any] = {}
 		self._osc_server: typing.Optional[subsequence.osc.OscServer] = None
+		self.conductor = subsequence.conductor.Conductor()
 
 	def harmony (
 		self,
@@ -1285,6 +1287,7 @@ class Composition:
 					drum_note_map = self._drum_note_map,
 					section = composition_ref._form_state.get_section_info() if composition_ref._form_state else None,
 					bar = composition_ref._builder_bar,
+					conductor = composition_ref.conductor,
 					rng = self._rng
 				)
 

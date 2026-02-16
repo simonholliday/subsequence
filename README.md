@@ -357,6 +357,49 @@ composition.form(my_form())
 
 `p.bar` is always available (regardless of form) and tracks the global bar count since playback started.
 
+## The Conductor (Global Automation)
+
+Patterns often feel static when they just loop. **The Conductor** provides global signals (LFOs and automation lines) that patterns can read to modulate parameters over time.
+
+### Defining Signals
+
+Create signals in your composition setup:
+
+```python
+# A sine wave LFO that cycles every 16 bars
+composition.conductor.lfo("swell", shape="sine", cycle_beats=16*4)
+
+# A ramp that builds from 0.0 to 1.0 over 32 bars, then stays at 1.0
+composition.conductor.line("intensity", start_val=0.0, end_val=1.0, duration_beats=32*4)
+```
+
+### Using Signals in Patterns
+
+Pattern builders access the conductor via `p.c` (short for `p.conductor`). You can request the value of any signal by name:
+
+```python
+@composition.pattern(channel=0, length=4)
+def pads(p):
+    # Read the current value (0.0 - 1.0)
+    swell_amt = p.c.get("swell", p.bar * 4)
+    
+    # Or simply index by name (uses the pattern's current time automatically)
+    # This is the preferred, cleaner syntax
+    # Note: Access via [] is not yet implemented, use p.c.get() for now or wait for v1.2
+```
+
+*Wait, `p.c` currently requires explicit time in `get()`. Let's clarify the API:*
+
+```python
+@composition.pattern(channel=0, length=4)
+def pads(p):
+    # Get signal value at the current bar
+    # 1 bar = 4 beats
+    dynamics = p.c.get("swell", beat=p.bar * 4)
+    
+    p.chord(chord, root=60, velocity=int(60 + 60 * dynamics))
+```
+
 ## Chord inversions and voice leading
 
 By default, chords are played in root position. You can request a specific inversion, or enable automatic voice leading so each chord picks the inversion closest to the previous one.
@@ -784,6 +827,7 @@ Planned features, roughly in order of priority.
 ### High priority
 
 - **Example library.** A handful of short compositions in different styles so musicians can hear what the tool can do before investing time.
+- **Conductor `[]` access.** Allow `p.c["name"]` syntax which automatically infers the current time from the pattern builder state. Currently `p.c.get("name", time)` is required.
 
 ### Medium priority
 

@@ -7,6 +7,7 @@ import subsequence.constants.velocity
 import subsequence.pattern
 import subsequence.sequence_utils
 import subsequence.mini_notation
+import subsequence.conductor
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +46,24 @@ class PatternBuilder:
 	Provides high-level musical methods for building pattern content.
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info."""
 
 		self._pattern = pattern
 		self.cycle = cycle
+		self.conductor = conductor
 		self._drum_note_map = drum_note_map
 		self.section = section
 		self.bar = bar
 		self.rng: random.Random = rng or random.Random()
+
+	@property
+	def c (self) -> typing.Optional[subsequence.conductor.Conductor]:
+		
+		"""Alias for self.conductor."""
+		
+		return self.conductor
 
 	def set_length (self, length: float) -> None:
 
