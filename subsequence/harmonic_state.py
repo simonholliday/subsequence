@@ -3,12 +3,15 @@ import typing
 
 import subsequence.chord_graphs.aeolian_minor
 import subsequence.chord_graphs.chromatic_mediant
+import subsequence.chord_graphs.diminished
 import subsequence.chord_graphs.dorian_minor
 import subsequence.chord_graphs.functional_major
 import subsequence.chord_graphs.lydian_major
+import subsequence.chord_graphs.mixolydian
 import subsequence.chord_graphs.phrygian_minor
 import subsequence.chord_graphs.suspended
 import subsequence.chord_graphs.turnaround_global
+import subsequence.chord_graphs.whole_tone
 import subsequence.chords
 import subsequence.weighted_graph
 
@@ -63,6 +66,18 @@ def _resolve_graph_style (
 	if style == "suspended":
 
 		return subsequence.chord_graphs.suspended.Suspended()
+
+	if style == "mixolydian":
+
+		return subsequence.chord_graphs.mixolydian.Mixolydian()
+
+	if style == "whole_tone":
+
+		return subsequence.chord_graphs.whole_tone.WholeTone()
+
+	if style == "diminished":
+
+		return subsequence.chord_graphs.diminished.Diminished()
 
 	raise ValueError(f"Unknown graph style: {style}")
 

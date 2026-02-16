@@ -398,6 +398,9 @@ composition.harmony(
 | `"dorian_minor"` | Minor with major IV (soul, funk) |
 | `"chromatic_mediant"` | Film-score style third-relation shifts |
 | `"suspended"` | Ambiguous sus2/sus4 palette |
+| `"mixolydian"` | Major with flat 7th; open, unresolved (EDM, synthwave) |
+| `"whole_tone"` | Symmetrical augmented palette; dreamlike drift (IDM, ambient) |
+| `"diminished"` | Minor-third symmetry; angular, disorienting (dark, experimental) |
 
 ### Harmonic gravity
 
