@@ -104,11 +104,77 @@ class HarmonicState:
 
 		self.rng = rng or random.Random()
 		self.current_chord = tonic
+		self.history: typing.List[subsequence.chords.Chord] = []
 
+
+	def _calculate_nir_score (self, source: subsequence.chords.Chord, target: subsequence.chords.Chord) -> float:
+
+		"""
+		Calculate a Narmour Implication-Realization (NIR) score for a transition.
+		Returns a multiplier (default 1.0, >1.0 for boost).
+		"""
+
+		if not self.history:
+			return 1.0
+
+		prev = self.history[-1]
+
+		# Calculate interval from Prev -> Source (The "Implication" generator)
+		# Using shortest-path distance in Pitch Class space (-6 to +6)
+		prev_diff = (source.root_pc - prev.root_pc) % 12
+		if prev_diff > 6:
+			prev_diff -= 12
+
+		prev_interval = abs(prev_diff)
+		prev_direction = 1 if prev_diff > 0 else -1 if prev_diff < 0 else 0
+
+		# Calculate interval from Source -> Target (The "Realization")
+		target_diff = (target.root_pc - source.root_pc) % 12
+		if target_diff > 6:
+			target_diff -= 12
+
+		target_interval = abs(target_diff)
+		target_direction = 1 if target_diff > 0 else -1 if target_diff < 0 else 0
+
+		score = 1.0
+
+		# --- Rule A: Reversal (Gap Fill) ---
+		# If previous was a Large Leap (> 4 semitones like P4, P5, m6), expect direction change.
+		if prev_interval > 4:
+			# Expect change in direction
+			if target_direction != prev_direction and target_direction != 0:
+				score += 0.5
+
+			# Expect smaller interval (Gap Fill)
+			if target_interval < 4:
+				score += 0.3
+
+		# --- Rule B: Process (Continuation/Inertia) ---
+		# If previous was Small Step (< 3 semitones), expect similarity.
+		elif prev_interval > 0 and prev_interval < 3:
+			# Expect same direction
+			if target_direction == prev_direction:
+				score += 0.4
+
+			# Expect similar size
+			if abs(target_interval - prev_interval) <= 1:
+				score += 0.2
+
+		# --- Rule C: Closure ---
+		# Return to Tonic (Closure) is often implied after tension
+		if target.root_pc == self.key_root_pc:
+			score += 0.2
+
+		return score
 
 	def step (self) -> subsequence.chords.Chord:
 
 		"""Advance to the next chord based on the transition graph."""
+
+		# Update history before choosing next (so structure tracks the path)
+		self.history.append(self.current_chord)
+		if len(self.history) > 4:
+			self.history.pop(0)
 
 		def weight_modifier (
 			source: subsequence.chords.Chord,
@@ -123,8 +189,11 @@ class HarmonicState:
 
 			# Decision path: blend controls whether key gravity favors functional or full diatonic chords.
 			boost = (1.0 - self.key_gravity_blend) * is_function + self.key_gravity_blend * is_diatonic
+			
+			# Apply NIR gravity
+			nir_score = self._calculate_nir_score(source, target)
 
-			return 1.0 + boost
+			return (1.0 + boost) * nir_score
 
 		# Decision path: chord changes occur here; key changes are not automatic.
 		self.current_chord = self.graph.choose_next(self.current_chord, self.rng, weight_modifier=weight_modifier)
