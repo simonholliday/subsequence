@@ -1,17 +1,39 @@
 # Subsequence
 
-**A Stateful Generative MIDI Sequencer for Python.** Subsequence combines the immediate workflow of a hardware sequencer with the architectural depth of Python code. Unlike stateless libraries, it 'compiles' each cycle ahead of time, allowing for deterministic control, context-aware harmony, and complex macro-structures.
+**A Stateful Generative MIDI Sequencer for Python.** Subsequence combines the immediate workflow of a hardware sequencer with the architectural depth of Python code. It is designed for the **System Architect** - the musician who wants to build a machine that plays itself with memory, evolution, and intention.
 
-It is designed for the **System Architect** - the musician who wants to build a machine that plays itself, with memory, evolution, and intention.
+Unlike stateless libraries that loop forever, Subsequence 'compiles' each cycle ahead of time. This stateful architecture allows for context-aware harmony, long-form structure, and determinism. You can build complex, evolving systems where a pattern knows what happened in the previous bar, or compose traditional linear pieces with fixed notes and sections.
 
-Standard generative tools often produce random notes that lack tonal gravity or structural coherence. Subsequence prioritizes **musicality**: functional harmony, voice leading, and long-form structure are built-in primitives, not afterthoughts. It is a complete environment for **algorithmic composition** where you write patterns as simple functions that respond to the current chord, section, and cycle count.
+It is a **"Headless Brain"** for your studio. It generates pure MIDI to control your hardware instruments, modular synthesizers, or VSTs, replacing limited hardware sequencers with an infinite, code-driven engine.
 
-Set a seed and get the same music every time - tweak and re-run until it's right. Change patterns, tempo, and chords while the music plays. Sync to a MIDI clock from your DAW or drum machine.
+## Introduction
 
-Subsequence is built for **MIDI-literate musicians who can write some simple Python code**. Patterns are plain Python functions with full access to conditionals, randomness, and external data. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with. Two dependencies, pure MIDI output - route it to any hardware or software synth you already use. Everything is code, and code is versionable, shareable, and comparable.
+### The "Stateful" Advantage
+Most live-coding environments are **stateless**: passing time determines the event. This excels at cyclic, rhythmic music (techno, polyrhythms) but struggles with narrative. Subsequence is **stateful**: it remembers history. 
+
+This means a pattern can look back at the previous cycle to decide its next move ("if I played a C last bar, play an E this bar"). It allows for **motivic development** - ideas that evolve over time rather than just repeating. It also supports traditional linear composition: because the system tracks "Song Position" and "Section", you can write a piece with a distinct Intro, Verse, and Chorus, where specific notes play at specific times, just like in a DAW.
+
+### Cognitive Melody Generation
+Standard generative tools often rely on "Scale Masking" (picking random notes from a scale), which ensures no "wrong" notes but often results in aimless melodies.
+
+Subsequence integrates the **Narmour Implication-Realization model**, a theory of music cognition that predicts what listeners *expect* to hear. It models **melodic inertia**:
+*   **Implication:** A series of small steps in one direction implies continuation.
+*   **Gap-Fill:** A large leap implies a reversal to fill the gap.
+
+By encoding these principles, Subsequence generates melodies that feel structured and intentional, satisfying the listener's innate expectations of musical grammar.
+
+### The "System Architect" Workflow
+Subsequence is not an "AI Music Generator" that gives you a finished song from a prompt. It is a workbench for **Algorithmic Composition**.
+
+*   **Don't Prompt. Architect.** You define the rules, the probabilities, and the structure. You are the designer of the system.
+*   **Code is the Interface.** Patterns are plain Python functions. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with.
+*   **Deterministic Control.** Set a seed and get the exact same "random" results every time. Tweak your code and re-run to perfect the output, just like compiling software.
+
+Subsequence connects to your existing world. Sync it to your DAW's clock, or let it drive your Eurorack system. It provides the logic; you provide the sound.
 
 ## Contents
 
+- [Introduction](#introduction)
 - [What it does](#what-it-does)
 - [Quick start](#quick-start)
 - [Composition API](#composition-api)
