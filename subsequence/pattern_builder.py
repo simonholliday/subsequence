@@ -6,6 +6,7 @@ import subsequence.constants
 import subsequence.constants.velocity
 import subsequence.pattern
 import subsequence.sequence_utils
+import subsequence.mini_notation
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +240,59 @@ class PatternBuilder:
 
 			beat = step_idx * step_duration
 			self.note(pitch=pitches_list[i], beat=beat, velocity=velocities_list[i], duration=durations_list[i])
+
+	def seq (self, notation: str, pitch: typing.Union[str, int, None] = None, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY) -> None:
+
+		"""
+		Generate notes from a mini-notation string.
+
+		The string defines the rhythm. Events are distributed evenly over the pattern's length.
+		
+		Syntax:
+			- Space-separated items are distributed evenly over the duration.
+			- `[...]` groups items into a single step (subdivision).
+			- `~` or `.` is a rest.
+			- `_` extends the previous note (legato/sustain).
+
+		If `pitch` is provided (e.g. `pitch="kick"` or `pitch=60`), the symbols in the
+		notation string are treated as triggers for that pitch.
+		
+		If `pitch` is None (the default), the symbols in the notation string are
+		interpreted as pitches (either drum names or note numbers).
+
+		Example:
+			```python
+			# Rhythm for a drum (symbols are triggers)
+			p.seq("x x [x x] x", pitch="kick")
+
+			# Melody (symbols are pitches)
+			p.seq("60 62 [64 65] 67")
+			
+			# Drum pattern (symbols are drum names)
+			p.seq("kick snare [kick kick] snare")
+			```
+		"""
+
+		events = subsequence.mini_notation.parse(notation, total_duration=float(self._pattern.length))
+
+		for event in events:
+			
+			current_pitch = pitch
+			
+			# If no global pitch provided, use the symbol as the pitch
+			if current_pitch is None:
+				# Try converting to int if it looks like a number
+				if event.symbol.isdigit():
+					current_pitch = int(event.symbol)
+				else:
+					current_pitch = event.symbol
+
+			self.note(
+				pitch = current_pitch,
+				beat = event.time,
+				duration = event.duration,
+				velocity = velocity
+			)
 
 	def fill (self, pitch: typing.Union[int, str], step: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> None:
 

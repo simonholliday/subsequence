@@ -37,6 +37,7 @@ Subsequence is built for **MIDI-literate musicians who can write some simple Pyt
 - **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
 - **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for step-based conditional triggers.
 - **Randomness tools.**[^stochastic] Weighted random choice, no-repeat shuffle, random walks, and probability gates - controlled randomness that sounds intentional, not arbitrary. All available in `subsequence.sequence_utils`.
+- **Mini-notation.** Concise string syntax for rhythms and melodies. Write `p.seq("x x [x x] x", pitch="kick")` instead of verbose list definitions. Supports subdivisions `[...]`, rests `.`/`~`, and sustains `_`.
 - **Deterministic seeding.** Set `seed=42` on your Composition and every random decision - chord progressions, form transitions, pattern randomness - becomes repeatable. Run the same code twice, get the same music. Use `p.rng` in your patterns for seeded randomness.
 - **Polyrhythms** emerge naturally by running patterns with different lengths. Pattern length can be any number - use `length=9` for 9 quarter notes, `length=10.5` for 21 eighth notes. Patterns can even change length on rebuild via `p.set_length()`.
 - **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Functions run in the background automatically. Store results in `composition.data` and read them from any pattern - connect music to APIs, sensors, files, or anything Python can reach.
@@ -235,6 +236,57 @@ The `Composition` object stores its harmonic and form state internally. After ca
 - `composition._sequencer` - the underlying `Sequencer` instance
 
 If you need `Pattern` subclasses alongside decorated patterns, the simplest approach is to use the Direct Pattern API for the entire composition - create a `HarmonicState` and `FormState` manually, then pass them to both simple helper patterns and complex Pattern subclasses. `examples/demo.py` and `examples/demo_advanced.py` produce the same music using each API.
+
+## Mini-notation
+
+For quick rhythmic or melodic entry, Subsequence offers a concise string syntax inspired by live-coding environments. This allows you to express complex rhythms and subdivisions without verbose list definitions.
+
+### Rhythm (Fixed Pitch)
+
+When you provide a `pitch` argument, the string defines the rhythm. Any symbol (except special characters) is treated as a hit.
+
+```python
+@composition.pattern(channel=DRUMS_CHANNEL, length=4)
+def drums(p):
+    # Kick on beats 0, 2, 3
+    p.seq("x . x x", pitch="kick")
+
+    # Hi-hats with subdivisions:
+    # [x x] puts two hits in the space of one
+    p.seq("x [x x] x x", pitch="hh", velocity=80)
+```
+
+### Melody (Symbol as Pitch)
+
+When `pitch` is omitted, the symbols in the string are interpreted as pitches (MIDI note numbers or drum names).
+
+```python
+@composition.pattern(channel=SYNTH_CHANNEL, length=4)
+def melody(p):
+    # Play 60, 62, hold 62, then 64
+    # "_" sustains the previous note
+    p.seq("60 62 _ 64")
+```
+
+### Syntax Reference
+
+| Symbol | Description |
+|--------|-------------|
+| `x` | Event (note/hit) |
+| `.` or `~` | Rest |
+| `_` | Sustain (legato) |
+| `[ ... ]` | Subdivision |
+
+### Using with Direct Pattern API
+
+While designed for the Composition API, you can use mini-notation in `Pattern` subclasses by wrapping `self` in a `PatternBuilder`:
+
+```python
+def _build_pattern(self):
+    # Create a transient builder to access high-level features
+    p = subsequence.pattern_builder.PatternBuilder(self, cycle=0)
+    p.seq("x . x [x x]", pitch=36)
+```
 
 ## Form (sections)
 
@@ -735,7 +787,6 @@ Planned features, roughly in order of priority.
 
 ### Medium priority
 
-- **Mini-notation.** An optional string shorthand (e.g., `"x . x [x x]"`) that compiles to `hit_steps` calls for quick rhythm entry.
 - **MIDI CC mapping.** Map hardware knobs and controllers to `composition.data` via event handlers (e.g., "map CC 1 to probability") so Subsequence feels like a hybrid hardware/software instrument for live performance. This enables full **MIDI CC automation** of any Python variable. MIDI input port and clock following are already supported via `composition.midi_input()`.
 - **Performance profiling.** Optional debug mode to log timing for each `on_reschedule()` call, helping identify custom pattern logic that may cause timing jitter or performance issues.
 - **Network Sync.** Peer-to-peer network sync with DAWs and other Link-enabled devices.
