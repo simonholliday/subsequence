@@ -35,6 +35,9 @@ class LFO(Signal):
 			phase: Phase offset (0.0 to 1.0).
 		"""
 		
+		if cycle_beats <= 0:
+			raise ValueError("cycle_beats must be positive")
+
 		self.shape = shape
 		self.cycle_beats = cycle_beats
 		self.min_val = min_val
@@ -95,6 +98,9 @@ class Line(Signal):
 			loop: Whether to jump back to start_val and repeat (default False).
 		"""
 		
+		if duration_beats <= 0:
+			raise ValueError("duration_beats must be positive")
+
 		self.start_val = start_val
 		self.end_val = end_val
 		self.duration_beats = duration_beats

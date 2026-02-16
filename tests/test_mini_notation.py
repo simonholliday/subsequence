@@ -96,12 +96,54 @@ def test_sustain ():
 	assert events[1].time == 2.0
 
 
+def test_empty_string ():
+
+	"""Test empty notation returns no events."""
+
+	events = subsequence.mini_notation.parse("", total_duration=4.0)
+
+	assert events == []
+
+
+def test_consecutive_sustains ():
+
+	"""Test multiple consecutive sustains extend the same note."""
+
+	events = subsequence.mini_notation.parse("a _ _ _", total_duration=4.0)
+
+	assert len(events) == 1
+	assert events[0].symbol == "a"
+	assert events[0].duration == 4.0
+
+
+def test_sustain_at_start ():
+
+	"""Test sustain at start with no prior note is ignored."""
+
+	events = subsequence.mini_notation.parse("_ _ a", total_duration=3.0)
+
+	assert len(events) == 1
+	assert events[0].symbol == "a"
+	assert events[0].time == 2.0
+
+
+def test_invalid_total_duration ():
+
+	"""Test that zero or negative total_duration raises ValueError."""
+
+	with pytest.raises(ValueError):
+		subsequence.mini_notation.parse("a b", total_duration=0)
+
+	with pytest.raises(ValueError):
+		subsequence.mini_notation.parse("a b", total_duration=-1.0)
+
+
 def test_errors ():
 
 	"""Test invalid syntax."""
-	
+
 	with pytest.raises(subsequence.mini_notation.MiniNotationError):
 		subsequence.mini_notation._tokenize("a [ b")
-		
+
 	with pytest.raises(subsequence.mini_notation.MiniNotationError):
 		subsequence.mini_notation._tokenize("a ] b")

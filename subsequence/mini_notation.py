@@ -51,8 +51,11 @@ def parse (notation: str, total_duration: float = 4.0) -> typing.List[ParsedEven
 		```
 	"""
 
+	if total_duration <= 0:
+		raise ValueError("total_duration must be positive")
+
 	tokens = _tokenize(notation)
-	
+
 	events = _parse_recursive(tokens, 0.0, total_duration)
 	
 	return _post_process_sustains(events)

@@ -375,28 +375,14 @@ composition.conductor.line("intensity", start_val=0.0, end_val=1.0, duration_bea
 
 ### Using Signals in Patterns
 
-Pattern builders access the conductor via `p.c` (short for `p.conductor`). You can request the value of any signal by name:
+Pattern builders access the conductor via `p.c` (short for `p.conductor`). Request the value of any signal by name and beat time:
 
 ```python
 @composition.pattern(channel=0, length=4)
 def pads(p):
-    # Read the current value (0.0 - 1.0)
-    swell_amt = p.c.get("swell", p.bar * 4)
-    
-    # Or simply index by name (uses the pattern's current time automatically)
-    # This is the preferred, cleaner syntax
-    # Note: Access via [] is not yet implemented, use p.c.get() for now or wait for v1.2
-```
+    # Get signal value at the current bar (1 bar = 4 beats)
+    dynamics = p.c.get("swell", p.bar * 4)
 
-*Wait, `p.c` currently requires explicit time in `get()`. Let's clarify the API:*
-
-```python
-@composition.pattern(channel=0, length=4)
-def pads(p):
-    # Get signal value at the current bar
-    # 1 bar = 4 beats
-    dynamics = p.c.get("swell", beat=p.bar * 4)
-    
     p.chord(chord, root=60, velocity=int(60 + 60 * dynamics))
 ```
 
@@ -808,7 +794,7 @@ The `examples/` directory contains self-documenting compositions demonstrating d
 - `subsequence.markov_chain` provides a generic weighted Markov chain utility.
 - `subsequence.event_emitter` supports sync/async events used by the sequencer.
 - `subsequence.voicings` provides chord inversions and voice leading. `invert_chord()` rotates intervals; `VoiceLeadingState` picks the closest inversion to the previous chord automatically.
-- `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, `"phrygian_minor"`, `"lydian_major"`, `"dorian_minor"`, `"suspended"`, `"chromatic_mediant"`.
+- `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, `"phrygian_minor"`, `"lydian_major"`, `"dorian_minor"`, `"suspended"`, `"chromatic_mediant"`, `"mixolydian"`, `"whole_tone"`, `"diminished"`.
 - `subsequence.weighted_graph` provides a generic weighted graph used for transitions.
 - `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
 - `subsequence.constants.durations` provides beat-based duration constants. Import as `import subsequence.constants.durations as dur` and write `length = 9 * dur.SIXTEENTH` or `step = dur.DOTTED_EIGHTH` instead of raw floats. Constants: `THIRTYSECOND`, `SIXTEENTH`, `DOTTED_SIXTEENTH`, `TRIPLET_EIGHTH`, `EIGHTH`, `DOTTED_EIGHTH`, `TRIPLET_QUARTER`, `QUARTER`, `DOTTED_QUARTER`, `HALF`, `DOTTED_HALF`, `WHOLE`.
