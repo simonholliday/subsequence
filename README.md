@@ -897,8 +897,6 @@ Subequence was created by me, Simon Holliday ([https://simonholliday.com](https:
 
 Subsequence was iterated over a series of separate proof-of-concept projects during 2025, and pulled together into this new codebase in Spring 2026.
 
-It is built to create music the way I like to think about creating it: as an evolving system with intent, not just a loop.
-
 ## License
 
 Subsequence is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPLv3).
