@@ -505,6 +505,11 @@ class PatternBuilder:
 
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 
+	# These methods transform existing notes after they have been placed.
+	# Call them at the end of your builder function, after all notes are
+	# in position. They operate on self._pattern.steps (the pulse-position
+	# dict) and can be chained in any order.
+
 	def dropout (self, probability: float, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""
@@ -589,11 +594,29 @@ class PatternBuilder:
 			for note in step.notes:
 				note.duration = new_duration
 
-	#
-	# These methods transform existing notes after they have been placed.
-	# Call them at the end of your builder function, after all notes are
-	# in position. They operate on self._pattern.steps (the pulse-position
-	# dict) and can be chained in any order.
+	def staccato (self, ratio: float = 0.5) -> None:
+		
+		"""
+		Set all note durations to a fixed proportion of a beat.
+		
+		This overrides any existing note durations, acting as a global 
+		'gate time' relative to the beat.
+		
+		Parameters:
+			ratio: Duration in beats (relative to a quarter note).
+				0.5 = Eighth note duration
+				0.25 = Sixteenth note duration
+		"""
+		
+		if ratio <= 0:
+			raise ValueError("Staccato ratio must be positive")
+			
+		duration_pulses = int(ratio * subsequence.constants.MIDI_QUARTER_NOTE)
+		duration_pulses = max(1, duration_pulses)
+		
+		for step in self._pattern.steps.values():
+			for note in step.notes:
+				note.duration = duration_pulses
 
 	def reverse (self) -> None:
 
