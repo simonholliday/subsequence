@@ -413,6 +413,22 @@ def pads(p):
 
 For explicit beat control, use `p.c.get(name, beat)` directly.
 
+## State vs Signals
+
+Subsequence offers two ways to store correct values: **Data** (state) and **Conductor** (signals).
+
+### `composition.data` (State)
+*   **"What is the value RIGHT NOW?"**
+*   A dictionary for static snapshots. It has no concept of time.
+*   Values stay exactly as set until overwritten.
+*   **Use for:** External inputs (sensors, API data like ISS position), discrete mode switches, or values that update irregularly.
+
+### `composition.conductor` (Signals)
+*   **"What was the value at beat 40?"**
+*   A system for time-variant signals.
+*   You define a *behavior* (e.g. an LFO), and it calculates the correct value for any given point in time.
+*   **Use for:** Musical evolution (fades, swells, modulation) that must be smooth and continuous regardless of tempo.
+
 ## Chord inversions and voice leading
 
 By default, chords are played in root position. You can request a specific inversion, or enable automatic voice leading so each chord picks the inversion closest to the previous one.
