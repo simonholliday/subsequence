@@ -1,10 +1,12 @@
 # Subsequence
 
-**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence combines the immediate workflow of a hardware sequencer with the architectural depth of Python code. It is designed for the **System Architect** - the musician who wants to build a machine that plays with memory, evolution, and intention.
+**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence combines the immediate workflow of a hardware sequencer with the architectural depth of Python code. It is designed for **the musician who wants to build a system that plays with memory** - one that listens to what it just played, understands where it is in a song, and makes musical decisions based on context.
 
 Unlike stateless libraries that loop forever, Subsequence 'compiles' each cycle ahead of time. This stateful architecture allows for context-aware harmony, long-form structure, and determinism. You can build complex, evolving systems where a pattern knows what happened in the previous bar, or compose traditional linear pieces with fixed notes and sections.
 
 It is a **"Headless Brain"** for your studio. It generates pure MIDI to control your hardware instruments, modular synthesizers, or VSTs, replacing limited hardware sequencers with an infinite, code-driven engine.
+
+> **Note:** Subsequence does not produce sound. It generates MIDI data to control your hardware synths and software instruments. By automating the notes, it leaves both your hands free to shape the timbre, texture, and character of your sound in real-time.
 
 ## Introduction
 
@@ -909,7 +911,7 @@ Type checking runs automatically in CI on all pull requests.
 
 ## About the Author
 
-Subequence was created by me, Simon Holliday ([https://simonholliday.com](https://simonholliday.com)), a senior technologist and a junior (but trying) musician. From running an electronic music label in the 2000s to prototyping new passive SONAR techniques for defence research, my work has often explored the intersection of code and sound.
+Subequence was created by me, Simon Holliday ([https://simonholliday.com/](https://simonholliday.com/)), a senior technologist and a junior (but trying) musician. From running an electronic music label in the 2000s to prototyping new passive SONAR techniques for defence research, my work has often explored the intersection of code and sound.
 
 Subsequence was iterated over a series of separate proof-of-concept projects during 2025, and pulled together into this new codebase in Spring 2026.
 
