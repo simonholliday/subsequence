@@ -323,3 +323,41 @@ def probability_gate (sequence: typing.List[int], probability: typing.Union[floa
 		result.append(value if rng.random() < p else 0)
 
 	return result
+
+
+def scale_clamp (value: float, in_min: float, in_max: float, out_min: float, out_max: float) -> float:
+
+	"""Scale a value from an input range to an output range and clamp the result.
+
+	Maps a value from [in_min, in_max] to [out_min, out_max]. If the result
+	falls outside the output range, it is clamped to the nearest bound.
+	Correctly handles reversed ranges (where min > max).
+
+	Parameters:
+		value: The number to scale and clamp.
+		in_min: The start of the input range.
+		in_max: The end of the input range.
+		out_min: The start of the target output range.
+		out_max: The end of the target output range.
+
+	Example:
+		```python
+		# Scale sensor data (0-1023) to a probability (0.0-1.0)
+		prob = subsequence.sequence_utils.scale_clamp(sensor_val, 0, 1023, 0.0, 1.0)
+
+		# Invert a MIDI CC (0-127) to a volume multiplier (1.0-0.0)
+		vol = subsequence.sequence_utils.scale_clamp(cc_val, 0, 127, 1.0, 0.0)
+		```
+	"""
+
+	if in_min == in_max:
+		raise ValueError(f"Input range cannot be zero-width ({in_min} == {in_max})")
+
+	percentage = (value - in_min) / (in_max - in_min)
+	scaled = out_min + percentage * (out_max - out_min)
+
+	# Handle regular and reversed ranges
+	if out_min < out_max:
+		return max(out_min, min(out_max, scaled))
+	else:
+		return max(out_max, min(out_min, scaled))
