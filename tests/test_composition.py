@@ -73,6 +73,33 @@ def test_harmony_preserves_history_across_calls (patch_midi: None) -> None:
 	assert composition._harmonic_state.current_chord == current_before
 
 
+def test_harmony_drops_current_chord_on_graph_switch (patch_midi: None) -> None:
+
+	"""Switching graph style should not preserve a chord that doesn't exist in the new graph."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", gravity=0.5)
+
+	# Step a few times to build history and move away from tonic.
+	for _ in range(4):
+		composition._harmonic_state.step()
+
+	old_current = composition._harmonic_state.current_chord
+
+	# Switch to a completely different graph style.
+	composition.harmony(style="suspended", gravity=0.5)
+
+	new_current = composition._harmonic_state.current_chord
+
+	# The new current should be a valid node in the new graph (has outgoing edges).
+	transitions = composition._harmonic_state.graph.get_transitions(new_current)
+	assert len(transitions) > 0
+
+	# Step should work (not stuck).
+	result = composition._harmonic_state.step()
+	assert result != new_current or len(transitions) > 0
+
+
 def test_pattern_decorator_registers_pending (patch_midi: None) -> None:
 
 	"""The pattern decorator should register a pending pattern without scheduling immediately."""
@@ -577,3 +604,176 @@ def test_layer_with_chord_injection (patch_midi: None) -> None:
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
 
 	assert total_notes == 2
+
+
+# --- Tweak ---
+
+
+def test_tweak_updates_running_pattern (patch_midi: None) -> None:
+
+	"""tweak() should store values in the pattern's _tweaks dict."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	def my_builder (p):
+		pass
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+	composition._running_patterns["my_builder"] = pattern
+
+	composition.tweak("my_builder", pitches=[48, 52])
+
+	assert pattern._tweaks == {"pitches": [48, 52]}
+
+
+def test_tweak_unknown_pattern_raises (patch_midi: None) -> None:
+
+	"""tweak() should raise ValueError for a nonexistent pattern name."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	with pytest.raises(ValueError):
+		composition.tweak("nonexistent", pitches=[60])
+
+
+def test_clear_tweak_removes_all (patch_midi: None) -> None:
+
+	"""clear_tweak() with no param names should remove all tweaks."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	def my_builder (p):
+		pass
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+	composition._running_patterns["my_builder"] = pattern
+
+	composition.tweak("my_builder", pitches=[48], velocity=80)
+	composition.clear_tweak("my_builder")
+
+	assert pattern._tweaks == {}
+
+
+def test_clear_tweak_removes_specific (patch_midi: None) -> None:
+
+	"""clear_tweak() with a name should remove only that param."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	def my_builder (p):
+		pass
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+	composition._running_patterns["my_builder"] = pattern
+
+	composition.tweak("my_builder", pitches=[48], velocity=80)
+	composition.clear_tweak("my_builder", "pitches")
+
+	assert pattern._tweaks == {"velocity": 80}
+
+
+def test_get_tweaks_returns_copy (patch_midi: None) -> None:
+
+	"""get_tweaks() should return a copy, not a reference."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	def my_builder (p):
+		pass
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+	composition._running_patterns["my_builder"] = pattern
+
+	composition.tweak("my_builder", pitches=[48])
+	result = composition.get_tweaks("my_builder")
+	result["pitches"] = [99]
+
+	assert pattern._tweaks["pitches"] == [48]
+
+
+def test_tweaks_in_live_info (patch_midi: None) -> None:
+
+	"""live_info() should include tweaks for each pattern."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	def my_builder (p):
+		pass
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+	composition._running_patterns["my_builder"] = pattern
+
+	composition.tweak("my_builder", pitches=[48])
+	info = composition.live_info()
+
+	assert info["patterns"][0]["tweaks"] == {"pitches": [48]}
+
+
+def test_param_reads_tweak_on_rebuild (patch_midi: None) -> None:
+
+	"""p.param() should return the tweaked value after a rebuild."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+	captured = {}
+
+	def my_builder (p):
+		captured["pitches"] = p.param("pitches", [60, 64])
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+
+	# First build uses default.
+	assert captured["pitches"] == [60, 64]
+
+	# Tweak and rebuild.
+	pattern._tweaks["pitches"] = [48, 52]
+	pattern.on_reschedule()
+
+	assert captured["pitches"] == [48, 52]

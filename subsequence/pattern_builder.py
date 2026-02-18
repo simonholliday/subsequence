@@ -53,7 +53,7 @@ class PatternBuilder:
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info."""
 
@@ -64,6 +64,7 @@ class PatternBuilder:
 		self.section = section
 		self.bar = bar
 		self.rng: random.Random = rng or random.Random()
+		self._tweaks: typing.Dict[str, typing.Any] = tweaks or {}
 
 	@property
 	def c (self) -> typing.Optional[subsequence.conductor.Conductor]:
@@ -84,6 +85,27 @@ class PatternBuilder:
 			return 0.0
 
 		return self.conductor.get(name, self.bar * 4)
+
+	def param (self, name: str, default: typing.Any = None) -> typing.Any:
+
+		"""Read a tweakable parameter for this pattern.
+
+		Returns the value set via ``composition.tweak()`` if one
+		exists, otherwise returns ``default``.
+
+		Parameters:
+			name: The parameter name.
+			default: The value to return if no tweak is active.
+
+		Example::
+
+			@composition.pattern(channel=0, length=4)
+			def bass (p):
+				pitches = p.param("pitches", [60, 64, 67, 72])
+				p.sequence(steps=[0, 4, 8, 12], pitches=pitches)
+		"""
+
+		return self._tweaks.get(name, default)
 
 	def set_length (self, length: float) -> None:
 

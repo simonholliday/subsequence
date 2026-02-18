@@ -1352,3 +1352,39 @@ def test_strum_invalid_direction () -> None:
 
 	with pytest.raises(ValueError, match="direction must be"):
 		builder.strum(chord, root=60, direction="sideways")
+
+
+# --- p.param() ---
+
+
+def test_param_returns_default_when_no_tweak () -> None:
+
+	"""p.param() should return the default when no tweak is set."""
+
+	_, builder = _make_builder()
+
+	assert builder.param("pitches", [60, 64]) == [60, 64]
+
+
+def test_param_returns_tweaked_value () -> None:
+
+	"""p.param() should return the tweaked value when set."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0,
+		tweaks = {"pitches": [48, 52]}
+	)
+
+	assert builder.param("pitches", [60, 64]) == [48, 52]
+
+
+def test_param_returns_none_when_no_default () -> None:
+
+	"""p.param() with no default should return None for missing keys."""
+
+	_, builder = _make_builder()
+
+	assert builder.param("missing") is None

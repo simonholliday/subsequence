@@ -740,6 +740,29 @@ OK
 
 The running pattern keeps its cycle count, RNG state, and scheduling position - only the builder logic changes.
 
+**Tweak a single parameter** - change one value without replacing the whole pattern:
+
+```python
+>>> composition.tweak("bass", pitches=[48, 52, 55, 60])
+OK
+>>> composition.get_tweaks("bass")
+{'pitches': [48, 52, 55, 60]}
+>>> composition.clear_tweak("bass", "pitches")
+OK
+```
+
+The pattern builder reads tweakable values via `p.param()`, which returns the tweaked value if set or a default otherwise:
+
+```python
+@composition.pattern(channel=0, length=4)
+def bass (p):
+    pitches = p.param("pitches", [60, 64, 67, 72])
+    vel = p.param("velocity", 100)
+    p.sequence(steps=[0, 4, 8, 12], pitches=pitches, velocities=vel)
+```
+
+Changes take effect on the next rebuild cycle. Call `clear_tweak("bass")` with no parameter name to clear all tweaks.
+
 ### Use from any tool
 
 The server speaks a simple text protocol (messages delimited by `\x04`). You can send code from anything that opens a TCP socket:

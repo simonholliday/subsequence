@@ -646,7 +646,7 @@ class Composition:
 
 		if preserved_history:
 			self._harmonic_state.history = preserved_history
-		if preserved_current is not None:
+		if preserved_current is not None and self._harmonic_state.graph.get_transitions(preserved_current):
 			self._harmonic_state.current_chord = preserved_current
 
 		self._harmony_cycle_beats = cycle_beats
@@ -818,7 +818,8 @@ class Composition:
 				"channel": pat.channel,
 				"length": pat.length,
 				"cycle": pat._cycle_count,
-				"muted": pat._muted
+				"muted": pat._muted,
+				"tweaks": dict(pat._tweaks)
 			})
 
 		return {
@@ -862,6 +863,68 @@ class Composition:
 
 		self._running_patterns[name]._muted = False
 		logger.info(f"Unmuted pattern: {name}")
+
+	def tweak (self, name: str, **kwargs: typing.Any) -> None:
+
+		"""Override parameters for a running pattern.
+
+		Values set here are available inside the pattern's builder
+		function via ``p.param()``.  They persist across rebuilds
+		until explicitly changed or cleared.  Changes take effect
+		on the next rebuild cycle.
+
+		Parameters:
+			name: The function name of the pattern.
+			**kwargs: Parameter names and their new values.
+
+		Example (from the live REPL)::
+
+			composition.tweak("bass", pitches=[48, 52, 55, 60])
+		"""
+
+		if name not in self._running_patterns:
+			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
+
+		self._running_patterns[name]._tweaks.update(kwargs)
+		logger.info(f"Tweaked pattern '{name}': {list(kwargs.keys())}")
+
+	def clear_tweak (self, name: str, *param_names: str) -> None:
+
+		"""Remove tweaked parameters from a running pattern.
+
+		If no parameter names are given, all tweaks for the pattern
+		are cleared and every ``p.param()`` call reverts to its
+		default.
+
+		Parameters:
+			name: The function name of the pattern.
+			*param_names: Specific parameter names to clear.  If
+				omitted, all tweaks are removed.
+		"""
+
+		if name not in self._running_patterns:
+			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
+
+		if not param_names:
+			self._running_patterns[name]._tweaks.clear()
+			logger.info(f"Cleared all tweaks for pattern '{name}'")
+		else:
+			for param_name in param_names:
+				self._running_patterns[name]._tweaks.pop(param_name, None)
+			logger.info(f"Cleared tweaks for pattern '{name}': {list(param_names)}")
+
+	def get_tweaks (self, name: str) -> typing.Dict[str, typing.Any]:
+
+		"""Return a copy of the current tweaks for a running pattern.
+
+		Parameters:
+			name: The function name of the pattern.
+		"""
+
+		if name not in self._running_patterns:
+			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
+
+		return dict(self._running_patterns[name]._tweaks)
 
 	def schedule (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int = 1) -> None:
 
@@ -1200,6 +1263,7 @@ class Composition:
 				self._voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = (
 					subsequence.voicings.VoiceLeadingState() if pending.voice_leading else None
 				)
+				self._tweaks: typing.Dict[str, typing.Any] = {}
 
 				self._rebuild()
 
@@ -1226,7 +1290,8 @@ class Composition:
 					section = composition_ref._form_state.get_section_info() if composition_ref._form_state else None,
 					bar = composition_ref._builder_bar,
 					conductor = composition_ref.conductor,
-					rng = self._rng
+					rng = self._rng,
+					tweaks = self._tweaks
 				)
 
 				try:
