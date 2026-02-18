@@ -20,6 +20,19 @@ class Note:
 
 
 @dataclasses.dataclass
+class CcEvent:
+
+	"""
+	A single CC or pitch bend message at a specific pulse position.
+	"""
+
+	pulse: int
+	message_type: str	# 'control_change' or 'pitchwheel'
+	control: int = 0	# CC number (0–127), ignored for pitchwheel
+	value: int = 0		# 0–127 for CC, -8192..8191 for pitchwheel
+
+
+@dataclasses.dataclass
 class Step:
 
 	"""
@@ -46,6 +59,7 @@ class Pattern:
 		self.reschedule_lookahead = reschedule_lookahead
 
 		self.steps: typing.Dict[int, Step] = {}
+		self.cc_events: typing.List[CcEvent] = []
 
 
 	def add_note (self, position: int, pitch: int, velocity: int, duration: int) -> None:

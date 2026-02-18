@@ -1332,6 +1332,7 @@ class Composition:
 				"""
 
 				self.steps = {}
+				self.cc_events = []
 				current_cycle = self._cycle_count
 				self._cycle_count += 1
 

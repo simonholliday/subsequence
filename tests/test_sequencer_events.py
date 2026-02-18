@@ -3,6 +3,8 @@ import pytest
 import subsequence.pattern
 import subsequence.sequencer
 
+from subsequence.sequencer import MidiEvent
+
 
 @pytest.mark.asyncio
 async def test_reschedule_event_precedes_pattern_rebuild (patch_midi: None) -> None:
@@ -165,3 +167,37 @@ async def test_dynamic_length_change_on_reschedule (patch_midi: None) -> None:
 
 	assert scheduled.next_reschedule_pulse == expected_next_reschedule
 	assert scheduled.length_pulses == int(4 * sequencer.pulses_per_beat)
+
+
+@pytest.mark.asyncio
+async def test_schedule_pattern_includes_cc_events (patch_midi: None) -> None:
+
+	"""CC events on a pattern should appear in the sequencer event queue."""
+
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+	pattern = subsequence.pattern.Pattern(channel=3, length=4)
+
+	pattern.cc_events.append(
+		subsequence.pattern.CcEvent(pulse=0, message_type='control_change', control=74, value=100)
+	)
+	pattern.cc_events.append(
+		subsequence.pattern.CcEvent(pulse=24, message_type='pitchwheel', value=4000)
+	)
+
+	await sequencer.schedule_pattern(pattern, start_pulse=0)
+
+	# Extract the CC/pitchwheel events from the queue
+	cc_events = [e for e in sequencer.event_queue if e.message_type in ('control_change', 'pitchwheel')]
+
+	assert len(cc_events) == 2
+
+	cc = next(e for e in cc_events if e.message_type == 'control_change')
+	assert cc.pulse == 0
+	assert cc.channel == 3
+	assert cc.control == 74
+	assert cc.value == 100
+
+	pb = next(e for e in cc_events if e.message_type == 'pitchwheel')
+	assert pb.pulse == 24
+	assert pb.channel == 3
+	assert pb.value == 4000

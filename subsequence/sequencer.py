@@ -48,8 +48,10 @@ class MidiEvent:
 	pulse: int
 	message_type: str = dataclasses.field(compare=False)
 	channel: int = dataclasses.field(compare=False)
-	note: int = dataclasses.field(compare=False)
-	velocity: int = dataclasses.field(compare=False)
+	note: int = dataclasses.field(compare=False, default=0)
+	velocity: int = dataclasses.field(compare=False, default=0)
+	control: int = dataclasses.field(compare=False, default=0)
+	value: int = dataclasses.field(compare=False, default=0)
 
 
 @dataclasses.dataclass
@@ -482,7 +484,7 @@ class Sequencer:
 	async def schedule_pattern (self, pattern: PatternLike, start_pulse: int) -> None:
 
 		"""
-		Schedules a pattern's notes into the sequencer's event queue.
+		Schedules a pattern's notes and CC events into the sequencer's event queue.
 		"""
 
 		async with self.queue_lock:
@@ -514,6 +516,21 @@ class Sequencer:
 					)
 
 					heapq.heappush(self.event_queue, off_event)
+
+			# CC / pitch bend events
+			for cc_event in getattr(pattern, 'cc_events', []):
+
+				abs_pulse = start_pulse + cc_event.pulse
+
+				midi_event = MidiEvent(
+					pulse = abs_pulse,
+					message_type = cc_event.message_type,
+					channel = pattern.channel,
+					control = cc_event.control,
+					value = cc_event.value
+				)
+
+				heapq.heappush(self.event_queue, midi_event)
 
 		logger.debug(f"Scheduled pattern at {start_pulse}, queue size: {len(self.event_queue)}")
 
@@ -891,8 +908,16 @@ class Sequencer:
 				# Send events at or before the current pulse (late events are sent immediately).
 				self._send_midi(event)
 
-				if self.recording and (event.message_type == 'note_on' or event.message_type == 'note_off'):
-					self._record_event(event.pulse, mido.Message(event.message_type, channel=event.channel, note=event.note, velocity=event.velocity))
+				if self.recording:
+
+					if event.message_type in ('note_on', 'note_off'):
+						self._record_event(event.pulse, mido.Message(event.message_type, channel=event.channel, note=event.note, velocity=event.velocity))
+
+					elif event.message_type == 'control_change':
+						self._record_event(event.pulse, mido.Message('control_change', channel=event.channel, control=event.control, value=event.value))
+
+					elif event.message_type == 'pitchwheel':
+						self._record_event(event.pulse, mido.Message('pitchwheel', channel=event.channel, pitch=event.value))
 
 
 	async def _stop_all_active_notes (self) -> None:
@@ -918,12 +943,31 @@ class Sequencer:
 
 			try:  # type: ignore[unreachable]
 
-				msg = mido.Message(
-					event.message_type,
-					channel = event.channel,
-					note = event.note,
-					velocity = event.velocity
-				)
+				if event.message_type in ('note_on', 'note_off'):
+					msg = mido.Message(
+						event.message_type,
+						channel = event.channel,
+						note = event.note,
+						velocity = event.velocity
+					)
+
+				elif event.message_type == 'control_change':
+					msg = mido.Message(
+						'control_change',
+						channel = event.channel,
+						control = event.control,
+						value = event.value
+					)
+
+				elif event.message_type == 'pitchwheel':
+					msg = mido.Message(
+						'pitchwheel',
+						channel = event.channel,
+						pitch = event.value
+					)
+
+				else:
+					return
 
 				self.midi_out.send(msg)
 

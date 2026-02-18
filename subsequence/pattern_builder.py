@@ -683,6 +683,153 @@ class PatternBuilder:
 
 		self._pattern.steps = new_steps
 
+
+	def cc (self, control: int, value: int, beat: float = 0.0) -> None:
+
+		"""
+		Send a single CC message at a beat position.
+
+		Parameters:
+			control: MIDI CC number (0–127).
+			value: CC value (0–127).
+			beat: Beat position within the pattern.
+		"""
+
+		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		self._pattern.cc_events.append(
+			subsequence.pattern.CcEvent(
+				pulse = pulse,
+				message_type = 'control_change',
+				control = control,
+				value = value
+			)
+		)
+
+
+	def cc_ramp (
+		self,
+		control: int,
+		start: int,
+		end: int,
+		beat_start: float = 0.0,
+		beat_end: typing.Optional[float] = None,
+		resolution: int = 1
+	) -> None:
+
+		"""
+		Linearly interpolate a CC value over a beat range.
+
+		Parameters:
+			control: MIDI CC number (0–127).
+			start: Starting CC value (0–127).
+			end: Ending CC value (0–127).
+			beat_start: Beat position to begin the ramp.
+			beat_end: Beat position to end the ramp. Defaults to pattern length.
+			resolution: Pulses between CC messages (1 = every pulse, ~20ms at 120 BPM).
+		"""
+
+		if beat_end is None:
+			beat_end = self._pattern.length
+
+		pulse_start = int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE)
+		pulse_end = int(beat_end * subsequence.constants.MIDI_QUARTER_NOTE)
+		span = pulse_end - pulse_start
+
+		if span <= 0:
+			return
+
+		pulse = pulse_start
+
+		while pulse <= pulse_end:
+
+			t = (pulse - pulse_start) / span
+			interpolated = int(round(start + (end - start) * t))
+			interpolated = max(0, min(127, interpolated))
+
+			self._pattern.cc_events.append(
+				subsequence.pattern.CcEvent(
+					pulse = pulse,
+					message_type = 'control_change',
+					control = control,
+					value = interpolated
+				)
+			)
+
+			pulse += resolution
+
+
+	def pitch_bend (self, value: float, beat: float = 0.0) -> None:
+
+		"""
+		Send a single pitch bend message at a beat position.
+
+		Parameters:
+			value: Pitch bend amount, normalised from -1.0 to 1.0.
+			beat: Beat position within the pattern.
+		"""
+
+		midi_value = max(-8192, min(8191, int(round(value * 8192))))
+		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		self._pattern.cc_events.append(
+			subsequence.pattern.CcEvent(
+				pulse = pulse,
+				message_type = 'pitchwheel',
+				value = midi_value
+			)
+		)
+
+
+	def pitch_bend_ramp (
+		self,
+		start: float,
+		end: float,
+		beat_start: float = 0.0,
+		beat_end: typing.Optional[float] = None,
+		resolution: int = 1
+	) -> None:
+
+		"""
+		Linearly interpolate pitch bend over a beat range.
+
+		Parameters:
+			start: Starting pitch bend (-1.0 to 1.0).
+			end: Ending pitch bend (-1.0 to 1.0).
+			beat_start: Beat position to begin the ramp.
+			beat_end: Beat position to end the ramp. Defaults to pattern length.
+			resolution: Pulses between pitch bend messages (1 = every pulse).
+		"""
+
+		if beat_end is None:
+			beat_end = self._pattern.length
+
+		pulse_start = int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE)
+		pulse_end = int(beat_end * subsequence.constants.MIDI_QUARTER_NOTE)
+		span = pulse_end - pulse_start
+
+		if span <= 0:
+			return
+
+		pulse = pulse_start
+
+		while pulse <= pulse_end:
+
+			t = (pulse - pulse_start) / span
+			interpolated = start + (end - start) * t
+			midi_value = max(-8192, min(8191, int(round(interpolated * 8192))))
+
+			self._pattern.cc_events.append(
+				subsequence.pattern.CcEvent(
+					pulse = pulse,
+					message_type = 'pitchwheel',
+					value = midi_value
+				)
+			)
+
+			pulse += resolution
+
+
 	def legato (self, ratio: float = 1.0) -> None:
 
 		"""

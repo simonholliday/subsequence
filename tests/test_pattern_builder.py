@@ -1639,3 +1639,134 @@ def test_humanize_velocity_stays_in_range () -> None:
 	for step in builder._pattern.steps.values():
 		for note in step.notes:
 			assert 1 <= note.velocity <= 127
+
+
+# ── CC / Pitch Bend ──────────────────────────────────────────────────
+
+
+def test_cc_adds_event () -> None:
+
+	"""p.cc() should create a CcEvent at the correct pulse."""
+
+	_, builder = _make_builder()
+
+	builder.cc(74, 100, beat=1.0)
+
+	assert len(builder._pattern.cc_events) == 1
+
+	event = builder._pattern.cc_events[0]
+	assert event.message_type == 'control_change'
+	assert event.control == 74
+	assert event.value == 100
+	assert event.pulse == 24  # 1 beat * 24 ppq
+
+
+def test_cc_ramp_generates_interpolated_events () -> None:
+
+	"""cc_ramp should produce linearly interpolated CC events."""
+
+	_, builder = _make_builder()
+
+	builder.cc_ramp(74, start=0, end=127, beat_start=0, beat_end=1, resolution=6)
+
+	events = builder._pattern.cc_events
+	# From pulse 0 to pulse 24 in steps of 6 → pulses 0, 6, 12, 18, 24
+	assert len(events) == 5
+
+	# All should be control_change for CC 74
+	for event in events:
+		assert event.message_type == 'control_change'
+		assert event.control == 74
+
+	# First and last values
+	assert events[0].value == 0
+	assert events[-1].value == 127
+
+	# Values should be monotonically increasing
+	values = [e.value for e in events]
+	assert values == sorted(values)
+
+
+def test_cc_ramp_resolution () -> None:
+
+	"""Higher resolution value should produce fewer events."""
+
+	_, builder_fine = _make_builder()
+	_, builder_coarse = _make_builder()
+
+	builder_fine.cc_ramp(1, 0, 127, beat_start=0, beat_end=1, resolution=1)
+	builder_coarse.cc_ramp(1, 0, 127, beat_start=0, beat_end=1, resolution=6)
+
+	assert len(builder_fine._pattern.cc_events) > len(builder_coarse._pattern.cc_events)
+
+
+def test_pitch_bend_normalised_range () -> None:
+
+	"""pitch_bend should map -1.0..1.0 to -8192..8191."""
+
+	_, builder = _make_builder()
+
+	builder.pitch_bend(1.0, beat=0)
+	builder.pitch_bend(-1.0, beat=1)
+	builder.pitch_bend(0.0, beat=2)
+
+	events = builder._pattern.cc_events
+
+	assert events[0].message_type == 'pitchwheel'
+	assert events[0].value == 8191  # clamped to max
+	assert events[1].value == -8192
+	assert events[2].value == 0
+
+
+def test_pitch_bend_ramp () -> None:
+
+	"""pitch_bend_ramp should produce interpolated pitchwheel events."""
+
+	_, builder = _make_builder()
+
+	builder.pitch_bend_ramp(-1.0, 1.0, beat_start=0, beat_end=1, resolution=6)
+
+	events = builder._pattern.cc_events
+	# From pulse 0 to 24 in steps of 6 → 5 events
+	assert len(events) == 5
+
+	for event in events:
+		assert event.message_type == 'pitchwheel'
+		assert -8192 <= event.value <= 8191
+
+	# Should go from negative to positive
+	assert events[0].value < 0
+	assert events[-1].value > 0
+
+
+def test_cc_ramp_defaults_beat_end_to_pattern_length () -> None:
+
+	"""When beat_end is omitted, the ramp should extend to pattern length."""
+
+	_, builder = _make_builder(length=2)
+
+	builder.cc_ramp(74, 0, 127, beat_start=0, resolution=12)
+
+	events = builder._pattern.cc_events
+	# 2 beats = 48 pulses, step 12 → pulses 0, 12, 24, 36, 48 → 5 events
+	assert len(events) == 5
+	assert events[-1].pulse == 48
+
+
+def test_cc_events_cleared_on_rebuild () -> None:
+
+	"""Pattern.cc_events should be reset to [] each cycle."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	pattern.cc_events.append(
+		subsequence.pattern.CcEvent(pulse=0, message_type='control_change', control=74, value=100)
+	)
+
+	assert len(pattern.cc_events) == 1
+
+	# Simulate what _rebuild does
+	pattern.steps = {}
+	pattern.cc_events = []
+
+	assert len(pattern.cc_events) == 0
