@@ -50,6 +50,29 @@ def test_composition_harmony_without_key_raises (patch_midi: None) -> None:
 		composition.harmony(style="turnaround_global", cycle_beats=4)
 
 
+def test_harmony_preserves_history_across_calls (patch_midi: None) -> None:
+
+	"""Calling harmony() again should preserve chord history from the previous state."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", gravity=0.5)
+
+	# Build up history by stepping through several chords.
+	for _ in range(4):
+		composition._harmonic_state.step()
+
+	history_before = composition._harmonic_state.history.copy()
+	current_before = composition._harmonic_state.current_chord
+
+	assert len(history_before) == 4
+
+	# Reconfigure harmony with different parameters.
+	composition.harmony(style="functional_major", gravity=0.8)
+
+	assert composition._harmonic_state.history == history_before
+	assert composition._harmonic_state.current_chord == current_before
+
+
 def test_pattern_decorator_registers_pending (patch_midi: None) -> None:
 
 	"""The pattern decorator should register a pending pattern without scheduling immediately."""

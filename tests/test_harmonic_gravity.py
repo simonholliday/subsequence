@@ -1,4 +1,7 @@
 
+import collections
+import random
+
 import pytest
 import typing
 
@@ -252,3 +255,138 @@ def test_nir_strength_scales_boost () -> None:
 	boost_full = score_full - 1.0
 	boost_half = score_half - 1.0
 	assert abs(boost_half - boost_full * 0.5) < 0.001
+
+
+# --- Root Diversity ---
+
+
+def test_root_diversity_reduces_same_root_frequency () -> None:
+
+	"""The suspended graph at gravity=0.0 should no longer get stuck on one root."""
+
+	rng = random.Random(42)
+
+	hs = subsequence.harmonic_state.HarmonicState(
+		key_name = "C",
+		graph_style = "suspended",
+		key_gravity_blend = 0.0,
+		nir_strength = 0.5,
+		rng = rng
+	)
+
+	roots: typing.List[int] = []
+
+	for _ in range(500):
+		chord = hs.step()
+		roots.append(chord.root_pc)
+
+	counts = collections.Counter(roots)
+	top_pct = counts.most_common(1)[0][1] / len(roots)
+
+	# Was 0.63 before the fix; should now stay below 0.50.
+	assert top_pct < 0.50
+
+
+def test_root_diversity_does_not_suppress_entirely () -> None:
+
+	"""Even with 4 same-root chords in history, step() should still return a chord."""
+
+	rng = random.Random(99)
+
+	hs = subsequence.harmonic_state.HarmonicState(
+		key_name = "C",
+		graph_style = "suspended",
+		key_gravity_blend = 0.0,
+		nir_strength = 0.5,
+		rng = rng
+	)
+
+	# Fill history with 4 C-root chords.
+	c_sus2 = subsequence.chords.Chord(root_pc=0, quality="sus2")
+	c_sus4 = subsequence.chords.Chord(root_pc=0, quality="sus4")
+	hs.history = [c_sus2, c_sus4, c_sus2, c_sus4]
+	hs.current_chord = c_sus2
+
+	# Should still produce a valid chord (modifier is 0.4^4 ≈ 0.026, not 0).
+	result = hs.step()
+
+	assert isinstance(result, subsequence.chords.Chord)
+
+
+def test_root_diversity_counts_root_not_quality () -> None:
+
+	"""History with Csus2 and Csus4 should both count toward the C-root penalty."""
+
+	rng = random.Random(42)
+
+	hs = subsequence.harmonic_state.HarmonicState(
+		key_name = "C",
+		graph_style = "suspended",
+		key_gravity_blend = 1.0,
+		nir_strength = 0.0,
+		rng = rng
+	)
+
+	# History: two different qualities on root C.
+	c_sus2 = subsequence.chords.Chord(root_pc=0, quality="sus2")
+	c_sus4 = subsequence.chords.Chord(root_pc=0, quality="sus4")
+	hs.history = [c_sus2, c_sus4]
+	hs.current_chord = c_sus4
+
+	# Run many steps from this state and count C-root results.
+	c_root_count = 0
+	trials = 200
+
+	for _ in range(trials):
+		# Reset to the same state each trial.
+		hs.history = [c_sus2, c_sus4]
+		hs.current_chord = c_sus4
+		result = hs.step()
+
+		if result.root_pc == 0:
+			c_root_count += 1
+
+	# With 2 C-root entries in history, the penalty is 0.4² = 0.16×.
+	# C-root should appear far less than half the time.
+	assert c_root_count / trials < 0.45
+
+
+def test_root_diversity_disabled_at_one () -> None:
+
+	"""Setting root_diversity=1.0 should disable the penalty entirely."""
+
+	rng_a = random.Random(42)
+	rng_b = random.Random(42)
+
+	# With penalty (default 0.5)
+	hs_with = subsequence.harmonic_state.HarmonicState(
+		key_name = "C",
+		graph_style = "suspended",
+		key_gravity_blend = 0.0,
+		nir_strength = 0.5,
+		root_diversity = 0.5,
+		rng = rng_a
+	)
+
+	# Without penalty (1.0 = disabled)
+	hs_without = subsequence.harmonic_state.HarmonicState(
+		key_name = "C",
+		graph_style = "suspended",
+		key_gravity_blend = 0.0,
+		nir_strength = 0.5,
+		root_diversity = 1.0,
+		rng = rng_b
+	)
+
+	roots_with: typing.List[int] = []
+	roots_without: typing.List[int] = []
+
+	for _ in range(200):
+		roots_with.append(hs_with.step().root_pc)
+		roots_without.append(hs_without.step().root_pc)
+
+	top_with = collections.Counter(roots_with).most_common(1)[0][1] / 200
+	top_without = collections.Counter(roots_without).most_common(1)[0][1] / 200
+
+	# Disabled penalty should produce more concentrated distribution.
+	assert top_without > top_with

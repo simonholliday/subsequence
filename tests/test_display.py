@@ -25,7 +25,7 @@ def test_format_status_minimal (patch_midi: None) -> None:
 
 	status = display._format_status()
 
-	assert "125 BPM" in status
+	assert "125.00 BPM" in status
 	assert "Key: E" in status
 	assert "Bar: 1" in status
 	assert "Chord" not in status
@@ -42,7 +42,7 @@ def test_format_status_with_harmony (patch_midi: None) -> None:
 	display = subsequence.display.Display(comp)
 	status = display._format_status()
 
-	assert "125 BPM" in status
+	assert "125.00 BPM" in status
 	assert "Chord:" in status
 
 
@@ -78,7 +78,7 @@ def test_format_status_full (patch_midi: None) -> None:
 	display = subsequence.display.Display(comp)
 	status = display._format_status()
 
-	assert "125 BPM" in status
+	assert "125.00 BPM" in status
 	assert "Key: E" in status
 	assert "Bar: 1" in status
 	assert "[intro 1/4]" in status
@@ -94,7 +94,7 @@ def test_format_status_no_key (patch_midi: None) -> None:
 
 	status = display._format_status()
 
-	assert "120 BPM" in status
+	assert "120.00 BPM" in status
 	assert "Key:" not in status
 
 
@@ -165,7 +165,7 @@ def test_update_rebuilds_status (patch_midi: None) -> None:
 	finally:
 		sys.stderr = original_stderr
 
-	assert "125 BPM" in display._last_line
+	assert "125.00 BPM" in display._last_line
 
 
 def test_update_inactive_is_noop (patch_midi: None) -> None:
@@ -308,7 +308,7 @@ def test_format_status_no_conductor_signals (patch_midi: None) -> None:
 	status = display._format_status()
 
 	# Should contain standard parts but no signal formatting.
-	assert "125 BPM" in status
+	assert "125.00 BPM" in status
 	assert ":" not in status.split("Key:")[-1].split("Bar:")[0].strip()
 
 

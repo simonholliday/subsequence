@@ -16,6 +16,9 @@ import subsequence.chords
 import subsequence.weighted_graph
 
 
+DEFAULT_ROOT_DIVERSITY: float = 0.4
+
+
 def _resolve_graph_style (
 	style: str,
 	include_dominant_7th: bool,
@@ -94,10 +97,30 @@ class HarmonicState:
 		key_gravity_blend: float = 1.0,
 		nir_strength: float = 0.5,
 		minor_turnaround_weight: float = 0.0,
+		root_diversity: float = DEFAULT_ROOT_DIVERSITY,
 		rng: typing.Optional[random.Random] = None
 	) -> None:
 
-		"""Initialize the harmonic state using a chord transition graph."""
+		"""
+		Initialize the harmonic state using a chord transition graph.
+
+		Parameters:
+			key_name: Note name for the key (e.g., ``"C"``, ``"F#"``).
+			graph_style: Built-in style name or a custom ``ChordGraph`` instance.
+			include_dominant_7th: Include V7 chords in the graph (default True).
+			key_gravity_blend: Balance between functional and diatonic gravity
+				(0.0 = functional only, 1.0 = full diatonic). Default 1.0.
+			nir_strength: Melodic inertia from Narmour's Implication-Realization
+				model (0.0 = off, 1.0 = full). Default 0.5.
+			minor_turnaround_weight: For turnaround style, weight toward minor
+				turnarounds (0.0 to 1.0). Default 0.0.
+			root_diversity: Root-repetition damping factor (0.0 to 1.0). Each
+				recent chord sharing a candidate's root pitch class multiplies
+				the transition weight by this factor. At the default (0.4), one
+				recent same-root chord reduces the weight to 40%; two reduce it
+				to 16%. Set to 1.0 to disable the penalty entirely. Default 0.4.
+			rng: Optional seeded ``random.Random`` for deterministic playback.
+		"""
 
 		if key_gravity_blend < 0 or key_gravity_blend > 1:
 			raise ValueError("Key gravity blend must be between 0 and 1")
@@ -108,10 +131,14 @@ class HarmonicState:
 		if minor_turnaround_weight < 0 or minor_turnaround_weight > 1:
 			raise ValueError("Minor turnaround weight must be between 0 and 1")
 
+		if root_diversity < 0 or root_diversity > 1:
+			raise ValueError("Root diversity must be between 0 and 1")
+
 		self.key_name = key_name
 		self.key_root_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
 		self.key_gravity_blend = key_gravity_blend
 		self.nir_strength = nir_strength
+		self.root_diversity = root_diversity
 
 		if isinstance(graph_style, str):
 			chord_graph = _resolve_graph_style(graph_style, include_dominant_7th, minor_turnaround_weight)
@@ -208,18 +235,43 @@ class HarmonicState:
 			weight: int
 		) -> float:
 
-			"""Blend functional vs diatonic key gravity for transition weights."""
+			"""
+			Combine three forces that shape chord transition probabilities:
+
+			1. **Key gravity** — blends functional pull (tonic, dominant) with
+			   full diatonic pull, controlled by ``key_gravity_blend``.
+			2. **Melodic inertia (NIR)** — Narmour's cognitive expectation
+			   model favoring continuation after small steps and reversal
+			   after large leaps, controlled by ``nir_strength``.
+			3. **Root diversity** — exponential damping that discourages
+			   revisiting a root pitch class heard recently, controlled by
+			   ``root_diversity``. Each recent chord sharing the target's
+			   root multiplies the weight by ``root_diversity`` (default
+			   0.4), so the penalty grows stronger with each consecutive
+			   same-root step.
+
+			The final modifier is:
+
+				``(1 + gravity_boost) × nir_score × diversity``
+			"""
 
 			is_function = 1.0 if target in self._function_chords else 0.0
 			is_diatonic = 1.0 if target in self._diatonic_chords else 0.0
 
 			# Decision path: blend controls whether key gravity favors functional or full diatonic chords.
 			boost = (1.0 - self.key_gravity_blend) * is_function + self.key_gravity_blend * is_diatonic
-			
+
 			# Apply NIR gravity
 			nir_score = self._calculate_nir_score(source, target)
 
-			return (1.0 + boost) * nir_score
+			# Root diversity: penalise transitions to a root heard recently.
+			recent_same_root = sum(
+				1 for h in self.history
+				if h.root_pc == target.root_pc
+			)
+			diversity = self.root_diversity ** recent_same_root
+
+			return (1.0 + boost) * nir_score * diversity
 
 		# Decision path: chord changes occur here; key changes are not automatic.
 		self.current_chord = self.graph.choose_next(self.current_chord, self.rng, weight_modifier=weight_modifier)

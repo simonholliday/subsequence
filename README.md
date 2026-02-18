@@ -2,11 +2,11 @@
 
 **A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence combines the immediate workflow of a hardware sequencer with the architectural depth of Python code. It is designed for **the musician who wants to build a system that plays with memory** - one that listens to what it just played, understands where it is in a song, and makes musical decisions based on context.
 
-Unlike stateless libraries that loop forever, Subsequence 'compiles' each cycle ahead of time. This stateful architecture allows for context-aware harmony, long-form structure, and determinism. You can build complex, evolving systems where a pattern knows what happened in the previous bar, or compose traditional linear pieces with fixed notes and sections.
+Unlike stateless libraries that loop forever, Subsequence rebuilds patterns each time they play (before they're due). This stateful architecture allows for context-aware harmony, long-form structure, and determinism. You can create complex, evolving compositions where patterns knows what happened in the previous bar, as well as traditional linear pieces with fixed notes and sections.
 
 It is a **"Headless Brain"** for your studio. It generates pure MIDI to control your hardware instruments, modular synthesizers, or VSTs, replacing limited hardware sequencers with an infinite, code-driven engine.
 
-> **Note:** Subsequence does not produce sound. It generates MIDI data to control your hardware synths and software instruments. By automating the notes, it leaves both your hands free to shape the timbre, texture, and character of your sound in real-time.
+> **Note:** Subsequence does not produce sound. It generates MIDI data to control existing hardware or software instruments. 
 
 ## Introduction
 
@@ -525,6 +525,7 @@ composition.harmony(
 | `gravity` | float | `1.0` | Key gravity blend (0.0 = functional chords only, 1.0 = full diatonic set) |
 | `nir_strength` | float | `0.5` | Melodic inertia (0.0 = off, 1.0 = full). Controls how strongly transitions follow Narmour's Implication-Realization model |
 | `minor_weight` | float | `0.0` | Minor turnaround weight (turnaround graph only) |
+| `root_diversity` | float | `0.4` | Root-repetition damping (0.0 = maximum, 1.0 = off). Each recent same-root chord multiplies the weight by this factor |
 
 ### Built-in chord graphs
 
@@ -544,7 +545,7 @@ composition.harmony(
 
 ### Harmonic gravity and melodic inertia
 
-Three layers influence which chord comes next:
+Four layers influence which chord comes next:
 
 1.  **Graph weights** - the base transition probabilities defined by the chord graph. A strong cadence (e.g. V-I) has a higher weight than a deceptive resolution (e.g. V-vi).
 2.  **Key gravity** - blends between functional pull (tonic, subdominant, dominant) and full diatonic pull. It ensures the progression retains a sense of home.
@@ -553,6 +554,7 @@ Three layers influence which chord comes next:
     *   **Gap-Fill (Reversal):** A large leap (> 4 semitones) stretches the "elastic" of pitch space, implying a change of direction to fill the gap.
     *   **Proximity:** Small intervals (1-3 semitones) are generally preferred over large leaps.
     *   **Closure:** Return to tonic gets a gentle boost.
+4.  **Root diversity** - an automatic penalty that discourages the same chord root from appearing repeatedly. Each recent chord sharing a candidate's root multiplies the transition weight by `root_diversity` (default 0.4). This prevents progressions from getting stuck on one root, even in graphs with same-root voicing changes (e.g., sus2/sus4 pairs) or strong resolution weights. Set `root_diversity=1.0` to disable.
 
 At `nir_strength=0.0` the system is purely probabilistic (Markov). At `1.0` it is heavily driven by these cognitive rules. The default `0.5` balances structural surprise with melodic coherence.
 
@@ -873,16 +875,16 @@ Planned features, roughly in order of priority.
 
 - **Example library.** A handful of short compositions in different styles so musicians can hear what the tool can do before investing time.
 - **Conductor `[]` access.** Allow `p.c["name"]` syntax which automatically infers the current time from the pattern builder state. Currently `p.c.get("name", time)` is required.
+- MIDI file export for capturing sessions into a DAW
 
 ### Medium priority
 
 - **MIDI CC mapping.** Map hardware knobs and controllers to `composition.data` via event handlers (e.g., "map CC 1 to probability") so Subsequence feels like a hybrid hardware/software instrument for live performance. This enables full **MIDI CC automation** of any Python variable. MIDI input port and clock following are already supported via `composition.midi_input()`.
-- **Performance profiling.** Optional debug mode to log timing for each `on_reschedule()` call, helping identify custom pattern logic that may cause timing jitter or performance issues.
 - **Network Sync.** Peer-to-peer network sync with DAWs and other Link-enabled devices.
 
 ### Future ideas
 
-- MIDI file export for capturing sessions into a DAW
+- **Performance profiling.** Optional debug mode to log timing for each `on_reschedule()` call, helping identify custom pattern logic that may cause timing jitter or performance issues.
 - Embeddable engine mode (run as a library inside games or installations)
 
 ## Tests

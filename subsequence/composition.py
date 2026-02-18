@@ -314,13 +314,16 @@ class _InjectedChord:
 
 async def schedule_harmonic_clock (
 	sequencer: subsequence.sequencer.Sequencer,
-	harmonic_state: subsequence.harmonic_state.HarmonicState,
+	get_harmonic_state: typing.Callable[[], typing.Optional[subsequence.harmonic_state.HarmonicState]],
 	cycle_beats: int,
 	reschedule_lookahead: float = 1
 ) -> None:
 
 	"""
 	Schedule composition-level harmonic changes on a repeating beat interval.
+
+	The ``get_harmonic_state`` callable is evaluated on every tick so that
+	mid-playback calls to ``composition.harmony()`` take effect immediately.
 	"""
 
 	def advance_harmony (pulse: int) -> None:
@@ -329,7 +332,9 @@ async def schedule_harmonic_clock (
 		Advance the harmonic state on the composition clock.
 		"""
 
-		harmonic_state.step()
+		hs = get_harmonic_state()
+		if hs is not None:
+			hs.step()
 
 	await sequencer.schedule_callback_repeating(
 		callback = advance_harmony,
@@ -583,6 +588,7 @@ class Composition:
 		gravity: float = 1.0,
 		nir_strength: float = 0.5,
 		minor_weight: float = 0.0,
+		root_diversity: float = subsequence.harmonic_state.DEFAULT_ROOT_DIVERSITY,
 		reschedule_lookahead: float = 1
 	) -> None:
 
@@ -602,10 +608,13 @@ class Composition:
 			cycle_beats: How many beats each chord lasts (default 4).
 			dominant_7th: Whether to include V7 chords (default True).
 			gravity: Key gravity (0.0 to 1.0). High values stay closer to the root chord.
-			nir_strength: Melodic inertia (0.0 to 1.0). Influences chord movement 
+			nir_strength: Melodic inertia (0.0 to 1.0). Influences chord movement
 				expectations.
 			minor_weight: For "turnaround" style, influences major vs minor feel.
-			reschedule_lookahead: How many beats in advance to calculate the 
+			root_diversity: Root-repetition damping (0.0 to 1.0). Each recent
+				chord sharing a candidate's root reduces the weight to 40% at
+				the default (0.4). Set to 1.0 to disable.
+			reschedule_lookahead: How many beats in advance to calculate the
 				next chord.
 
 		Example:
@@ -618,14 +627,27 @@ class Composition:
 		if self.key is None:
 			raise ValueError("Cannot configure harmony without a key - set key in the Composition constructor")
 
+		preserved_history: typing.List[subsequence.chords.Chord] = []
+		preserved_current: typing.Optional[subsequence.chords.Chord] = None
+
+		if self._harmonic_state is not None:
+			preserved_history = self._harmonic_state.history.copy()
+			preserved_current = self._harmonic_state.current_chord
+
 		self._harmonic_state = subsequence.harmonic_state.HarmonicState(
 			key_name = self.key,
 			graph_style = style,
 			include_dominant_7th = dominant_7th,
 			key_gravity_blend = gravity,
 			nir_strength = nir_strength,
-			minor_turnaround_weight = minor_weight
+			minor_turnaround_weight = minor_weight,
+			root_diversity = root_diversity
 		)
+
+		if preserved_history:
+			self._harmonic_state.history = preserved_history
+		if preserved_current is not None:
+			self._harmonic_state.current_chord = preserved_current
 
 		self._harmony_cycle_beats = cycle_beats
 		self._harmony_reschedule_lookahead = reschedule_lookahead
@@ -1052,7 +1074,7 @@ class Composition:
 
 			await schedule_harmonic_clock(
 				sequencer = self._sequencer,
-				harmonic_state = self._harmonic_state,
+				get_harmonic_state = lambda: self._harmonic_state,
 				cycle_beats = self._harmony_cycle_beats,
 				reschedule_lookahead = self._harmony_reschedule_lookahead
 			)
