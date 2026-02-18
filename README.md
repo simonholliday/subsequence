@@ -1,10 +1,10 @@
 # Subsequence
 
-**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence combines the immediate workflow of a hardware sequencer with the architectural depth of Python code. It is designed for **the musician who wants to build a system that plays with memory** - one that listens to what it just played, understands where it is in a song, and makes musical decisions based on context.
+**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence combines pattern-based sequencing with the full depth of Python code. It is designed for **the musician who wants compositions that evolve** - where patterns respond to what came before, know where they are in the song, and make musical decisions based on context.
 
 Unlike stateless libraries that loop forever, Subsequence rebuilds patterns each time they play (before they're due). This stateful architecture allows for context-aware harmony, long-form structure, and determinism. You can create complex, evolving compositions where patterns knows what happened in the previous bar, as well as traditional linear pieces with fixed notes and sections.
 
-It is a **"Headless Brain"** for your studio. It generates pure MIDI to control your hardware instruments, modular synthesizers, or VSTs, replacing limited hardware sequencers with an infinite, code-driven engine.
+It is a **compositional engine** for your studio — generating pure MIDI to control hardware instruments, modular synthesizers, or VSTs, with no fixed limits on complexity or length.
 
 > **Note:** Subsequence does not produce sound. It generates MIDI data to control existing hardware or software instruments. 
 
@@ -24,10 +24,10 @@ Subsequence integrates the **Narmour Implication-Realization model**, a theory o
 
 By encoding these principles, Subsequence generates melodies that feel structured and intentional, satisfying the listener's innate expectations of musical grammar.
 
-### The "System Architect" Workflow
+### The Algorithmic Composer
 Subsequence is a workbench for **Algorithmic Composition**, not an "AI Music Generator".
 
-*   **Don't Prompt. Architect.** You define the composition, the computer provides the processing power. You are the composer and conductor, not a spectator.
+*   **Don't Prompt. Design.** You define the composition, the computer provides the processing power. You are the composer and conductor, not a spectator.
 *   **Code is the Interface.** Patterns are plain text files, meaning your music is versionable, shareable, and collaborative by default. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with.
 *   **Deterministic Control.** Set a seed and get the exact same "random" results every time. Tweak your code and re-run to perfect the output, just like compiling software.
 
