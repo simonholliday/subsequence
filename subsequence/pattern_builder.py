@@ -610,8 +610,81 @@ class PatternBuilder:
 			for note in step.notes:
 				note.velocity = int(low + (high - low) * vdc_value)
 
+	def humanize (
+		self,
+		timing: float = 0.04,
+		velocity: float = 0.0,
+		rng: typing.Optional[random.Random] = None
+	) -> None:
+
+		"""
+		Add subtle random variations to note timing and velocity.
+
+		This makes patterns feel less mechanical by introducing small
+		imperfections — the micro-variations that distinguish a played
+		performance from a perfectly quantized sequence.
+
+		Called with no arguments, only timing variation is applied
+		(velocity defaults to 0.0 — no change). Pass a velocity value
+		to also randomise dynamics:
+
+		    # Timing only (default)
+		    p.humanize()
+
+		    # Both axes
+		    p.humanize(timing=0.04, velocity=0.08)
+
+		    # Stronger feel
+		    p.humanize(timing=0.08, velocity=0.15)
+
+		Resolution note: the sequencer runs at 24 PPQN. At 120 BPM, one
+		pulse ≈ 20ms. Timing shifts smaller than roughly 0.04 beats may
+		have no audible effect because they round to zero pulses.
+		Recommended range: timing=0.02–0.08, velocity=0.05–0.15.
+
+		When the composition has a seed set, ``p.rng`` is deterministic,
+		so ``p.humanize()`` produces the same result on every run.
+
+		Parameters:
+			timing: Maximum timing offset in beats (e.g. 0.05 = ±1.2
+				pulses at 24 PPQN). Notes shift by a random amount
+				within ``[-timing, +timing]`` beats. Clamped to
+				pulse 0 at the lower bound.
+			velocity: Maximum velocity scale factor (0.0 to 1.0). Each
+				note's velocity is multiplied by a random value in
+				``[1 - velocity, 1 + velocity]``, clamped to 1–127.
+			rng: Random instance to use. Defaults to ``self.rng``
+				(seeded when the composition has a seed).
+		"""
+
+		if rng is None:
+			rng = self.rng
+
+		max_timing_pulses = timing * subsequence.constants.MIDI_QUARTER_NOTE
+		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
+
+		for pulse, step in self._pattern.steps.items():
+
+			if timing != 0.0:
+				offset = rng.uniform(-max_timing_pulses, max_timing_pulses)
+				new_pulse = max(0, int(round(pulse + offset)))
+			else:
+				new_pulse = pulse
+
+			if new_pulse not in new_steps:
+				new_steps[new_pulse] = subsequence.pattern.Step()
+
+			new_steps[new_pulse].notes.extend(step.notes)
+
+			if velocity != 0.0:
+				for note in new_steps[new_pulse].notes:
+					scale = rng.uniform(1.0 - velocity, 1.0 + velocity)
+					note.velocity = max(1, min(127, int(round(note.velocity * scale))))
+
+		self._pattern.steps = new_steps
+
 	def legato (self, ratio: float = 1.0) -> None:
-		
+
 		"""
 		Adjust note durations to fill the gap until the next note.
 		

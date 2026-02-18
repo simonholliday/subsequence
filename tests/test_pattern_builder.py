@@ -1509,3 +1509,133 @@ def test_param_returns_none_when_no_default () -> None:
 	_, builder = _make_builder()
 
 	assert builder.param("missing") is None
+
+
+# --- Humanize ---
+
+
+def test_humanize_timing_shifts_notes () -> None:
+
+	"""humanize(timing=0.5) should shift at least one note from its original pulse."""
+
+	import random
+
+	_, builder = _make_builder()
+
+	# Place notes at all 16 sixteenth-note positions using MIDI note numbers.
+	builder.hit_steps(36, list(range(16)), velocity=100)
+	original_pulses = set(builder._pattern.steps.keys())
+
+	builder.humanize(timing=0.5, rng=random.Random(42))
+
+	new_pulses = set(builder._pattern.steps.keys())
+
+	# At least one note should have moved.
+	assert new_pulses != original_pulses
+
+
+def test_humanize_timing_zero_no_change () -> None:
+
+	"""humanize(timing=0.0) should leave all pulse positions unchanged."""
+
+	import random
+
+	_, builder = _make_builder()
+	builder.hit_steps(36, list(range(16)), velocity=100)
+	original_pulses = set(builder._pattern.steps.keys())
+
+	builder.humanize(timing=0.0, rng=random.Random(42))
+
+	assert set(builder._pattern.steps.keys()) == original_pulses
+
+
+def test_humanize_velocity_changes_velocity () -> None:
+
+	"""humanize(velocity=0.5) should change at least one note's velocity."""
+
+	import random
+
+	_, builder = _make_builder()
+	builder.hit_steps(36, list(range(16)), velocity=100)
+
+	original_velocities = [
+		note.velocity
+		for step in builder._pattern.steps.values()
+		for note in step.notes
+	]
+
+	builder.humanize(velocity=0.5, rng=random.Random(42))
+
+	new_velocities = [
+		note.velocity
+		for step in builder._pattern.steps.values()
+		for note in step.notes
+	]
+
+	assert new_velocities != original_velocities
+
+
+def test_humanize_velocity_zero_no_change () -> None:
+
+	"""humanize(velocity=0.0) should leave all velocities unchanged."""
+
+	import random
+
+	_, builder = _make_builder()
+	builder.hit_steps(36, list(range(16)), velocity=100)
+
+	original_velocities = [
+		note.velocity
+		for step in builder._pattern.steps.values()
+		for note in step.notes
+	]
+
+	builder.humanize(velocity=0.0, rng=random.Random(42))
+
+	new_velocities = [
+		note.velocity
+		for step in builder._pattern.steps.values()
+		for note in step.notes
+	]
+
+	assert new_velocities == original_velocities
+
+
+def test_humanize_deterministic_with_rng () -> None:
+
+	"""Same RNG seed produces identical results; different seed produces different results."""
+
+	import random
+
+	def build_with_seed (seed: int) -> set:
+		_, builder = _make_builder()
+		builder.hit_steps(36, list(range(16)), velocity=80)
+		builder.humanize(timing=0.5, velocity=0.3, rng=random.Random(seed))
+		return set(builder._pattern.steps.keys())
+
+	run_a = build_with_seed(1)
+	run_b = build_with_seed(1)
+	run_c = build_with_seed(99)
+
+	assert run_a == run_b
+	assert run_a != run_c
+
+
+def test_humanize_velocity_stays_in_range () -> None:
+
+	"""All velocities must remain in the valid MIDI range (1–127) after humanize."""
+
+	import random
+
+	_, builder = _make_builder()
+
+	# Use edge-case velocities to stress-test the clamp.
+	builder.note(60, beat=0, velocity=1)
+	builder.note(60, beat=1, velocity=127)
+	builder.note(60, beat=2, velocity=64)
+
+	builder.humanize(velocity=1.0, rng=random.Random(42))
+
+	for step in builder._pattern.steps.values():
+		for note in step.notes:
+			assert 1 <= note.velocity <= 127
