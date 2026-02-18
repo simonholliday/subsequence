@@ -149,12 +149,12 @@ def tr8s_drums (p):
 	rim_seq = subsequence.sequence_utils.generate_euclidean_sequence(12, p.rng.randint(1, 3))
 	rim_steps = subsequence.sequence_utils.sequence_to_indices(rim_seq)
 	rim_steps = subsequence.sequence_utils.roll(rim_steps, 3, 12)
-	p.hit_steps("side_stick", rim_steps, velocity=90, step_count=12)
+	p.hit_steps("side_stick", rim_steps, velocity=90, grid=12)
 
 	# Hand clap: occasional accent on a random triplet step.
 	if p.rng.random() < 0.4:
 		clap_step = p.rng.randint(0, 11)
-		p.hit_steps("hand_clap", [clap_step], velocity=95, step_count=12)
+		p.hit_steps("hand_clap", [clap_step], velocity=95, grid=12)
 
 
 # ─── Chords (Voce EP) ───────────────────────────────────────────────

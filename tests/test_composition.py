@@ -144,7 +144,8 @@ def test_build_pattern_from_pending_calls_builder (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -170,7 +171,8 @@ def test_build_pattern_rebuilds_on_reschedule (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -196,7 +198,8 @@ def test_builder_exception_produces_silent_pattern (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -225,7 +228,8 @@ def test_builder_cycle_injection (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -261,7 +265,8 @@ def test_chord_injection (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -295,7 +300,8 @@ def test_chord_not_injected_without_parameter (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -345,7 +351,8 @@ def test_data_accessible_from_builder (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	composition._build_pattern_from_pending(pending)
@@ -402,7 +409,8 @@ def test_builder_receives_rng_from_seed (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	composition._pending_patterns.append(pending)
@@ -435,7 +443,8 @@ def test_seed_produces_deterministic_patterns (patch_midi: None) -> None:
 			channel = 1,
 			length = 4,
 			drum_note_map = None,
-			reschedule_lookahead = 1
+			reschedule_lookahead = 1,
+			default_grid = 16
 		)
 
 		# Derive RNG the same way _run() does.
@@ -499,7 +508,8 @@ def test_build_pattern_float_length (patch_midi: None) -> None:
 		channel = 1,
 		length = 10.5,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 42
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -623,7 +633,8 @@ def test_tweak_updates_running_pattern (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -658,7 +669,8 @@ def test_clear_tweak_removes_all (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -684,7 +696,8 @@ def test_clear_tweak_removes_specific (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -710,7 +723,8 @@ def test_get_tweaks_returns_copy (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -737,7 +751,8 @@ def test_tweaks_in_live_info (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -764,7 +779,8 @@ def test_param_reads_tweak_on_rebuild (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = composition._build_pattern_from_pending(pending)
@@ -777,3 +793,92 @@ def test_param_reads_tweak_on_rebuild (patch_midi: None) -> None:
 	pattern.on_reschedule()
 
 	assert captured["pitches"] == [48, 52]
+
+
+# --- Unit parameter ---
+
+
+def test_pattern_unit_sets_beat_length (patch_midi: None) -> None:
+
+	"""length=6, unit=SIXTEENTH should produce a pattern with 1.5 beats."""
+
+	import subsequence.constants.durations as dur
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=0, length=6, unit=dur.SIXTEENTH)
+	def my_pattern (p):
+		pass
+
+	pending = composition._pending_patterns[0]
+
+	assert pending.length == pytest.approx(1.5)
+
+
+def test_pattern_unit_sets_default_grid (patch_midi: None) -> None:
+
+	"""length=6, unit=SIXTEENTH should set default_grid to 6."""
+
+	import subsequence.constants.durations as dur
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=0, length=6, unit=dur.SIXTEENTH)
+	def my_pattern (p):
+		pass
+
+	pending = composition._pending_patterns[0]
+
+	assert pending.default_grid == 6
+
+
+def test_pattern_no_unit_defaults_to_sixteenth_grid (patch_midi: None) -> None:
+
+	"""length=4 without unit should produce default_grid=16 (4 / SIXTEENTH)."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=0, length=4)
+	def my_pattern (p):
+		pass
+
+	pending = composition._pending_patterns[0]
+
+	assert pending.default_grid == 16
+
+
+def test_pattern_unit_triplet_grid (patch_midi: None) -> None:
+
+	"""length=4, unit=TRIPLET_EIGHTH should produce default_grid=4."""
+
+	import subsequence.constants.durations as dur
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=0, length=4, unit=dur.TRIPLET_EIGHTH)
+	def my_pattern (p):
+		pass
+
+	pending = composition._pending_patterns[0]
+
+	assert pending.length == pytest.approx(4 * dur.TRIPLET_EIGHTH)
+	assert pending.default_grid == 4
+
+
+def test_layer_unit_sets_beat_length (patch_midi: None) -> None:
+
+	"""layer() with unit should compute beat_length correctly."""
+
+	import subsequence.constants.durations as dur
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	def kick (p):
+		pass
+
+	composition.layer(kick, channel=9, length=8, unit=dur.SIXTEENTH)
+
+	pending = composition._pending_patterns[0]
+
+	assert pending.length == pytest.approx(2.0)
+	assert pending.default_grid == 8

@@ -262,7 +262,8 @@ def test_mute_unmute (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = comp._build_pattern_from_pending(pending)
@@ -325,7 +326,8 @@ def test_mute_preserves_cycle_count (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = comp._build_pattern_from_pending(pending)
@@ -359,7 +361,8 @@ def test_pattern_hot_swap (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = comp._build_pattern_from_pending(pending)
@@ -398,7 +401,8 @@ def test_hot_swap_updates_wants_chord (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = comp._build_pattern_from_pending(pending)
@@ -432,7 +436,8 @@ def test_live_info_includes_patterns (patch_midi: None) -> None:
 		channel = 9,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	pattern = comp._build_pattern_from_pending(pending)

@@ -4,22 +4,30 @@ import pytest
 
 import subsequence.chords
 import subsequence.constants
+import subsequence.constants.durations
 import subsequence.pattern
 import subsequence.pattern_builder
 
 
-def _make_builder (channel: int = 0, length: int = 4, drum_note_map: dict = None) -> tuple:
+def _make_builder (channel: int = 0, length: float = 4, drum_note_map: dict = None, default_grid: int = None) -> tuple:
 
 	"""
 	Create a Pattern and PatternBuilder pair for testing.
+
+	When *default_grid* is not given it is derived from *length* using
+	sixteenth-note resolution, matching the composition decorator fallback.
 	"""
+
+	if default_grid is None:
+		default_grid = round(length / subsequence.constants.durations.SIXTEENTH)
 
 	pattern = subsequence.pattern.Pattern(channel=channel, length=length)
 
 	builder = subsequence.pattern_builder.PatternBuilder(
 		pattern = pattern,
 		cycle = 0,
-		drum_note_map = drum_note_map
+		drum_note_map = drum_note_map,
+		default_grid = default_grid
 	)
 
 	return pattern, builder
@@ -444,13 +452,13 @@ def test_hit_steps_with_drum_note_map () -> None:
 	assert pattern.steps[0].notes[0].pitch == 36
 
 
-def test_hit_steps_custom_step_count () -> None:
+def test_hit_steps_custom_grid () -> None:
 
-	"""A custom step_count of 8 on a 4-beat pattern should place steps at half-beat intervals."""
+	"""A custom grid of 8 on a 4-beat pattern should place steps at half-beat intervals."""
 
 	pattern, builder = _make_builder(length=4)
 
-	builder.hit_steps(60, steps=[0, 2, 4, 6], velocity=100, step_count=8)
+	builder.hit_steps(60, steps=[0, 2, 4, 6], velocity=100, grid=8)
 
 	# step_duration = 4 / 8 = 0.5 beats per step
 	expected_pulses = [
@@ -458,6 +466,63 @@ def test_hit_steps_custom_step_count () -> None:
 		int(1.0 * subsequence.constants.MIDI_QUARTER_NOTE),
 		int(2.0 * subsequence.constants.MIDI_QUARTER_NOTE),
 		int(3.0 * subsequence.constants.MIDI_QUARTER_NOTE),
+	]
+
+	assert sorted(pattern.steps.keys()) == expected_pulses
+
+
+def test_hit_steps_default_grid_from_length () -> None:
+
+	"""Without an explicit grid, a 6-sixteenth-note pattern should auto-derive grid=6."""
+
+	pattern, builder = _make_builder(length=1.5)  # 6 * dur.SIXTEENTH = 1.5 beats
+
+	builder.hit_steps(60, steps=[0, 3], velocity=100)
+
+	# step_duration = 1.5 / 6 = 0.25 beats per step (sixteenth notes)
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	expected_pulses = [
+		int(0.0 * ppq),   # step 0 → beat 0.0
+		int(0.75 * ppq),  # step 3 → beat 0.75
+	]
+
+	assert sorted(pattern.steps.keys()) == expected_pulses
+
+
+def test_hit_steps_default_grid_from_unit () -> None:
+
+	"""When default_grid is set explicitly (as the decorator does with unit), the grid matches."""
+
+	dur = subsequence.constants.durations
+	beat_length = 6 * dur.SIXTEENTH  # 1.5 beats
+	pattern, builder = _make_builder(length=beat_length, default_grid=6)
+
+	builder.hit_steps(60, steps=[0, 3], velocity=100)
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	expected_pulses = [
+		int(0.0 * ppq),
+		int(0.75 * ppq),
+	]
+
+	assert sorted(pattern.steps.keys()) == expected_pulses
+
+
+def test_hit_steps_triplet_default_grid () -> None:
+
+	"""A triplet-based pattern with explicit default_grid avoids the SIXTEENTH derivation bug."""
+
+	dur = subsequence.constants.durations
+	beat_length = 4 * dur.TRIPLET_EIGHTH  # ~2.667 beats
+	pattern, builder = _make_builder(length=beat_length, default_grid=4)
+
+	builder.hit_steps(60, steps=[0, 2], velocity=100)
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	step_dur = beat_length / 4  # one triplet eighth per step
+	expected_pulses = [
+		int(0 * step_dur * ppq),
+		int(2 * step_dur * ppq),
 	]
 
 	assert sorted(pattern.steps.keys()) == expected_pulses
@@ -1155,17 +1220,73 @@ def test_sequence_empty_pitches_list_raises () -> None:
 		builder.sequence([0, 4], pitches=[])
 
 
-def test_sequence_custom_step_count () -> None:
+def test_sequence_custom_grid () -> None:
 
-	"""step_count=8 should map steps to correct beat positions."""
+	"""grid=8 should map steps to correct beat positions."""
 
 	pattern, builder = _make_builder(length=4)
 
-	# step_count=8 over 4 beats = 0.5 beats per step.
-	builder.sequence([0, 2, 4, 6], pitches=60, step_count=8)
+	# grid=8 over 4 beats = 0.5 beats per step.
+	builder.sequence([0, 2, 4, 6], pitches=60, grid=8)
 
 	ppq = subsequence.constants.MIDI_QUARTER_NOTE
 	expected_pulses = [0, ppq, ppq * 2, ppq * 3]
+
+	assert sorted(pattern.steps.keys()) == expected_pulses
+
+
+def test_sequence_default_grid_from_length () -> None:
+
+	"""Without an explicit grid, a 6-sixteenth-note pattern should auto-derive grid=6."""
+
+	pattern, builder = _make_builder(length=1.5)  # 6 * dur.SIXTEENTH = 1.5 beats
+
+	builder.sequence([0, 3, 5], pitches=60)
+
+	# step_duration = 1.5 / 6 = 0.25 beats per step (sixteenth notes)
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	expected_pulses = [
+		int(0.0 * ppq),   # step 0 → beat 0.0
+		int(0.75 * ppq),  # step 3 → beat 0.75
+		int(1.25 * ppq),  # step 5 → beat 1.25
+	]
+
+	assert sorted(pattern.steps.keys()) == expected_pulses
+
+
+def test_sequence_default_grid_from_unit () -> None:
+
+	"""When default_grid is set explicitly (as the decorator does with unit), the grid matches."""
+
+	dur = subsequence.constants.durations
+	beat_length = 6 * dur.SIXTEENTH  # 1.5 beats
+	pattern, builder = _make_builder(length=beat_length, default_grid=6)
+
+	builder.sequence([0, 3, 5], pitches=60)
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	expected_pulses = [
+		int(0.0 * ppq),
+		int(0.75 * ppq),
+		int(1.25 * ppq),
+	]
+
+	assert sorted(pattern.steps.keys()) == expected_pulses
+
+
+def test_sequence_triplet_default_grid () -> None:
+
+	"""A triplet-based pattern with explicit default_grid avoids the SIXTEENTH derivation bug."""
+
+	dur = subsequence.constants.durations
+	beat_length = 4 * dur.TRIPLET_EIGHTH  # ~2.667 beats
+	pattern, builder = _make_builder(length=beat_length, default_grid=4)
+
+	builder.sequence([0, 1, 2, 3], pitches=60)
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	step_dur = beat_length / 4
+	expected_pulses = [int(i * step_dur * ppq) for i in range(4)]
 
 	assert sorted(pattern.steps.keys()) == expected_pulses
 

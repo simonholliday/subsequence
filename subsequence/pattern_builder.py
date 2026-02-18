@@ -53,9 +53,24 @@ class PatternBuilder:
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16) -> None:
 
-		"""Initialize the builder with pattern context, cycle count, and optional section info."""
+		"""Initialize the builder with pattern context, cycle count, and optional section info.
+
+		Parameters:
+			pattern: The ``Pattern`` instance this builder populates.
+			cycle: Zero-based rebuild counter.
+			conductor: Optional ``Conductor`` for time-varying signals.
+			drum_note_map: Optional mapping of drum names to MIDI notes.
+			section: Current ``SectionInfo`` (or ``None``).
+			bar: Global bar count.
+			rng: Optional seeded ``Random`` for reproducibility.
+			tweaks: Per-pattern overrides set via ``composition.tweak()``.
+			default_grid: Number of grid slots used by ``hit_steps()``,
+				``sequence()``, and ``shift()`` when no explicit ``grid``
+				is passed.  Normally set automatically from the decorator's
+				``length`` and ``unit`` parameters.
+		"""
 
 		self._pattern = pattern
 		self.cycle = cycle
@@ -65,6 +80,7 @@ class PatternBuilder:
 		self.bar = bar
 		self.rng: random.Random = rng or random.Random()
 		self._tweaks: typing.Dict[str, typing.Any] = tweaks or {}
+		self._default_grid: int = default_grid
 
 	@property
 	def c (self) -> typing.Optional[subsequence.conductor.Conductor]:
@@ -187,18 +203,20 @@ class PatternBuilder:
 		for beat in beats:
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 
-	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, step_count: int = 16, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> None:
+	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""
 		Place short hits at specific step (grid) positions.
 
 		Parameters:
 			pitch: MIDI note number or drum name.
-			steps: A list of grid indices (0 to `step_count - 1`).
+			steps: A list of grid indices (0 to ``grid - 1``).
 			velocity: MIDI velocity (0-127).
 			duration: Note duration in beats.
-			step_count: How many grid steps the pattern is divided into 
-				(default 16, which means sixteenth notes in a 4-beat bar).
+			grid: How many grid slots the pattern is divided into.
+				Defaults to the pattern's ``default_grid`` (set from the
+				decorator's ``length`` and ``unit``, or sixteenth-note
+				resolution when ``unit`` is omitted).
 			probability: Chance (0.0 to 1.0) that each hit will play.
 			rng: Optional random generator (overrides the pattern's seed).
 
@@ -212,7 +230,10 @@ class PatternBuilder:
 		if rng is None:
 			rng = self.rng
 
-		step_duration = self._pattern.length / step_count
+		if grid is None:
+			grid = self._default_grid
+
+		step_duration = self._pattern.length / grid
 
 		for i in steps:
 
@@ -222,13 +243,13 @@ class PatternBuilder:
 			beat = i * step_duration
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 
-	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.List[int]] = 100, durations: typing.Union[float, typing.List[float]] = 0.1, step_count: int = 16, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> None:
+	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.List[int]] = 100, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""
 		A multi-parameter step sequencer.
-		
-		Define which grid steps fire, and then provide a list of pitches, 
-		velocities, and durations. If you provide a list for any parameter, 
+
+		Define which grid steps fire, and then provide a list of pitches,
+		velocities, and durations. If you provide a list for any parameter,
 		Subsequence will step through it as it places each note.
 
 		Parameters:
@@ -236,7 +257,9 @@ class PatternBuilder:
 			pitches: Pitch or list of pitches.
 			velocities: Velocity or list of velocities (default 100).
 			durations: Duration or list of durations (default 0.1).
-			step_count: Grid resolution (default 16).
+			grid: Grid resolution. Defaults to the pattern's
+				``default_grid`` (derived from the decorator's ``length``
+				and ``unit``).
 		"""
 
 		if not steps:
@@ -245,12 +268,15 @@ class PatternBuilder:
 		if rng is None:
 			rng = self.rng
 
+		if grid is None:
+			grid = self._default_grid
+
 		n = len(steps)
 		pitches_list = _expand_sequence_param("pitches", pitches, n)
 		velocities_list = _expand_sequence_param("velocities", velocities, n)
 		durations_list = _expand_sequence_param("durations", durations, n)
 
-		step_duration = self._pattern.length / step_count
+		step_duration = self._pattern.length / grid
 
 		for i, step_idx in enumerate(steps):
 
@@ -719,18 +745,23 @@ class PatternBuilder:
 
 		self._pattern.steps = new_steps
 
-	def shift (self, steps: int, step_count: int = 16) -> None:
+	def shift (self, steps: int, grid: typing.Optional[int] = None) -> None:
 
 		"""
 		Rotate the pattern by a number of grid steps.
 
 		Parameters:
 			steps: Positive values shift right, negative values shift left.
-			step_count: The grid resolution (default 16).
+			grid: The grid resolution. Defaults to the pattern's
+				``default_grid`` (derived from the decorator's ``length``
+				and ``unit``).
 		"""
 
+		if grid is None:
+			grid = self._default_grid
+
 		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
-		pulses_per_step = total_pulses / step_count
+		pulses_per_step = total_pulses / grid
 		shift_pulses = int(steps * pulses_per_step)
 
 		old_steps = self._pattern.steps

@@ -7,6 +7,7 @@ import signal
 import typing
 
 import subsequence.chord_graphs
+import subsequence.constants.durations
 import subsequence.display
 import subsequence.harmonic_state
 import subsequence.live_server
@@ -486,6 +487,7 @@ class _PendingPattern:
 		builder_fn: typing.Callable,
 		channel: int,
 		length: float,
+		default_grid: int,
 		drum_note_map: typing.Optional[typing.Dict[str, int]],
 		reschedule_lookahead: float,
 		voice_leading: bool = False
@@ -498,6 +500,7 @@ class _PendingPattern:
 		self.builder_fn = builder_fn
 		self.channel = channel
 		self.length = length
+		self.default_grid = default_grid
 		self.drum_note_map = drum_note_map
 		self.reschedule_lookahead = reschedule_lookahead
 		self.voice_leading = voice_leading
@@ -997,6 +1000,7 @@ class Composition:
 		self,
 		channel: int,
 		length: float = 4,
+		unit: typing.Optional[float] = None,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
 		voice_leading: bool = False
@@ -1005,24 +1009,42 @@ class Composition:
 		"""
 		Register a function as a repeating MIDI pattern.
 
-		The decorated function will be called once per cycle to 'rebuild' its 
+		The decorated function will be called once per cycle to 'rebuild' its
 		content. This allows for generative logic that evolves over time.
+
+		When ``unit`` is provided, ``length`` is a note count and the actual
+		duration in beats is ``length * unit``.  The note count also becomes
+		the default grid size for ``hit_steps()`` and ``sequence()``.
+
+		When ``unit`` is omitted, ``length`` is in beats (quarter notes) and
+		the grid defaults to sixteenth-note resolution.
 
 		Parameters:
 			channel: MIDI channel (0-15).
-			length: Duration of the loop in beats (default 4).
+			length: Note count when ``unit`` is given, otherwise duration
+				in beats (default 4).
+			unit: Duration of one note in beats (e.g. ``dur.SIXTEENTH``).
+				When set, ``length`` is treated as a count and the grid
+				defaults to ``length``.
 			drum_note_map: Optional mapping for drum instruments.
 			reschedule_lookahead: Beats in advance to compute the next cycle.
-			voice_leading: If True, chords in this pattern will automatically 
+			voice_leading: If True, chords in this pattern will automatically
 				use inversions that minimize voice movement.
 
 		Example:
 			```python
-			@comp.pattern(channel=0)
-			def bass(p):
-				p.seq("60 . . 60", velocity=80)
+			@comp.pattern(channel=0, length=6, unit=dur.SIXTEENTH)
+			def riff(p):
+				p.sequence(steps=[0, 1, 3, 5], pitches=60)
 			```
 		"""
+
+		if unit is not None:
+			beat_length = length * unit
+			default_grid = int(length)
+		else:
+			beat_length = length
+			default_grid = round(beat_length / subsequence.constants.durations.SIXTEENTH)
 
 		def decorator (fn: typing.Callable) -> typing.Callable:
 
@@ -1042,7 +1064,8 @@ class Composition:
 			pending = _PendingPattern(
 				builder_fn = fn,
 				channel = channel,
-				length = length,
+				length = beat_length,
+				default_grid = default_grid,
 				drum_note_map = drum_note_map,
 				reschedule_lookahead = reschedule_lookahead,
 				voice_leading = voice_leading
@@ -1059,6 +1082,7 @@ class Composition:
 		*builder_fns: typing.Callable,
 		channel: int,
 		length: float = 4,
+		unit: typing.Optional[float] = None,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
 		voice_leading: bool = False
@@ -1066,10 +1090,29 @@ class Composition:
 
 		"""
 		Combine multiple functions into a single MIDI pattern.
-		
-		This is useful for composing complex patterns out of reusable 
+
+		This is useful for composing complex patterns out of reusable
 		building blocks (e.g., a 'kick' function and a 'snare' function).
+
+		Parameters:
+			builder_fns: One or more pattern builder functions.
+			channel: MIDI channel (0-15).
+			length: Note count when ``unit`` is given, otherwise duration
+				in beats (default 4).
+			unit: Duration of one note in beats (e.g. ``dur.SIXTEENTH``).
+				When set, ``length`` is treated as a count and the grid
+				defaults to ``length``.
+			drum_note_map: Optional mapping for drum instruments.
+			reschedule_lookahead: Beats in advance to compute the next cycle.
+			voice_leading: If True, chords use smooth voice leading.
 		"""
+
+		if unit is not None:
+			beat_length = length * unit
+			default_grid = int(length)
+		else:
+			beat_length = length
+			default_grid = round(beat_length / subsequence.constants.durations.SIXTEENTH)
 
 		wants_chord = any(_fn_has_parameter(fn, "chord") for fn in builder_fns)
 
@@ -1093,7 +1136,8 @@ class Composition:
 		pending = _PendingPattern(
 			builder_fn = merged_builder,
 			channel = channel,
-			length = length,
+			length = beat_length,
+			default_grid = default_grid,
 			drum_note_map = drum_note_map,
 			reschedule_lookahead = reschedule_lookahead,
 			voice_leading = voice_leading
@@ -1269,6 +1313,7 @@ class Composition:
 
 				self._builder_fn = pending.builder_fn
 				self._drum_note_map = pending.drum_note_map
+				self._default_grid: int = pending.default_grid
 				self._wants_chord = _fn_has_parameter(pending.builder_fn, "chord")
 				self._cycle_count = 0
 				self._rng = pattern_rng
@@ -1304,7 +1349,8 @@ class Composition:
 					bar = composition_ref._builder_bar,
 					conductor = composition_ref.conductor,
 					rng = self._rng,
-					tweaks = self._tweaks
+					tweaks = self._tweaks,
+					default_grid = self._default_grid
 				)
 
 				try:

@@ -65,11 +65,11 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **Context-Aware Harmony.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted **harmonic probability**.[^markov] Harmony and gravity can be changed on the fly (`composition.harmony()`, `key_gravity_blend`). **Advanced Harmonic Gravity** applies Narmour's Implication-Realization model to give progressions inertia. Eleven built-in harmonic palettes (see [Built-in chord graphs](#built-in-chord-graphs)). Patterns that accept a `chord` parameter automatically receive the current chord. Chord inversions and voice leading keep voices moving smoothly.
 - **Architectural Sequencing.** Define the large-scale form - intro, verse, chorus, bridge - as a **Weighted Transition Graph**. Sections follow probabilistic paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior, ensuring the song has structure, not just loops.
 - **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
-- **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for step-based conditional triggers.
+- **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (sixteenth notes by default, or derived from the pattern's `unit`), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for step-based conditional triggers.
 - **Randomness tools.**[^stochastic] Weighted random choice, no-repeat shuffle, random walks, and probability gates - controlled randomness that sounds intentional, not arbitrary. All available in `subsequence.sequence_utils`.
 - **Mini-notation.** Concise string syntax for rhythms and melodies. Write `p.seq("x x [x x] x", pitch="kick")` instead of verbose list definitions. Supports subdivisions `[...]`, rests `.`/`~`, and sustains `_`.
 - **Deterministic seeding.** Set `seed=42` on your Composition and every random decision - chord progressions, form transitions, pattern randomness - becomes repeatable. Run the same code twice, get the same music. Use `p.rng` in your patterns for seeded randomness.
-- **Polyrhythms** emerge naturally by running patterns with different lengths. Pattern length can be any number - use `length=9` for 9 quarter notes, `length=10.5` for 21 eighth notes. Patterns can even change length on rebuild via `p.set_length()`.
+- **Polyrhythms** emerge naturally by running patterns with different lengths. Pattern length can be any number - use `length=9` for 9 quarter notes, `length=10.5` for 21 eighth notes. For non-quarter-note grids, add a `unit` to write lengths like score notation: `length=6, unit=dur.SIXTEENTH` means "6 sixteenth notes." The unit also sets the default grid for `hit_steps()` and `sequence()`, so a 6-step pattern automatically divides into 6 slots. Patterns can even change length on rebuild via `p.set_length()`.
 - **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Functions run in the background automatically. Store results in `composition.data` and read them from any pattern - connect music to APIs, sensors, files, or anything Python can reach.
 - **Terminal visualization.** A persistent status line showing the current bar, section, chord, BPM, and key. Enabled with `composition.display()`. Log messages scroll cleanly above it without disruption.
 - **MIDI recording.** Capture everything played to a standard MIDI file. Pass `record=True` to `Composition` and the session is saved automatically when you stop. Compatible with any DAW.
@@ -134,6 +134,15 @@ def melody (p):
         velocities=[127, 100, 110, 100],
         durations=[0.5, 0.25, 0.25, 0.5],
     )
+
+# Non-quarter-note grid: 6 sixteenth notes (reads like "6/16" in a score).
+# hit_steps() and sequence() automatically use 6 grid slots.
+import subsequence.constants.durations as dur
+
+@composition.pattern(channel=0, length=6, unit=dur.SIXTEENTH)
+def riff (p, chord):
+    root = chord.tones(root=64)[0]
+    p.sequence(steps=[0, 1, 3, 5], pitches=[root+12, root, root, root])
 
 # Per-step probability - each hi-hat has a 70% chance of playing.
 @composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
@@ -922,7 +931,6 @@ Planned features, roughly in order of priority.
 ### High priority
 
 - **Example library.** A handful of short compositions in different styles so musicians can hear what the tool can do before investing time.
-- **Conductor `[]` access.** Allow `p.c["name"]` syntax which automatically infers the current time from the pattern builder state. Currently `p.c.get("name", time)` is required.
 
 ### Medium priority
 

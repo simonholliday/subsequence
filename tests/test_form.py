@@ -210,7 +210,8 @@ def test_section_injected_into_builder (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	composition._build_pattern_from_pending(pending)
@@ -237,7 +238,8 @@ def test_no_form_section_is_none (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	composition._build_pattern_from_pending(pending)
@@ -261,7 +263,8 @@ def test_builder_bar_available (patch_midi: None) -> None:
 		channel = 1,
 		length = 4,
 		drum_note_map = None,
-		reschedule_lookahead = 1
+		reschedule_lookahead = 1,
+		default_grid = 16
 	)
 
 	composition._build_pattern_from_pending(pending)
