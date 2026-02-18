@@ -2,21 +2,21 @@
 
 **A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence combines pattern-based sequencing with the full depth of Python code. It is designed for **the musician who wants compositions that evolve** - where patterns respond to what came before, know where they are in the song, and make musical decisions based on context.
 
-Unlike stateless libraries that loop forever, Subsequence rebuilds patterns each time they play (before they're due). This stateful architecture allows for context-aware harmony, long-form structure, and determinism. You can create complex, evolving compositions where patterns knows what happened in the previous bar, as well as traditional linear pieces with fixed notes and sections.
+Unlike stateless libraries that loop forever, Subsequence rebuilds patterns each time they play (before they're due). This stateful architecture allows for context-aware harmony, long-form structure, and determinism. You can create complex, evolving compositions where patterns know what happened in the previous bar, as well as traditional linear pieces with fixed notes and sections.
 
-It is a **compositional engine** for your studio — generating pure MIDI to control hardware instruments, modular synthesizers, or VSTs, with no fixed limits on complexity or length.
+It is a **compositional engine** for your studio - generating pure MIDI to control hardware instruments, modular synthesizers, or VSTs, with no fixed limits on complexity or length.
 
 > **Note:** Subsequence does not produce sound. It generates MIDI data to control existing hardware or software instruments. 
 
 ## Introduction
 
 ### The "Stateful" Advantage
-Most live-coding environments are **stateless**: passing time determines the event. This excels at cyclic, rhythmic music (techno, polyrhythms) but struggles with narrative. Subsequence is **stateful**: it remembers history. 
+Most live-coding environments are **stateless**: passing time determines the event. This excels at cyclic, rhythmic music (techno, polyrhythms) but struggles with narrative. Subsequence is **stateful**: it remembers history.
 
 This means a pattern can look back at the previous cycle to decide its next move ("if I played a C last bar, play an E this bar"). It allows for **motivic development** - ideas that evolve over time rather than just repeating. It also supports traditional linear composition: because the system tracks "Song Position" and "Section", you can write a piece with a distinct Intro, Verse, and Chorus, where specific notes play at specific times, just like in a DAW.
 
 ### Cognitive Melody Generation
-Standard generative tools often rely on "Scale Masking" (picking random notes from a scale), which ensures no "wrong" notes but often results in aimless melodies.
+Standard generative tools often rely on "scale masking" (picking random notes from a scale), which ensures no "wrong" notes but often results in aimless melodies.
 
 Subsequence integrates the **Narmour Implication-Realization model**, a theory of music cognition that predicts what listeners *expect* to hear. It models **melodic inertia**:
 *   **Implication:** A series of small steps in one direction implies continuation.
@@ -25,11 +25,11 @@ Subsequence integrates the **Narmour Implication-Realization model**, a theory o
 By encoding these principles, Subsequence generates melodies that feel structured and intentional, satisfying the listener's innate expectations of musical grammar.
 
 ### The Algorithmic Composer
-Subsequence is a workbench for **Algorithmic Composition**, not an "AI Music Generator".
+Subsequence is a workbench for **Algorithmic Composition**, NOT an "AI Music Generator".
 
 *   **Don't Prompt. Design.** You define the composition, the computer provides the processing power. You are the composer and conductor, not a spectator.
 *   **Code is the Interface.** Patterns are plain text files, meaning your music is versionable, shareable, and collaborative by default. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with.
-*   **Deterministic Control.** Set a seed and get the exact same "random" results every time. Tweak your code and re-run to perfect the output, just like compiling software.
+*   **Deterministic Control.** Set a seed and get the exact same "random" results every time. Tweak your code and re-run to perfect the output.
 
 Subsequence connects to your existing world. Sync it to your DAW's clock, or let it drive your Eurorack system. It provides the logic; you provide the sound.
 
@@ -43,6 +43,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - [Mini-notation](#mini-notation)
 - [Form and sections](#form-and-sections)
 - [The Conductor](#the-conductor)
+- [State vs Signals](#state-vs-signals)
 - [Chord inversions and voice leading](#chord-inversions-and-voice-leading)
 - [Harmony and chord graphs](#harmony-and-chord-graphs)
 - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
@@ -60,7 +61,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 ## What it does
 
 - **Patterns as functions.** Each pattern is a Python function that builds a full cycle of notes. The sequencer calls it fresh each cycle, so patterns can evolve - reading the current chord, section, cycle count, or external data to decide what to play. Patterns can even change their own length dynamically via `p.set_length()`.
-- **Context-Aware Harmony.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted **harmonic probability**.[^markov] Harmony and gravity can be changed on the fly (`composition.harmony()`, `key_gravity_blend`). **Advanced Harmonic Gravity** applies Narmour's Implication-Realization model to give progressions inertia. Eleven built-in harmonic palettes (see [Built-in chord graphs](#built-in-chord-graphs)). Patterns that accept a `chord` parameter automagically receive the current chord. Chord inversions and voice leading keep voices moving smoothly.
+- **Context-Aware Harmony.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted **harmonic probability**.[^markov] Harmony and gravity can be changed on the fly (`composition.harmony()`, `key_gravity_blend`). **Advanced Harmonic Gravity** applies Narmour's Implication-Realization model to give progressions inertia. Eleven built-in harmonic palettes (see [Built-in chord graphs](#built-in-chord-graphs)). Patterns that accept a `chord` parameter automatically receive the current chord. Chord inversions and voice leading keep voices moving smoothly.
 - **Architectural Sequencing.** Define the large-scale form - intro, verse, chorus, bridge - as a **Weighted Transition Graph**. Sections follow probabilistic paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior, ensuring the song has structure, not just loops.
 - **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
 - **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (16th notes by default), swing, velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for step-based conditional triggers.
@@ -82,7 +83,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 ```
 pip install -e .
 ```
-3. Run the demo (drums + evolving aeolian minor harmony in E):
+2. Run the demo (drums + evolving aeolian minor harmony in E):
 ```
 python examples/demo.py
 ```
@@ -206,7 +207,7 @@ async def main () -> None:
     harmonic_state = subsequence.harmonic_state.HarmonicState(
         key_name="E", graph_style="aeolian_minor", key_gravity_blend=0.8
     )
-    await subsequence.composition.schedule_harmonic_clock(seq, harmonic_state, cycle_beats=4)
+    await subsequence.composition.schedule_harmonic_clock(seq, lambda: harmonic_state, cycle_beats=4)
 
     drums = DrumPattern()
     chords = ChordPadPattern(harmonic_state=harmonic_state)
@@ -230,7 +231,7 @@ For the full version with form, external data, and five patterns, see `examples/
 | **State** | Stateless builders | Persistent instance variables |
 
 **1. Composition API** (`composition.py`)
-This is the recommended starting point for most musicians. It handles the boring stuff (async loop, MIDI device discovery, clock management) so you can focus on writing patterns.
+This is the recommended starting point for most musicians. It handles the infrastructure (async loop, MIDI device discovery, clock management) so you can focus on writing patterns.
 *   **Best for:** Rapid prototyping, standard song forms, live coding.
 *   **Limitation:** Patterns are stateless functions that get rebuilt from scratch every cycle. To keep state (like a counter), you need global variables or closures.
 
@@ -699,7 +700,7 @@ Connected to Subsequence on 127.0.0.1:5555
 
 ```python
 >>> composition.live_info()
-{'bpm': 120, 'key': 'E', 'bar': 34, 'section': {'name': 'chorus', 'bar': 2, 'bars': 8, 'progress': 0.25}, 'chord': 'Em7', 'patterns': [{'name': 'drums', 'channel': 9, 'length': 4.0, 'cycle': 17, 'muted': False}, ...], 'data': {}}
+{'bpm': 120, 'key': 'E', 'bar': 34, 'section': {'name': 'chorus', 'bar': 2, 'bars': 8, 'progress': 0.25}, 'chord': 'Em7', 'patterns': [{'name': 'drums', 'channel': 9, 'length': 4.0, 'cycle': 17, 'muted': False, 'tweaks': {}}, ...], 'data': {}}
 ```
 
 **Change tempo** - hear the difference immediately:
@@ -844,7 +845,7 @@ Subsequence automatically broadcasts its state via OSC (default port 9001) at th
 | `/chord` | `str` | Current chord name (e.g. `"Em7"`) |
 | `/section` | `str` | Current section name (if form is configured) |
 
-### Direct API
+### Direct Pattern API
 
 ```python
 osc_server = subsequence.osc.OscServer(
@@ -898,7 +899,7 @@ Planned features, roughly in order of priority.
 
 - **Example library.** A handful of short compositions in different styles so musicians can hear what the tool can do before investing time.
 - **Conductor `[]` access.** Allow `p.c["name"]` syntax which automatically infers the current time from the pattern builder state. Currently `p.c.get("name", time)` is required.
-- MIDI file export for capturing sessions into a DAW
+- **MIDI file export.** Capture sessions to a standard MIDI file for import into a DAW.
 
 ### Medium priority
 
@@ -908,7 +909,7 @@ Planned features, roughly in order of priority.
 ### Future ideas
 
 - **Performance profiling.** Optional debug mode to log timing for each `on_reschedule()` call, helping identify custom pattern logic that may cause timing jitter or performance issues.
-- Embeddable engine mode (run as a library inside games or installations)
+- **Embeddable engine mode.** Run Subsequence as a library inside games or live installations.
 
 ## Tests
 This project uses `pytest`.
@@ -936,7 +937,7 @@ Type checking runs automatically in CI on all pull requests.
 
 ## About the Author
 
-Subequence was created by me, Simon Holliday ([https://simonholliday.com/](https://simonholliday.com/)), a senior technologist and a junior (but trying) musician. From running an electronic music label in the 2000s to prototyping new passive SONAR techniques for defence research, my work has often explored the intersection of code and sound.
+Subsequence was created by me, Simon Holliday ([https://simonholliday.com/](https://simonholliday.com/)), a senior technologist and a junior (but trying) musician. From running an electronic music label in the 2000s to prototyping new passive SONAR techniques for defence research, my work has often explored the intersection of code and sound.
 
 Subsequence was iterated over a series of separate proof-of-concept projects during 2025, and pulled together into this new codebase in Spring 2026.
 
