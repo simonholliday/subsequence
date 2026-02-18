@@ -48,6 +48,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - [Harmony and chord graphs](#harmony-and-chord-graphs)
 - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
 - [Terminal display](#terminal-display)
+- [MIDI recording](#midi-recording)
 - [Live coding](#live-coding)
 - [MIDI input and external clock](#midi-input-and-external-clock)
 - [OSC integration](#osc-integration)
@@ -71,6 +72,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **Polyrhythms** emerge naturally by running patterns with different lengths. Pattern length can be any number - use `length=9` for 9 quarter notes, `length=10.5` for 21 eighth notes. Patterns can even change length on rebuild via `p.set_length()`.
 - **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Functions run in the background automatically. Store results in `composition.data` and read them from any pattern - connect music to APIs, sensors, files, or anything Python can reach.
 - **Terminal visualization.** A persistent status line showing the current bar, section, chord, BPM, and key. Enabled with `composition.display()`. Log messages scroll cleanly above it without disruption.
+- **MIDI recording.** Capture everything played to a standard MIDI file. Pass `record=True` to `Composition` and the session is saved automatically when you stop. Compatible with any DAW.
 - **Two API levels.** The Composition API is straightforward - most musicians will never need anything else. The Direct Pattern API gives power users full control over patterns, harmony, and scheduling.
 - **Pattern transforms.** Legato (fills gaps), staccato (fixed duration), reverse, double-time, half-time, shift, transpose, and invert - applied after placing notes. `p.every(4, lambda p: p.reverse())` applies a transform every 4th cycle. `composition.layer()` merges multiple builder functions into one pattern. Place notes first, then reshape them.
 - **Live coding.** Modify a running composition without stopping playback. A built-in server accepts Python code from the bundled command-line client, an editor, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state - all while the music plays. Enable with `composition.live()`.
@@ -668,6 +670,28 @@ To disable:
 composition.display(enabled=False)
 ```
 
+## MIDI recording
+
+Capture a session to a standard MIDI file. Pass `record=True` to `Composition` and Subsequence saves everything it plays to disk when you stop:
+
+```python
+composition = subsequence.Composition(bpm=120, key="E", record=True)
+composition.play()
+# Press Ctrl+C - the recording is saved automatically
+```
+
+By default the filename is generated from the timestamp (`session_YYYYMMDD_HHMMSS.mid`). Pass `record_filename` to choose your own:
+
+```python
+composition = subsequence.Composition(
+    bpm=120, key="E",
+    record=True,
+    record_filename="my_session.mid"
+)
+```
+
+The output is a standard Type 1 MIDI file at 480 PPQN - import it directly into any DAW. All note events are recorded on their original MIDI channels. Tempo is embedded as a `set_tempo` meta event, including any mid-session `set_bpm()` calls.
+
 ## Live coding
 
 Modify a running composition without stopping playback. Subsequence includes a TCP eval server that accepts Python code from any source - the bundled REPL client, an editor plugin, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state - all while the music plays.
@@ -899,7 +923,6 @@ Planned features, roughly in order of priority.
 
 - **Example library.** A handful of short compositions in different styles so musicians can hear what the tool can do before investing time.
 - **Conductor `[]` access.** Allow `p.c["name"]` syntax which automatically infers the current time from the pattern builder state. Currently `p.c.get("name", time)` is required.
-- **MIDI file export.** Capture sessions to a standard MIDI file for import into a DAW.
 
 ### Medium priority
 

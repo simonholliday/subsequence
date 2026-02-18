@@ -16,6 +16,10 @@ build/
 # Logs
 *.log
 
+# Generated MIDI recordings
+*.mid
+session_*.mid
+
 # Documentation build output
 docs/
 

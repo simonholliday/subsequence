@@ -2,6 +2,7 @@ import asyncio
 import dataclasses
 import heapq
 import itertools
+import datetime
 import logging
 import time
 import typing
@@ -104,7 +105,9 @@ class Sequencer:
 		output_device_name: typing.Optional[str] = None,
 		initial_bpm: float = 125,
 		input_device_name: typing.Optional[str] = None,
-		clock_follow: bool = False
+		clock_follow: bool = False,
+		record: bool = False,
+		record_filename: typing.Optional[str] = None
 	) -> None:
 
 		"""Initialize the sequencer with MIDI devices and initial BPM.
@@ -116,6 +119,8 @@ class Sequencer:
 			initial_bpm: Tempo in BPM (ignored when clock_follow is True)
 			input_device_name: Optional MIDI input device name for clock/transport
 			clock_follow: When True, follow external MIDI clock instead of internal clock
+			record: When True, record all MIDI events to a file.
+			record_filename: Optional filename for the recording (defaults to timestamp).
 		"""
 
 		if clock_follow and input_device_name is None:
@@ -126,19 +131,13 @@ class Sequencer:
 		self.clock_follow = clock_follow
 		self.pulses_per_beat = subsequence.constants.MIDI_QUARTER_NOTE
 
-		# Timing variables
-		self.current_bpm: float = 0
-		self.seconds_per_beat = 0.0
-		self.seconds_per_pulse = 0.0
-		self.running = False
-		self._bpm_transition: typing.Optional[BpmTransition] = None
+		# Recording state
+		self.recording = record
+		self.record_filename = record_filename
+		self.recorded_events: typing.List[typing.Tuple[float, typing.Union[mido.Message, mido.MetaMessage]]] = []
 
-		self.set_bpm(initial_bpm)
 
-		self.midi_out = None
-		self._init_midi_output()
-
-		# MIDI input state
+		# Internal state initialization (needed before set_bpm)
 		self.midi_in: typing.Any = None
 		self._midi_input_queue: typing.Optional[asyncio.Queue] = None
 		self._input_loop: typing.Optional[asyncio.AbstractEventLoop] = None
@@ -162,9 +161,81 @@ class Sequencer:
 		self._callback_counter = itertools.count()
 		self.data: typing.Dict[str, typing.Any] = {}
 
+		# Timing variables
+		self.current_bpm: float = 0
+		self.seconds_per_beat = 0.0
+		self.seconds_per_pulse = 0.0
+		self.running = False
+		self._bpm_transition: typing.Optional[BpmTransition] = None
+
+		self.set_bpm(initial_bpm)
+
+
+		self.midi_out = None
+		self._init_midi_output()
+
+
 		# Callbacks
 		self.callbacks: typing.List[typing.Callable[[int], typing.Coroutine]] = []
 
+	def _record_event (self, pulse: int, message: typing.Union[mido.Message, mido.MetaMessage]) -> None:
+
+		"""Record a MIDI message with an absolute pulse timestamp for later export."""
+
+		if not self.recording:
+			return
+
+		self.recorded_events.append((float(pulse), message))
+
+	def save_recording (self) -> None:
+
+		"""Save the recorded session to a MIDI file."""
+
+		if not self.recording or not self.recorded_events:
+			return
+
+		if self.record_filename:
+			filename = self.record_filename
+		else:
+			now = datetime.datetime.now()
+			filename = now.strftime("session_%Y%m%d_%H%M%S.mid")
+
+		logger.info(f"Saving MIDI recording ({len(self.recorded_events)} events) to {filename}...")
+
+		mid = mido.MidiFile(type=1) # Type 1 = multiple tracks (though we might just use one)
+		track = mido.MidiTrack()
+		mid.tracks.append(track)
+
+		# Resolution (ticks per beat). Standard is 480.
+		# Subsequence uses 24 PPQN internal.
+		# To get 480 PPQN output without losing precision, we scale up by 20.
+		ticks_per_pulse = 20
+		mid.ticks_per_beat = 480
+
+		# Sort events by pulse just in case
+		self.recorded_events.sort(key=lambda x: x[0])
+
+		last_pulse = 0.0
+
+		for pulse, message in self.recorded_events:
+			
+			delta_pulses = pulse - last_pulse
+			delta_ticks = int(delta_pulses * ticks_per_pulse)
+			
+			# Ensure delta is non-negative (floating point jitter?)
+			if delta_ticks < 0:
+				delta_ticks = 0
+			
+			message.time = delta_ticks
+			track.append(message)
+
+			last_pulse = pulse
+
+		try:
+			mid.save(filename)
+			logger.info(f"Saved {filename}")
+		except Exception as e:
+			logger.error(f"Failed to save MIDI recording: {e}")
 
 	def set_bpm (self, bpm: float) -> None:
 
@@ -188,6 +259,10 @@ class Sequencer:
 		self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
 
 		logger.info(f"BPM set to {self.current_bpm}")
+
+		if self.recording:
+			tempo = mido.bpm2tempo(self.current_bpm)
+			self._record_event(self.pulse_count, mido.MetaMessage('set_tempo', tempo=tempo))
 
 
 	def set_target_bpm (self, target_bpm: float, bars: int) -> None:
@@ -539,6 +614,9 @@ class Sequencer:
 		Stop the sequencer playback and cleanup resources.
 		"""
 
+		if not self.running and self.midi_out is None:
+			return
+
 		logger.info("Stopping sequencer...")
 
 		self.running = False
@@ -550,6 +628,7 @@ class Sequencer:
 
 		if self.midi_out:
 			self.midi_out.close()  # type: ignore[unreachable]
+			self.midi_out = None
 
 		if self.midi_in:
 			self.midi_in.close()
@@ -557,6 +636,8 @@ class Sequencer:
 
 		self._midi_input_queue = None
 		self._input_loop = None
+
+		self.save_recording()
 
 		logger.info("Sequencer stopped")
 
@@ -794,6 +875,9 @@ class Sequencer:
 
 				# Send events at or before the current pulse (late events are sent immediately).
 				self._send_midi(event)
+
+				if self.recording and (event.message_type == 'note_on' or event.message_type == 'note_off'):
+					self._record_event(event.pulse, mido.Message(event.message_type, channel=event.channel, note=event.note, velocity=event.velocity))
 
 
 	async def _stop_all_active_notes (self) -> None:

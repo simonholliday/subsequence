@@ -532,7 +532,15 @@ class Composition:
 	4. Call `composition.play()` to start the music.
 	"""
 
-	def __init__ (self, output_device: typing.Optional[str] = None, bpm: float = 120, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> None:
+	def __init__ (
+		self,
+		output_device: typing.Optional[str] = None,
+		bpm: float = 120,
+		key: typing.Optional[str] = None,
+		seed: typing.Optional[int] = None,
+		record: bool = False,
+		record_filename: typing.Optional[str] = None
+	) -> None:
 
 		"""
 		Initialize a new composition.
@@ -546,6 +554,8 @@ class Composition:
 			seed: An optional integer for deterministic randomness. When set, 
 				every random decision (chord choices, drum probability, etc.) 
 				will be identical on every run.
+			record: When True, record all MIDI events to a file.
+			record_filename: Optional filename for the recording (defaults to timestamp).
 
 		Example:
 			```python
@@ -560,7 +570,9 @@ class Composition:
 
 		self._sequencer = subsequence.sequencer.Sequencer(
 			output_device_name = output_device,
-			initial_bpm = bpm
+			initial_bpm = bpm,
+			record = record,
+			record_filename = record_filename
 		)
 
 		self._harmonic_state: typing.Optional[subsequence.harmonic_state.HarmonicState] = None
