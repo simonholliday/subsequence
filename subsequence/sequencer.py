@@ -149,6 +149,7 @@ class Sequencer:
 		self.start_time = 0.0
 		self.pulse_count = 0
 		self.current_bar: int = -1
+		self.current_beat: int = -1
 		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
 
 		self.queue_lock = asyncio.Lock()
@@ -685,6 +686,17 @@ class Sequencer:
 			asyncio.create_task(self.events.emit_async("bar", self.current_bar))
 
 
+	def _check_beat_change (self, pulse: int, pulses_per_beat: int) -> None:
+
+		"""Detect beat boundaries within the bar and fire beat events."""
+
+		beat_in_bar = (pulse % (4 * pulses_per_beat)) // pulses_per_beat
+
+		if beat_in_bar != self.current_beat:
+			self.current_beat = beat_in_bar
+			asyncio.create_task(self.events.emit_async("beat", self.current_beat))
+
+
 	async def _advance_pulse (self) -> None:
 
 		"""Reschedule patterns, process events, and increment the pulse counter."""
@@ -723,6 +735,7 @@ class Sequencer:
 
 			while current_time >= next_pulse_time:
 				self._check_bar_change(self.pulse_count, pulses_per_bar)
+				self._check_beat_change(self.pulse_count, self.pulses_per_beat)
 				await self._advance_pulse()
 				next_pulse_time += self.seconds_per_pulse
 
@@ -767,12 +780,14 @@ class Sequencer:
 
 				self._estimate_bpm(time.perf_counter())
 				self._check_bar_change(self.pulse_count, pulses_per_bar)
+				self._check_beat_change(self.pulse_count, self.pulses_per_beat)
 				await self._advance_pulse()
 
 			elif message.type == "start":
 				logger.info("MIDI start received")
 				self.pulse_count = 0
 				self.current_bar = -1
+				self.current_beat = -1
 				self._clock_tick_times = []
 				self._waiting_for_start = False
 

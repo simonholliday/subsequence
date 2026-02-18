@@ -1206,7 +1206,8 @@ class Composition:
 
 		if self._display is not None:
 			self._display.start()
-			self._sequencer.on_event("bar", self._display.update)
+			self._sequencer.on_event("bar",  self._display.update)
+			self._sequencer.on_event("beat", self._display.update)
 
 		if self._live_server is not None:
 			await self._live_server.start()

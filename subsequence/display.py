@@ -137,13 +137,12 @@ class Display:
 		self._saved_handlers = []
 		self._handler = None
 
-	def update (self, bar: int) -> None:
+	def update (self, _: int = 0) -> None:
 
-		"""Rebuild and redraw the status line for the current bar.
+		"""Rebuild and redraw the status line; called on both ``"bar"`` and ``"beat"`` events.
 
-		Parameters:
-			bar: The bar number (passed by the ``"bar"`` event, not used directly  - 
-				state is read from the composition).
+		The integer argument (bar or beat number) is ignored — state is read directly from
+		the composition.
 		"""
 
 		if not self._active:
@@ -185,7 +184,9 @@ class Display:
 		if comp.key:
 			parts.append(f"Key: {comp.key}")
 
-		parts.append(f"Bar: {comp._builder_bar + 1}")
+		bar  = max(0, comp._sequencer.current_bar)  + 1
+		beat = max(0, comp._sequencer.current_beat) + 1
+		parts.append(f"Bar: {bar}.{beat}")
 
 		# Section info (only when form is configured).
 		if comp._form_state is not None:

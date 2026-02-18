@@ -27,7 +27,7 @@ def test_format_status_minimal (patch_midi: None) -> None:
 
 	assert "125.00 BPM" in status
 	assert "Key: E" in status
-	assert "Bar: 1" in status
+	assert "Bar: 1.1" in status
 	assert "Chord" not in status
 	assert "[" not in status
 
@@ -80,7 +80,7 @@ def test_format_status_full (patch_midi: None) -> None:
 
 	assert "125.00 BPM" in status
 	assert "Key: E" in status
-	assert "Bar: 1" in status
+	assert "Bar: 1.1" in status
 	assert "[intro 1/4]" in status
 	assert "Chord:" in status
 
@@ -161,7 +161,7 @@ def test_update_rebuilds_status (patch_midi: None) -> None:
 	sys.stderr = io.StringIO()
 
 	try:
-		display.update(bar=0)
+		display.update(0)
 	finally:
 		sys.stderr = original_stderr
 
@@ -175,7 +175,7 @@ def test_update_inactive_is_noop (patch_midi: None) -> None:
 	comp = _make_composition(patch_midi)
 	display = subsequence.display.Display(comp)
 
-	display.update(bar=0)
+	display.update(0)
 
 	assert display._last_line == ""
 
