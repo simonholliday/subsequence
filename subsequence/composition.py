@@ -242,31 +242,28 @@ class FormState:
 class _InjectedChord:
 
 	"""
-	Wraps a Chord so tones() finds the correct octave relative to a base note.
+	Wraps a Chord with key context so tones() transposes correctly.
 	"""
 
-	def __init__ (self, chord: typing.Any, voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = None) -> None:
+	def __init__ (self, chord: typing.Any, key_root_pc: int, voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = None) -> None:
 
 		"""
-		Store the chord and optional voice leading state.
+		Store the chord and key root pitch class for transposition.
 		"""
 
 		self._chord = chord
+		self._key_root_pc = key_root_pc
 		self._voice_leading_state = voice_leading_state
 
 	def root_midi (self, base: int) -> int:
 
 		"""
-		Return the MIDI note for this chord's root that is closest to ``base``.
+		Compute the MIDI root for this chord relative to a base note and key.
 		"""
 
-		target_pc = self._chord.root_pc
-		offset = (target_pc - base) % 12
+		offset = (self._chord.root_pc - self._key_root_pc) % 12
 
-		if offset > 6:
-			offset -= 12
-		
-		return base + offset
+		return base + offset  # type: ignore[no-any-return]
 
 	def tones (self, root: int, inversion: int = 0, count: typing.Optional[int] = None) -> typing.List[int]:
 
@@ -340,10 +337,17 @@ async def schedule_harmonic_clock (
 		if hs is not None:
 			hs.step()
 
+	# HarmonicState.__init__ already sets current_chord to the tonic, so we must
+	# NOT call step() at pulse 0 (which would immediately discard the tonic).
+	# By passing start_pulse = one full cycle ahead, the backshift initialization
+	# in schedule_callback_repeating gives first_fire = cycle - lookahead, so the
+	# first step() fires just before bar 2 — correct. See backshift note in sequencer.py.
+	first_cycle_pulse = int(cycle_beats * sequencer.pulses_per_beat)
+
 	await sequencer.schedule_callback_repeating(
 		callback = advance_harmony,
 		interval_beats = cycle_beats,
-		start_pulse = 0,
+		start_pulse = first_cycle_pulse,
 		reschedule_lookahead = reschedule_lookahead
 	)
 
@@ -1311,7 +1315,10 @@ class Composition:
 				super().__init__(
 					channel = pending.channel,
 					length = pending.length,
-					reschedule_lookahead = pending.reschedule_lookahead
+					reschedule_lookahead = min(
+						pending.reschedule_lookahead,
+						composition_ref._harmony_reschedule_lookahead
+					)
 				)
 
 				self._builder_fn = pending.builder_fn
@@ -1361,7 +1368,8 @@ class Composition:
 
 					if self._wants_chord and composition_ref._harmonic_state is not None:
 						chord = composition_ref._harmonic_state.get_current_chord()
-						injected = _InjectedChord(chord, self._voice_leading_state)
+						key_root_pc = composition_ref._harmonic_state.key_root_pc
+						injected = _InjectedChord(chord, key_root_pc, self._voice_leading_state)
 						self._builder_fn(builder, injected)
 
 					else:

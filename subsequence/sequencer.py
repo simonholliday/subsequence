@@ -503,12 +503,22 @@ class Sequencer:
 
 		interval_pulses, lookahead_pulses = self._get_schedule_timing(interval_beats, reschedule_lookahead)
 
-		# Backshift initialization to ensure the first cycle (at start_pulse) is triggered.
-		# If we just scheduled for next_fire_pulse like before, we would skip the cycle starting at start_pulse.
-		# By treating start_pulse as the *target* of the first fire, we initialize:
-		# cycle_start_pulse = start_pulse - interval (so next_start becomes start_pulse in the loop)
-		# next_fire_pulse = start_pulse - lookahead
-		
+		# "Backshift" initialization: treat start_pulse as the *target* of the first fire,
+		# not the start of the first cycle. This ensures callbacks fire `lookahead` before
+		# start_pulse (often ≤ 0, so they fire immediately when playback begins).
+		#
+		# Formula: cycle_start = start_pulse - interval
+		#          first_fire  = start_pulse - lookahead
+		#
+		# After the first fire the loop advances normally:
+		#   next_start = cycle_start + interval = start_pulse
+		#   next_fire  = start_pulse + interval - lookahead
+		#
+		# Note: if start_pulse = 0, first_fire is negative, so the callback fires
+		# at pulse 0 (the very start of playback). Pass start_pulse = interval_pulses
+		# to skip the initial fire and have the first fire at (interval - lookahead).
+		# The harmonic clock does this because HarmonicState already holds the tonic.
+
 		initial_cycle_start = start_pulse - interval_pulses
 		initial_fire_pulse = start_pulse - lookahead_pulses
 

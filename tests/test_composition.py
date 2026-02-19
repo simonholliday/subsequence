@@ -882,3 +882,38 @@ def test_layer_unit_sets_beat_length (patch_midi: None) -> None:
 
 	assert pending.length == pytest.approx(2.0)
 	assert pending.default_grid == 8
+
+
+def test_pattern_lookahead_capped_to_harmony_lookahead (patch_midi: None) -> None:
+
+	"""Pattern reschedule_lookahead should be capped to the harmony's value."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="diatonic_major", cycle_beats=4, reschedule_lookahead=0.25)
+
+	@composition.pattern(channel=0, length=4)
+	def pad (p, chord):
+		pass
+
+	# The pending pattern has the default lookahead (1.0).
+	pending = composition._pending_patterns[0]
+	assert pending.reschedule_lookahead == 1
+
+	# When built, the pattern's lookahead should be capped to 0.25.
+	pattern = composition._build_pattern_from_pending(pending)
+	assert pattern.reschedule_lookahead == pytest.approx(0.25)
+
+
+def test_pattern_lookahead_not_capped_when_smaller (patch_midi: None) -> None:
+
+	"""When the pattern's lookahead is already smaller than harmony's, leave it alone."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="diatonic_major", cycle_beats=4, reschedule_lookahead=0.5)
+
+	@composition.pattern(channel=0, length=2, reschedule_lookahead=0.25)
+	def pad (p, chord):
+		pass
+
+	pattern = composition._build_pattern_from_pending(composition._pending_patterns[0])
+	assert pattern.reschedule_lookahead == pytest.approx(0.25)
