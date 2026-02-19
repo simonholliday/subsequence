@@ -105,12 +105,16 @@ class Chord:
 		return CHORD_INTERVALS[self.quality]
 
 
+
 	def tones (self, root: int, inversion: int = 0, count: typing.Optional[int] = None) -> typing.List[int]:
 
 		"""Return MIDI note numbers for chord tones starting from a root.
 
+		Finds the MIDI note corresponding to the chord's root pitch class that is
+		closest to the provided ``root`` argument.
+
 		Parameters:
-			root: MIDI root note number (default 60 = middle C)
+			root: MIDI note number (e.g., 60 = middle C) to center the chord around.
 			inversion: Chord inversion (0 = root position, 1 = first, 2 = second, ...).
 				Wraps around for values >= number of notes.
 			count: Number of notes to return. When set, the chord intervals cycle
@@ -123,11 +127,19 @@ class Chord:
 		Example:
 			```python
 			chord = Chord(root_pc=0, quality="major")  # C major
-			chord.tones(root=60)               # [60, 64, 67] - root position
-			chord.tones(root=60, inversion=1)  # [60, 63, 68] - first inversion
-			chord.tones(root=60, count=5)      # [60, 64, 67, 72, 76] - 5 notes cycling upward
+			chord.tones(root=60)               # [60, 64, 67] - root position around C4
+			chord.tones(root=62)               # [60, 64, 67] - still finds C4 as closest root
+			chord.tones(root=70)               # [72, 76, 79] - finds C5 as closest root
 			```
 		"""
+
+		# Find the MIDI note for self.root_pc that is closest to the requested root.
+		# This handles octaves automatically.
+		offset = (self.root_pc - root) % 12
+		if offset > 6:
+			offset -= 12
+		
+		effective_root = root + offset
 
 		intervals = self.intervals()
 
@@ -136,9 +148,9 @@ class Chord:
 
 		if count is not None:
 			n = len(intervals)
-			return [root + intervals[i % n] + 12 * (i // n) for i in range(count)]
+			return [effective_root + intervals[i % n] + 12 * (i // n) for i in range(count)]
 
-		return [root + interval for interval in intervals]
+		return [effective_root + interval for interval in intervals]
 
 
 	def name (self) -> str:

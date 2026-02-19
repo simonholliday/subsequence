@@ -242,28 +242,31 @@ class FormState:
 class _InjectedChord:
 
 	"""
-	Wraps a Chord with key context so tones() transposes correctly.
+	Wraps a Chord so tones() finds the correct octave relative to a base note.
 	"""
 
-	def __init__ (self, chord: typing.Any, key_root_pc: int, voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = None) -> None:
+	def __init__ (self, chord: typing.Any, voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = None) -> None:
 
 		"""
-		Store the chord and key root pitch class for transposition.
+		Store the chord and optional voice leading state.
 		"""
 
 		self._chord = chord
-		self._key_root_pc = key_root_pc
 		self._voice_leading_state = voice_leading_state
 
 	def root_midi (self, base: int) -> int:
 
 		"""
-		Compute the MIDI root for this chord relative to a base note and key.
+		Return the MIDI note for this chord's root that is closest to ``base``.
 		"""
 
-		offset = (self._chord.root_pc - self._key_root_pc) % 12
+		target_pc = self._chord.root_pc
+		offset = (target_pc - base) % 12
 
-		return base + offset  # type: ignore[no-any-return]
+		if offset > 6:
+			offset -= 12
+		
+		return base + offset
 
 	def tones (self, root: int, inversion: int = 0, count: typing.Optional[int] = None) -> typing.List[int]:
 
@@ -1358,8 +1361,7 @@ class Composition:
 
 					if self._wants_chord and composition_ref._harmonic_state is not None:
 						chord = composition_ref._harmonic_state.get_current_chord()
-						key_root_pc = composition_ref._harmonic_state.key_root_pc
-						injected = _InjectedChord(chord, key_root_pc, self._voice_leading_state)
+						injected = _InjectedChord(chord, self._voice_leading_state)
 						self._builder_fn(builder, injected)
 
 					else:
