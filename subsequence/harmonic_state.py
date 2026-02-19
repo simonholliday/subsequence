@@ -139,6 +139,8 @@ class HarmonicState:
 		self.key_gravity_blend = key_gravity_blend
 		self.nir_strength = nir_strength
 		self.root_diversity = root_diversity
+		self.minor_turnaround_weight = minor_turnaround_weight
+
 
 		if isinstance(graph_style, str):
 			chord_graph = _resolve_graph_style(graph_style, include_dominant_7th, minor_turnaround_weight)

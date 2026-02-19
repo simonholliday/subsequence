@@ -86,7 +86,7 @@ composition.harmony(
 	cycle_beats = 4 * dur.QUARTER,
 	dominant_7th = True,
 	gravity = 0.8,
-	minor_weight = 0.25,
+	minor_turnaround_weight = 0.25,
 )
 
 

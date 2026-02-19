@@ -602,7 +602,7 @@ class Composition:
 		dominant_7th: bool = True,
 		gravity: float = 1.0,
 		nir_strength: float = 0.5,
-		minor_weight: float = 0.0,
+		minor_turnaround_weight: float = 0.0,
 		root_diversity: float = subsequence.harmonic_state.DEFAULT_ROOT_DIVERSITY,
 		reschedule_lookahead: float = 1
 	) -> None:
@@ -625,7 +625,7 @@ class Composition:
 			gravity: Key gravity (0.0 to 1.0). High values stay closer to the root chord.
 			nir_strength: Melodic inertia (0.0 to 1.0). Influences chord movement
 				expectations.
-			minor_weight: For "turnaround" style, influences major vs minor feel.
+			minor_turnaround_weight: For "turnaround" style, influences major vs minor feel.
 			root_diversity: Root-repetition damping (0.0 to 1.0). Each recent
 				chord sharing a candidate's root reduces the weight to 40% at
 				the default (0.4). Set to 1.0 to disable.
@@ -655,7 +655,7 @@ class Composition:
 			include_dominant_7th = dominant_7th,
 			key_gravity_blend = gravity,
 			nir_strength = nir_strength,
-			minor_turnaround_weight = minor_weight,
+			minor_turnaround_weight = minor_turnaround_weight,
 			root_diversity = root_diversity
 		)
 

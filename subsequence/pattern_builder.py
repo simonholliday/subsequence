@@ -727,7 +727,10 @@ class PatternBuilder:
 			end: Ending CC value (0–127).
 			beat_start: Beat position to begin the ramp.
 			beat_end: Beat position to end the ramp. Defaults to pattern length.
+			beat_end: Beat position to end the ramp. Defaults to pattern length.
 			resolution: Pulses between CC messages (1 = every pulse, ~20ms at 120 BPM).
+				Higher values (e.g. 2 or 4) reduce MIDI traffic density but may sound
+				stepped at slow tempos.
 		"""
 
 		if beat_end is None:
@@ -800,6 +803,8 @@ class PatternBuilder:
 			beat_start: Beat position to begin the ramp.
 			beat_end: Beat position to end the ramp. Defaults to pattern length.
 			resolution: Pulses between pitch bend messages (1 = every pulse).
+				Higher values (e.g. 2 or 4) reduce MIDI traffic density but may sound
+				stepped at slow tempos.
 		"""
 
 		if beat_end is None:

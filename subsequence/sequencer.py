@@ -10,7 +10,9 @@ import typing
 import mido
 
 import subsequence.constants
+import subsequence.constants
 import subsequence.event_emitter
+import subsequence.midi_utils
 
 
 logger = logging.getLogger(__name__)
@@ -323,63 +325,12 @@ class Sequencer:
 		exactly one is found, or prompts the user to choose if several exist.
 		"""
 
-		try:
-
-			outputs = mido.get_output_names()
-			logger.info(f"Available MIDI outputs: {outputs}")
-
-			if not outputs:
-				logger.error("No MIDI output devices found.")
-				return
-
-			# Explicit device requested.
-			if self.output_device_name is not None:
-
-				if self.output_device_name in outputs:
-					self.midi_out = mido.open_output(self.output_device_name)
-					logger.info(f"Opened MIDI output: {self.output_device_name}")
-				else:
-					logger.error(
-						f"MIDI output device '{self.output_device_name}' not found. "
-						f"Available devices: {outputs}"
-					)
-
-				return
-
-			# Auto-discover: one device - use it.
-			if len(outputs) == 1:
-				self.output_device_name = outputs[0]
-				self.midi_out = mido.open_output(self.output_device_name)
-				logger.info(f"One MIDI output found - using '{self.output_device_name}'")
-				return
-
-			# Auto-discover: multiple devices - prompt user.
-			print("\nAvailable MIDI output devices:\n")
-
-			for i, name in enumerate(outputs, 1):
-				print(f"  {i}. {name}")
-
-			print()
-
-			while True:
-				try:
-					choice = int(input(f"Select a device (1-{len(outputs)}): "))
-					if 1 <= choice <= len(outputs):
-						break
-				except (ValueError, EOFError):
-					pass
-				print(f"Enter a number between 1 and {len(outputs)}.")
-
-			self.output_device_name = outputs[choice - 1]
-			self.midi_out = mido.open_output(self.output_device_name)
-			logger.info(f"Opened MIDI output: {self.output_device_name}")
-
-			print(f"\nTip: To skip this prompt, pass the device name directly:\n")
-			print(f"  Sequencer(output_device_name=\"{self.output_device_name}\")")
-			print(f"  Composition(output_device=\"{self.output_device_name}\")\n")
-
-		except Exception as e:
-			logger.error(f"Failed to open MIDI output: {e}")
+		# Use the helper function for device selection
+		device_name, midi_out = subsequence.midi_utils.select_output_device(self.output_device_name)
+		
+		if device_name:
+			self.output_device_name = device_name
+			self.midi_out = midi_out
 
 
 	def _init_midi_input (self) -> None:
@@ -389,28 +340,12 @@ class Sequencer:
 		if self.input_device_name is None:
 			return
 
-		try:
-
-			inputs = mido.get_input_names()
-
-			logger.info(f"Available MIDI inputs: {inputs}")
-
-			target = self.input_device_name
-
-			if target not in inputs:
-				logger.warning(f"MIDI input device '{target}' not found.")
-
-				if inputs:
-					target = inputs[0]
-					logger.warning(f"Fallback to: {target}")
-				else:
-					return
-
-			self.midi_in = mido.open_input(target, callback=self._on_midi_input)
-			logger.info(f"Opened MIDI input: {target}")
-
-		except Exception as e:
-			logger.error(f"Failed to open MIDI input: {e}")
+		# Use the helper function for device selection
+		device_name, midi_in = subsequence.midi_utils.select_input_device(self.input_device_name, self._on_midi_input)
+		
+		if device_name:
+			self.input_device_name = device_name
+			self.midi_in = midi_in
 
 
 	def _on_midi_input (self, message: typing.Any) -> None:

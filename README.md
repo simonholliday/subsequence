@@ -537,7 +537,7 @@ composition.harmony(
 | `dominant_7th` | bool | `True` | Include dominant 7th chords |
 | `gravity` | float | `1.0` | Key gravity blend (0.0 = functional chords only, 1.0 = full diatonic set) |
 | `nir_strength` | float | `0.5` | Melodic inertia (0.0 = off, 1.0 = full). Controls how strongly transitions follow Narmour's Implication-Realization model |
-| `minor_weight` | float | `0.0` | Minor turnaround weight (turnaround graph only) |
+| `minor_turnaround_weight` | float | `0.0` | Minor turnaround weight (turnaround graph only) |
 | `root_diversity` | float | `0.4` | Root-repetition damping (0.0 = maximum, 1.0 = off). Each recent same-root chord multiplies the weight by this factor |
 
 ### Built-in chord graphs
