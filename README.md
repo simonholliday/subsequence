@@ -937,12 +937,11 @@ Planned features, roughly in order of priority.
 
 - **MIDI CC mapping.** Map hardware knobs and controllers to `composition.data` via event handlers (e.g., "map CC 1 to probability") so Subsequence feels like a hybrid hardware/software instrument for live performance. This enables full **MIDI CC automation** of any Python variable. MIDI input port and clock following are already supported via `composition.midi_input()`.
 - **Network Sync.** Peer-to-peer network sync with DAWs and other Link-enabled devices.
-- **Standalone Raspberry Pi mode.** Run Subsequence headlessly on a Raspberry Pi with a small touchscreen — no desktop environment required. The framebuffer console already renders the terminal status display; the remaining work is a simple evdev touch handler to map tap regions to start/stop controls. A dedicated hardware instrument you can carry to a gig.
+- **Standalone Raspberry Pi mode.** Run Subsequence headlessly on a Raspberry Pi with a small touchscreen — no desktop environment required.
 
 ### Future ideas
 
 - **Performance profiling.** Optional debug mode to log timing for each `on_reschedule()` call, helping identify custom pattern logic that may cause timing jitter or performance issues.
-- **Embeddable engine mode.** Run Subsequence as a library inside games or live installations.
 
 ## Tests
 This project uses `pytest`.
