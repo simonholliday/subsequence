@@ -612,7 +612,7 @@ class PatternBuilder:
 
 	def humanize (
 		self,
-		timing: float = 0.04,
+		timing: float = 0.03,
 		velocity: float = 0.0,
 		rng: typing.Optional[random.Random] = None
 	) -> None:
@@ -670,16 +670,17 @@ class PatternBuilder:
 				new_pulse = max(0, int(round(pulse + offset)))
 			else:
 				new_pulse = pulse
-
+			
 			if new_pulse not in new_steps:
 				new_steps[new_pulse] = subsequence.pattern.Step()
-
-			new_steps[new_pulse].notes.extend(step.notes)
-
-			if velocity != 0.0:
-				for note in new_steps[new_pulse].notes:
+			
+			# Process notes: randomise velocity once per note, then place in new bucket.
+			for note in step.notes:
+				if velocity != 0.0:
 					scale = rng.uniform(1.0 - velocity, 1.0 + velocity)
 					note.velocity = max(1, min(127, int(round(note.velocity * scale))))
+				
+				new_steps[new_pulse].notes.append(note)
 
 		self._pattern.steps = new_steps
 

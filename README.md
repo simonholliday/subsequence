@@ -25,9 +25,9 @@ Subsequence integrates the **Narmour Implication-Realization model**, a theory o
 By encoding these principles, Subsequence generates melodies that feel structured and intentional, satisfying the listener's innate expectations of musical grammar.
 
 ### The Algorithmic Composer
-Subsequence is a workbench for **Algorithmic Composition**, NOT an "AI Music Generator".
+Subsequence is a workbench for **Algorithmic Composition**. It is **NOT** an "AI Music Generator". It uses logic, geometry, music theory, randomness, and any external data you want to pull in, to influence the composition. It is a set of tools for creating an evolving music process.
 
-*   **Don't Prompt. Design.** You define the composition, the computer provides the processing power. You are the composer and conductor, not a spectator.
+*   **Design the Process.** You define the rules of the composition, the computer follows them. You are the composer, not a spectator.
 *   **Code is the Interface.** Patterns are plain text files, meaning your music is versionable, shareable, and collaborative by default. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with.
 *   **Deterministic Control.** Set a seed and get the exact same "random" results every time. Tweak your code and re-run to perfect the output.
 

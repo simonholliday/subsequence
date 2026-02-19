@@ -568,14 +568,21 @@ class Sequencer:
 
 		interval_pulses, lookahead_pulses = self._get_schedule_timing(interval_beats, reschedule_lookahead)
 
-		next_fire_pulse = start_pulse + interval_pulses - lookahead_pulses
+		# Backshift initialization to ensure the first cycle (at start_pulse) is triggered.
+		# If we just scheduled for next_fire_pulse like before, we would skip the cycle starting at start_pulse.
+		# By treating start_pulse as the *target* of the first fire, we initialize:
+		# cycle_start_pulse = start_pulse - interval (so next_start becomes start_pulse in the loop)
+		# next_fire_pulse = start_pulse - lookahead
+		
+		initial_cycle_start = start_pulse - interval_pulses
+		initial_fire_pulse = start_pulse - lookahead_pulses
 
 		scheduled_callback = ScheduledCallback(
 			callback = callback,
-			cycle_start_pulse = start_pulse,
+			cycle_start_pulse = initial_cycle_start,
 			interval_pulses = interval_pulses,
 			lookahead_pulses = lookahead_pulses,
-			next_fire_pulse = next_fire_pulse
+			next_fire_pulse = initial_fire_pulse
 		)
 
 		async with self.callback_lock:
@@ -827,6 +834,8 @@ class Sequencer:
 		to_reschedule: typing.List[ScheduledPattern] = []
 
 		async with self.callback_lock:
+            # DEBUG LOGGING
+			# logger.info(f"Checking callbacks at pulse {pulse}. Queue head: {self.callback_queue[0] if self.callback_queue else 'Empty'}")
 
 			while self.callback_queue and self.callback_queue[0][0] <= pulse:
 
