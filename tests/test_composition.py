@@ -884,6 +884,51 @@ def test_layer_unit_sets_beat_length (patch_midi: None) -> None:
 	assert pending.default_grid == 8
 
 
+def test_schedule_wait_for_initial_flag (patch_midi: None) -> None:
+
+	"""schedule(wait_for_initial=True) should store the flag on _PendingScheduled."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	def my_task () -> None:
+		pass
+
+	composition.schedule(my_task, cycle_beats=16, wait_for_initial=True)
+
+	assert composition._pending_scheduled[0].wait_for_initial is True
+	assert composition._pending_scheduled[0].defer is False
+
+
+def test_schedule_defer_flag (patch_midi: None) -> None:
+
+	"""schedule(defer=True) should store the flag on _PendingScheduled."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	def my_task () -> None:
+		pass
+
+	composition.schedule(my_task, cycle_beats=16, defer=True)
+
+	assert composition._pending_scheduled[0].defer is True
+	assert composition._pending_scheduled[0].wait_for_initial is False
+
+
+def test_schedule_defaults_no_wait_for_initial_no_defer (patch_midi: None) -> None:
+
+	"""schedule() without flags should default to wait_for_initial=False, defer=False."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	def my_task () -> None:
+		pass
+
+	composition.schedule(my_task, cycle_beats=16)
+
+	assert composition._pending_scheduled[0].wait_for_initial is False
+	assert composition._pending_scheduled[0].defer is False
+
+
 def test_pattern_lookahead_capped_to_harmony_lookahead (patch_midi: None) -> None:
 
 	"""Pattern reschedule_lookahead should be capped to the harmony's value."""

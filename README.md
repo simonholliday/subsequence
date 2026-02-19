@@ -70,7 +70,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **Mini-notation.** Concise string syntax for rhythms and melodies. Write `p.seq("x x [x x] x", pitch="kick")` instead of verbose list definitions. Supports subdivisions `[...]`, rests `.`/`~`, and sustains `_`.
 - **Deterministic seeding.** Set `seed=42` on your Composition and every random decision - chord progressions, form transitions, pattern randomness - becomes repeatable. Run the same code twice, get the same music. Use `p.rng` in your patterns for seeded randomness.
 - **Polyrhythms** emerge naturally by running patterns with different lengths. Pattern length can be any number - use `length=9` for 9 quarter notes, `length=10.5` for 21 eighth notes. For non-quarter-note grids, add a `unit` to write lengths like score notation: `length=6, unit=dur.SIXTEENTH` means "6 sixteenth notes." The unit also sets the default grid for `hit_steps()` and `sequence()`, so a 6-step pattern automatically divides into 6 slots. Patterns can even change length on rebuild via `p.set_length()`.
-- **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Functions run in the background automatically. Store results in `composition.data` and read them from any pattern - connect music to APIs, sensors, files, or anything Python can reach.
+- **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Functions run in the background automatically. Store results in `composition.data` and read them from any pattern - connect music to APIs, sensors, files, or anything Python can reach. Use `wait_for_initial=True` to block until the first run completes before playback starts, or `defer=True` to skip the initial pulse-0 fire.
 - **Terminal visualization.** A persistent status line showing the current bar, section, chord, BPM, and key. Enabled with `composition.display()`. Log messages scroll cleanly above it without disruption.
 - **MIDI recording.** Capture everything played to a standard MIDI file. Pass `record=True` to `Composition` and the session is saved automatically when you stop. Compatible with any DAW.
 - **Two API levels.** The Composition API is straightforward - most musicians will never need anything else. The Direct Pattern API gives power users full control over patterns, harmony, and scheduling.
@@ -151,10 +151,11 @@ def hats (p):
     p.hit_steps("hh", list(range(16)), velocity=80, probability=0.7)
 
 # Schedule a repeating background task (runs in a thread pool).
+# wait_for_initial=True blocks until the first run completes before playback starts.
 def fetch_data ():
     composition.data["value"] = some_external_api()
 
-composition.schedule(fetch_data, cycle_beats=32)
+composition.schedule(fetch_data, cycle_beats=32, wait_for_initial=True)
 ```
 
 ## Direct Pattern API

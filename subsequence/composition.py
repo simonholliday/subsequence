@@ -390,17 +390,25 @@ async def schedule_task (
 	sequencer: subsequence.sequencer.Sequencer,
 	fn: typing.Callable,
 	cycle_beats: int,
-	reschedule_lookahead: int = 1
+	reschedule_lookahead: int = 1,
+	defer: bool = False
 ) -> None:
 
-	"""Schedule a non-blocking repeating task on the sequencer's beat clock."""
+	"""Schedule a non-blocking repeating task on the sequencer's beat clock.
+
+	When *defer* is True the backshift fire at pulse 0 is skipped; the first
+	call happens one full *cycle_beats* later.  Direct API users who need the
+	equivalent of ``initial=True`` can simply ``await fn()`` themselves before
+	calling this function.
+	"""
 
 	wrapped = _make_safe_callback(fn)
+	start_pulse = int(cycle_beats * sequencer.pulses_per_beat) if defer else 0
 
 	await sequencer.schedule_callback_repeating(
 		callback = wrapped,
 		interval_beats = cycle_beats,
-		start_pulse = 0,
+		start_pulse = start_pulse,
 		reschedule_lookahead = reschedule_lookahead
 	)
 
@@ -520,13 +528,15 @@ class _PendingScheduled:
 
 	"""Holds a user function and cycle interval for deferred scheduling."""
 
-	def __init__ (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int) -> None:
+	def __init__ (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int, wait_for_initial: bool = False, defer: bool = False) -> None:
 
 		"""Store the function and scheduling parameters."""
 
 		self.fn = fn
 		self.cycle_beats = cycle_beats
 		self.reschedule_lookahead = reschedule_lookahead
+		self.wait_for_initial = wait_for_initial
+		self.defer = defer
 
 
 class Composition:
@@ -951,22 +961,29 @@ class Composition:
 
 		return dict(self._running_patterns[name]._tweaks)
 
-	def schedule (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int = 1) -> None:
+	def schedule (self, fn: typing.Callable, cycle_beats: int, reschedule_lookahead: int = 1, wait_for_initial: bool = False, defer: bool = False) -> None:
 
 		"""
 		Register a custom function to run on a repeating beat-based cycle.
 
-		Subsequence automatically runs synchronous functions in a thread pool 
-		so they don't block the timing-critical MIDI clock. Async functions 
+		Subsequence automatically runs synchronous functions in a thread pool
+		so they don't block the timing-critical MIDI clock. Async functions
 		are run directly on the event loop.
 
 		Parameters:
 			fn: The function to call.
 			cycle_beats: How often to call it (e.g., 4 = every bar).
 			reschedule_lookahead: How far in advance to schedule the next call.
+			wait_for_initial: If True, run the function once during startup
+				and wait for it to complete before playback begins. This
+				ensures ``composition.data`` is populated before patterns
+				first build. Implies ``defer=True`` for the repeating
+				schedule.
+			defer: If True, skip the pulse-0 fire and defer the first
+				repeating call to just before the second cycle boundary.
 		"""
 
-		self._pending_scheduled.append(_PendingScheduled(fn, cycle_beats, reschedule_lookahead))
+		self._pending_scheduled.append(_PendingScheduled(fn, cycle_beats, reschedule_lookahead, wait_for_initial, defer))
 
 	def form (
 		self,
@@ -1227,14 +1244,44 @@ class Composition:
 			reschedule_lookahead = 1
 		)
 
+		# Run wait_for_initial=True scheduled functions and block until all complete.
+		# This ensures composition.data is populated before patterns build.
+		initial_tasks = [t for t in self._pending_scheduled if t.wait_for_initial]
+
+		if initial_tasks:
+
+			names = ", ".join(t.fn.__name__ for t in initial_tasks)
+			logger.info(f"Waiting for initial scheduled {'function' if len(initial_tasks) == 1 else 'functions'} before start: {names}")
+
+			async def _run_initial (fn: typing.Callable) -> None:
+
+				try:
+					if asyncio.iscoroutinefunction(fn):
+						await fn()
+					else:
+						await asyncio.get_running_loop().run_in_executor(None, fn)
+				except Exception as exc:
+					logger.warning(f"Initial run of {fn.__name__!r} failed: {exc}")
+
+			await asyncio.gather(*[_run_initial(t.fn) for t in initial_tasks])
+
 		for pending_task in self._pending_scheduled:
 
 			wrapped = _make_safe_callback(pending_task.fn)
 
+			# wait_for_initial=True implies defer — no point firing at pulse 0
+			# after the blocking run just completed.  defer=True skips the
+			# backshift fire so the first repeating call happens one full cycle
+			# later.
+			if pending_task.wait_for_initial or pending_task.defer:
+				start_pulse = int(pending_task.cycle_beats * self._sequencer.pulses_per_beat)
+			else:
+				start_pulse = 0
+
 			await self._sequencer.schedule_callback_repeating(
 				callback = wrapped,
 				interval_beats = pending_task.cycle_beats,
-				start_pulse = 0,
+				start_pulse = start_pulse,
 				reschedule_lookahead = pending_task.reschedule_lookahead
 			)
 

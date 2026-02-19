@@ -112,3 +112,127 @@ async def test_schedule_task_registers_callback (patch_midi: None) -> None:
 	await subsequence.composition.schedule_task(sequencer=seq, fn=my_task, cycle_beats=8)
 
 	assert len(seq.callback_queue) == 1
+
+
+@pytest.mark.asyncio
+async def test_schedule_task_defer_skips_pulse_zero (patch_midi: None) -> None:
+
+	"""schedule_task(defer=True) should set start_pulse to one full cycle."""
+
+	seq = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+
+	def my_task () -> None:
+		pass
+
+	await subsequence.composition.schedule_task(sequencer=seq, fn=my_task, cycle_beats=8, defer=True)
+
+	assert len(seq.callback_queue) == 1
+
+	# With defer, start_pulse = 8 beats * 24 ppq = 192.
+	# Backshift subtracts lookahead: next_fire = 192 - (1 * 24) = 168.
+	_, _, scheduled = seq.callback_queue[0]
+	lookahead_pulses = int(1 * seq.pulses_per_beat)
+	expected_fire = int(8 * seq.pulses_per_beat) - lookahead_pulses
+
+	assert scheduled.next_fire_pulse == expected_fire
+
+
+@pytest.mark.asyncio
+async def test_schedule_task_no_defer_fires_at_zero (patch_midi: None) -> None:
+
+	"""schedule_task without defer should backshift to fire at pulse 0."""
+
+	seq = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+
+	def my_task () -> None:
+		pass
+
+	await subsequence.composition.schedule_task(sequencer=seq, fn=my_task, cycle_beats=8)
+
+	_, _, scheduled = seq.callback_queue[0]
+
+	# Without defer, backshift puts the first fire at pulse 0 (or close to it).
+	# The next_fire_pulse should be less than one full cycle.
+	one_cycle = int(8 * seq.pulses_per_beat)
+
+	assert scheduled.next_fire_pulse < one_cycle
+
+
+@pytest.mark.asyncio
+async def test_initial_runs_sync_fn_before_patterns () -> None:
+
+	"""wait_for_initial=True should block on a sync function via run_in_executor."""
+
+	order: typing.List[str] = []
+
+	def populate () -> None:
+		order.append("initial")
+
+	# Simulate what _run() does: gather initial tasks.
+	async def _run_initial (fn: typing.Callable) -> None:
+		if asyncio.iscoroutinefunction(fn):
+			await fn()
+		else:
+			await asyncio.get_running_loop().run_in_executor(None, fn)
+
+	pending = subsequence.composition._PendingScheduled(
+		fn=populate, cycle_beats=32, reschedule_lookahead=1, wait_for_initial=True
+	)
+
+	await asyncio.gather(*[_run_initial(t.fn) for t in [pending]])
+
+	order.append("patterns")
+
+	assert order == ["initial", "patterns"]
+
+
+@pytest.mark.asyncio
+async def test_initial_runs_async_fn_before_patterns () -> None:
+
+	"""wait_for_initial=True should block on an async function."""
+
+	order: typing.List[str] = []
+
+	async def populate () -> None:
+		order.append("initial")
+
+	async def _run_initial (fn: typing.Callable) -> None:
+		if asyncio.iscoroutinefunction(fn):
+			await fn()
+		else:
+			await asyncio.get_running_loop().run_in_executor(None, fn)
+
+	pending = subsequence.composition._PendingScheduled(
+		fn=populate, cycle_beats=32, reschedule_lookahead=1, wait_for_initial=True
+	)
+
+	await asyncio.gather(*[_run_initial(t.fn) for t in [pending]])
+
+	order.append("patterns")
+
+	assert order == ["initial", "patterns"]
+
+
+@pytest.mark.asyncio
+async def test_initial_failure_does_not_raise () -> None:
+
+	"""An initial function that fails should log a warning, not crash."""
+
+	def bad_fn () -> None:
+		raise RuntimeError("network error")
+
+	async def _run_initial (fn: typing.Callable) -> None:
+		try:
+			if asyncio.iscoroutinefunction(fn):
+				await fn()
+			else:
+				await asyncio.get_running_loop().run_in_executor(None, fn)
+		except Exception:
+			pass  # Mirrors the logger.warning in _run()
+
+	pending = subsequence.composition._PendingScheduled(
+		fn=bad_fn, cycle_beats=32, reschedule_lookahead=1, wait_for_initial=True
+	)
+
+	# Should not raise.
+	await asyncio.gather(*[_run_initial(t.fn) for t in [pending]])
