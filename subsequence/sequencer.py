@@ -263,7 +263,7 @@ class Sequencer:
 		self.seconds_per_beat = 60.0 / self.current_bpm
 		self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
 
-		logger.info(f"BPM set to {self.current_bpm}")
+		logger.info(f"BPM set to {self.current_bpm:.2f}")
 
 		if self.recording:
 			tempo = mido.bpm2tempo(self.current_bpm)
