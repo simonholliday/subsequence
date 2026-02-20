@@ -86,6 +86,8 @@ class Display:
 		self._handler: typing.Optional[DisplayLogHandler] = None
 		self._saved_handlers: typing.List[logging.Handler] = []
 		self._last_line: str = ""
+		self._last_bar: typing.Optional[int] = None
+		self._cached_section: typing.Any = None
 
 	def start (self) -> None:
 
@@ -189,8 +191,17 @@ class Display:
 		parts.append(f"Bar: {bar}.{beat}")
 
 		# Section info (only when form is configured).
+		# Cache refreshes only when the bar counter changes, keeping
+		# the section display in sync with the bar display even though
+		# the form state advances one beat early (due to lookahead).
 		if comp._form_state is not None:
-			section = comp._form_state.get_section_info()
+			current_bar = comp._sequencer.current_bar
+
+			if current_bar != self._last_bar:
+				self._last_bar = current_bar
+				self._cached_section = comp._form_state.get_section_info()
+
+			section = self._cached_section
 
 			if section:
 				parts.append(f"[{section.name} {section.bar + 1}/{section.bars}]")

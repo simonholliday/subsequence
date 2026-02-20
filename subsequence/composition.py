@@ -439,10 +439,12 @@ async def schedule_form (
 			else:
 				logger.info("Form: finished")
 
+	first_bar_pulse = int(4 * sequencer.pulses_per_beat)
+
 	await sequencer.schedule_callback_repeating(
 		callback = advance_form,
 		interval_beats = 4,
-		start_pulse = 0,
+		start_pulse = first_bar_pulse,
 		reschedule_lookahead = reschedule_lookahead
 	)
 
@@ -1237,10 +1239,12 @@ class Composition:
 		def _advance_builder_bar (pulse: int) -> None:
 			self._builder_bar += 1
 
+		first_bar_pulse = int(4 * self._sequencer.pulses_per_beat)
+
 		await self._sequencer.schedule_callback_repeating(
 			callback = _advance_builder_bar,
 			interval_beats = 4,
-			start_pulse = 0,
+			start_pulse = first_bar_pulse,
 			reschedule_lookahead = 1
 		)
 

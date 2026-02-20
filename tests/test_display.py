@@ -312,6 +312,43 @@ def test_format_status_no_conductor_signals (patch_midi: None) -> None:
 	assert ":" not in status.split("Key:")[-1].split("Bar:")[0].strip()
 
 
+def test_section_display_syncs_with_bar_counter (patch_midi: None) -> None:
+
+	"""Section info should only update when the bar counter changes.
+
+	The form state advances 1 beat early (due to reschedule_lookahead), but the
+	display should not reflect that until the bar counter also advances.
+	"""
+
+	comp = _make_composition(patch_midi)
+
+	comp.form({
+		"intro": (4, [("verse", 1)]),
+		"verse": (8, []),
+	}, start="intro")
+
+	display = subsequence.display.Display(comp)
+
+	# First render at bar 0 (displayed as "Bar: 1.1") — section should initialise.
+	status_1 = display._format_status()
+	assert "[intro 1/4]" in status_1
+
+	# Simulate what happens when form advances early (lookahead fires before
+	# the bar counter increments): advance the form state, but leave
+	# current_bar unchanged.
+	comp._form_state.advance()
+
+	# The form state now says bar 2, but the sequencer bar hasn't changed.
+	status_2 = display._format_status()
+	assert "[intro 1/4]" in status_2, "Section should NOT update before bar counter changes"
+
+	# Now simulate the bar counter advancing.
+	comp._sequencer.current_bar = 1
+
+	status_3 = display._format_status()
+	assert "[intro 2/4]" in status_3, "Section should update when bar counter changes"
+
+
 def test_conductor_signals_sorted (patch_midi: None) -> None:
 
 	"""Conductor signals should appear in alphabetical order."""
