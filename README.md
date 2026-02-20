@@ -172,8 +172,12 @@ def hats (p):
 
 # Schedule a repeating background task (runs in a thread pool).
 # wait_for_initial=True blocks until the first run completes before playback starts.
-def fetch_data ():
-    composition.data["value"] = some_external_api()
+# Optionally declare a `p` parameter to receive a ScheduleContext with p.cycle (0-indexed).
+def fetch_data (p):
+    if p.cycle == 0:
+        composition.data["value"] = initial_api_call()
+    else:
+        composition.data["value"] = some_external_api()
 
 composition.schedule(fetch_data, cycle_beats=32, wait_for_initial=True)
 ```

@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import inspect
 import itertools
 import logging
@@ -28,6 +29,21 @@ def _fn_has_parameter (fn: typing.Callable, name: str) -> bool:
 	"""Check whether a callable accepts a parameter with the given name."""
 
 	return name in inspect.signature(fn).parameters
+
+
+@dataclasses.dataclass
+class ScheduleContext:
+
+	"""
+	Context object passed to ``composition.schedule()`` callbacks
+	whose signature declares a first parameter (conventionally named ``p``).
+
+	Attributes:
+		cycle: How many times this callback has been called so far (0-indexed).
+			   0 on the first call, including the blocking ``wait_for_initial`` run.
+	"""
+
+	cycle: int
 
 
 class SectionInfo:
@@ -355,24 +371,32 @@ async def schedule_harmonic_clock (
 	)
 
 
-def _make_safe_callback (fn: typing.Callable) -> typing.Callable[[int], None]:
+def _make_safe_callback (fn: typing.Callable, accepts_context: bool = False) -> typing.Callable[[int], None]:
 
-	"""Wrap a user function as a fire-and-forget callback that never blocks the clock."""
+	"""Wrap a user function as a fire-and-forget callback that never blocks the clock.
+
+	If *accepts_context* is True, ``fn`` is called with a :class:`ScheduleContext`
+	whose ``cycle`` field increments on every invocation.
+	"""
 
 	is_async = asyncio.iscoroutinefunction(fn)
+	cycle_count: typing.List[int] = [0]  # mutable cell so the closure can mutate it
 
-	async def _execute () -> None:
+	async def _execute (cycle: int) -> None:
 
 		"""Run the user function with error handling and optional threading."""
+
+		ctx = ScheduleContext(cycle=cycle)
 
 		try:
 
 			if is_async:
-				await fn()
+				await (fn(ctx) if accepts_context else fn())
 
 			else:
 				loop = asyncio.get_running_loop()
-				await loop.run_in_executor(None, fn)
+				call = (lambda: fn(ctx)) if accepts_context else fn
+				await loop.run_in_executor(None, call)
 
 		except Exception as exc:
 			logger.warning(f"Scheduled task {fn.__name__!r} failed: {exc}")
@@ -381,7 +405,12 @@ def _make_safe_callback (fn: typing.Callable) -> typing.Callable[[int], None]:
 
 		"""Spawn the task in the background without blocking the sequencer."""
 
-		asyncio.create_task(_execute())
+		# Capture the cycle number synchronously before any async yield so that
+		# even if multiple pulses fire before the event loop runs, each task
+		# receives the correct cycle value it was triggered at.
+		current_cycle = cycle_count[0]
+		cycle_count[0] += 1
+		asyncio.create_task(_execute(current_cycle))
 
 	return wrapper
 
@@ -1259,11 +1288,16 @@ class Composition:
 
 			async def _run_initial (fn: typing.Callable) -> None:
 
+				accepts_ctx = _fn_has_parameter(fn, "p")
+				ctx = ScheduleContext(cycle=0)
+
 				try:
 					if asyncio.iscoroutinefunction(fn):
-						await fn()
+						await (fn(ctx) if accepts_ctx else fn())
 					else:
-						await asyncio.get_running_loop().run_in_executor(None, fn)
+						loop = asyncio.get_running_loop()
+						call = (lambda: fn(ctx)) if accepts_ctx else fn
+						await loop.run_in_executor(None, call)
 				except Exception as exc:
 					logger.warning(f"Initial run of {fn.__name__!r} failed: {exc}")
 
@@ -1271,7 +1305,8 @@ class Composition:
 
 		for pending_task in self._pending_scheduled:
 
-			wrapped = _make_safe_callback(pending_task.fn)
+			accepts_ctx = _fn_has_parameter(pending_task.fn, "p")
+			wrapped = _make_safe_callback(pending_task.fn, accepts_context=accepts_ctx)
 
 			# wait_for_initial=True implies defer — no point firing at pulse 0
 			# after the blocking run just completed.  defer=True skips the
