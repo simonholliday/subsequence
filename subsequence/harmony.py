@@ -66,6 +66,103 @@ def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.
 	return chords
 
 
+def diatonic_chord_sequence (
+	key: str,
+	root_midi: int,
+	count: int,
+	mode: str = "ionian"
+) -> typing.List[typing.Tuple[subsequence.chords.Chord, int]]:
+
+	"""Return a list of ``(Chord, midi_root)`` tuples stepping diatonically upward.
+
+	Useful for mapping a continuous value (like altitude or brightness) to a
+	chord, or for building explicit rising/falling progressions without using
+	the chord graph engine.
+
+	The returned list has ``count`` entries. Each entry contains the ``Chord``
+	object (quality and pitch class) and the exact MIDI note number to use as
+	that chord's root. Pass both directly to ``p.chord(chord, root=midi_root)``.
+
+	Counts larger than 7 wrap into higher octaves automatically. The sequence
+	always steps upward — reverse the list for a falling sequence.
+
+	Parameters:
+		key: Note name for the key (e.g., ``"D"``, ``"Eb"``, ``"F#"``).
+		root_midi: MIDI note number for the first chord's root. Must fall on a
+			scale degree of the chosen key and mode.
+		count: Number of ``(Chord, midi_root)`` pairs to generate.
+		mode: One of ``"ionian"`` (or ``"major"``), ``"dorian"``,
+			``"phrygian"``, ``"lydian"``, ``"mixolydian"``,
+			``"aeolian"`` (or ``"minor"``), ``"locrian"``,
+			``"harmonic_minor"``, ``"melodic_minor"``.
+
+	Returns:
+		List of ``(Chord, int)`` tuples, one per step.
+
+	Raises:
+		ValueError: If ``key`` or ``mode`` is not recognised, or if
+			``root_midi`` does not fall on a scale degree of the key.
+
+	Example:
+		```python
+		from subsequence.harmony import diatonic_chord_sequence
+
+		# 7-step D Major ladder starting at D3 (MIDI 50)
+		sequence = diatonic_chord_sequence("D", root_midi=50, count=7)
+
+		# Map a 0-1 value to a chord (e.g. from ISS altitude)
+		chord, root = sequence[int(ratio * (len(sequence) - 1))]
+		p.chord(chord, root=root, sustain=True)
+
+		# Falling sequence
+		for chord, root in reversed(diatonic_chord_sequence("A", 57, 7, "minor")):
+		    ...
+		```
+	"""
+
+	if mode not in subsequence.intervals.DIATONIC_MODE_MAP:
+		available = ", ".join(sorted(subsequence.intervals.DIATONIC_MODE_MAP.keys()))
+		raise ValueError(f"Unknown mode: {mode!r}. Available: {available}")
+
+	if key not in subsequence.chords.NOTE_NAME_TO_PC:
+		raise ValueError(f"Unknown key name: {key!r}")
+
+	scale_key, _ = subsequence.intervals.DIATONIC_MODE_MAP[mode]
+	scale_ivs = subsequence.intervals.get_intervals(scale_key)
+
+	key_pc = subsequence.chords.NOTE_NAME_TO_PC[key]
+	start_pc = root_midi % 12
+
+	# Locate the scale degree that matches the starting MIDI note.
+	start_degree: typing.Optional[int] = None
+
+	for i, iv in enumerate(scale_ivs):
+		if (key_pc + iv) % 12 == start_pc:
+			start_degree = i
+			break
+
+	if start_degree is None:
+		raise ValueError(
+			f"MIDI note {root_midi} (pitch class {start_pc}) is not a scale "
+			f"degree of {key!r} {mode!r}."
+		)
+
+	all_chords = diatonic_chords(key, mode=mode)
+	result: typing.List[typing.Tuple[subsequence.chords.Chord, int]] = []
+
+	for i in range(count):
+		degree = (start_degree + i) % 7
+		octave_bump = (start_degree + i) // 7
+		midi_root = (
+			root_midi
+			+ (scale_ivs[degree] - scale_ivs[start_degree])
+			+ 12 * octave_bump
+		)
+		result.append((all_chords[degree], midi_root))
+
+	return result
+
+
 
 class ChordPattern (subsequence.pattern.Pattern):
 

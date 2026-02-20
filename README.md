@@ -631,7 +631,7 @@ Higher edge weights mean a transition is more likely. Use the constants `WEIGHT_
 
 ### Generating a chord list without the graph engine
 
-When you just want a plain list of chords for a key — for example to build a rising or falling sequence yourself — use `diatonic_chords()` from `subsequence.harmony`. It returns the 7 diatonic triads in order without any probabilistic machinery:
+Use `diatonic_chords()` to get the 7 diatonic triads for any key and mode — plain `Chord` objects with no probabilistic machinery:
 
 ```python
 from subsequence.harmony import diatonic_chords
@@ -639,7 +639,7 @@ from subsequence.harmony import diatonic_chords
 # Seven triads of Eb Major: Eb, Fm, Gm, Ab, Bb, Cm, Ddim
 chords = diatonic_chords("Eb")
 
-# Seven triads of A Natural Minor
+# Natural minor
 chords = diatonic_chords("A", mode="minor")
 
 # Supported modes: "ionian" ("major"), "dorian", "phrygian", "lydian",
@@ -647,15 +647,33 @@ chords = diatonic_chords("A", mode="minor")
 #   "harmonic_minor", "melodic_minor"
 ```
 
-Each entry in the returned list is a plain `Chord` object — pass it directly to `p.chord()`, `p.strum()`, or `chord.tones()`:
+Each entry is a `Chord` object — pass it directly to `p.chord()`, `p.strum()`, or `chord.tones()`:
 
 ```python
 @composition.pattern(channel=0, length=4)
 def rising (p):
-    # Step through the 7 diatonic chords of D Dorian over 7 bars
     current = diatonic_chords("D", mode="dorian")[p.cycle % 7]
     p.chord(current, root=50, sustain=True)
 ```
+
+For a **stepped sequence with explicit MIDI roots** — for example, mapping a sensor value to a chord — use `diatonic_chord_sequence()`. It returns `(Chord, midi_root)` tuples stepping diatonically upward from a starting note, wrapping into higher octaves automatically:
+
+```python
+from subsequence.harmony import diatonic_chord_sequence
+
+# 12-step D Major ladder from D3 (MIDI 50) up through D4 and beyond
+sequence = diatonic_chord_sequence("D", root_midi=50, count=12)
+
+# Map a 0-1 value directly to a chord
+altitude_ratio = 0.7   # e.g. from ISS data
+chord, root = sequence[int(altitude_ratio * (len(sequence) - 1))]
+p.chord(chord, root=root, sustain=True)
+
+# Falling sequence
+sequence = list(reversed(diatonic_chord_sequence("A", root_midi=45, count=7, mode="minor")))
+```
+
+The `root_midi` must be a note that falls on a scale degree of the chosen key and mode. A `ValueError` is raised otherwise.
 
 ## Seed and deterministic randomness
 

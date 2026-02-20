@@ -84,6 +84,67 @@ def test_diatonic_chords_invalid_key () -> None:
 		subsequence.harmony.diatonic_chords("Z", mode="ionian")
 
 
+# ---------------------------------------------------------------------------
+# diatonic_chord_sequence() tests
+# ---------------------------------------------------------------------------
+
+def test_diatonic_chord_sequence_d_major () -> None:
+
+	"""D major from MIDI 50 should return correct roots for all 7 degrees."""
+
+	seq = subsequence.harmony.diatonic_chord_sequence("D", root_midi=50, count=7)
+
+	assert len(seq) == 7
+
+	# D major scale: D E F# G A B C# → intervals 0 2 4 5 7 9 11
+	expected_roots = [50, 52, 54, 55, 57, 59, 61]
+	expected_qualities = subsequence.intervals.IONIAN_QUALITIES
+
+	for (chord, root), exp_root, exp_quality in zip(seq, expected_roots, expected_qualities):
+		assert root == exp_root
+		assert chord.quality == exp_quality
+
+
+def test_diatonic_chord_sequence_octave_wrap () -> None:
+
+	"""Step 8 (count=8) should wrap into the next octave."""
+
+	seq = subsequence.harmony.diatonic_chord_sequence("D", root_midi=50, count=8)
+
+	assert len(seq) == 8
+	# 8th entry wraps: D3 (50) + 12 = D4 (62)
+	_, eighth_root = seq[7]
+	assert eighth_root == 62
+
+
+def test_diatonic_chord_sequence_count_one () -> None:
+
+	"""count=1 should return exactly the starting chord."""
+
+	seq = subsequence.harmony.diatonic_chord_sequence("C", root_midi=60, count=1)
+
+	assert len(seq) == 1
+	chord, root = seq[0]
+	assert root == 60
+	assert chord.quality == "major"
+
+
+def test_diatonic_chord_sequence_invalid_root_midi () -> None:
+
+	"""A chromatic note not in the scale should raise ValueError."""
+
+	with pytest.raises(ValueError, match="not a scale degree"):
+		# C natural (MIDI 48, pitch class 0) is not a degree of D major (which has C#)
+		subsequence.harmony.diatonic_chord_sequence("D", root_midi=48, count=4)
+
+
+def test_diatonic_chord_sequence_invalid_mode () -> None:
+
+	"""An unknown mode should raise ValueError."""
+
+	with pytest.raises(ValueError, match="Unknown mode"):
+		subsequence.harmony.diatonic_chord_sequence("C", root_midi=60, count=4, mode="bebop")
+
 
 def test_dominant_7th_included () -> None:
 
