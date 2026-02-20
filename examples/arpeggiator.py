@@ -9,11 +9,10 @@ import subsequence.sequence_utils
 
 logging.basicConfig(level=logging.INFO)
 
-DRUMS_CHANNEL = 10
+DRUM_CHANNEL = 10
 BASS_CHANNEL = 5
-MATRIARCH_CHANNEL = 0
-VOCE_EP_CHANNEL = 11
-MODEL_D_CHANNEL = 3
+ARP_CHANNEL = 0
+LEAD_CHANNEL = 3
 
 composition = subsequence.Composition(
 	bpm=120,
@@ -29,7 +28,7 @@ composition.form({
 
 composition.harmony(style="phrygian_minor", cycle_beats=16, gravity=0.75)
 
-@composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+@composition.pattern(channel=DRUM_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
 
 	if p.section and p.section.name == "intro":
@@ -77,14 +76,14 @@ def bass (p, chord):
 
 	p.legato(0.9)
 
-@composition.pattern(channel=MATRIARCH_CHANNEL, length=5, unit=dur.SIXTEENTH)
+@composition.pattern(channel=ARP_CHANNEL, length=5, unit=dur.SIXTEENTH)
 def arp (p, chord):
 
 	pitches = chord.tones(root=60, count=5)
 	p.arpeggio(pitches, step=dur.SIXTEENTH)
 
-@composition.pattern(channel=MODEL_D_CHANNEL, length=6, unit=dur.SIXTEENTH)
-def motif (p, chord):
+@composition.pattern(channel=LEAD_CHANNEL, length=6, unit=dur.SIXTEENTH)
+def lead (p, chord):
 
 	root = chord.tones(root=84)[0]
 	# pitches = chord.tones(root=root, count=4)

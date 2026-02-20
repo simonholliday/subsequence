@@ -84,6 +84,71 @@ MINOR_DIATONIC_TRIADS: typing.List[typing.List[int]] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Diatonic chord quality constants.
+#
+# Each list contains 7 chord quality strings, one per scale degree (I–VII).
+# These can be paired with the corresponding scale intervals from
+# INTERVAL_DEFINITIONS to build diatonic Chord objects for any key.
+# ---------------------------------------------------------------------------
+
+# -- Church modes (rotations of the major scale) --
+
+IONIAN_QUALITIES: typing.List[str] = [
+	"major", "minor", "minor", "major", "major", "minor", "diminished"
+]
+
+DORIAN_QUALITIES: typing.List[str] = [
+	"minor", "minor", "major", "major", "minor", "diminished", "major"
+]
+
+PHRYGIAN_QUALITIES: typing.List[str] = [
+	"minor", "major", "major", "minor", "diminished", "major", "minor"
+]
+
+LYDIAN_QUALITIES: typing.List[str] = [
+	"major", "major", "minor", "diminished", "major", "minor", "minor"
+]
+
+MIXOLYDIAN_QUALITIES: typing.List[str] = [
+	"major", "minor", "diminished", "major", "minor", "minor", "major"
+]
+
+AEOLIAN_QUALITIES: typing.List[str] = [
+	"minor", "diminished", "major", "minor", "minor", "major", "major"
+]
+
+LOCRIAN_QUALITIES: typing.List[str] = [
+	"diminished", "major", "minor", "minor", "major", "major", "minor"
+]
+
+# -- Non-modal scales --
+
+HARMONIC_MINOR_QUALITIES: typing.List[str] = [
+	"minor", "diminished", "augmented", "minor", "major", "major", "diminished"
+]
+
+MELODIC_MINOR_QUALITIES: typing.List[str] = [
+	"minor", "minor", "augmented", "major", "major", "diminished", "diminished"
+]
+
+
+# Map mode names to (scale_interval_key, qualities) for use by helpers.
+DIATONIC_MODE_MAP: typing.Dict[str, typing.Tuple[str, typing.List[str]]] = {
+	"ionian":         ("major_ionian",     IONIAN_QUALITIES),
+	"major":          ("major_ionian",     IONIAN_QUALITIES),
+	"dorian":         ("dorian_mode",      DORIAN_QUALITIES),
+	"phrygian":       ("phrygian_mode",    PHRYGIAN_QUALITIES),
+	"lydian":         ("lydian",           LYDIAN_QUALITIES),
+	"mixolydian":     ("mixolydian",       MIXOLYDIAN_QUALITIES),
+	"aeolian":        ("natural_minor",    AEOLIAN_QUALITIES),
+	"minor":          ("natural_minor",    AEOLIAN_QUALITIES),
+	"locrian":        ("locrian_mode",     LOCRIAN_QUALITIES),
+	"harmonic_minor": ("harmonic_minor",   HARMONIC_MINOR_QUALITIES),
+	"melodic_minor":  ("melodic_minor",    MELODIC_MINOR_QUALITIES),
+}
+
+
 def get_intervals (name: str) -> typing.List[int]:
 
 	"""

@@ -2,6 +2,7 @@ import typing
 
 import subsequence.chord_graphs
 import subsequence.chords
+import subsequence.intervals
 import subsequence.weighted_graph
 
 
@@ -114,12 +115,11 @@ class AeolianMinor (subsequence.chord_graphs.ChordGraph):
 
 		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		# Natural minor diatonic triads.
 		diatonic: typing.Set[subsequence.chords.Chord] = set(
 			subsequence.chord_graphs.build_diatonic_chords(
 				key_pc,
-				[0, 2, 3, 5, 7, 8, 10],
-				["minor", "diminished", "major", "minor", "minor", "major", "major"]
+				subsequence.intervals.get_intervals("natural_minor"),
+				subsequence.intervals.AEOLIAN_QUALITIES
 			)
 		)
 

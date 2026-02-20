@@ -2,6 +2,7 @@ import typing
 
 import subsequence.chord_graphs
 import subsequence.chords
+import subsequence.intervals
 import subsequence.weighted_graph
 
 
@@ -100,12 +101,12 @@ class LydianMajor (subsequence.chord_graphs.ChordGraph):
 
 		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		# Lydian scale: 0, 2, 4, 6, 7, 9, 11
-		lydian_intervals = [0, 2, 4, 6, 7, 9, 11]
-		lydian_qualities = ["major", "major", "minor", "diminished", "major", "minor", "minor"]
-
 		diatonic: typing.Set[subsequence.chords.Chord] = set(
-			subsequence.chord_graphs.build_diatonic_chords(key_pc, lydian_intervals, lydian_qualities)
+			subsequence.chord_graphs.build_diatonic_chords(
+				key_pc,
+				subsequence.intervals.get_intervals("lydian"),
+				subsequence.intervals.LYDIAN_QUALITIES
+			)
 		)
 
 		# Add dominant 7th to diatonic set.

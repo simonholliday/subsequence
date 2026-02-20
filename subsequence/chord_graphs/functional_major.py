@@ -2,6 +2,7 @@ import typing
 
 import subsequence.chord_graphs
 import subsequence.chords
+import subsequence.intervals
 import subsequence.weighted_graph
 
 
@@ -30,8 +31,8 @@ class DiatonicMajor (subsequence.chord_graphs.ChordGraph):
 
 		chords = subsequence.chord_graphs.build_diatonic_chords(
 			key_pc,
-			[0, 2, 4, 5, 7, 9, 11],
-			["major", "minor", "minor", "major", "major", "minor", "diminished"]
+			subsequence.intervals.get_intervals("major_ionian"),
+			subsequence.intervals.IONIAN_QUALITIES
 		)
 
 		tonic = chords[0]

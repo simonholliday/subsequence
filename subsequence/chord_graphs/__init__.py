@@ -6,6 +6,7 @@ import abc
 import typing
 
 import subsequence.chords
+import subsequence.intervals
 import subsequence.weighted_graph
 
 
@@ -82,10 +83,9 @@ def _major_key_gravity_sets (key_name: str) -> typing.Tuple[typing.Set[subsequen
 	"""Return diatonic and functional chord sets for a major key."""
 
 	key_pc = validate_key_name(key_name)
-	scale_intervals = [0, 2, 4, 5, 7, 9, 11]
-	degree_qualities = ["major", "minor", "minor", "major", "major", "minor", "diminished"]
+	scale_intervals = subsequence.intervals.get_intervals("major_ionian")
 
-	chords = build_diatonic_chords(key_pc, scale_intervals, degree_qualities)
+	chords = build_diatonic_chords(key_pc, scale_intervals, subsequence.intervals.IONIAN_QUALITIES)
 	diatonic: typing.Set[subsequence.chords.Chord] = set(chords)
 
 	# Functional set: I, ii, V, V7.

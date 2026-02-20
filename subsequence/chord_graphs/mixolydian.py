@@ -2,6 +2,7 @@ import typing
 
 import subsequence.chord_graphs
 import subsequence.chords
+import subsequence.intervals
 import subsequence.weighted_graph
 
 
@@ -81,14 +82,13 @@ class Mixolydian (subsequence.chord_graphs.ChordGraph):
 
 		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		scale_intervals = [0, 2, 4, 5, 7, 9, 10]
-		degree_qualities = ["major", "minor", "diminished", "major", "minor", "minor", "major"]
-
-		diatonic: typing.Set[subsequence.chords.Chord] = set()
-
-		for interval, quality in zip(scale_intervals, degree_qualities):
-			root_pc = (key_pc + interval) % 12
-			diatonic.add(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
+		diatonic: typing.Set[subsequence.chords.Chord] = set(
+			subsequence.chord_graphs.build_diatonic_chords(
+				key_pc,
+				subsequence.intervals.get_intervals("mixolydian"),
+				subsequence.intervals.MIXOLYDIAN_QUALITIES
+			)
+		)
 
 		# Functional: I, IV, bVII (the primary colour chords).
 		functional: typing.Set[subsequence.chords.Chord] = set()

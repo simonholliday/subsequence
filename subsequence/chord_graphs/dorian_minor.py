@@ -2,6 +2,7 @@ import typing
 
 import subsequence.chord_graphs
 import subsequence.chords
+import subsequence.intervals
 import subsequence.weighted_graph
 
 
@@ -107,12 +108,12 @@ class DorianMinor (subsequence.chord_graphs.ChordGraph):
 
 		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		# Dorian scale: 0, 2, 3, 5, 7, 9, 10
-		dorian_intervals = [0, 2, 3, 5, 7, 9, 10]
-		dorian_qualities = ["minor", "minor", "major", "major", "minor", "diminished", "major"]
-
 		diatonic: typing.Set[subsequence.chords.Chord] = set(
-			subsequence.chord_graphs.build_diatonic_chords(key_pc, dorian_intervals, dorian_qualities)
+			subsequence.chord_graphs.build_diatonic_chords(
+				key_pc,
+				subsequence.intervals.get_intervals("dorian_mode"),
+				subsequence.intervals.DORIAN_QUALITIES
+			)
 		)
 
 		# Functional set: i, IV (Dorian signature), v, bVII.

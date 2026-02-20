@@ -4,11 +4,67 @@ import typing
 import subsequence.chords
 import subsequence.constants.velocity
 import subsequence.harmonic_state
+import subsequence.intervals
 import subsequence.pattern
 import subsequence.voicings
 
 
 logger = logging.getLogger(__name__)
+
+
+def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.chords.Chord]:
+
+	"""Return the 7 diatonic triads for a key and mode.
+
+	This is a convenience function for generating chord sequences without
+	using the chord graph engine. The returned ``Chord`` objects can be
+	passed directly to ``p.chord()`` or ``chord.tones()`` inside a pattern.
+
+	Parameters:
+		key: Note name for the key (e.g., ``"C"``, ``"Eb"``, ``"F#"``).
+		mode: One of ``"ionian"`` (or ``"major"``), ``"dorian"``,
+			``"phrygian"``, ``"lydian"``, ``"mixolydian"``,
+			``"aeolian"`` (or ``"minor"``), ``"locrian"``,
+			``"harmonic_minor"``, ``"melodic_minor"``.
+
+	Returns:
+		List of 7 ``Chord`` objects, one per scale degree.
+
+	Example:
+		```python
+		from subsequence.harmony import diatonic_chords
+
+		# All 7 chords in Eb Major
+		chords = diatonic_chords("Eb")
+
+		# Natural minor chords in A
+		chords = diatonic_chords("A", mode="minor")
+
+		# Dorian chords in D
+		chords = diatonic_chords("D", mode="dorian")
+		```
+	"""
+
+	if mode not in subsequence.intervals.DIATONIC_MODE_MAP:
+		available = ", ".join(sorted(subsequence.intervals.DIATONIC_MODE_MAP.keys()))
+		raise ValueError(f"Unknown mode: {mode!r}. Available: {available}")
+
+	scale_key, qualities = subsequence.intervals.DIATONIC_MODE_MAP[mode]
+	scale_intervals = subsequence.intervals.get_intervals(scale_key)
+
+	if key not in subsequence.chords.NOTE_NAME_TO_PC:
+		raise ValueError(f"Unknown key name: {key!r}")
+
+	key_pc = subsequence.chords.NOTE_NAME_TO_PC[key]
+
+	chords: typing.List[subsequence.chords.Chord] = []
+
+	for degree in range(7):
+		root_pc = (key_pc + scale_intervals[degree]) % 12
+		chords.append(subsequence.chords.Chord(root_pc=root_pc, quality=qualities[degree]))
+
+	return chords
+
 
 
 class ChordPattern (subsequence.pattern.Pattern):

@@ -8,6 +8,26 @@ It is a **compositional engine** for your studio - generating pure MIDI to contr
 
 > **Note:** Subsequence does not produce sound. It generates MIDI data to control existing hardware or software instruments. 
 
+## Minimal Example
+
+In this simplest example, using [mini-notation](#mini-notation), we create and play a drum pattern. More detail on the [Composition API](#composition-api) and [Direct Pattern API](#direct-pattern-api) further down.
+
+```
+import subsequence
+import subsequence.constants.gm_drums as gm_drums
+
+composition = subsequence.Composition(bpm=120)
+
+@composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+def drums (p):
+
+    p.seq("x ~ x ~", pitch="kick_1", velocity=100)
+    p.seq("~ x ~ x", pitch="snare_1", velocity=90)
+    p.seq("[x x] [x x] [x x] [x x]", pitch="hi_hat_closed", velocity=70)
+
+composition.play()
+```
+
 ## Introduction
 
 ### The "Stateful" Advantage
@@ -609,6 +629,34 @@ composition.harmony(style=PowerChords(), cycle_beats=4, gravity=0.8)
 
 Higher edge weights mean a transition is more likely. Use the constants `WEIGHT_STRONG` (6), `WEIGHT_MEDIUM` (4), `WEIGHT_COMMON` (3), `WEIGHT_DECEPTIVE` (2), `WEIGHT_WEAK` (1) from `subsequence.chord_graphs` for consistency with the built-in graphs.
 
+### Generating a chord list without the graph engine
+
+When you just want a plain list of chords for a key — for example to build a rising or falling sequence yourself — use `diatonic_chords()` from `subsequence.harmony`. It returns the 7 diatonic triads in order without any probabilistic machinery:
+
+```python
+from subsequence.harmony import diatonic_chords
+
+# Seven triads of Eb Major: Eb, Fm, Gm, Ab, Bb, Cm, Ddim
+chords = diatonic_chords("Eb")
+
+# Seven triads of A Natural Minor
+chords = diatonic_chords("A", mode="minor")
+
+# Supported modes: "ionian" ("major"), "dorian", "phrygian", "lydian",
+#   "mixolydian", "aeolian" ("minor"), "locrian",
+#   "harmonic_minor", "melodic_minor"
+```
+
+Each entry in the returned list is a plain `Chord` object — pass it directly to `p.chord()`, `p.strum()`, or `chord.tones()`:
+
+```python
+@composition.pattern(channel=0, length=4)
+def rising (p):
+    # Step through the 7 diatonic chords of D Dorian over 7 bars
+    current = diatonic_chords("D", mode="dorian")[p.cycle % 7]
+    p.chord(current, root=50, sustain=True)
+```
+
 ## Seed and deterministic randomness
 
 Set a seed to make all random behavior repeatable:
@@ -910,7 +958,7 @@ The `examples/` directory contains self-documenting compositions demonstrating d
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
 - `subsequence.swing` applies swing timing to a pattern.
-- `subsequence.intervals` contains interval and scale definitions for harmonic work.
+- `subsequence.intervals` contains interval and scale definitions (`INTERVAL_DEFINITIONS`) for harmonic work, plus diatonic chord quality constants for all 9 modes and scales (`IONIAN_QUALITIES`, `DORIAN_QUALITIES`, `PHRYGIAN_QUALITIES`, `LYDIAN_QUALITIES`, `MIXOLYDIAN_QUALITIES`, `AEOLIAN_QUALITIES`, `LOCRIAN_QUALITIES`, `HARMONIC_MINOR_QUALITIES`, `MELODIC_MINOR_QUALITIES`) and a `DIATONIC_MODE_MAP` lookup table. The `get_intervals(name)` helper retrieves any named interval list. Use `diatonic_chords()` from `subsequence.harmony` to turn these into `Chord` objects.
 - `subsequence.markov_chain` provides a generic weighted Markov chain utility.
 - `subsequence.event_emitter` supports sync/async events used by the sequencer.
 - `subsequence.voicings` provides chord inversions and voice leading. `invert_chord()` rotates intervals; `VoiceLeadingState` picks the closest inversion to the previous chord automatically.
