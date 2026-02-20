@@ -260,7 +260,7 @@ class _InjectedChord:
 		Return the MIDI note for this chord's root that is closest to ``base``.
 		"""
 
-		target_pc = self._chord.root_pc
+		target_pc = int(self._chord.root_pc)
 		offset = (target_pc - base) % 12
 
 		if offset > 6:
