@@ -703,6 +703,17 @@ class Sequencer:
 			current_time = time.perf_counter()
 
 			while current_time >= next_pulse_time:
+				# Ordering within each pulse:
+				#   1. _check_bar/beat_change() — update counters and queue "bar"/"beat"
+				#      event tasks (asyncio.create_task; not run yet).
+				#   2. _advance_pulse() — fire callbacks, then send MIDI via _process_pulse().
+				#   3. After the await returns, the event loop runs the queued event tasks,
+				#      which update the terminal display.
+				#
+				# Consequence: MIDI notes are sent *before* the display updates. The display
+				# always trails the audio by roughly one pulse-processing cycle plus any
+				# terminal rendering latency (~10-50 ms). This is expected and acceptable for
+				# a visual status line — it cannot be tightened without restructuring the loop.
 				self._check_bar_change(self.pulse_count, pulses_per_bar)
 				self._check_beat_change(self.pulse_count, self.pulses_per_beat)
 				await self._advance_pulse()

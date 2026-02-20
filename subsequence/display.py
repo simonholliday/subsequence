@@ -145,6 +145,12 @@ class Display:
 
 		The integer argument (bar or beat number) is ignored — state is read directly from
 		the composition.
+
+		Note: "bar" and "beat" events are emitted as ``asyncio.create_task`` at the start
+		of each pulse, but the tasks only execute *after* ``_advance_pulse()`` completes
+		(which includes sending MIDI via ``_process_pulse()``). The display therefore
+		always trails the audio slightly — this is inherent to the architecture and cannot
+		be avoided without restructuring the sequencer loop.
 		"""
 
 		if not self._active:
