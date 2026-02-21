@@ -837,19 +837,27 @@ class Composition:
 		if not self._clock_follow:
 			self.bpm = bpm
 
-	def target_bpm (self, bpm: float, bars: int) -> None:
+	def target_bpm (self, bpm: float, bars: int, shape: str = "linear") -> None:
 
 		"""
 		Smoothly ramp the tempo to a target value over a number of bars.
 
+		Parameters:
+			bpm: Target tempo in beats per minute.
+			bars: Duration of the transition in bars.
+			shape: Easing curve name.  Defaults to ``"linear"``.
+			       ``"ease_in_out"`` or ``"s_curve"`` are recommended for natural-
+			       sounding tempo changes.  See :mod:`subsequence.easing` for all
+			       available shapes.
+
 		Example:
 			```python
-			# Accelerate to 140 BPM over the next 8 bars
-			comp.target_bpm(140, bars=8)
+			# Accelerate to 140 BPM over the next 8 bars with a smooth S-curve
+			comp.target_bpm(140, bars=8, shape="ease_in_out")
 			```
 		"""
 
-		self._sequencer.set_target_bpm(bpm, bars)
+		self._sequencer.set_target_bpm(bpm, bars, shape)
 
 	def live_info (self) -> typing.Dict[str, typing.Any]:
 

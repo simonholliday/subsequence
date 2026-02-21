@@ -1753,6 +1753,39 @@ def test_cc_ramp_defaults_beat_end_to_pattern_length () -> None:
 	assert events[-1].pulse == 48
 
 
+def test_cc_ramp_with_ease_in_shape () -> None:
+
+	"""cc_ramp with shape='ease_in' produces non-linear (quadratic) CC values."""
+
+	_, builder = _make_builder(length=4)
+
+	# 4 beats = 96 pulses; with resolution=96 we get exactly 2 events: pulse 0 and pulse 96
+	builder.cc_ramp(74, 0, 100, beat_start=0, beat_end=4, resolution=96, shape="ease_in")
+
+	events = sorted(builder._pattern.cc_events, key=lambda e: e.pulse)
+	assert events[0].value == 0    # t=0.0 → ease_in(0) = 0
+	assert events[1].value == 100  # t=1.0 → ease_in(1) = 1.0 → 100
+
+	# Check a mid-ramp event: use resolution=48 (3 events: 0, 48, 96)
+	_, builder2 = _make_builder(length=4)
+	builder2.cc_ramp(74, 0, 100, beat_start=0, beat_end=4, resolution=48, shape="ease_in")
+	mid_events = sorted(builder2._pattern.cc_events, key=lambda e: e.pulse)
+	# t=0.5 → ease_in(0.5) = 0.25 → value ≈ 25
+	assert mid_events[1].value == 25
+
+
+def test_cc_ramp_default_shape_is_linear () -> None:
+
+	"""cc_ramp with no shape argument remains linear (regression test)."""
+
+	_, builder = _make_builder(length=4)
+	builder.cc_ramp(74, 0, 100, beat_start=0, beat_end=4, resolution=48)
+
+	events = sorted(builder._pattern.cc_events, key=lambda e: e.pulse)
+	# t=0.5 → linear → value = 50
+	assert events[1].value == 50
+
+
 def test_cc_events_cleared_on_rebuild () -> None:
 
 	"""Pattern.cc_events should be reset to [] each cycle."""

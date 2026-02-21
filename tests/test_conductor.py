@@ -206,6 +206,57 @@ def test_signal_helper ():
 	assert builder_zero.signal("tri") == 0.0
 
 
+def test_line_with_shape_ease_in ():
+
+	"""Line with shape='ease_in' returns non-linear values."""
+
+	conductor = subsequence.conductor.Conductor()
+	conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=4.0, shape="ease_in")
+
+	# ease_in(0.5) = 0.25, so the midpoint value should be 0.25, not 0.5
+	assert conductor.get("ramp", 2.0) == pytest.approx(0.25)
+
+	# Endpoints should still clamp correctly
+	assert conductor.get("ramp", 0.0) == pytest.approx(0.0)
+	assert conductor.get("ramp", 4.0) == pytest.approx(1.0)
+
+
+def test_line_with_shape_ease_in_out ():
+
+	"""Line with shape='ease_in_out' is symmetric around the midpoint."""
+
+	conductor = subsequence.conductor.Conductor()
+	conductor.line("ramp", start_val=0.0, end_val=100.0, duration_beats=4.0, shape="ease_in_out")
+
+	# ease_in_out is symmetric: midpoint value is the midpoint of start/end
+	assert conductor.get("ramp", 2.0) == pytest.approx(50.0)
+
+	# The value at 1/4 duration should be less than 25 (slow start)
+	assert conductor.get("ramp", 1.0) < 25.0
+
+
+def test_line_with_callable_shape ():
+
+	"""Line accepts a raw callable as the shape parameter."""
+
+	conductor = subsequence.conductor.Conductor()
+	# Custom square-root easing
+	conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=4.0, shape=lambda t: t ** 0.5)
+
+	# At midpoint, sqrt(0.5) ≈ 0.707
+	assert conductor.get("ramp", 2.0) == pytest.approx(0.5 ** 0.5)
+
+
+def test_line_default_shape_is_linear ():
+
+	"""The default Line shape remains linear (regression test)."""
+
+	conductor = subsequence.conductor.Conductor()
+	conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=4.0)
+
+	assert conductor.get("ramp", 2.0) == pytest.approx(0.5)
+
+
 def test_signal_helper_no_conductor ():
 
 	"""Test p.signal() returns 0.0 when no conductor is attached."""

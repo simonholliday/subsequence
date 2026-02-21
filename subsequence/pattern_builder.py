@@ -8,6 +8,7 @@ import subsequence.pattern
 import subsequence.sequence_utils
 import subsequence.mini_notation
 import subsequence.conductor
+import subsequence.easing
 
 logger = logging.getLogger(__name__)
 
@@ -715,11 +716,12 @@ class PatternBuilder:
 		end: int,
 		beat_start: float = 0.0,
 		beat_end: typing.Optional[float] = None,
-		resolution: int = 1
+		resolution: int = 1,
+		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear"
 	) -> None:
 
 		"""
-		Linearly interpolate a CC value over a beat range.
+		Interpolate a CC value over a beat range.
 
 		Parameters:
 			control: MIDI CC number (0–127).
@@ -727,10 +729,12 @@ class PatternBuilder:
 			end: Ending CC value (0–127).
 			beat_start: Beat position to begin the ramp.
 			beat_end: Beat position to end the ramp. Defaults to pattern length.
-			beat_end: Beat position to end the ramp. Defaults to pattern length.
 			resolution: Pulses between CC messages (1 = every pulse, ~20ms at 120 BPM).
 				Higher values (e.g. 2 or 4) reduce MIDI traffic density but may sound
 				stepped at slow tempos.
+			shape: Easing curve — a name string (e.g. ``"exponential"``) or any
+			       callable that maps [0, 1] → [0, 1].  Defaults to ``"linear"``.
+			       See :mod:`subsequence.easing` for available shapes.
 		"""
 
 		if beat_end is None:
@@ -743,12 +747,14 @@ class PatternBuilder:
 		if span <= 0:
 			return
 
+		easing_fn = subsequence.easing.get_easing(shape)
 		pulse = pulse_start
 
 		while pulse <= pulse_end:
 
 			t = (pulse - pulse_start) / span
-			interpolated = int(round(start + (end - start) * t))
+			eased_t = easing_fn(t)
+			interpolated = int(round(start + (end - start) * eased_t))
 			interpolated = max(0, min(127, interpolated))
 
 			self._pattern.cc_events.append(
@@ -791,11 +797,12 @@ class PatternBuilder:
 		end: float,
 		beat_start: float = 0.0,
 		beat_end: typing.Optional[float] = None,
-		resolution: int = 1
+		resolution: int = 1,
+		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear"
 	) -> None:
 
 		"""
-		Linearly interpolate pitch bend over a beat range.
+		Interpolate pitch bend over a beat range.
 
 		Parameters:
 			start: Starting pitch bend (-1.0 to 1.0).
@@ -805,6 +812,9 @@ class PatternBuilder:
 			resolution: Pulses between pitch bend messages (1 = every pulse).
 				Higher values (e.g. 2 or 4) reduce MIDI traffic density but may sound
 				stepped at slow tempos.
+			shape: Easing curve — a name string (e.g. ``"ease_out"``) or any
+			       callable that maps [0, 1] → [0, 1].  Defaults to ``"linear"``.
+			       See :mod:`subsequence.easing` for available shapes.
 		"""
 
 		if beat_end is None:
@@ -817,12 +827,14 @@ class PatternBuilder:
 		if span <= 0:
 			return
 
+		easing_fn = subsequence.easing.get_easing(shape)
 		pulse = pulse_start
 
 		while pulse <= pulse_end:
 
 			t = (pulse - pulse_start) / span
-			interpolated = start + (end - start) * t
+			eased_t = easing_fn(t)
+			interpolated = start + (end - start) * eased_t
 			midi_value = max(-8192, min(8191, int(round(interpolated * 8192))))
 
 			self._pattern.cc_events.append(

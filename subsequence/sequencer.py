@@ -11,6 +11,7 @@ import mido
 
 import subsequence.constants
 import subsequence.constants
+import subsequence.easing
 import subsequence.event_emitter
 import subsequence.midi_utils
 
@@ -93,6 +94,7 @@ class BpmTransition:
 	target_bpm: float
 	total_pulses: int
 	elapsed_pulses: int = 0
+	easing_fn: typing.Callable[[float], float] = dataclasses.field(default=subsequence.easing.linear)
 
 
 class Sequencer:
@@ -270,10 +272,18 @@ class Sequencer:
 			self._record_event(self.pulse_count, mido.MetaMessage('set_tempo', tempo=tempo))
 
 
-	def set_target_bpm (self, target_bpm: float, bars: int) -> None:
+	def set_target_bpm (self, target_bpm: float, bars: int, shape: typing.Union[str, subsequence.easing.EasingFn] = "linear") -> None:
 
 		"""
 		Smoothly transition to a new tempo over a fixed number of bars.
+
+		Parameters:
+			target_bpm: The BPM to ramp toward.
+			bars: Duration of the transition in bars.
+			shape: Easing curve — a name string (e.g. ``"ease_in_out"``) or any
+			       callable that maps [0, 1] → [0, 1].  Defaults to ``"linear"``.
+			       ``"ease_in_out"`` or ``"s_curve"`` are recommended for natural-
+			       sounding tempo changes.  See :mod:`subsequence.easing`.
 		"""
 
 		if self.clock_follow and self.running:
@@ -292,10 +302,10 @@ class Sequencer:
 			start_bpm=self.current_bpm,
 			target_bpm=target_bpm,
 			total_pulses=total_pulses,
-			elapsed_pulses=0
+			easing_fn=subsequence.easing.get_easing(shape)
 		)
 
-		logger.info(f"BPM transition: {self.current_bpm:.2f} → {target_bpm:.2f} over {bars} bars")
+		logger.info(f"BPM transition: {self.current_bpm:.2f} → {target_bpm:.2f} over {bars} bars ({shape!r})")
 
 
 	def add_callback (self, callback: typing.Callable[[int], typing.Coroutine]) -> None:
@@ -679,9 +689,10 @@ class Sequencer:
 				self.set_bpm(target)
 			else:
 				progress = self._bpm_transition.elapsed_pulses / self._bpm_transition.total_pulses
+				eased = self._bpm_transition.easing_fn(progress)
 				interpolated = (
 					self._bpm_transition.start_bpm +
-					(self._bpm_transition.target_bpm - self._bpm_transition.start_bpm) * progress
+					(self._bpm_transition.target_bpm - self._bpm_transition.start_bpm) * eased
 				)
 				self.current_bpm = interpolated
 				self.seconds_per_beat = 60.0 / self.current_bpm

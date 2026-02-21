@@ -95,7 +95,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **MIDI recording.** Capture everything played to a standard MIDI file. Pass `record=True` to `Composition` and the session is saved automatically when you stop. Compatible with any DAW.
 - **Two API levels.** The Composition API is straightforward - most musicians will never need anything else. The Direct Pattern API gives power users full control over patterns, harmony, and scheduling.
 - **Pattern transforms.** Legato (fills gaps), staccato (fixed duration), reverse, double-time, half-time, shift, transpose, and invert - applied after placing notes. `p.every(4, lambda p: p.reverse())` applies a transform every 4th cycle. `composition.layer()` merges multiple builder functions into one pattern. `p.humanize(timing, velocity)` adds subtle random timing and velocity variations for a "played" feel — fully deterministic when a seed is set. Place notes first, then reshape them.
-- **Expression.** Send CC messages and pitch bend from patterns. `p.cc(74, 100, beat=1)` sends a single value; `p.cc_ramp(74, 0, 127, beat_start=0, beat_end=4)` sweeps smoothly. `p.pitch_bend(0.5, beat=2)` and `p.pitch_bend_ramp()` do the same for pitch bend (-1.0 to 1.0 range). Combine with `p.signal()` to drive expression from conductor LFOs.
+- **Expression.** Send CC messages and pitch bend from patterns. `p.cc(74, 100, beat=1)` sends a single value; `p.cc_ramp(74, 0, 127, beat_start=0, beat_end=4)` sweeps smoothly (add `shape="exponential"` for a filter-sweep feel). `p.pitch_bend(0.5, beat=2)` and `p.pitch_bend_ramp()` do the same for pitch bend (-1.0 to 1.0 range). Combine with `p.signal()` to drive expression from conductor LFOs.
 - **Live coding.** Modify a running composition without stopping playback. A built-in server accepts Python code from the bundled command-line client, an editor, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state - all while the music plays. Enable with `composition.live()`.
 - **External clock follower.** Sync to an external MIDI clock from a DAW, drum machine, or hardware sequencer. Transport messages (start, stop, continue) are respected automatically. Enable with `composition.midi_input(device, clock_follow=True)`.
 - **Events** let you react to sequencer milestones (`"bar"`, `"start"`, `"stop"`) via `composition.on_event()`.
@@ -452,6 +452,25 @@ def pads(p):
 ```
 
 For explicit beat control, use `p.c.get(name, beat)` directly.
+
+### Shaping transitions
+
+By default, all ramps are linear. Pass `shape=` to any ramp to change how the value moves:
+
+```python
+# Slow build that accelerates — good for intensity lines
+composition.conductor.line("build", start_val=0.0, end_val=1.0, duration_beats=64, shape="ease_in")
+
+# S-curve BPM shift — the tempo barely moves at first, rushes through the middle, then settles gently
+composition.target_bpm(140, bars=16, shape="ease_in_out")
+
+# Filter sweep — cubic response approximates how we hear filter changes
+@composition.pattern(channel=0, length=4)
+def sweep (p):
+    p.cc_ramp(74, 0, 127, shape="exponential")
+```
+
+Available shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out"`, `"exponential"`, `"logarithmic"`, `"s_curve"`. You can also pass any callable that maps a float in [0, 1] to a float in [0, 1] for a custom curve. See `subsequence.easing` for details.
 
 ## State vs Signals
 
@@ -813,7 +832,9 @@ Connected to Subsequence on 127.0.0.1:5555
 ```python
 >>> composition.set_bpm(140)           # instant jump
 OK
->>> composition.target_bpm(140, bars=8) # smooth ramp over 8 bars
+>>> composition.target_bpm(140, bars=8)                    # smooth ramp over 8 bars
+OK
+>>> composition.target_bpm(140, bars=8, shape="ease_in_out") # S-curve for a more natural feel
 OK
 ```
 
@@ -991,6 +1012,7 @@ The `examples/` directory contains self-documenting compositions demonstrating d
 - `subsequence.constants.velocity` provides MIDI velocity constants. `DEFAULT_VELOCITY = 100` (most notes), `DEFAULT_CHORD_VELOCITY = 90` (harmonic content), `VELOCITY_SHAPE_LOW = 64` and `VELOCITY_SHAPE_HIGH = 127` (velocity shaping boundaries), `MIN_VELOCITY = 0`, `MAX_VELOCITY = 127`.
 - `subsequence.constants.gm_drums` provides the General MIDI Level 1 drum note map. `GM_DRUM_MAP` can be passed as `drum_note_map`; individual constants like `KICK_1` are also available.
 - `subsequence.constants.midi_notes` provides named MIDI note constants C0–G9 (MIDI 12–127). Import as `import subsequence.constants.midi_notes as notes`. Convention: `C4 = 60` (Middle C, MMA standard). Naturals: `C4`, `D4`, … `B4`. Sharps: `CS4` (C♯4), `DS4`, `FS4`, `GS4`, `AS4`. Use instead of raw integers: `root = notes.E2` (40), `p.note(notes.A4)` (69).
+- `subsequence.easing` provides easing/transition curve functions used by `conductor.line()`, `target_bpm()`, `cc_ramp()`, and `pitch_bend_ramp()`. Pass `shape=` to any of these to control how a value moves over time. Built-in shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out"` (Hermite smoothstep), `"exponential"` (cubic, good for filter sweeps), `"logarithmic"` (cubic, good for volume fades), `"s_curve"` (Perlin smootherstep — smoother than `"ease_in_out"` for long transitions). Callable shapes are also accepted for custom curves.
 - `subsequence.constants.pulses` provides pulse-based MIDI timing constants used internally by the engine.
 - `subsequence.osc` provides the OSC server/client for bi-directional communication.
 - `subsequence.live_server` provides the TCP eval server for live coding. Started internally by `composition.live()`.

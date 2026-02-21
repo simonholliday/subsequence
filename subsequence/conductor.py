@@ -2,6 +2,8 @@
 import math
 import typing
 
+import subsequence.easing
+
 
 class Signal:
 	
@@ -82,22 +84,25 @@ class LFO(Signal):
 class Line(Signal):
 
 	"""
-	A linear 'ramp' signal that moves from one value to another over time.
+	A ramp signal that moves from one value to another over time.
 	"""
 
-	def __init__ (self, start_val: float, end_val: float, duration_beats: float, start_beat: float = 0.0, loop: bool = False) -> None:
-		
+	def __init__ (self, start_val: float, end_val: float, duration_beats: float, start_beat: float = 0.0, loop: bool = False, shape: typing.Union[str, subsequence.easing.EasingFn] = "linear") -> None:
+
 		"""
-		Initialize a linear ramp.
-		
+		Initialize a ramp signal.
+
 		Parameters:
 			start_val: Initial value.
 			end_val: Target value.
 			duration_beats: How long it takes to reach the target (in beats).
 			start_beat: Global beat time when the ramp should start (default 0).
 			loop: Whether to jump back to start_val and repeat (default False).
+			shape: Easing curve — a name string (e.g. ``"ease_in_out"``) or any
+			       callable that maps [0, 1] → [0, 1].  Defaults to ``"linear"``.
+			       See :mod:`subsequence.easing` for available shapes.
 		"""
-		
+
 		if duration_beats <= 0:
 			raise ValueError("duration_beats must be positive")
 
@@ -106,25 +111,27 @@ class Line(Signal):
 		self.duration_beats = duration_beats
 		self.start_beat = start_beat
 		self.loop = loop
+		self._easing_fn = subsequence.easing.get_easing(shape)
 
 	def value_at (self, beat: float) -> float:
-		
+
 		"""
 		Compute the ramp value at a given beat time.
 		"""
-		
+
 		elapsed = beat - self.start_beat
-		
+
 		if elapsed < 0:
 			return self.start_val
-			
+
 		if self.loop:
 			elapsed %= self.duration_beats
 		elif elapsed >= self.duration_beats:
 			return self.end_val
-			
+
 		progress = elapsed / self.duration_beats
-		return self.start_val + (progress * (self.end_val - self.start_val))
+		eased = self._easing_fn(progress)
+		return self.start_val + (eased * (self.end_val - self.start_val))
 
 
 class Conductor:
@@ -154,18 +161,30 @@ class Conductor:
 		
 		self._signals[name] = LFO(shape, cycle_beats, min_val, max_val, phase)
 
-	def line (self, name: str, start_val: float, end_val: float, duration_beats: float, start_beat: float = 0.0, loop: bool = False) -> None:
-		
+	def line (self, name: str, start_val: float, end_val: float, duration_beats: float, start_beat: float = 0.0, loop: bool = False, shape: typing.Union[str, subsequence.easing.EasingFn] = "linear") -> None:
+
 		"""
-		Register a named linear ramp signal.
-		
+		Register a named ramp signal.
+
+		Parameters:
+			name: Signal name, used to retrieve the value via ``p.signal(name)``.
+			start_val: Value at the start of the ramp.
+			end_val: Value at the end of the ramp.
+			duration_beats: Duration of the ramp in beats.
+			start_beat: Beat time at which the ramp begins (default 0).
+			loop: If True, the ramp restarts from start_val after each cycle.
+			shape: Easing curve name or callable.  Defaults to ``"linear"``.
+			       Use ``"ease_in_out"`` for smooth crossfades, ``"exponential"``
+			       for filter sweeps.  See :mod:`subsequence.easing`.
+
 		Example:
 			```python
 			comp.conductor.line("fadein", start_val=0, end_val=1, duration_beats=64)
+			comp.conductor.line("filter", start_val=0, end_val=1, duration_beats=32, shape="ease_in_out")
 			```
 		"""
-		
-		self._signals[name] = Line(start_val, end_val, duration_beats, start_beat, loop)
+
+		self._signals[name] = Line(start_val, end_val, duration_beats, start_beat, loop, shape)
 
 	def get (self, name: str, beat: float) -> float:
 		
