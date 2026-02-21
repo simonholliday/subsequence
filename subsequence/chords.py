@@ -153,6 +153,58 @@ class Chord:
 		return [effective_root + interval for interval in intervals]
 
 
+	def root_note (self, root_midi: int) -> int:
+
+		"""
+		Return the MIDI note number for the chord root nearest to *root_midi*.
+
+		This is equivalent to ``self.tones(root_midi)[0]`` but makes intent
+		explicit when you only need the single root pitch.
+
+		Parameters:
+			root_midi: Reference MIDI note number used to find the closest octave
+			           of this chord's root pitch class.
+
+		Returns:
+			MIDI note number of the chord root.
+
+		Example:
+			```python
+			chord = Chord(root_pc=4, quality="major")  # E major
+			chord.root_note(60)   # → 64  (E4, nearest to C4)
+			chord.root_note(69)   # → 64  (E4, nearest to A4)
+			```
+		"""
+
+		return self.tones(root_midi)[0]
+
+
+	def bass_note (self, root_midi: int, octave_offset: int = -1) -> int:
+
+		"""
+		Return the chord root shifted by a number of octaves.
+
+		Commonly used to produce a bass register note one or two octaves
+		below the chord voicing.
+
+		Parameters:
+			root_midi: Reference MIDI note number (passed to :meth:`root_note`).
+			octave_offset: Octaves to shift; negative moves down (default ``-1``).
+
+		Returns:
+			MIDI note number of the chord root in the target register.
+
+		Example:
+			```python
+			chord = Chord(root_pc=4, quality="major")  # E major
+			chord.bass_note(64)        # → 52  (E3, one octave down from E4)
+			chord.bass_note(64, -2)    # → 40  (E2, two octaves down)
+			```
+		"""
+
+		return self.root_note(root_midi) + (12 * octave_offset)
+
+
 	def name (self) -> str:
 
 		"""

@@ -23,13 +23,14 @@ class Note:
 class CcEvent:
 
 	"""
-	A single CC or pitch bend message at a specific pulse position.
+	A MIDI non-note event (CC, pitch bend, program change, SysEx) at a pulse position.
 	"""
 
 	pulse: int
-	message_type: str	# 'control_change' or 'pitchwheel'
-	control: int = 0	# CC number (0–127), ignored for pitchwheel
-	value: int = 0		# 0–127 for CC, -8192..8191 for pitchwheel
+	message_type: str					# 'control_change', 'pitchwheel', 'program_change', or 'sysex'
+	control: int = 0					# CC number (0–127), ignored for other types
+	value: int = 0						# 0–127 for CC/program_change, -8192..8191 for pitchwheel
+	data: typing.Optional[bytes] = None	# Raw bytes payload for SysEx messages
 
 
 @dataclasses.dataclass

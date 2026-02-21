@@ -2,8 +2,10 @@ import logging
 import random
 import typing
 
+import subsequence.chords
 import subsequence.constants
 import subsequence.constants.velocity
+import subsequence.intervals
 import subsequence.pattern
 import subsequence.sequence_utils
 import subsequence.mini_notation
@@ -299,11 +301,12 @@ class PatternBuilder:
 		- `[a b]`: Groups items into a single subdivided step.
 		- `~` or `.`: A rest.
 		- `_`: Extends the previous note (sustain).
+		- `x?0.6`: Probability suffix — fires with the given probability (0.0–1.0).
 
 		Parameters:
 			notation: The mini-notation string.
-			pitch: If provided, all symbols in the string are triggers for 
-				this specific pitch. If `None`, symbols are interpreted as 
+			pitch: If provided, all symbols in the string are triggers for
+				this specific pitch. If `None`, symbols are interpreted as
 				pitches (e.g., "60" or "kick").
 			velocity: MIDI velocity (default 100).
 
@@ -314,15 +317,22 @@ class PatternBuilder:
 
 			# Subdivided melody
 			p.seq("60 [62 64] 67 60")
+
+			# Ghost snare: snare on 2 and 4, ghost note 50% of the time
+			p.seq(". snare?0.5 . snare")
 			```
 		"""
 
 		events = subsequence.mini_notation.parse(notation, total_duration=float(self._pattern.length))
 
 		for event in events:
-			
+
+			# Apply probability before placing the note.
+			if event.probability < 1.0 and self.rng.random() >= event.probability:
+				continue
+
 			current_pitch = pitch
-			
+
 			# If no global pitch provided, use the symbol as the pitch
 			if current_pitch is None:
 				# Try converting to int if it looks like a number
@@ -358,15 +368,45 @@ class PatternBuilder:
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 			beat += step
 
-	def arpeggio (self, pitches: typing.Union[typing.List[int], typing.List[str]], step: float = 0.25, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None) -> None:
+	def arpeggio (
+		self,
+		pitches: typing.Union[typing.List[int], typing.List[str]],
+		step: float = 0.25,
+		velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY,
+		duration: typing.Optional[float] = None,
+		direction: str = "up",
+		rng: typing.Optional[random.Random] = None
+	) -> None:
 
 		"""
 		Cycle through a list of pitches at regular beat intervals.
 
+		Parameters:
+			pitches: List of MIDI note numbers or note name strings (e.g. ``"C4"``).
+			step: Time between each note in beats (default 0.25 = 16th note).
+			velocity: MIDI velocity for all notes (default 85).
+			duration: Note duration in beats. Defaults to ``step`` (each note
+			          fills its slot exactly).
+			direction: Order in which pitches are cycled:
+
+			    - ``"up"`` — lowest to highest, then wrap (default).
+			    - ``"down"`` — highest to lowest, then wrap.
+			    - ``"up_down"`` — ascend then descend (ping-pong), cycling.
+			    - ``"random"`` — shuffled once per call using *rng*.
+
+			rng: Random number generator used when ``direction="random"``.
+			     Defaults to ``self.rng`` (the pattern's seeded RNG).
+
 		Example:
 			```python
-			# Arpeggiate the current chord tones
+			# Ascending arpeggio (default)
 			p.arpeggio(chord.tones(60), step=0.25)
+
+			# Ping-pong: C E G E C E G E ...
+			p.arpeggio([60, 64, 67], step=0.25, direction="up_down")
+
+			# Descending
+			p.arpeggio([60, 64, 67], step=0.25, direction="down")
 			```
 		"""
 
@@ -376,13 +416,28 @@ class PatternBuilder:
 		if step <= 0:
 			raise ValueError("Step must be positive")
 
-		resolved_pitches = [self._resolve_pitch(p) for p in pitches]
+		resolved = [self._resolve_pitch(p) for p in pitches]
+
+		if direction == "up":
+			pass  # already in ascending order as supplied
+		elif direction == "down":
+			resolved = list(reversed(resolved))
+		elif direction == "up_down":
+			if len(resolved) > 1:
+				resolved = resolved + list(reversed(resolved[1:-1]))
+		elif direction == "random":
+			if rng is None:
+				rng = self.rng
+			resolved = list(resolved)
+			rng.shuffle(resolved)
+		else:
+			raise ValueError(f"direction must be 'up', 'down', 'up_down', or 'random', got '{direction}'")
 
 		if duration is None:
 			duration = step
 
 		self._pattern.add_arpeggio_beats(
-			pitches = resolved_pitches,
+			pitches = resolved,
 			step_beats = step,
 			velocity = velocity,
 			duration_beats = duration
@@ -874,6 +929,73 @@ class PatternBuilder:
 			pulse += resolution
 
 
+	def program_change (self, program: int, beat: float = 0.0) -> None:
+
+		"""
+		Send a Program Change message at a beat position.
+
+		Switches the instrument patch on this pattern's MIDI channel.
+		Program numbers follow the General MIDI numbering (0–127, where
+		e.g. 0 = Acoustic Grand Piano, 40 = Violin, 33 = Electric Bass).
+
+		Parameters:
+			program: Program (patch) number (0–127).
+			beat: Beat position within the pattern (default 0.0).
+
+		Example:
+			```python
+			@composition.pattern(channel=1, length=4)
+			def strings (p):
+			    p.program_change(48)  # Switch to String Ensemble 1 (GM #49)
+			    p.chord("major", root=60, velocity=75)
+			```
+		"""
+
+		program = max(0, min(127, program))
+		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		self._pattern.cc_events.append(
+			subsequence.pattern.CcEvent(
+				pulse = pulse,
+				message_type = 'program_change',
+				value = program
+			)
+		)
+
+
+	def sysex (self, data: typing.Union[bytes, typing.List[int]], beat: float = 0.0) -> None:
+
+		"""
+		Send a System Exclusive (SysEx) message at a beat position.
+
+		SysEx messages allow deep integration with synthesizers and other
+		hardware: patch dumps, parameter control, and vendor-specific commands.
+		The ``data`` argument should contain only the inner payload bytes,
+		without the surrounding ``0xF0`` / ``0xF7`` framing — mido adds those
+		automatically.
+
+		Parameters:
+			data: SysEx payload as ``bytes`` or a list of integers (0–127).
+			beat: Beat position within the pattern (default 0.0).
+
+		Example:
+			```python
+			# GM System On — reset a GM-compatible device to defaults
+			p.sysex([0x7E, 0x7F, 0x09, 0x01])
+			```
+		"""
+
+		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		self._pattern.cc_events.append(
+			subsequence.pattern.CcEvent(
+				pulse = pulse,
+				message_type = 'sysex',
+				data = bytes(data)
+			)
+		)
+
+
 	def legato (self, ratio: float = 1.0) -> None:
 
 		"""
@@ -929,6 +1051,47 @@ class PatternBuilder:
 		for step in self._pattern.steps.values():
 			for note in step.notes:
 				note.duration = duration_pulses
+
+	def quantize (self, key: str, mode: str = "ionian") -> None:
+
+		"""
+		Snap all notes in the pattern to the nearest pitch in a scale.
+
+		Useful after generative or sensor-driven pitch work (random walks,
+		mapping data values to note numbers, etc.) to ensure every note lands
+		on a musically valid scale degree.  The quantization is applied in
+		place; notes already on a scale degree are left unchanged.
+
+		When a note falls equidistant between two scale tones, the upward
+		direction is preferred.
+
+		Parameters:
+			key: Root note name (e.g. ``"C"``, ``"F#"``, ``"Bb"``).
+			mode: Scale mode.  Any key in :data:`subsequence.intervals.DIATONIC_MODE_MAP`
+			      is accepted: ``"ionian"`` (default), ``"dorian"``, ``"minor"``,
+			      ``"harmonic_minor"``, etc.
+
+		Example:
+			```python
+			@composition.pattern(channel=1, length=4)
+			def melody (p):
+			    for beat in range(16):
+			        pitch = 60 + random.randint(-5, 5)
+			        p.note(pitch, beat=beat * 0.25)
+			    p.quantize("G", "dorian")
+			```
+		"""
+
+		if key not in subsequence.chords.NOTE_NAME_TO_PC:
+			raise ValueError(f"Unknown key name '{key}'. Expected e.g. 'C', 'F#', 'Bb'.")
+
+		key_pc = subsequence.chords.NOTE_NAME_TO_PC[key]
+		scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)
+
+		for step in self._pattern.steps.values():
+			for note in step.notes:
+				note.pitch = subsequence.intervals.quantize_pitch(note.pitch, scale_pcs)
+
 
 	def reverse (self) -> None:
 

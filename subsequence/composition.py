@@ -642,6 +642,8 @@ class Composition:
 		self._running_patterns: typing.Dict[str, typing.Any] = {}
 		self._input_device: typing.Optional[str] = None
 		self._clock_follow: bool = False
+		self._clock_output: bool = False
+		self._cc_mappings: typing.List[typing.Dict[str, typing.Any]] = []
 		self.data: typing.Dict[str, typing.Any] = {}
 		self._osc_server: typing.Optional[subsequence.osc.OscServer] = None
 		self.conductor = subsequence.conductor.Conductor()
@@ -785,6 +787,81 @@ class Composition:
 
 		self._input_device = device
 		self._clock_follow = clock_follow
+
+	def clock_output (self, enabled: bool = True) -> None:
+
+		"""
+		Send MIDI timing clock to connected hardware.
+
+		When enabled, Subsequence acts as a MIDI clock master and sends
+		standard clock messages on the output port: a Start message (0xFA)
+		when playback begins, a Clock tick (0xF8) on every pulse (24 PPQN),
+		and a Stop message (0xFC) when playback ends.
+
+		This allows hardware synthesizers, drum machines, and effect units to
+		slave their tempo to Subsequence automatically.
+
+		**Note:** Clock output is automatically disabled when ``midi_input()``
+		is called with ``clock_follow=True``, to prevent a clock feedback loop.
+
+		Parameters:
+			enabled: Whether to send MIDI clock (default True).
+
+		Example:
+			```python
+			comp = subsequence.Composition(bpm=120, output_device="...")
+			comp.clock_output()   # hardware will follow Subsequence tempo
+			```
+		"""
+
+		self._clock_output = enabled
+
+
+	def cc_map (
+		self,
+		cc: int,
+		key: str,
+		channel: typing.Optional[int] = None,
+		min_val: float = 0.0,
+		max_val: float = 1.0
+	) -> None:
+
+		"""
+		Map an incoming MIDI CC to a ``composition.data`` key.
+
+		When the composition receives a CC message on the configured MIDI
+		input port, the value is scaled from the CC range (0–127) to
+		*[min_val, max_val]* and stored in ``composition.data[key]``.
+
+		This lets hardware knobs, faders, and expression pedals control live
+		parameters without writing any callback code.
+
+		**Requires** ``midi_input()`` to be called first to open an input port.
+
+		Parameters:
+			cc: MIDI Control Change number (0–127).
+			key: The ``composition.data`` key to write.
+			channel: If given, only respond to CC messages on this channel
+			         (0-indexed, 0–15). ``None`` matches any channel (default).
+			min_val: Scaled minimum — written when CC value is 0 (default 0.0).
+			max_val: Scaled maximum — written when CC value is 127 (default 1.0).
+
+		Example:
+			```python
+			comp.midi_input("Arturia KeyStep")
+			comp.cc_map(74, "filter_cutoff")           # knob → 0.0–1.0
+			comp.cc_map(7, "volume", min_val=0, max_val=127)  # volume fader
+			```
+		"""
+
+		self._cc_mappings.append({
+			'cc': cc,
+			'key': key,
+			'channel': channel,
+			'min_val': min_val,
+			'max_val': max_val,
+		})
+
 
 	def live (self, port: int = 5555) -> None:
 
@@ -1215,9 +1292,9 @@ class Composition:
 
 		"""
 		Start the composition.
-		
+
 		This call blocks until the program is interrupted (e.g., via Ctrl+C).
-		It initializes the MIDI hardware, launches the background sequencer, 
+		It initializes the MIDI hardware, launches the background sequencer,
 		and begins playback.
 		"""
 
@@ -1226,6 +1303,43 @@ class Composition:
 
 		except KeyboardInterrupt:
 			pass
+
+
+	def render (self, bars: int = 32, filename: str = "render.mid") -> None:
+
+		"""
+		Render the composition to a MIDI file without real-time playback.
+
+		Runs the sequencer as fast as possible (no timing delays) and stops
+		after *bars* bars.  The result is saved as a standard MIDI file that
+		can be imported into any DAW.
+
+		All patterns, scheduled callbacks, and harmony logic run exactly as
+		they would during live playback — BPM transitions, generative fills,
+		and probabilistic gates all work in render mode.  The only difference
+		is that time is simulated rather than wall-clock driven.
+
+		Parameters:
+			bars: Number of bars to render (default 32).
+			filename: Output MIDI filename (default ``"render.mid"``).
+
+		Example:
+			```python
+			composition = subsequence.Composition(bpm=120)
+
+			@composition.pattern(channel=0, length=4)
+			def melody (p):
+			    p.seq("60 [62 64] 67 60")
+
+			composition.render(bars=8, filename="melody.mid")
+			```
+		"""
+
+		self._sequencer.recording = True
+		self._sequencer.record_filename = filename
+		self._sequencer.render_mode = True
+		self._sequencer.render_bars = bars
+		asyncio.run(self._run())
 
 	async def _run (self) -> None:
 
@@ -1237,6 +1351,13 @@ class Composition:
 		if self._input_device is not None:
 			self._sequencer.input_device_name = self._input_device
 			self._sequencer.clock_follow = self._clock_follow
+
+		# Pass clock output flag (suppressed automatically when clock_follow=True).
+		self._sequencer.clock_output = self._clock_output and not self._clock_follow
+
+		# Share CC input mappings and a reference to composition.data with the sequencer.
+		self._sequencer.cc_mappings = self._cc_mappings
+		self._sequencer._composition_data = self.data
 
 		# Derive child RNGs from the master seed so each component gets
 		# an independent, deterministic stream.  When no seed is set,
@@ -1352,7 +1473,7 @@ class Composition:
 			name = pending.builder_fn.__name__
 			self._running_patterns[name] = patterns[i]
 
-		if self._display is not None:
+		if self._display is not None and not self._sequencer.render_mode:
 			self._display.start()
 			self._sequencer.on_event("bar",  self._display.update)
 			self._sequencer.on_event("beat", self._display.update)

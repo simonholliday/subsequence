@@ -55,6 +55,7 @@ class MidiEvent:
 	velocity: int = dataclasses.field(compare=False, default=0)
 	control: int = dataclasses.field(compare=False, default=0)
 	value: int = dataclasses.field(compare=False, default=0)
+	data: typing.Optional[bytes] = dataclasses.field(compare=False, default=None)
 
 
 @dataclasses.dataclass
@@ -112,6 +113,7 @@ class Sequencer:
 		initial_bpm: float = 125,
 		input_device_name: typing.Optional[str] = None,
 		clock_follow: bool = False,
+		clock_output: bool = False,
 		record: bool = False,
 		record_filename: typing.Optional[str] = None
 	) -> None:
@@ -125,6 +127,10 @@ class Sequencer:
 			initial_bpm: Tempo in BPM (ignored when clock_follow is True)
 			input_device_name: Optional MIDI input device name for clock/transport
 			clock_follow: When True, follow external MIDI clock instead of internal clock
+			clock_output: When True, send MIDI timing clock (0xF8), start (0xFA), and
+				stop (0xFC) messages so connected hardware can sync to Subsequence's
+				tempo.  Mutually exclusive with ``clock_follow`` (ignored when both
+				are set, to prevent feedback loops).
 			record: When True, record all MIDI events to a file.
 			record_filename: Optional filename for the recording (defaults to timestamp).
 		"""
@@ -135,6 +141,7 @@ class Sequencer:
 		self.output_device_name = output_device_name
 		self.input_device_name = input_device_name
 		self.clock_follow = clock_follow
+		self.clock_output = clock_output and not clock_follow
 		self.pulses_per_beat = subsequence.constants.MIDI_QUARTER_NOTE
 
 		# Recording state
@@ -142,6 +149,15 @@ class Sequencer:
 		self.record_filename = record_filename
 		self.recorded_events: typing.List[typing.Tuple[float, typing.Union[mido.Message, mido.MetaMessage]]] = []
 
+		# Render mode: run as fast as possible and stop after render_bars
+		self.render_mode: bool = False
+		self.render_bars: int = 0
+
+
+		# CC input mapping — populated from Composition.cc_map()
+		self.cc_mappings: typing.List[typing.Dict[str, typing.Any]] = []
+		# Shared reference to composition.data so CC mappings can update it
+		self._composition_data: typing.Dict[str, typing.Any] = {}
 
 		# Internal state initialization (needed before set_bpm)
 		self.midi_in: typing.Any = None
@@ -362,8 +378,11 @@ class Sequencer:
 
 		"""Handle incoming MIDI messages from the input port callback thread.
 
-		This runs in mido's callback thread. Messages are forwarded to the
-		asyncio event loop via call_soon_threadsafe.
+		This runs in mido's callback thread. Clock/transport messages are
+		forwarded to the asyncio event loop via call_soon_threadsafe.
+
+		CC input mappings are applied immediately here.  Single dict writes
+		are safe from a non-asyncio thread under CPython's GIL.
 		"""
 
 		if self._midi_input_queue is None or self._input_loop is None:
@@ -372,6 +391,17 @@ class Sequencer:
 		self._input_loop.call_soon_threadsafe(
 			self._midi_input_queue.put_nowait, message
 		)
+
+		# Apply CC input mappings: map incoming CC values to composition.data.
+		if message.type == 'control_change' and self.cc_mappings:
+			for mapping in self.cc_mappings:
+				if message.control != mapping['cc']:
+					continue
+				ch = mapping.get('channel')
+				if ch is not None and message.channel != ch:
+					continue
+				scaled = mapping['min_val'] + (message.value / 127.0) * (mapping['max_val'] - mapping['min_val'])
+				self._composition_data[mapping['key']] = scaled
 
 
 	def _estimate_bpm (self, tick_time: float) -> None:
@@ -472,7 +502,8 @@ class Sequencer:
 					message_type = cc_event.message_type,
 					channel = pattern.channel,
 					control = cc_event.control,
-					value = cc_event.value
+					value = cc_event.value,
+					data = cc_event.data
 				)
 
 				heapq.heappush(self.event_queue, midi_event)
@@ -562,12 +593,32 @@ class Sequencer:
 			await self.stop()
 
 
+	def _send_clock_message (self, message_type: str) -> None:
+
+		"""Send a bare MIDI system-realtime message (clock, start, stop, continue).
+
+		These messages carry no channel or data bytes — they are sent directly to
+		the output port.  Used for MIDI clock output when ``clock_output`` is True.
+
+		Parameters:
+			message_type: One of ``"clock"``, ``"start"``, ``"stop"``, ``"continue"``.
+		"""
+
+		if self.midi_out:
+			try:  # type: ignore[unreachable]
+				self.midi_out.send(mido.Message(message_type))
+			except Exception:
+				logger.exception(f"Failed to send MIDI {message_type} message")
+
+
 	async def start (self) -> None:
 
 		"""Start the sequencer playback in a separate asyncio task.
 
 		When an input device is configured, the MIDI input port is opened here
 		(after the event loop is running) so that call_soon_threadsafe works.
+		When ``clock_output`` is True, a MIDI Start (0xFA) message is sent before
+		the first clock tick so connected hardware begins from the top.
 		"""
 
 		if self.running:
@@ -582,6 +633,9 @@ class Sequencer:
 		self._waiting_for_start = self.clock_follow
 		self.running = True
 		self.task = asyncio.create_task(self._run_loop())
+
+		if self.clock_output:
+			self._send_clock_message("start")
 
 		logger.info("Sequencer started")
 
@@ -603,6 +657,9 @@ class Sequencer:
 
 		if self.task:
 			await self.task
+
+		if self.clock_output:
+			self._send_clock_message("stop")
 
 		await self.panic()
 
@@ -659,6 +716,11 @@ class Sequencer:
 		if new_bar > self.current_bar:
 			self.current_bar = new_bar
 
+			# In render mode, stop after the requested number of bars.
+			if self.render_mode and self.render_bars > 0 and self.current_bar >= self.render_bars:
+				self.running = False
+				return
+
 			for cb in self.callbacks:
 				asyncio.create_task(cb(self.current_bar))
 
@@ -705,20 +767,29 @@ class Sequencer:
 
 	async def _run_loop_internal_clock (self, pulses_per_bar: int) -> None:
 
-		"""Playback loop driven by the internal wall clock."""
+		"""Playback loop driven by the internal wall clock.
+
+		In normal mode the loop sleeps between pulses to maintain tempo.
+		In render mode it runs as fast as possible (simulates time rather than
+		waiting for the wall clock), stopping after *render_bars* bars.
+		"""
 
 		next_pulse_time = self.start_time
 
 		while self.running:
 
-			current_time = time.perf_counter()
+			# In render mode, simulate time advancing one pulse at a time so
+			# the inner loop always fires exactly once without spin-waiting.
+			current_time = next_pulse_time if self.render_mode else time.perf_counter()
 
 			while current_time >= next_pulse_time:
 				# Ordering within each pulse:
 				#   1. _check_bar/beat_change() — update counters and queue "bar"/"beat"
 				#      event tasks (asyncio.create_task; not run yet).
-				#   2. _advance_pulse() — fire callbacks, then send MIDI via _process_pulse().
-				#   3. After the await returns, the event loop runs the queued event tasks,
+				#   2. Send MIDI clock tick (if clock_output) so hardware receives it at
+				#      the same time as note events for tight sync.
+				#   3. _advance_pulse() — fire callbacks, then send MIDI via _process_pulse().
+				#   4. After the await returns, the event loop runs the queued event tasks,
 				#      which update the terminal display.
 				#
 				# Consequence: MIDI notes are sent *before* the display updates. The display
@@ -727,20 +798,33 @@ class Sequencer:
 				# a visual status line — it cannot be tightened without restructuring the loop.
 				self._check_bar_change(self.pulse_count, pulses_per_bar)
 				self._check_beat_change(self.pulse_count, self.pulses_per_beat)
+				if self.clock_output:
+					self._send_clock_message("clock")
 				await self._advance_pulse()
 				next_pulse_time += self.seconds_per_pulse
 
-			# Check if queue is empty and we are past the last event
-			async with self.queue_lock:
-				if not self.event_queue and not self.active_notes:
-					logger.info("Sequence complete (no more events or active notes).")
-					self.running = False
-					break
+				if not self.running:
+					break  # type: ignore[unreachable]
 
-			sleep_time = next_pulse_time - time.perf_counter()
+			if not self.running:
+				break  # type: ignore[unreachable]
 
-			if sleep_time > 0:
-				await asyncio.sleep(sleep_time)
+			if not self.render_mode:
+				# Check if queue is empty and we are past the last event
+				async with self.queue_lock:
+					if not self.event_queue and not self.active_notes:
+						logger.info("Sequence complete (no more events or active notes).")
+						self.running = False
+						break
+
+				sleep_time = next_pulse_time - time.perf_counter()
+
+				if sleep_time > 0:
+					await asyncio.sleep(sleep_time)
+			else:
+				# Yield to the event loop so queued tasks (pattern rescheduling,
+				# asyncio.create_task callbacks) can run between pulses.
+				await asyncio.sleep(0)
 
 
 	async def _run_loop_external_clock (self, pulses_per_bar: int) -> None:
@@ -895,6 +979,13 @@ class Sequencer:
 					elif event.message_type == 'pitchwheel':
 						self._record_event(event.pulse, mido.Message('pitchwheel', channel=event.channel, pitch=event.value))
 
+					elif event.message_type == 'program_change':
+						self._record_event(event.pulse, mido.Message('program_change', channel=event.channel, program=event.value))
+
+					elif event.message_type == 'sysex':
+						raw = event.data if event.data is not None else b''
+						self._record_event(event.pulse, mido.Message('sysex', data=raw))
+
 
 	async def _stop_all_active_notes (self) -> None:
 	
@@ -940,6 +1031,19 @@ class Sequencer:
 						'pitchwheel',
 						channel = event.channel,
 						pitch = event.value
+					)
+
+				elif event.message_type == 'program_change':
+					msg = mido.Message(
+						'program_change',
+						channel = event.channel,
+						program = event.value
+					)
+
+				elif event.message_type == 'sysex':
+					msg = mido.Message(
+						'sysex',
+						data = event.data if event.data is not None else b''
 					)
 
 				else:

@@ -13,6 +13,7 @@ class ParsedEvent:
 	time: float
 	duration: float
 	symbol: str
+	probability: float = 1.0
 
 
 class MiniNotationError(Exception):
@@ -32,6 +33,7 @@ def parse (notation: str, total_duration: float = 4.0) -> typing.List[ParsedEven
 	- `[a b]`: Groups items into a single subdivided step.
 	- `~` or `.`: A rest.
 	- `_`: Extends the previous note (sustain).
+	- `x?0.6`: Probability suffix — fires with the given probability (0.0–1.0).
 
 	Parameters:
 		notation: The string to parse.
@@ -113,9 +115,21 @@ def _parse_recursive (tokens: list, start_time: float, duration: float) -> typin
 			events.extend(_parse_recursive(token, current_time, step_duration))
 			
 		elif isinstance(token, str):
-			if token in ("~", "."):
+			# Parse optional probability suffix: "kick?0.6" → symbol="kick", probability=0.6
+			if "?" in token and token[0] != "?":
+				symbol, prob_str = token.rsplit("?", 1)
+				try:
+					probability = float(prob_str)
+				except ValueError:
+					symbol = token
+					probability = 1.0
+			else:
+				symbol = token
+				probability = 1.0
+
+			if symbol in ("~", "."):
 				continue
-			events.append(ParsedEvent(current_time, step_duration, token))
+			events.append(ParsedEvent(current_time, step_duration, symbol, probability))
 			
 	return events
 

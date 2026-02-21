@@ -1,5 +1,7 @@
 import typing
 
+import subsequence.chords
+
 
 INTERVAL_DEFINITIONS: typing.Dict[str, typing.List[int]] = {
 	"augmented": [0, 3, 4, 7, 8, 11],
@@ -147,6 +149,76 @@ DIATONIC_MODE_MAP: typing.Dict[str, typing.Tuple[str, typing.List[str]]] = {
 	"harmonic_minor": ("harmonic_minor",   HARMONIC_MINOR_QUALITIES),
 	"melodic_minor":  ("melodic_minor",    MELODIC_MINOR_QUALITIES),
 }
+
+
+def scale_pitch_classes (key_pc: int, mode: str = "ionian") -> typing.List[int]:
+
+	"""
+	Return the pitch classes (0–11) that belong to a key and mode.
+
+	Parameters:
+		key_pc: Root pitch class (0 = C, 1 = C#/Db, …, 11 = B).
+		mode: Scale mode name. Supports all keys of ``DIATONIC_MODE_MAP``
+		      (e.g. ``"ionian"``, ``"dorian"``, ``"minor"``, ``"harmonic_minor"``).
+
+	Returns:
+		Sorted list of pitch classes in the scale (length varies by mode).
+
+	Example:
+		```python
+		# C major pitch classes
+		scale_pitch_classes(0, "ionian")  # → [0, 2, 4, 5, 7, 9, 11]
+
+		# A minor pitch classes
+		scale_pitch_classes(9, "aeolian")  # → [9, 11, 0, 2, 4, 5, 7] (mod-12)
+		```
+	"""
+
+	if mode not in DIATONIC_MODE_MAP:
+		raise ValueError(f"Unknown mode '{mode}'. Available: {sorted(DIATONIC_MODE_MAP)}")
+
+	scale_key, _ = DIATONIC_MODE_MAP[mode]
+	intervals = get_intervals(scale_key)
+	return [(key_pc + i) % 12 for i in intervals]
+
+
+def quantize_pitch (pitch: int, scale_pcs: typing.Sequence[int]) -> int:
+
+	"""
+	Snap a MIDI pitch to the nearest note in the given scale.
+
+	Searches outward in semitone steps from the input pitch.  When two
+	notes are equidistant (e.g. C# between C and D in C major), the
+	upward direction is preferred.
+
+	Parameters:
+		pitch: MIDI note number to quantize.
+		scale_pcs: Pitch classes accepted by the scale (0–11). Typically
+		           the output of :func:`scale_pitch_classes`.
+
+	Returns:
+		A MIDI note number that lies within the scale.
+
+	Example:
+		```python
+		# Snap C# (61) to C (60) in C major
+		scale = scale_pitch_classes(0, "ionian")  # [0, 2, 4, 5, 7, 9, 11]
+		quantize_pitch(61, scale)  # → 60
+		```
+	"""
+
+	pc = pitch % 12
+
+	if pc in scale_pcs:
+		return pitch
+
+	for offset in range(1, 7):
+		if (pc + offset) % 12 in scale_pcs:
+			return pitch + offset
+		if (pc - offset) % 12 in scale_pcs:
+			return pitch - offset
+
+	return pitch  # Fallback: return unchanged (should not be reached for any 7-note scale)
 
 
 def get_intervals (name: str) -> typing.List[int]:
