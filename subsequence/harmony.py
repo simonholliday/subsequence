@@ -113,6 +113,9 @@ def diatonic_chord_sequence (
 		```
 	"""
 
+	# Validate mode before looking up the scale key. diatonic_chords() also
+	# validates internally, but diatonic_chord_sequence() is called directly
+	# from user code so we give a clear error here without going deeper.
 	if mode not in subsequence.intervals.DIATONIC_MODE_MAP:
 		available = ", ".join(sorted(subsequence.intervals.DIATONIC_MODE_MAP.keys()))
 		raise ValueError(f"Unknown mode: {mode!r}. Available: {available}")

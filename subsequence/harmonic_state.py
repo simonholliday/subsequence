@@ -19,6 +19,13 @@ import subsequence.weighted_graph
 DEFAULT_ROOT_DIVERSITY: float = 0.4
 
 
+
+# ---------------------------------------------------------------------------
+# Graph style registry — see _resolve_graph_style() below.
+# To register a new chord graph, add it to _D7_STYLES or _SIMPLE_STYLES there.
+# ---------------------------------------------------------------------------
+
+
 def _resolve_graph_style (
 	style: str,
 	include_dominant_7th: bool,
@@ -28,61 +35,45 @@ def _resolve_graph_style (
 	"""Create a ChordGraph instance from a string style name and legacy parameters."""
 
 	if style in ("diatonic_major", "functional_major"):
-
 		return subsequence.chord_graphs.functional_major.DiatonicMajor(
 			include_dominant_7th = include_dominant_7th
 		)
 
 	if style in ("turnaround", "turnaround_global"):
-
 		return subsequence.chord_graphs.turnaround_global.TurnaroundModulation(
 			include_dominant_7th = include_dominant_7th,
 			minor_turnaround_weight = minor_turnaround_weight
 		)
 
-	if style == "aeolian_minor":
+	# Styles with only an include_dominant_7th parameter.
+	_D7_STYLES: typing.Dict[
+		str,
+		typing.Callable[[bool], subsequence.chord_graphs.ChordGraph]
+	] = {
+		"aeolian_minor": subsequence.chord_graphs.aeolian_minor.AeolianMinor,
+		"lydian_major":  subsequence.chord_graphs.lydian_major.LydianMajor,
+		"dorian_minor":  subsequence.chord_graphs.dorian_minor.DorianMinor,
+	}
+	if style in _D7_STYLES:
+		return _D7_STYLES[style](include_dominant_7th)
 
-		return subsequence.chord_graphs.aeolian_minor.AeolianMinor(
-			include_dominant_7th = include_dominant_7th
-		)
+	# Styles that take no extra parameters.
+	_SIMPLE_STYLES: typing.Dict[
+		str,
+		typing.Callable[[], subsequence.chord_graphs.ChordGraph]
+	] = {
+		"phrygian_minor":    subsequence.chord_graphs.phrygian_minor.PhrygianMinor,
+		"chromatic_mediant": subsequence.chord_graphs.chromatic_mediant.ChromaticMediant,
+		"suspended":         subsequence.chord_graphs.suspended.Suspended,
+		"mixolydian":        subsequence.chord_graphs.mixolydian.Mixolydian,
+		"whole_tone":        subsequence.chord_graphs.whole_tone.WholeTone,
+		"diminished":        subsequence.chord_graphs.diminished.Diminished,
+	}
+	if style in _SIMPLE_STYLES:
+		return _SIMPLE_STYLES[style]()
 
-	if style == "phrygian_minor":
+	raise ValueError(f"Unknown graph style: {style!r}")
 
-		return subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
-
-	if style == "lydian_major":
-
-		return subsequence.chord_graphs.lydian_major.LydianMajor(
-			include_dominant_7th = include_dominant_7th
-		)
-
-	if style == "dorian_minor":
-
-		return subsequence.chord_graphs.dorian_minor.DorianMinor(
-			include_dominant_7th = include_dominant_7th
-		)
-
-	if style == "chromatic_mediant":
-
-		return subsequence.chord_graphs.chromatic_mediant.ChromaticMediant()
-
-	if style == "suspended":
-
-		return subsequence.chord_graphs.suspended.Suspended()
-
-	if style == "mixolydian":
-
-		return subsequence.chord_graphs.mixolydian.Mixolydian()
-
-	if style == "whole_tone":
-
-		return subsequence.chord_graphs.whole_tone.WholeTone()
-
-	if style == "diminished":
-
-		return subsequence.chord_graphs.diminished.Diminished()
-
-	raise ValueError(f"Unknown graph style: {style}")
 
 
 class HarmonicState:

@@ -46,6 +46,7 @@ class ScheduleContext:
 	cycle: int
 
 
+@dataclasses.dataclass
 class SectionInfo:
 
 	"""
@@ -77,14 +78,10 @@ class SectionInfo:
 		```
 	"""
 
-	def __init__ (self, name: str, bar: int, bars: int, index: int) -> None:
-
-		"""Store the section name, bar position, total bars, and form index."""
-
-		self.name = name
-		self.bar = bar
-		self.bars = bars
-		self.index = index
+	name: str
+	bar: int
+	bars: int
+	index: int
 
 	@property
 	def progress (self) -> float:
@@ -276,13 +273,9 @@ class _InjectedChord:
 		Return the MIDI note for this chord's root that is closest to ``base``.
 		"""
 
-		target_pc = int(self._chord.root_pc)
-		offset = (target_pc - base) % 12
-
-		if offset > 6:
-			offset -= 12
-
-		return base + offset
+		# Delegate to the chord's own root_note() rather than reimplementing
+		# the pitch-class offset arithmetic.
+		return self._chord.root_note(base)  # type: ignore[no-any-return]
 
 	def tones (self, root: int, inversion: int = 0, count: typing.Optional[int] = None) -> typing.List[int]:
 
@@ -437,13 +430,18 @@ async def schedule_task (
 
 	"""Schedule a non-blocking repeating task on the sequencer's beat clock.
 
+	If ``fn`` declares a first parameter named ``p``, it is called with a
+	:class:`ScheduleContext` on every invocation (same behaviour as
+	``composition.schedule()``).
+
 	When *defer* is True the backshift fire at pulse 0 is skipped; the first
 	call happens one full *cycle_beats* later.  Direct API users who need the
 	equivalent of ``initial=True`` can simply ``await fn()`` themselves before
 	calling this function.
 	"""
 
-	wrapped = _make_safe_callback(fn)
+	accepts_ctx = _fn_has_parameter(fn, "p")
+	wrapped = _make_safe_callback(fn, accepts_context=accepts_ctx)
 	start_pulse = int(cycle_beats * sequencer.pulses_per_beat) if defer else 0
 
 	await sequencer.schedule_callback_repeating(
@@ -480,11 +478,13 @@ async def schedule_form (
 			else:
 				logger.info("Form: finished")
 
-	first_bar_pulse = int(4 * sequencer.pulses_per_beat)
+	# Form advances once per bar. A bar is always 4 beats (4/4 assumed).
+	_BEATS_PER_BAR: int = 4
+	first_bar_pulse = int(_BEATS_PER_BAR * sequencer.pulses_per_beat)
 
 	await sequencer.schedule_callback_repeating(
 		callback = advance_form,
-		interval_beats = 4,
+		interval_beats = _BEATS_PER_BAR,
 		start_pulse = first_bar_pulse,
 		reschedule_lookahead = reschedule_lookahead
 	)

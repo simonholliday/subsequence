@@ -1,3 +1,10 @@
+"""Utility functions for generating and transforming step sequences.
+
+Provides algorithms for rhythm generation (Euclidean, Bresenham, van der Corput),
+sequence manipulation (roll, legato, probability gate), and general-purpose
+generative helpers (random walk, weighted choice, shuffled choices, scale/clamp).
+"""
+
 import random
 import typing
 
@@ -316,11 +323,11 @@ def probability_gate (sequence: typing.List[int], probability: typing.Union[floa
 			continue
 
 		if isinstance(probability, list):
-			p = probability[i] if i < len(probability) else 1.0
+			prob = probability[i] if i < len(probability) else 1.0
 		else:
-			p = probability
+			prob = probability
 
-		result.append(value if rng.random() < p else 0)
+		result.append(value if rng.random() < prob else 0)
 
 	return result
 

@@ -563,6 +563,35 @@ class PatternBuilder:
 
 		self._pattern.apply_swing(swing_ratio=ratio)
 
+	def _place_rhythm_sequence (
+		self,
+		sequence: typing.List[int],
+		pitch: typing.Union[int, str],
+		velocity: int,
+		duration: float,
+		dropout: float,
+		rng: random.Random
+	) -> None:
+
+		"""Place hits from a binary sequence into the pattern.
+
+		Shared implementation for ``euclidean()`` and ``bresenham()``.
+		Each active step (1) is placed as a note; steps are evenly spaced
+		across the pattern length. Zeros and dropout-gated steps are skipped.
+		"""
+
+		step_duration = self._pattern.length / len(sequence)
+
+		for i, hit_value in enumerate(sequence):
+
+			if hit_value == 0:
+				continue
+
+			if dropout > 0 and rng.random() < dropout:
+				continue
+
+			self.note(pitch=pitch, beat=i * step_duration, velocity=velocity, duration=duration)
+
 	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""
@@ -591,20 +620,7 @@ class PatternBuilder:
 
 		steps = int(self._pattern.length * 4)
 		sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=steps, pulses=pulses)
-
-		step_duration = self._pattern.length / steps
-
-		for i, hit_value in enumerate(sequence):
-
-			if hit_value == 0:
-				continue
-
-			if dropout > 0 and rng.random() < dropout:
-				continue
-
-			beat = i * step_duration
-
-			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
+		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng)
 
 	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
 
@@ -620,20 +636,7 @@ class PatternBuilder:
 
 		steps = int(self._pattern.length * 4)
 		sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=steps, pulses=pulses)
-
-		step_duration = self._pattern.length / steps
-
-		for i, hit_value in enumerate(sequence):
-
-			if hit_value == 0:
-				continue
-
-			if dropout > 0 and rng.random() < dropout:
-				continue
-
-			beat = i * step_duration
-
-			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
+		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng)
 
 	# These methods transform existing notes after they have been placed.
 	# Call them at the end of your builder function, after all notes are

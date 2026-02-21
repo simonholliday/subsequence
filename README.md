@@ -91,7 +91,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **Mini-notation.** Concise string syntax for rhythms and melodies. Write `p.seq("x x [x x] x", pitch="kick")` instead of verbose list definitions. Supports subdivisions `[...]`, rests `.`/`~`, sustains `_`, and probability suffixes `x?0.6` (fires 60% of the time).
 - **Deterministic seeding.** Set `seed=42` on your Composition and every random decision - chord progressions, form transitions, pattern randomness - becomes repeatable. Run the same code twice, get the same music. Use `p.rng` in your patterns for seeded randomness.
 - **Polyrhythms** emerge naturally by running patterns with different lengths. Pattern length can be any number - use `length=9` for 9 quarter notes, `length=10.5` for 21 eighth notes. For non-quarter-note grids, add a `unit` to write lengths like score notation: `length=6, unit=dur.SIXTEENTH` means "6 sixteenth notes." The unit also sets the default grid for `hit_steps()` and `sequence()`, so a 6-step pattern automatically divides into 6 slots. Patterns can even change length on rebuild via `p.set_length()`.
-- **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Functions run in the background automatically. Store results in `composition.data` and read them from any pattern - connect music to APIs, sensors, files, or anything Python can reach. Use `wait_for_initial=True` to block until the first run completes before playback starts, or `defer=True` to skip the initial pulse-0 fire.
+- **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Functions run in the background automatically. Store results in `composition.data` and read them from any pattern — connect music to APIs, sensors, files, or anything Python can reach. Use `wait_for_initial=True` to block until the first run completes before playback starts, or `defer=True` to skip the initial pulse-0 fire. Declare a `p` parameter in your function to receive a `ScheduleContext` with `p.cycle` (0-indexed call count).
 - **Terminal visualization.** A persistent status line showing the current bar, section, chord, BPM, and key. Enabled with `composition.display()`. Log messages scroll cleanly above it without disruption.
 - **MIDI recording.** Capture everything played to a standard MIDI file. Pass `record=True` to `Composition` and the session is saved automatically when you stop. Compatible with any DAW.
 - **Two API levels.** The Composition API is straightforward - most musicians will never need anything else. The Direct Pattern API gives power users full control over patterns, harmony, and scheduling.
@@ -1140,26 +1140,37 @@ The `examples/` directory contains self-documenting compositions demonstrating d
 2. Press Ctrl+C to stop
 
 ## Extra utilities
+
+### Rhythm & Pattern
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
 - `subsequence.swing` applies swing timing to a pattern.
-- `subsequence.intervals` contains interval and scale definitions (`INTERVAL_DEFINITIONS`) for harmonic work, plus diatonic chord quality constants for all 9 modes and scales (`IONIAN_QUALITIES`, `DORIAN_QUALITIES`, `PHRYGIAN_QUALITIES`, `LYDIAN_QUALITIES`, `MIXOLYDIAN_QUALITIES`, `AEOLIAN_QUALITIES`, `LOCRIAN_QUALITIES`, `HARMONIC_MINOR_QUALITIES`, `MELODIC_MINOR_QUALITIES`) and a `DIATONIC_MODE_MAP` lookup table. The `get_intervals(name)` helper retrieves any named interval list. `scale_pitch_classes(key_pc, mode)` returns the pitch classes for any key and mode; `quantize_pitch(pitch, scale_pcs)` snaps a MIDI note to the nearest scale degree. Use `diatonic_chords()` from `subsequence.harmony` to turn these into `Chord` objects.
-- `subsequence.markov_chain` provides a generic weighted Markov chain utility.
-- `subsequence.event_emitter` supports sync/async events used by the sequencer.
-- `subsequence.voicings` provides chord inversions and voice leading. `invert_chord()` rotates intervals; `VoiceLeadingState` picks the closest inversion to the previous chord automatically.
+- `subsequence.sequence_utils` provides rhythm generation (Euclidean, Bresenham, van der Corput), probability gating, random walk, and scale/clamp helpers.
+- `subsequence.mini_notation` parses a compact string syntax for step-sequencer patterns.
+- `subsequence.easing` provides easing/transition curve functions used by `conductor.line()`, `target_bpm()`, `cc_ramp()`, and `pitch_bend_ramp()`. Pass `shape=` to any of these to control how a value moves over time. Built-in shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out"` (Hermite smoothstep), `"exponential"` (cubic, good for filter sweeps), `"logarithmic"` (cubic, good for volume fades), `"s_curve"` (Perlin smootherstep — smoother than `"ease_in_out"` for long transitions). Callable shapes are also accepted for custom curves.
+
+### Harmony & Scales
+- `subsequence.intervals` contains interval and scale definitions (`INTERVAL_DEFINITIONS`) for harmonic work, plus diatonic chord quality constants for all 9 modes and scales (`IONIAN_QUALITIES`, `DORIAN_QUALITIES`, `PHRYGIAN_QUALITIES`, `LYDIAN_QUALITIES`, `MIXOLYDIAN_QUALITIES`, `AEOLIAN_QUALITIES`, `LOCRIAN_QUALITIES`, `HARMONIC_MINOR_QUALITIES`, `MELODIC_MINOR_QUALITIES`) and a `DIATONIC_MODE_MAP` lookup table. The `get_intervals(name)` helper retrieves any named interval list. `scale_pitch_classes(key_pc, mode)` returns the pitch classes for any key and mode; `quantize_pitch(pitch, scale_pcs)` snaps a MIDI note to the nearest scale degree.
+- `subsequence.harmony` provides `diatonic_chords(key, mode)` and `diatonic_chord_sequence(key, root_midi, count, mode)` for working with diatonic chord progressions without the chord graph engine, plus `ChordPattern` for a repeating chord driven by harmonic state.
 - `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, `"phrygian_minor"`, `"lydian_major"`, `"dorian_minor"`, `"suspended"`, `"chromatic_mediant"`, `"mixolydian"`, `"whole_tone"`, `"diminished"`.
-- `subsequence.weighted_graph` provides a generic weighted graph used for transitions.
 - `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
+- `subsequence.voicings` provides chord inversions and voice leading. `invert_chord()` rotates intervals; `VoiceLeadingState` picks the closest inversion to the previous chord automatically.
+- `subsequence.markov_chain` provides a generic weighted Markov chain utility.
+- `subsequence.weighted_graph` provides a generic weighted graph used for transitions.
+
+### MIDI Data
 - `subsequence.constants.durations` provides beat-based duration constants. Import as `import subsequence.constants.durations as dur` and write `length = 9 * dur.SIXTEENTH` or `step = dur.DOTTED_EIGHTH` instead of raw floats. Constants: `THIRTYSECOND`, `SIXTEENTH`, `DOTTED_SIXTEENTH`, `TRIPLET_EIGHTH`, `EIGHTH`, `DOTTED_EIGHTH`, `TRIPLET_QUARTER`, `QUARTER`, `DOTTED_QUARTER`, `HALF`, `DOTTED_HALF`, `WHOLE`.
 - `subsequence.constants.velocity` provides MIDI velocity constants. `DEFAULT_VELOCITY = 100` (most notes), `DEFAULT_CHORD_VELOCITY = 90` (harmonic content), `VELOCITY_SHAPE_LOW = 64` and `VELOCITY_SHAPE_HIGH = 127` (velocity shaping boundaries), `MIN_VELOCITY = 0`, `MAX_VELOCITY = 127`.
 - `subsequence.constants.gm_drums` provides the General MIDI Level 1 drum note map. `GM_DRUM_MAP` can be passed as `drum_note_map`; individual constants like `KICK_1` are also available.
 - `subsequence.constants.midi_notes` provides named MIDI note constants C0–G9 (MIDI 12–127). Import as `import subsequence.constants.midi_notes as notes`. Convention: `C4 = 60` (Middle C, MMA standard). Naturals: `C4`, `D4`, … `B4`. Sharps: `CS4` (C♯4), `DS4`, `FS4`, `GS4`, `AS4`. Use instead of raw integers: `root = notes.E2` (40), `p.note(notes.A4)` (69).
-- `subsequence.easing` provides easing/transition curve functions used by `conductor.line()`, `target_bpm()`, `cc_ramp()`, and `pitch_bend_ramp()`. Pass `shape=` to any of these to control how a value moves over time. Built-in shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out"` (Hermite smoothstep), `"exponential"` (cubic, good for filter sweeps), `"logarithmic"` (cubic, good for volume fades), `"s_curve"` (Perlin smootherstep — smoother than `"ease_in_out"` for long transitions). Callable shapes are also accepted for custom curves.
 - `subsequence.constants.pulses` provides pulse-based MIDI timing constants used internally by the engine.
+
+### Infrastructure
+- `subsequence.composition` provides the `Composition` class and internal scheduling helpers.
+- `subsequence.event_emitter` supports sync/async events used by the sequencer.
 - `subsequence.osc` provides the OSC server/client for bi-directional communication.
 - `subsequence.live_server` provides the TCP eval server for live coding. Started internally by `composition.live()`.
 - `subsequence.live_client` provides the interactive REPL client. Run with `python -m subsequence.live_client`.
-- `subsequence.composition` provides the `Composition` class and internal scheduling helpers.
 
 ## Feature Roadmap
 
