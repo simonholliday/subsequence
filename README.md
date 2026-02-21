@@ -102,7 +102,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **Arpeggio directions.** `p.arpeggio(pitches, direction="up_down")` supports ascending (`"up"`, default), descending (`"down"`), ping-pong (`"up_down"`), and shuffled (`"random"`) cycles.
 - **MIDI CC input mapping.** Map hardware knobs and faders to `composition.data` automatically: `composition.cc_map(74, "filter_cutoff")` scales any incoming CC (0–127) to a 0.0–1.0 range and stores it. Custom ranges and per-channel filtering are supported. Requires `composition.midi_input()` to open a port.
 - **MIDI clock output.** `composition.clock_output()` makes Subsequence the clock master: hardware drum machines and synths receive a MIDI Start, 24-PPQN Clock ticks, and Stop automatically. Mutually exclusive with external clock following to prevent feedback loops.
-- **Render to file.** `composition.render(bars=32, filename="out.mid")` runs the sequencer as fast as possible (no real-time delay) and saves the result as a standard MIDI file — the same as `record=True` but without waiting for wall-clock time to pass.
+- **Render to file.** `composition.render()` runs the sequencer as fast as possible (no real-time delay) and saves the result as a standard MIDI file. Defaults to a 60-minute safety cap (`max_minutes=60.0`) to prevent infinite renders. Pass `bars=N` for an exact bar count, `max_minutes=M` for a time limit, or both — playback stops at whichever comes first.
 - **Live coding.** Modify a running composition without stopping playback. A built-in server accepts Python code from the bundled command-line client, an editor, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state - all while the music plays. Enable with `composition.live()`.
 - **External clock follower.** Sync to an external MIDI clock from a DAW, drum machine, or hardware sequencer. Transport messages (start, stop, continue) are respected automatically. Enable with `composition.midi_input(device, clock_follow=True)`.
 - **Events** let you react to sequencer milestones (`"bar"`, `"start"`, `"stop"`) via `composition.on_event()`.
@@ -819,7 +819,7 @@ The output is a standard Type 1 MIDI file at 480 PPQN - import it directly into 
 
 ### Rendering to file (no real-time wait)
 
-`composition.render()` runs the sequencer as fast as possible — no waiting for wall-clock time — and saves the result immediately:
+`composition.render()` runs the sequencer as fast as possible — no waiting for wall-clock time — and saves the result immediately. A default **60-minute safety cap** (`max_minutes=60.0`) stops infinite compositions from filling your disk:
 
 ```python
 composition = subsequence.Composition(bpm=120, key="C")
@@ -828,11 +828,17 @@ composition = subsequence.Composition(bpm=120, key="C")
 def melody (p):
     p.seq("60 [62 64] 67 60")
 
-# Render 8 bars to disk in milliseconds
+# Render exactly 8 bars (default 60-min cap still active as a backstop)
 composition.render(bars=8, filename="melody.mid")
+
+# Render an infinite composition — stops automatically at 5 minutes of MIDI
+composition.render(max_minutes=5, filename="generative.mid")
+
+# Remove the time cap — must supply an explicit bars= count instead
+composition.render(bars=128, max_minutes=None, filename="long.mid")
 ```
 
-All patterns, scheduled callbacks, probabilistic gates, and BPM transitions work identically in render mode. The only difference is that simulated time replaces wall-clock time.
+If the time cap fires, a warning is logged explaining how to remove it. All patterns, scheduled callbacks, probabilistic gates, and BPM transitions work identically in render mode. The only difference is that simulated time replaces wall-clock time.
 
 ## Live coding
 
