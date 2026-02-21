@@ -73,7 +73,6 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - [Mini-notation](#mini-notation)
 - [Form and sections](#form-and-sections)
 - [The Conductor](#the-conductor)
-- [State vs Signals](#state-vs-signals)
 - [Chord inversions and voice leading](#chord-inversions-and-voice-leading)
 - [Harmony and chord graphs](#harmony-and-chord-graphs)
 - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
@@ -81,7 +80,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - [MIDI recording and rendering](#midi-recording-and-rendering)
 - [Live coding](#live-coding)
 - [MIDI input and external clock](#midi-input-and-external-clock)
-- [Hardware instrument control](#hardware-instrument-control)
+- [Pattern tools and hardware control](#pattern-tools-and-hardware-control)
 - [OSC integration](#osc-integration)
 - [Examples](#examples)
 - [Extra utilities](#extra-utilities)
@@ -92,31 +91,31 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 
 ## What it does
 
-- **Patterns as functions.** Each pattern is a Python function that builds a full cycle of notes. The sequencer calls it fresh each cycle, so patterns can evolve - reading the current chord, section, cycle count, or external data to decide what to play. Patterns can even change their own length dynamically via `p.set_length()`.
-- **Context-Aware Harmony.** Chord progressions drift and evolve, with adjustable pull toward home - each chord leads to the next based on weighted **harmonic probability**.[^markov] Harmony and gravity can be changed on the fly (`composition.harmony()`, `key_gravity_blend`). **Advanced Harmonic Gravity** applies Narmour's Implication-Realization model to give progressions inertia. Eleven built-in harmonic palettes (see [Built-in chord graphs](#built-in-chord-graphs)). Patterns that accept a `chord` parameter automatically receive the current chord. Chord inversions and voice leading keep voices moving smoothly.
-- **Architectural Sequencing.** Define the large-scale form - intro, verse, chorus, bridge - as a **Weighted Transition Graph**. Sections follow probabilistic paths: an intro can play once and never return; a chorus can lead to a breakdown 67% of the time. Patterns read `p.section` to adapt their behavior, ensuring the song has structure, not just loops.
-- **Stable clock, just-in-time scheduling.** The sequencer reschedules patterns ahead of their cycle end, so already-queued notes are never disrupted. The clock is rock-solid; pattern logic never blocks MIDI output.
-- **Rhythmic tools.** Euclidean and Bresenham rhythm generators, step grids (sixteenth notes by default, or derived from the pattern's `unit`), swing, humanize (subtle random timing and velocity variations for a "played" feel), velocity shaping[^vdc] for natural-sounding variation, and dropout for controlled randomness. Per-step probability on `hit_steps()` for step-based conditional triggers.
-- **Randomness tools.**[^stochastic] Weighted random choice, no-repeat shuffle, random walks, and probability gates - controlled randomness that sounds intentional, not arbitrary. All available in `subsequence.sequence_utils`.
-- **Mini-notation.** Concise string syntax for rhythms and melodies. Write `p.seq("x x [x x] x", pitch="kick")` instead of verbose list definitions. Supports subdivisions `[...]`, rests `.`/`~`, sustains `_`, and probability suffixes `x?0.6` (fires 60% of the time).
-- **Deterministic seeding.** Set `seed=42` on your Composition and every random decision - chord progressions, form transitions, pattern randomness - becomes repeatable. Run the same code twice, get the same music. Use `p.rng` in your patterns for seeded randomness.
-- **Polyrhythms** emerge naturally by running patterns with different lengths. Pattern length can be any number - use `length=9` for 9 quarter notes, `length=10.5` for 21 eighth notes. For non-quarter-note grids, add a `unit` to write lengths like score notation: `length=6, unit=dur.SIXTEENTH` means "6 sixteenth notes." The unit also sets the default grid for `hit_steps()` and `sequence()`, so a 6-step pattern automatically divides into 6 slots. Patterns can even change length on rebuild via `p.set_length()`.
-- **External data integration.** Schedule any function on a repeating beat cycle via `composition.schedule()`. Functions run in the background automatically. Store results in `composition.data` and read them from any pattern — connect music to APIs, sensors, files, or anything Python can reach. Use `wait_for_initial=True` to block until the first run completes before playback starts, or `defer=True` to skip the initial pulse-0 fire. Declare a `p` parameter in your function to receive a `ScheduleContext` with `p.cycle` (0-indexed call count).
-- **Terminal visualization.** A persistent status line showing the current bar, section, chord, BPM, and key. Enabled with `composition.display()`. Log messages scroll cleanly above it without disruption.
-- **MIDI recording.** Capture everything played to a standard MIDI file. Pass `record=True` to `Composition` and the session is saved automatically when you stop. Compatible with any DAW.
-- **Two API levels.** The Composition API is straightforward - most musicians will never need anything else. The Direct Pattern API gives power users full control over patterns, harmony, and scheduling.
-- **Pattern transforms.** Legato (fills gaps), staccato (fixed duration), reverse, double-time, half-time, shift, transpose, and invert - applied after placing notes. `p.every(4, lambda p: p.reverse())` applies a transform every 4th cycle. `composition.layer()` merges multiple builder functions into one pattern. `p.humanize(timing, velocity)` adds subtle random timing and velocity variations for a "played" feel — fully deterministic when a seed is set. Place notes first, then reshape them.
-- **Expression.** Send CC messages and pitch bend from patterns. `p.cc(74, 100, beat=1)` sends a single value; `p.cc_ramp(74, 0, 127, beat_start=0, beat_end=4)` sweeps smoothly (add `shape="exponential"` for a filter-sweep feel). `p.pitch_bend(0.5, beat=2)` and `p.pitch_bend_ramp()` do the same for pitch bend (-1.0 to 1.0 range). Combine with `p.signal()` to drive expression from conductor LFOs. `p.program_change(40)` switches instrument patches. `p.sysex(data)` sends raw SysEx for deep hardware control (patch dumps, Elektron parameter locking, etc.).
-- **Scale quantization.** `p.quantize("G", "dorian")` snaps every note in a pattern to the nearest degree of a given scale — essential after generative or sensor-driven pitch work. Equidistant notes prefer the upward direction. All church modes and harmonic/melodic minor are supported.
-- **Chord-degree helpers.** `chord.root_note(midi)` and `chord.bass_note(midi, octave_offset=-1)` make register-aware root extraction self-documenting — no more manual `tones()[0] - 12` arithmetic.
-- **Arpeggio directions.** `p.arpeggio(pitches, direction="up_down")` supports ascending (`"up"`, default), descending (`"down"`), ping-pong (`"up_down"`), and shuffled (`"random"`) cycles.
-- **MIDI CC input mapping.** Map hardware knobs and faders to `composition.data` automatically: `composition.cc_map(74, "filter_cutoff")` scales any incoming CC (0–127) to a 0.0–1.0 range and stores it. Custom ranges and per-channel filtering are supported. Requires `composition.midi_input()` to open a port.
-- **MIDI clock output.** `composition.clock_output()` makes Subsequence the clock master: hardware drum machines and synths receive a MIDI Start, 24-PPQN Clock ticks, and Stop automatically. Mutually exclusive with external clock following to prevent feedback loops.
-- **Render to file.** `composition.render()` runs the sequencer as fast as possible (no real-time delay) and saves the result as a standard MIDI file. Defaults to a 60-minute safety cap (`max_minutes=60.0`) to prevent infinite renders. Pass `bars=N` for an exact bar count, `max_minutes=M` for a time limit, or both — playback stops at whichever comes first.
-- **Live coding.** Modify a running composition without stopping playback. A built-in server accepts Python code from the bundled command-line client, an editor, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state - all while the music plays. Enable with `composition.live()`.
-- **External clock follower.** Sync to an external MIDI clock from a DAW, drum machine, or hardware sequencer. Transport messages (start, stop, continue) are respected automatically. Enable with `composition.midi_input(device, clock_follow=True)`.
-- **Events** let you react to sequencer milestones (`"bar"`, `"start"`, `"stop"`) via `composition.on_event()`.
-- **Pure MIDI.** No audio synthesis, no dependencies beyond `mido` and `python-rtmidi`. Route MIDI to any hardware or software synth.
+- **Patterns as functions.** Each pattern is a Python function rebuilt fresh each cycle — it can read the current chord, section, cycle count, or external data to decide what to play.
+- **Context-Aware Harmony.** Chord progressions evolve via weighted transition graphs with [adjustable gravity and melodic inertia](#harmonic-gravity-and-melodic-inertia).[^markov] [Eleven built-in palettes](#built-in-chord-graphs). Automatic [voice leading](#automatic-voice-leading) keeps voices moving smoothly.
+- **Architectural Sequencing.** Define [form](#form-and-sections) as a weighted transition graph, an ordered list, or a generator. Patterns read `p.section` to adapt.
+- **Stable clock, just-in-time scheduling.** Patterns are rescheduled ahead of time — pattern logic never blocks MIDI output.
+- **Rhythmic tools.** [Euclidean and Bresenham generators](#rhythm--pattern), swing, humanize, velocity shaping[^vdc], dropout, and [per-step probability](#composition-api).
+- **Randomness tools.**[^stochastic] Weighted choice, no-repeat shuffle, random walk, and probability gates — controlled randomness via `subsequence.sequence_utils`.
+- **[Mini-notation.](#mini-notation)** Write `p.seq("x x [x x] x", pitch="kick")` — subdivisions, rests, sustains, and per-step probability suffixes.
+- **Deterministic seeding.** `seed=42` makes every random decision repeatable. Use `p.rng` in patterns.
+- **Polyrhythms.** Patterns with different lengths interlock naturally. Use `unit=dur.SIXTEENTH` for [score-style grids](#composition-api). Patterns can change length on rebuild via `p.set_length()`.
+- **External data integration.** `composition.schedule()` runs any function on a beat cycle. Store results in `composition.data` and read them from any pattern.
+- **Terminal visualization.** Live status line (bar, section, chord, BPM, key) via `composition.display()`.
+- **MIDI recording.** `record=True` captures everything to a standard MIDI file, saved automatically on stop.
+- **Two API levels.** [Composition API](#composition-api) for most musicians; [Direct Pattern API](#direct-pattern-api) for power users who need persistent state or custom scheduling.
+- **Pattern transforms.** Legato, staccato, reverse, double/half-time, shift, transpose, invert, humanize, `p.every()`, and `composition.layer()`.
+- **Expression.** CC messages, CC ramps, pitch bend, program changes, and SysEx — all from within patterns.
+- **Scale quantization.** `p.quantize("G", "dorian")` snaps all notes to a named scale.
+- **Chord-degree helpers.** `chord.root_note()` and `chord.bass_note()` for register-aware root extraction.
+- **Arpeggio directions.** Ascending, descending, ping-pong, and shuffled via `direction=`.
+- **MIDI CC input mapping.** Map hardware knobs to `composition.data` automatically via `cc_map()`.
+- **MIDI clock output.** `clock_output()` makes Subsequence the clock master for connected hardware.
+- **[Render to file.](#rendering-to-file-no-real-time-wait)** `composition.render()` runs as fast as possible with a 60-minute safety cap. Pass `bars=` and/or `max_minutes=`.
+- **[Live coding.](#live-coding)** Hot-swap patterns, change tempo, mute/unmute, tweak parameters — all during playback via a built-in TCP server.
+- **External clock follower.** `midi_input(device, clock_follow=True)` syncs to a DAW or hardware sequencer.
+- **Events.** React to `"bar"`, `"start"`, `"stop"` via `composition.on_event()`.
+- **Pure MIDI.** No audio synthesis, no heavyweight dependencies. Route to any hardware or software synth.
 
 ## Quick start
 1. Install dependencies:
@@ -203,7 +202,8 @@ composition.schedule(fetch_data, cycle_beats=32, wait_for_initial=True)
 
 The Direct Pattern API gives you full control over the sequencer, harmony, and scheduling. Patterns are classes instead of decorated functions - you manage the event loop yourself.
 
-This example produces the same music as the Composition API example above (kick, snare, hi-hats, and chord pad in E aeolian minor at 120 BPM):
+<details>
+<summary>Full example — same music as the Composition API example above (click to expand)</summary>
 
 ```python
 import asyncio
@@ -271,6 +271,8 @@ async def main () -> None:
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+</details>
 
 For the full version with form, external data, and five patterns, see `examples/demo_advanced.py`.
 
@@ -490,25 +492,21 @@ def sweep (p):
 
 Available shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out"`, `"exponential"`, `"logarithmic"`, `"s_curve"`. You can also pass any callable that maps a float in [0, 1] to a float in [0, 1] for a custom curve. See `subsequence.easing` for details.
 
-## State vs Signals
+### State vs Signals
 
-Subsequence offers two ways to store correct values: **Data** (state) and **Conductor** (signals).
+Subsequence offers two complementary ways to store values: **Data** (state) and **Conductor** (signals). Use whichever fits:
 
-### `composition.data` (State)
-*   **"What is the value RIGHT NOW?"**
-*   A dictionary for static snapshots. It has no concept of time.
-*   Values stay exactly as set until overwritten.
-*   **Use for:** External inputs (sensors, API data like ISS position), discrete mode switches, or values that update irregularly.
-
-### `composition.conductor` (Signals)
-*   **"What was the value at beat 40?"**
-*   A system for time-variant signals.
-*   You define a *behavior* (e.g. an LFO), and it calculates the correct value for any given point in time.
-*   **Use for:** Musical evolution (fades, swells, modulation) that must be smooth and continuous regardless of tempo.
+| | `composition.data` | `composition.conductor` |
+|---|---|---|
+| **Question it answers** | "What is the value RIGHT NOW?" | "What was the value at beat 40?" |
+| **Nature** | Static snapshots — no concept of time | Time-variant signals (LFOs, ramps) |
+| **Best for** | External inputs (sensors, API data), mode switches, irregular updates | Musical evolution (fades, swells, modulation) that must be smooth and continuous |
 
 ## Chord inversions and voice leading
 
-By default, chords are played in root position. You can request a specific inversion, or enable automatic voice leading so each chord picks the inversion closest to the previous one.
+Most generative tools leave voicing to the user. Subsequence provides automatic voice leading — each chord picks the inversion with the smallest total pitch movement from the previous one, keeping parts smooth without manual effort.
+
+By default, chords are played in root position. You can request a specific inversion, or enable voice leading per pattern.
 
 ### Manual inversions
 
@@ -1024,7 +1022,7 @@ composition.play()
 
 Subsequence sends a Start message (0xFA) at the beginning of playback, one Clock tick (0xF8) per pulse (24 PPQN, matching the MIDI standard), and a Stop message (0xFC) when playback ends. This automatically disabled when `midi_input(clock_follow=True)` is active, to prevent a feedback loop.
 
-## Hardware instrument control
+## Pattern tools and hardware control
 
 ### Program changes
 
@@ -1150,10 +1148,14 @@ seq = subsequence.sequencer.Sequencer(
 
 ## Examples
 
-The `examples/` directory contains self-documenting compositions demonstrating different techniques and musical styles. Each file includes detailed comments explaining its structure, harmony, form, and pattern design. To run an example:
+Example compositions are being developed and will be added to the `examples/` directory soon. Each will be a self-documenting Python file demonstrating a different style and set of features.
 
-1. Run: `python examples/filename.py`
-2. Press Ctrl+C to stop
+To run any example:
+
+```
+python examples/filename.py
+# Press Ctrl+C to stop
+```
 
 ## Extra utilities
 
