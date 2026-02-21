@@ -6,7 +6,17 @@ Unlike stateless libraries that loop forever, Subsequence rebuilds patterns each
 
 It is a **compositional engine** for your studio - generating pure MIDI to control hardware instruments, modular synthesizers, or VSTs, with no fixed limits on complexity or length.
 
-> **Note:** Subsequence does not produce sound. It generates MIDI data to control existing hardware or software instruments. 
+> **What you need:** Basic Python knowledge and any MIDI-controllable instrument — hardware synths, drum machines, modular gear, or software VSTs/DAWs. Subsequence generates MIDI data; it does not produce sound itself.
+
+### Why Subsequence?
+
+- **Plain Python, no custom language.** Write patterns in the language you already know — no domain-specific syntax to learn. Your music is versionable, shareable, and lives in standard `.py` files.
+- **Infinite, evolving compositions.** Patterns rebuild each cycle with full context — chord, section, history, external data — so music can grow and develop indefinitely, or run to a fixed structure. Or both.
+- **Multiple APIs and notation styles.** Start with a one-line mini-notation drum pattern. Graduate to per-step control, harmonic injection, or the full Direct Pattern API — without changing tools.
+- **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition. Use as much or as little music theory as you want.
+- **Turn data into music.** Schedule any Python function on a beat cycle. Feed in APIs, sensors, files, weather, ISS telemetry — anything Python can reach becomes a musical parameter.
+- **Pure MIDI, zero sound engine.** No audio synthesis, no heavyweight dependencies. Route MIDI to your existing hardware or software instruments.
+- **Deterministic when you want it.** Set a seed and every "random" decision — chords, form, note choices — becomes repeatable and tweakable.
 
 ## Minimal Example
 
