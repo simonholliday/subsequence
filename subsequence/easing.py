@@ -109,7 +109,7 @@ def get_easing (shape: typing.Union[str, EasingFn]) -> EasingFn:
     Raises :class:`ValueError` for unknown string names.
     """
     if callable(shape):
-        return shape  # type: ignore[return-value]
+        return shape
     if shape not in EASING_FUNCTIONS:
         available = ", ".join(f'"{k}"' for k in sorted(EASING_FUNCTIONS))
         raise ValueError(
