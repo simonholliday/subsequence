@@ -1317,14 +1317,13 @@ class Composition:
 			pass
 
 
-	def render (self, bars: int = 32, filename: str = "render.mid") -> None:
+	def render (self, bars: typing.Optional[int] = None, filename: str = "render.mid", max_minutes: typing.Optional[float] = 60.0) -> None:
 
-		"""
-		Render the composition to a MIDI file without real-time playback.
+		"""Render the composition to a MIDI file without real-time playback.
 
 		Runs the sequencer as fast as possible (no timing delays) and stops
-		after *bars* bars.  The result is saved as a standard MIDI file that
-		can be imported into any DAW.
+		when the first active limit is reached.  The result is saved as a
+		standard MIDI file that can be imported into any DAW.
 
 		All patterns, scheduled callbacks, and harmony logic run exactly as
 		they would during live playback — BPM transitions, generative fills,
@@ -1332,25 +1331,45 @@ class Composition:
 		is that time is simulated rather than wall-clock driven.
 
 		Parameters:
-			bars: Number of bars to render (default 32).
+			bars: Number of bars to render, or ``None`` for no bar limit
+			      (default ``None``).  When both *bars* and *max_minutes* are
+			      active, playback stops at whichever limit is reached first.
 			filename: Output MIDI filename (default ``"render.mid"``).
+			max_minutes: Safety cap on the length of rendered MIDI in minutes
+			             (default ``60.0``).  Pass ``None`` to disable the time
+			             cap — you must then provide an explicit *bars* value.
 
-		Example:
+		Raises:
+			ValueError: If both *bars* and *max_minutes* are ``None``, which
+			            would produce an infinite render.
+
+		Examples:
 			```python
-			composition = subsequence.Composition(bpm=120)
+			# Default: renders up to 60 minutes of MIDI content.
+			composition.render()
 
-			@composition.pattern(channel=0, length=4)
-			def melody (p):
-			    p.seq("60 [62 64] 67 60")
+			# Render exactly 64 bars (time cap still active as backstop).
+			composition.render(bars=64, filename="demo.mid")
 
-			composition.render(bars=8, filename="melody.mid")
+			# Render up to 5 minutes of an infinite generative composition.
+			composition.render(max_minutes=5, filename="five_min.mid")
+
+			# Remove the time cap — must supply bars instead.
+			composition.render(bars=128, max_minutes=None, filename="long.mid")
 			```
 		"""
+
+		if bars is None and max_minutes is None:
+			raise ValueError(
+				"render() requires at least one limit: provide bars=, max_minutes=, or both. "
+				"Passing both as None would produce an infinite render."
+			)
 
 		self._sequencer.recording = True
 		self._sequencer.record_filename = filename
 		self._sequencer.render_mode = True
-		self._sequencer.render_bars = bars
+		self._sequencer.render_bars = bars if bars is not None else 0
+		self._sequencer.render_max_seconds = max_minutes * 60.0 if max_minutes is not None else None
 		asyncio.run(self._run())
 
 	async def _run (self) -> None:

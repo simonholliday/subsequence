@@ -149,9 +149,12 @@ class Sequencer:
 		self.record_filename = record_filename
 		self.recorded_events: typing.List[typing.Tuple[float, typing.Union[mido.Message, mido.MetaMessage]]] = []
 
-		# Render mode: run as fast as possible and stop after render_bars
+		# Render mode: run as fast as possible and stop after render_bars or render_max_seconds.
+		# Both limits are optional — at least one must be set (enforced in Composition.render).
 		self.render_mode: bool = False
-		self.render_bars: int = 0
+		self.render_bars: int = 0                          # 0 = no bar limit
+		self.render_max_seconds: typing.Optional[float] = None  # None = no time limit
+		self._render_elapsed_seconds: float = 0.0
 
 
 		# CC input mapping — populated from Composition.cc_map()
@@ -759,6 +762,21 @@ class Sequencer:
 				self.current_bpm = interpolated
 				self.seconds_per_beat = 60.0 / self.current_bpm
 				self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
+
+		# Accumulate simulated time and enforce the render time cap.
+		if self.render_mode:
+			self._render_elapsed_seconds += self.seconds_per_pulse
+			if (
+				self.render_max_seconds is not None
+				and self._render_elapsed_seconds >= self.render_max_seconds
+			):
+				max_min = self.render_max_seconds / 60.0
+				logger.warning(
+					f"Render stopped at {max_min:.1f}-minute safety limit. "
+					f"Pass max_minutes=None with an explicit bars= count to remove this limit."
+				)
+				self.running = False
+				return
 
 		await self._maybe_reschedule_patterns(self.pulse_count)
 		await self._process_pulse(self.pulse_count)
