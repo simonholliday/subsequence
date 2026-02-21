@@ -388,25 +388,38 @@ class PatternBuilder:
 			duration_beats = duration
 		)
 
-	def chord (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None) -> None:
+	def chord (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None) -> None:
 
 		"""
 		Place a chord at the start of the pattern.
 
-		Note: If the pattern was registered with `voice_leading=True`, 
+		Note: If the pattern was registered with `voice_leading=True`,
 		this method automatically chooses the best inversion.
 
 		Parameters:
-			chord_obj: The chord to play (usually the `chord` parameter 
+			chord_obj: The chord to play (usually the `chord` parameter
 				passed to your pattern function).
 			root: MIDI root note (e.g., 60 for Middle C).
 			velocity: MIDI velocity (default 90).
 			sustain: If True, the notes last for the entire pattern duration.
-			duration: Note duration in beats (default 1.0).
+				Mutually exclusive with ``legato``.
+			duration: Note duration in beats (default 1.0). Ignored when
+				``legato`` is set, since legato recalculates all durations.
 			inversion: Specific chord inversion (ignored if voice leading is on).
-			count: Number of notes to play (cycles tones if higher than 
+			count: Number of notes to play (cycles tones if higher than
 				the chord's natural size).
+			legato: If given, calls ``p.legato(ratio)`` after placing the
+				chord, stretching each note to fill ``ratio`` of the gap to
+				the next note. Mutually exclusive with ``sustain``.
+
+		Example::
+
+			# Shorthand for: p.chord(...) then p.legato(0.9)
+			p.chord(chord, root=root, velocity=85, count=4, legato=0.9)
 		"""
+
+		if sustain and legato is not None:
+			raise ValueError("sustain=True and legato= are mutually exclusive — use one or the other")
 
 		pitches = chord_obj.tones(root=root, inversion=inversion, count=count)
 
@@ -421,7 +434,10 @@ class PatternBuilder:
 				duration_beats = duration
 			)
 
-	def strum (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, offset: float = 0.05, direction: str = "up") -> None:
+		if legato is not None:
+			self.legato(legato)
+
+	def strum (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, offset: float = 0.05, direction: str = "up", legato: typing.Optional[float] = None) -> None:
 
 		"""
 		Play a chord with a small time offset between each note (strum effect).
@@ -436,22 +452,29 @@ class PatternBuilder:
 			root: MIDI root note (e.g., 60 for Middle C).
 			velocity: MIDI velocity (default 90).
 			sustain: If True, the notes last for the entire pattern duration.
-			duration: Note duration in beats (default 1.0).
+				Mutually exclusive with ``legato``.
+			duration: Note duration in beats (default 1.0). Ignored when
+				``legato`` is set, since legato recalculates all durations.
 			inversion: Specific chord inversion (ignored if voice leading is on).
 			count: Number of notes to play (cycles tones if higher than
 				the chord's natural size).
 			offset: Time in beats between each note onset (default 0.05).
 			direction: ``"up"`` for low-to-high, ``"down"`` for high-to-low.
+			legato: If given, calls ``p.legato(ratio)`` after placing the
+				chord, stretching each note to fill ``ratio`` of the gap to
+				the next note. Mutually exclusive with ``sustain``.
 
-		Example:
-			```python
-			# Gentle upward strum
-			p.strum(chord, root=52, velocity=85, offset=0.06)
+		Example::
+
+			# Gentle upward strum with legato
+			p.strum(chord, root=52, velocity=85, offset=0.06, legato=0.95)
 
 			# Fast downward strum
 			p.strum(chord, root=52, direction="down", offset=0.03)
-			```
 		"""
+
+		if sustain and legato is not None:
+			raise ValueError("sustain=True and legato= are mutually exclusive — use one or the other")
 
 		if offset <= 0:
 			raise ValueError("offset must be positive")
@@ -469,6 +492,9 @@ class PatternBuilder:
 
 		for i, pitch in enumerate(pitches):
 			self.note(pitch=pitch, beat=i * offset, velocity=velocity, duration=duration)
+
+		if legato is not None:
+			self.legato(legato)
 
 	def swing (self, ratio: float = 2.0) -> None:
 

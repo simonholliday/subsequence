@@ -518,6 +518,23 @@ def guitar (p, chord):
     p.strum(chord, root=52, direction="down", offset=0.03)
 ```
 
+### Legato chords
+
+Pass `legato=` directly to `chord()` or `strum()` to collapse the two-step pattern into one call. The value is passed straight to `p.legato()`, stretching each note to fill the given fraction of the gap to the next note:
+
+```python
+@composition.pattern(channel=0, length=4)
+def pad (p, chord):
+    # Equivalent to: p.chord(...) then p.legato(0.9)
+    p.chord(chord, root=52, velocity=90, legato=0.9)
+
+@composition.pattern(channel=0, length=4)
+def guitar (p, chord):
+    p.strum(chord, root=52, velocity=85, offset=0.06, legato=0.95)
+```
+
+`sustain=True` and `legato=` are mutually exclusive — passing both raises a `ValueError`.
+
 ### Automatic voice leading
 
 Add `voice_leading=True` to the pattern decorator. The injected chord will automatically choose the inversion with the smallest total pitch movement from the previous chord:

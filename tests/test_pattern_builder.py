@@ -1475,6 +1475,89 @@ def test_strum_invalid_direction () -> None:
 		builder.strum(chord, root=60, direction="sideways")
 
 
+# --- legato= shorthand on chord() and strum() ---
+
+
+def test_chord_legato_reshapes_durations () -> None:
+
+	"""chord(legato=0.9) should call p.legato() — durations differ from the default."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	# Without legato, default duration is 1.0 beat = MIDI_QUARTER_NOTE pulses
+	builder.chord(chord, root=60, velocity=90, legato=0.9)
+
+	# legato() wraps around to the full pattern for a lone chord, so duration
+	# should be 0.9 × total_pulses, not the default 1.0-beat value.
+	total_pulses = int(4 * subsequence.constants.MIDI_QUARTER_NOTE)
+	expected_duration = max(1, int(total_pulses * 0.9))
+
+	for note in pattern.steps[0].notes:
+		assert note.duration == expected_duration
+
+
+def test_chord_legato_sustain_clash_raises () -> None:
+
+	"""chord(sustain=True, legato=0.9) should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="mutually exclusive"):
+		builder.chord(chord, root=60, sustain=True, legato=0.9)
+
+
+def test_chord_default_no_legato_unchanged () -> None:
+
+	"""chord() without legato= leaves note durations at the default value (regression)."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	builder.chord(chord, root=60, velocity=90)
+
+	expected_duration = int(1.0 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	for note in pattern.steps[0].notes:
+		assert note.duration == expected_duration
+
+
+def test_strum_legato_reshapes_durations () -> None:
+
+	"""strum(legato=0.9) should call p.legato() after placing notes."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	builder.strum(chord, root=60, velocity=90, offset=0.1, legato=0.9)
+
+	# Each note is at a different pulse position due to strum offset;
+	# legato stretches each to fill the gap to the next. Verify that
+	# note durations are not the default 1.0-beat value (24 pulses).
+	default_duration = int(1.0 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	for step in pattern.steps.values():
+		for note in step.notes:
+			assert note.duration != default_duration
+
+
+def test_strum_legato_sustain_clash_raises () -> None:
+
+	"""strum(sustain=True, legato=0.9) should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="mutually exclusive"):
+		builder.strum(chord, root=60, sustain=True, legato=0.9)
+
+
 # --- p.param() ---
 
 
