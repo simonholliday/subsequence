@@ -599,7 +599,7 @@ def test_layer_with_chord_injection (patch_midi: None) -> None:
 
 	def bass (p, chord):
 		# Just verify chord is received by placing the root.
-		root = chord.tones(root=36)[0]
+		root = chord.root_note(36)
 		p.note(root, beat=0, velocity=100)
 
 	def rhythm (p):

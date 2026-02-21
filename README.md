@@ -169,7 +169,7 @@ import subsequence.constants.durations as dur
 
 @composition.pattern(channel=0, length=6, unit=dur.SIXTEENTH)
 def riff (p, chord):
-    root = chord.tones(root=64)[0]
+    root = chord.root_note(64)
     p.sequence(steps=[0, 1, 3, 5], pitches=[root+12, root, root, root])
 
 # Per-step probability - each hi-hat has a 70% chance of playing.

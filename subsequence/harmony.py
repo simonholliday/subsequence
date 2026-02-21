@@ -49,21 +49,14 @@ def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.
 		available = ", ".join(sorted(subsequence.intervals.DIATONIC_MODE_MAP.keys()))
 		raise ValueError(f"Unknown mode: {mode!r}. Available: {available}")
 
-	scale_key, qualities = subsequence.intervals.DIATONIC_MODE_MAP[mode]
-	scale_intervals = subsequence.intervals.get_intervals(scale_key)
+	_, qualities = subsequence.intervals.DIATONIC_MODE_MAP[mode]
+	key_pc = subsequence.chords.key_name_to_pc(key)
+	scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)
 
-	if key not in subsequence.chords.NOTE_NAME_TO_PC:
-		raise ValueError(f"Unknown key name: {key!r}")
-
-	key_pc = subsequence.chords.NOTE_NAME_TO_PC[key]
-
-	chords: typing.List[subsequence.chords.Chord] = []
-
-	for degree in range(7):
-		root_pc = (key_pc + scale_intervals[degree]) % 12
-		chords.append(subsequence.chords.Chord(root_pc=root_pc, quality=qualities[degree]))
-
-	return chords
+	return [
+		subsequence.chords.Chord(root_pc=root_pc, quality=quality)
+		for root_pc, quality in zip(scale_pcs, qualities)
+	]
 
 
 def diatonic_chord_sequence (
@@ -124,13 +117,10 @@ def diatonic_chord_sequence (
 		available = ", ".join(sorted(subsequence.intervals.DIATONIC_MODE_MAP.keys()))
 		raise ValueError(f"Unknown mode: {mode!r}. Available: {available}")
 
-	if key not in subsequence.chords.NOTE_NAME_TO_PC:
-		raise ValueError(f"Unknown key name: {key!r}")
-
 	scale_key, _ = subsequence.intervals.DIATONIC_MODE_MAP[mode]
 	scale_ivs = subsequence.intervals.get_intervals(scale_key)
 
-	key_pc = subsequence.chords.NOTE_NAME_TO_PC[key]
+	key_pc = subsequence.chords.key_name_to_pc(key)
 	start_pc = root_midi % 12
 
 	# Locate the scale degree that matches the starting MIDI note.

@@ -1082,10 +1082,7 @@ class PatternBuilder:
 			```
 		"""
 
-		if key not in subsequence.chords.NOTE_NAME_TO_PC:
-			raise ValueError(f"Unknown key name '{key}'. Expected e.g. 'C', 'F#', 'Bb'.")
-
-		key_pc = subsequence.chords.NOTE_NAME_TO_PC[key]
+		key_pc = subsequence.chords.key_name_to_pc(key)
 		scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)
 
 		for step in self._pattern.steps.values():

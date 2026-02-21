@@ -236,7 +236,7 @@ def bass (p, chord):
 	if not p.section or p.section.name != "chorus":
 		return
 
-	root = chord.tones(root=40)[0]
+	root = chord.root_note(40)
 	p.hit_steps(root, list(range(16)), velocity=90, duration=0.2)
 
 

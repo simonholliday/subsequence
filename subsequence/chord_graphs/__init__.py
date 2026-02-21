@@ -50,10 +50,7 @@ def validate_key_name (key_name: str) -> int:
 		Pitch class integer (0-11)
 	"""
 
-	if key_name not in subsequence.chords.NOTE_NAME_TO_PC:
-		raise ValueError(f"Unknown key name: {key_name}")
-
-	return subsequence.chords.NOTE_NAME_TO_PC[key_name]
+	return subsequence.chords.key_name_to_pc(key_name)
 
 
 def build_diatonic_chords (key_pc: int, scale_intervals: typing.List[int], degree_qualities: typing.List[str]) -> typing.List[subsequence.chords.Chord]:

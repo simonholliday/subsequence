@@ -315,6 +315,18 @@ class _InjectedChord:
 
 		return [midi_root + interval for interval in intervals]
 
+	def root_note (self, root_midi: int) -> int:
+
+		"""Return the MIDI note number for the chord root nearest to *root_midi*."""
+
+		return self.tones(root_midi)[0]
+
+	def bass_note (self, root_midi: int, octave_offset: int = -1) -> int:
+
+		"""Return the chord root shifted by a number of octaves."""
+
+		return self.root_note(root_midi) + (12 * octave_offset)
+
 	def intervals (self) -> typing.List[int]:
 
 		"""

@@ -9,6 +9,11 @@ Module-level constants:
 - `CHORD_INTERVALS`: Maps chord quality names to interval lists (semitones from root)
 - `CHORD_SUFFIX`: Maps chord quality names to human-readable suffixes (e.g., `"m"`, `"7"`)
 
+Module-level helpers:
+- `key_name_to_pc(key_name)`: Validate a key name and return its pitch class (0–11).
+  Raises `ValueError` for unknown names. This is the canonical key validation function
+  used by `harmony.py`, `pattern_builder.quantize()`, and `chord_graphs.validate_key_name()`.
+
 Chord qualities: `"major"`, `"minor"`, `"diminished"`, `"augmented"`, `"dominant_7th"`,
 `"major_7th"`, `"minor_7th"`, `"half_diminished_7th"`
 """
@@ -53,6 +58,35 @@ PC_TO_NOTE_NAME: typing.List[str] = [
 	"A#",
 	"B",
 ]
+
+
+def key_name_to_pc (key_name: str) -> int:
+
+	"""Validate a key name and return its pitch class (0–11).
+
+	Parameters:
+		key_name: Note name (e.g. ``"C"``, ``"F#"``, ``"Bb"``).
+
+	Returns:
+		Pitch class integer (0–11).
+
+	Raises:
+		ValueError: If the key name is not recognised.
+
+	Example:
+		```python
+		key_name_to_pc("C")   # → 0
+		key_name_to_pc("F#")  # → 6
+		key_name_to_pc("Bb")  # → 10
+		```
+	"""
+
+	if key_name not in NOTE_NAME_TO_PC:
+		raise ValueError(
+			f"Unknown key name: {key_name!r}. Expected e.g. 'C', 'F#', 'Bb'."
+		)
+
+	return NOTE_NAME_TO_PC[key_name]
 
 
 CHORD_INTERVALS: typing.Dict[str, typing.List[int]] = {

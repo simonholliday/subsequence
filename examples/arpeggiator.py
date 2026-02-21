@@ -62,7 +62,7 @@ def bass (p, chord):
 	if p.section and p.section.name == "intro":
 		return
 
-	root = chord.tones(root=33)[0]
+	root = chord.root_note(33)
 
 	bass_steps = {0, 3, 8, 12}
 
@@ -85,7 +85,7 @@ def arp (p, chord):
 @composition.pattern(channel=LEAD_CHANNEL, length=6, unit=dur.SIXTEENTH)
 def lead (p, chord):
 
-	root = chord.tones(root=84)[0]
+	root = chord.root_note(84)
 	# pitches = chord.tones(root=root, count=4)
 
 	p.sequence(
