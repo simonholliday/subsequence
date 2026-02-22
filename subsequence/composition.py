@@ -3,7 +3,9 @@ import dataclasses
 import inspect
 import itertools
 import logging
+import queue
 import random
+import re
 import signal
 import typing
 
@@ -11,6 +13,7 @@ import subsequence.chord_graphs
 import subsequence.constants.durations
 import subsequence.display
 import subsequence.harmonic_state
+import subsequence.keystroke
 import subsequence.live_server
 import subsequence.osc
 import subsequence.pattern
@@ -22,6 +25,82 @@ import subsequence.conductor
 
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Hotkey support — dataclasses and label derivation
+# ---------------------------------------------------------------------------
+
+@dataclasses.dataclass
+class HotkeyBinding:
+
+	"""A registered keyboard shortcut and its associated action.
+
+	Attributes:
+		key: The single character that triggers this binding.
+		action: Zero-argument callable executed when the key fires.
+		quantize: ``0`` = execute immediately; ``N`` = execute on the
+			next global bar divisible by *N*.
+		label: Human-readable description shown by the ``?`` help key.
+	"""
+
+	key:      str
+	action:   typing.Callable[[], None]
+	quantize: int
+	label:    str
+
+
+@dataclasses.dataclass
+class _PendingHotkeyAction:
+
+	"""An action that has been triggered but is waiting for its quantize boundary."""
+
+	binding:       HotkeyBinding
+	requested_bar: int
+
+
+_HOTKEY_RESERVED = "?"
+"""Key reserved for listing all active hotkeys."""
+
+
+def _derive_label (action: typing.Callable[[], None]) -> str:
+
+	"""Auto-derive a display label for *action*.
+
+	Tried in order:
+
+	1. **Named function** — returns ``fn.__name__``.
+	2. **Lambda in a ``.py`` file** — uses :func:`inspect.getsource` to extract
+	   the lambda body from the source line (works for compositions defined in
+	   files; falls back gracefully in REPLs and ``exec()`` contexts).
+	3. **Fallback** — returns ``"<action>"``.
+
+	Args:
+		action: The callable registered as a hotkey action.
+
+	Returns:
+		A short, readable string suitable for the ``?`` help listing.
+	"""
+
+	name: typing.Optional[str] = getattr(action, "__name__", None)
+	if name and name != "<lambda>":
+		return name
+
+	# Lambda — try to extract the body from the source line.
+	try:
+		source = inspect.getsource(action).strip()
+		match = re.search(r"lambda\b[^:]*:\s*(.+)", source)
+		if match:
+			body = match.group(1).strip()
+			# Strip trailing kwargs that belong to the outer hotkey() call.
+			body = re.sub(r"[,\s]*(quantize|label)\s*=.*", "", body)
+			body = body.rstrip(" ,)")
+			if body:
+				return body
+	except (OSError, TypeError):
+		pass
+
+	return "<action>"
 
 
 def _fn_has_parameter (fn: typing.Callable, name: str) -> bool:
@@ -250,6 +329,50 @@ class FormState:
 		"""Return the global bar count since the form started."""
 
 		return self._total_bars
+
+	def jump_to (self, section_name: str) -> None:
+
+		"""Force the form to a named section immediately.
+
+		Only available in **graph mode** (when ``composition.form()`` was called
+		with a dict).  The section restarts from bar 0; its normal progression
+		through the weighted graph resumes from there.
+
+		The musical effect is not heard until the *next pattern rebuild cycle*,
+		because already-queued MIDI notes are unaffected.  This is the same
+		natural quantization that applies to all ``composition.data`` writes and
+		``composition.tweak()`` calls.
+
+		Args:
+			section_name: Name of the section to jump to.  Must exist in the
+				form definition passed to ``composition.form()``.
+
+		Raises:
+			ValueError: If not in graph mode or the section name is unknown.
+
+		Example::
+
+			composition.form_jump("chorus")   # via Composition helper
+		"""
+
+		if self._section_bars is None:
+			raise ValueError(
+				"jump_to() is only available in graph mode. "
+				"Call composition.form() with a dict to use this feature."
+			)
+
+		if section_name not in self._section_bars:
+			known = ", ".join(sorted(self._section_bars))
+			raise ValueError(
+				f"Section '{section_name}' not found in form. "
+				f"Known sections: {known}"
+			)
+
+		self._current = (section_name, self._section_bars[section_name])
+		self._bar_in_section = 0
+		self._section_index += 1
+		self._finished = False
+		logger.info(f"Form: jump → {section_name}")
 
 
 class _InjectedChord:
@@ -660,6 +783,12 @@ class Composition:
 		self._osc_server: typing.Optional[subsequence.osc.OscServer] = None
 		self.conductor = subsequence.conductor.Conductor()
 
+		# Hotkey state — populated by hotkeys() and hotkey().
+		self._hotkeys_enabled: bool = False
+		self._hotkey_bindings: typing.Dict[str, HotkeyBinding] = {}
+		self._pending_hotkey_actions: typing.List[_PendingHotkeyAction] = []
+		self._keystroke_listener: typing.Optional[subsequence.keystroke.KeystrokeListener] = None
+
 	def harmony (
 		self,
 		style: typing.Union[str, subsequence.chord_graphs.ChordGraph] = "functional_major",
@@ -739,6 +868,215 @@ class Composition:
 		"""
 
 		self._sequencer.on_event(event_name, callback)
+
+
+	# -----------------------------------------------------------------------
+	# Hotkey API
+	# -----------------------------------------------------------------------
+
+	def hotkeys (self, enabled: bool = True) -> None:
+
+		"""Enable or disable the global hotkey listener.
+
+		Must be called **before** :meth:`play` to take effect.  When enabled, a
+		background thread reads single keystrokes from stdin without requiring
+		Enter.  The ``?`` key is always reserved and lists all active bindings.
+
+		Hotkeys have zero impact on playback when disabled — the listener
+		thread is never started.
+
+		Args:
+		    enabled: ``True`` (default) to enable hotkeys; ``False`` to disable.
+
+		Example::
+
+		    composition.hotkeys()
+		    composition.hotkey("a", lambda: composition.form_jump("chorus"))
+		    composition.play()
+		"""
+
+		self._hotkeys_enabled = enabled
+
+
+	def hotkey (
+		self,
+		key:      str,
+		action:   typing.Callable[[], None],
+		quantize: int = 0,
+		label:    typing.Optional[str] = None,
+	) -> None:
+
+		"""Register a single-key shortcut that fires during playback.
+
+		The listener must be enabled first with :meth:`hotkeys`.
+
+		Most actions — form jumps, ``composition.data`` writes, and
+		:meth:`tweak` calls — should use ``quantize=0`` (the default).  Their
+		musical effect is naturally delayed to the next pattern rebuild cycle,
+		which provides automatic musical quantization without extra configuration.
+
+		Use ``quantize=N`` for actions where you want an explicit bar-boundary
+		guarantee, such as :meth:`mute` / :meth:`unmute`.
+
+		The ``?`` key is reserved and cannot be overridden.
+
+		Args:
+		    key: A single character trigger (e.g. ``"a"``, ``"1"``, ``" "``).
+		    action: Zero-argument callable to execute.
+		    quantize: ``0`` = execute immediately (default).  ``N`` = execute
+		        on the next global bar number divisible by *N*.
+		    label: Display name for the ``?`` help listing.  Auto-derived from
+		        the function name or lambda body if omitted.
+
+		Raises:
+		    ValueError: If ``key`` is the reserved ``?`` character, or if
+		        ``key`` is not exactly one character.
+
+		Example::
+
+		    composition.hotkeys()
+
+		    # Immediate — musical effect happens at next pattern rebuild
+		    composition.hotkey("a", lambda: composition.form_jump("chorus"))
+		    composition.hotkey("1", lambda: composition.data.update({"mode": "chill"}))
+
+		    # Explicit 4-bar phrase boundary
+		    composition.hotkey("s", lambda: composition.mute("drums"), quantize=4)
+
+		    # Named function — label is derived automatically
+		    def drop_to_breakdown():
+		        composition.form_jump("breakdown")
+		        composition.mute("lead")
+
+		    composition.hotkey("d", drop_to_breakdown)
+
+		    composition.play()
+		"""
+
+		if len(key) != 1:
+			raise ValueError(f"hotkey key must be a single character, got {key!r}")
+
+		if key == _HOTKEY_RESERVED:
+			raise ValueError(f"'{_HOTKEY_RESERVED}' is reserved for listing active hotkeys.")
+
+		derived = label if label is not None else _derive_label(action)
+
+		self._hotkey_bindings[key] = HotkeyBinding(
+			key      = key,
+			action   = action,
+			quantize = quantize,
+			label    = derived,
+		)
+
+
+	def form_jump (self, section_name: str) -> None:
+
+		"""Jump the form to a named section immediately.
+
+		Delegates to :meth:`FormState.jump_to`.  Only works when the
+		composition uses graph-mode form (a dict passed to :meth:`form`).
+
+		The musical effect is heard at the *next pattern rebuild cycle* — already-
+		queued MIDI notes are unaffected.  This natural delay means ``form_jump``
+		is effective without needing explicit quantization.
+
+		Args:
+		    section_name: The section to jump to.
+
+		Raises:
+		    ValueError: If no form is configured, or the form is not in graph
+		        mode, or *section_name* is unknown.
+
+		Example::
+
+		    composition.hotkey("c", lambda: composition.form_jump("chorus"))
+		"""
+
+		if self._form_state is None:
+			raise ValueError("form_jump() requires a form to be configured via composition.form().")
+
+		self._form_state.jump_to(section_name)
+
+
+	def _list_hotkeys (self) -> None:
+
+		"""Log all active hotkey bindings (triggered by the ``?`` key).
+
+		Output appears via the standard logger so it scrolls cleanly above
+		the :class:`~subsequence.display.Display` status line.
+		"""
+
+		lines = ["Active hotkeys:"]
+		for key in sorted(self._hotkey_bindings):
+			b = self._hotkey_bindings[key]
+			quant_str = "immediate" if b.quantize == 0 else f"quantize={b.quantize}"
+			lines.append(f"  {key}  \u2192  {b.label}  ({quant_str})")
+		lines.append(f"  ?  \u2192  list hotkeys")
+		logger.info("\n".join(lines))
+
+
+	def _process_hotkeys (self, bar: int) -> None:
+
+		"""Drain pending keystrokes and execute due actions.
+
+		Called on every ``"bar"`` event by the sequencer when hotkeys are
+		enabled.  Handles both immediate (``quantize=0``) and quantized actions.
+
+		Immediate actions are executed directly from the keystroke listener
+		thread (not here).  This method only processes quantized actions that
+		were deferred to a bar boundary.
+
+		Args:
+		    bar: The current global bar number from the sequencer.
+		"""
+
+		if self._keystroke_listener is None:
+			return
+
+		# Process newly arrived keys.
+		for key in self._keystroke_listener.drain():
+
+			if key == _HOTKEY_RESERVED:
+				self._list_hotkeys()
+				continue
+
+			binding = self._hotkey_bindings.get(key)
+			if binding is None:
+				continue
+
+			if binding.quantize == 0:
+				# Immediate — execute now (we're on the bar-event callback,
+				# which is safe for all mutation methods).
+				try:
+					binding.action()
+					logger.info(f"Hotkey '{key}' \u2192 {binding.label}")
+				except Exception as exc:
+					logger.warning(f"Hotkey '{key}' action raised: {exc}")
+			else:
+				# Defer until the next quantize boundary.
+				self._pending_hotkey_actions.append(
+					_PendingHotkeyAction(binding=binding, requested_bar=bar)
+				)
+
+		# Fire any pending actions whose bar boundary has arrived.
+		still_pending: typing.List[_PendingHotkeyAction] = []
+
+		for pending in self._pending_hotkey_actions:
+			if bar % pending.binding.quantize == 0:
+				try:
+					pending.binding.action()
+					logger.info(
+						f"Hotkey '{pending.binding.key}' \u2192 {pending.binding.label} "
+						f"(bar {bar})"
+					)
+				except Exception as exc:
+					logger.warning(
+						f"Hotkey '{pending.binding.key}' action raised: {exc}"
+					)
+			else:
+				still_pending.append(pending)
+
+		self._pending_hotkey_actions = still_pending
 
 	def seed (self, value: int) -> None:
 
@@ -1530,6 +1868,18 @@ class Composition:
 
 			self._sequencer.on_event("bar", _send_osc_status)
 
+		# Start keystroke listener if hotkeys are enabled and not in render mode.
+		if self._hotkeys_enabled and not self._sequencer.render_mode:
+			self._keystroke_listener = subsequence.keystroke.KeystrokeListener()
+			self._keystroke_listener.start()
+
+			if self._keystroke_listener.active:
+				# Listener started successfully — register the bar handler
+				# and show all bindings so the user knows what's available.
+				self._sequencer.on_event("bar", self._process_hotkeys)
+				self._list_hotkeys()
+			# If not active, KeystrokeListener.start() already logged a warning.
+
 		await run_until_stopped(self._sequencer)
 
 		if self._live_server is not None:
@@ -1540,6 +1890,10 @@ class Composition:
 
 		if self._display is not None:
 			self._display.stop()
+
+		if self._keystroke_listener is not None:
+			self._keystroke_listener.stop()
+			self._keystroke_listener = None
 
 	def _build_pattern_from_pending (self, pending: _PendingPattern, rng: typing.Optional[random.Random] = None) -> subsequence.pattern.Pattern:
 

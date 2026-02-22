@@ -9,7 +9,7 @@ import subsequence.sequence_utils
 
 logging.basicConfig(level=logging.INFO)
 
-DRUM_CHANNEL = 10
+DRUM_CHANNEL = 9
 BASS_CHANNEL = 5
 ARP_CHANNEL = 0
 LEAD_CHANNEL = 3
