@@ -7,7 +7,7 @@ This example shows how Subsequence turns external data into a live composition:
   - Slowly-changing data is used as probability weights so patterns vary
     bar-to-bar even when the underlying signal barely moves.
 
-Data is fetched from the public wheretheiss.at API every ~16 seconds (8 bars at
+Data is fetched from the public wheretheiss.at API every ~32 seconds (16 bars at
 120 BPM). EasedValues interpolate between fetches so patterns see smooth curves
 rather than sudden jumps.
 
@@ -68,7 +68,7 @@ CHORD_GRAPH_DAYLIGHT = "functional_major"
 CHORD_GRAPH_ECLIPSED = "dorian_minor"
 
 # EasedValues interpolate between API fetches, giving patterns a smooth curve
-# rather than a step jump every 16 seconds. No initial value → first fetch
+# rather than a step jump every 32 seconds. No initial value → first fetch
 # sets the target immediately with no unintended ease from 0.
 iss_lat       = subsequence.easing.EasedValue()  # 0=south pole, 0.5=equator, 1=north
 iss_lon       = subsequence.easing.EasedValue()  # 0=180°W, 1=180°E
@@ -78,10 +78,10 @@ iss_footprint = subsequence.easing.EasedValue()  # Ground visibility diameter
 iss_sol_lat   = subsequence.easing.EasedValue()  # Subsolar latitude (−23.4°–23.4°)
 iss_sol_lon   = subsequence.easing.EasedValue()  # Subsolar longitude (−180°–180°)
 
-# At 120 BPM, 8 bars ≈ 16 seconds. All patterns use
+# At 120 BPM, 16 bars ≈ 32 seconds. All patterns use
 #   progress = (p.cycle % FETCH_BARS) / FETCH_BARS
 # to track where they are within each interpolation window.
-FETCH_BARS = 8
+FETCH_BARS = 16
 
 # Safety default: gives patterns a working chord source if the first fetch fails.
 composition.harmony(style=CHORD_GRAPH_DAYLIGHT, cycle_beats=4, gravity=0.5)
