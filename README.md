@@ -10,7 +10,7 @@ It is a **compositional engine** for your studio - generating pure MIDI to contr
 
 ### Why Subsequence?
 
-- **Plain Python, no custom language.** Write patterns in the language you already know - no domain-specific syntax to learn. Your music is versionable, shareable, and lives in standard `.py` files.
+- **Plain Python, no custom language.** Write patterns in a standard, popular language - no domain-specific syntax to learn. Your music is versionable, shareable, and lives in standard `.py` files.
 - **Infinite, evolving compositions.** Patterns rebuild each cycle with full context - chord, section, history, external data - so music can grow and develop indefinitely, or run to a fixed structure. Or both.
 - **Multiple APIs and notation styles.** Start with a one-line mini-notation drum pattern. Graduate to per-step control, harmonic injection, or the full Direct Pattern API - without changing tools.
 - **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition. Use as much or as little music theory as you want.
