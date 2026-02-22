@@ -152,15 +152,22 @@ class EasedValue:
             p.hit_steps("kick_1", range(16), velocity=velocity)
 
     Args:
-        initial: Starting value (used as both *previous* and *current* on
-            the first call to :meth:`get` before any :meth:`update`).
-            Defaults to ``0.0``.
+        initial: Optional starting value.  If provided, the first call to
+            :meth:`update` will ease from this initial value.  If omitted,
+            the first call to :meth:`update` will instantly set both the
+            *previous* and *current* values to the new target, preventing
+            an unintended transition from a default value.
     """
 
-    def __init__ (self, initial: float = 0.0) -> None:
+    def __init__ (self, initial: typing.Optional[float] = None) -> None:
 
-        self._prev:    float = initial
-        self._current: float = initial
+        # We keep the internal float fields strictly non-Optional (defaulting to 0.0)
+        # to guarantee mypy safety and branch-free math in get() and delta. The
+        # _has_updated flag abstracts the "first-update" logic away safely.
+        val = initial if initial is not None else 0.0
+        self._prev:    float = val
+        self._current: float = val
+        self._has_updated: bool = initial is not None
 
     def update (self, value: float) -> None:
 
@@ -168,6 +175,8 @@ class EasedValue:
 
         The current value becomes the new *previous* baseline, and
         *value* becomes the target that :meth:`get` interpolates toward.
+        If no ``initial`` value was provided at construction, the very first
+        call to this method sets both *previous* and *current* to *value*.
 
         Args:
             value: The new target, typically a normalised float in [0, 1]
@@ -175,8 +184,13 @@ class EasedValue:
                 interpret it consistently).
         """
 
-        self._prev    = self._current
-        self._current = value
+        if not self._has_updated:
+            self._prev = value
+            self._current = value
+            self._has_updated = True
+        else:
+            self._prev    = self._current
+            self._current = value
 
     def get (
         self,
