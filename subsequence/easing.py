@@ -212,3 +212,26 @@ class EasedValue:
     def previous (self) -> float:
         """The value that was current before the last :meth:`update`."""
         return self._prev
+
+    @property
+    def delta (self) -> float:
+        """Signed change between the previous and current value.
+
+        Positive means the value rose on the last :meth:`update`; negative
+        means it fell; zero means it was unchanged.  The magnitude reflects
+        the size of the jump.
+
+        This property is constant across all pattern rebuilds within one fetch
+        cycle, making it straightforward to branch on direction without
+        worrying about sample-level fluctuations:
+
+        Example::
+
+            # Choose arpeggio direction based on which way the value is moving.
+            direction = "up" if iss_lat.delta >= 0 else "down"
+            p.arpeggio(pitches, step=0.25, direction=direction)
+
+            # Scale an effect by how large the change was.
+            urgency = abs(iss_lat.delta)   # 0.0 = stable, larger = big jump
+        """
+        return self._current - self._prev
