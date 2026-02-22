@@ -1,5 +1,4 @@
 import logging
-import requests
 
 import subsequence
 
@@ -97,5 +96,4 @@ def lead (p, chord):
 if __name__ == "__main__":
 
 	composition.display()
-#	composition.live()
 	composition.play()

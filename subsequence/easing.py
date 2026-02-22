@@ -116,3 +116,99 @@ def get_easing (shape: typing.Union[str, EasingFn]) -> EasingFn:
             f"Unknown easing shape {shape!r}. Available shapes: {available}"
         )
     return EASING_FUNCTIONS[shape]
+
+
+# ─── Stateful interpolation ───────────────────────────────────────────────────
+
+
+class EasedValue:
+
+    """Smoothly interpolates between discrete data updates.
+
+    When external data arrives in snapshots — API polls, sensor readings,
+    OSC messages — jumping instantly to each new value often sounds jarring.
+    ``EasedValue`` remembers the previous value and provides a smooth,
+    eased interpolation to the new one over a normalised progress window.
+
+    A typical use-case is a ``composition.schedule()`` function that writes
+    to ``composition.data`` every *N* bars, paired with a pattern that reads
+    the smoothed value on every rebuild:
+
+    Example::
+
+        # Module level: create one per data field you want to smooth.
+        iss_lat = subsequence.easing.EasedValue(initial=0.5)
+
+        # Scheduled task (fires every 16 bars):
+        def fetch_data(p):
+            new_lat = get_latest_latitude()   # 0.0–1.0
+            iss_lat.update(new_lat)
+
+        # Pattern (rebuilds every bar).  16-bar cycle matches the schedule.
+        @composition.pattern(channel=0, length=4)
+        def drums(p):
+            progress = (p.cycle % 16) / 16   # 0 → 1 over one fetch cycle
+            velocity = int(100 * iss_lat.get(progress))
+            p.hit_steps("kick_1", range(16), velocity=velocity)
+
+    Args:
+        initial: Starting value (used as both *previous* and *current* on
+            the first call to :meth:`get` before any :meth:`update`).
+            Defaults to ``0.0``.
+    """
+
+    def __init__ (self, initial: float = 0.0) -> None:
+
+        self._prev:    float = initial
+        self._current: float = initial
+
+    def update (self, value: float) -> None:
+
+        """Accept a new target value.
+
+        The current value becomes the new *previous* baseline, and
+        *value* becomes the target that :meth:`get` interpolates toward.
+
+        Args:
+            value: The new target, typically a normalised float in [0, 1]
+                (though any numeric range is accepted as long as consumers
+                interpret it consistently).
+        """
+
+        self._prev    = self._current
+        self._current = value
+
+    def get (
+        self,
+        progress: float,
+        shape: typing.Union[str, EasingFn] = "ease_in_out",
+    ) -> float:
+
+        """Return the interpolated value at *progress* through the transition.
+
+        Args:
+            progress: How far through the current transition, in [0, 1].
+                ``0.0`` returns the previous value; ``1.0`` returns the
+                current target.  Typically computed as
+                ``(p.cycle % N) / N`` where *N* is the number of pattern
+                cycles per data-fetch cycle.
+            shape: Easing shape name (see :data:`EASING_FUNCTIONS`) or a
+                callable ``f(t) -> t`` in [0, 1].  Defaults to
+                ``"ease_in_out"`` (Hermite smoothstep).
+
+        Returns:
+            The interpolated float between the previous and current value.
+        """
+
+        eased = get_easing(shape)(progress)
+        return self._prev + (self._current - self._prev) * eased
+
+    @property
+    def current (self) -> float:
+        """The most recently set target value (after the last :meth:`update`)."""
+        return self._current
+
+    @property
+    def previous (self) -> float:
+        """The value that was current before the last :meth:`update`."""
+        return self._prev
