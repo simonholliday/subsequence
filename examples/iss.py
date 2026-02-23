@@ -59,8 +59,7 @@ ARP_CHANNEL   = 3
 
 composition = subsequence.Composition(
 	bpm=120,
-	key="E",
-	output_device="Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"
+	key="E"
 )
 
 # Day/night determines the harmonic mode.

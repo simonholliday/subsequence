@@ -1203,9 +1203,22 @@ Force the form to a named section (graph mode only). Resets the bar count within
 
 ## Examples
 
-Because Subsequence generates MIDI rather than audio, and doesn't produce sound itself, the character of what you hear is entirely determined by your choice of instruments, synthesisers, and routing. This makes it challenging to create useful "generic" examples.
+Because Subsequence generates MIDI rather than audio, and doesn't produce sound itself, the character of what you hear is entirely determined by your choice of instruments, synthesisers, and routing.
 
-I'm working on it, and will be adding an `examples/` directory soon.
+### ISS Telemetry (`examples/iss.py`)
+
+This example demonstrates how Subsequence can turn real-time external data into an evolving music composition. It fetches live data about the International Space Station every 32 seconds approx, and uses `EasedValue` instances to map those parameters smoothly over time to the generative rules engine.
+
+**What it does:**
+- **Latitude** drives BPM, kick density, snare probabilities, and chord transition "gravity". By ear, you'll hear a dense, fast beat near the poles, relaxing to a sparse groove over the equator.
+- **Heading (Latitude Δ)** dictates arpeggio direction. The phrase ascends while heading North and descends while heading South.
+- **Visibility (Day/Night)** dictates the harmonic mode. The sequence plays bright functional major chords with a ride cymbal in daylight, shifting to a darker Dorian minor with a shaker during a solar eclipse.
+- **Altitude**, **Longitude**, and **Footprint** influence chord voicings and ride cymbal pulse counts.
+
+**How to run it:**
+1. Make sure you have the `requests` library installed (`pip install requests`).
+2. Connect your MIDI port to a multitimbral synth or DAW (channels: 10=Drums, 6=Bass, 1=Chords, 4=Arp). [Note: MIDI channels are zero-indexed in the code, i.e. 9, 5, 0, 3].
+3. Run the script: `python examples/iss.py`.
 
 ## Extra utilities
 
