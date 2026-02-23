@@ -18,6 +18,8 @@ It is a **compositional engine** for your studio - generating pure MIDI to contr
 - **Pure MIDI, zero sound engine.** No audio synthesis, no heavyweight dependencies. Route MIDI to your existing hardware or software instruments.
 - **Deterministic when you want it.** Set a seed and every "random" decision - chords, form, note choices - becomes repeatable and tweakable.
 
+**[Full API documentation →](https://simonholliday.github.io/subsequence)**
+
 ## Minimal Example
 
 In this simplest example, using [mini-notation](#mini-notation), we create and play a drum pattern. More detail on the [Composition API](#composition-api) and [Direct Pattern API](#direct-pattern-api) further down.
@@ -128,6 +130,8 @@ pip install -e .
 ```
 python examples/demo.py
 ```
+
+For the complete API reference, see the **[documentation](https://simonholliday.github.io/subsequence)**. The sections below are a quick overview.
 
 ## Composition API
 
