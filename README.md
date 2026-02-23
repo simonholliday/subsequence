@@ -124,7 +124,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 ```
 pip install -e .
 ```
-2. Run the demo (drums + evolving aeolian minor harmony in E):
+2. Run the demo (drums, bass, and arp over evolving aeolian minor harmony in E):
 ```
 python examples/demo.py
 ```
@@ -135,23 +135,32 @@ The `Composition` class is the main entry point. Define your MIDI setup, create 
 
 ```python
 import subsequence
+import subsequence.constants.gm_drums as gm_drums
 
 DRUMS_CHANNEL = 9
+BASS_CHANNEL  = 5
 SYNTH_CHANNEL = 0
-DRUM_NOTE_MAP = {"kick": 36, "snare": 38, "hh": 42}
 
 composition = subsequence.Composition(bpm=120, key="E")
 composition.harmony(style="aeolian_minor", cycle_beats=4, gravity=0.8)
 
-@composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=DRUM_NOTE_MAP)
+@composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
-    p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
-    p.hit_steps("snare", [4, 12], velocity=100)
-    p.hit_steps("hh", list(range(16)), velocity=80)
+    p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+    p.hit_steps("snare_1", [4, 12], velocity=100)
+    p.hit_steps("hi_hat_closed", range(16), velocity=80)
+    p.velocity_shape(low=60, high=100)
+
+@composition.pattern(channel=BASS_CHANNEL, length=4)
+def bass (p, chord):
+    root = chord.root_note(40)
+    p.sequence(steps=[0, 4, 8, 12], pitches=root)
+    p.legato(0.9)
 
 @composition.pattern(channel=SYNTH_CHANNEL, length=4)
-def chords (p, chord):
-    p.chord(chord, root=52, velocity=90, sustain=True)
+def arp (p, chord):
+    pitches = chord.tones(root=60, count=4)
+    p.arpeggio(pitches, step=0.25, velocity=90, direction="up")
 
 if __name__ == "__main__":
     composition.play()
@@ -205,57 +214,80 @@ composition.schedule(fetch_data, cycle_beats=32, wait_for_initial=True)
 The Direct Pattern API gives you full control over the sequencer, harmony, and scheduling. Patterns are classes instead of decorated functions - you manage the event loop yourself.
 
 <details>
-<summary>Full example - same music as the Composition API example above (click to expand)</summary>
+<summary>Full example — same music as the Composition API demo above (click to expand)</summary>
 
 ```python
 import asyncio
+
 import subsequence.composition
 import subsequence.constants
+import subsequence.constants.gm_drums as gm_drums
 import subsequence.harmonic_state
 import subsequence.pattern
+import subsequence.pattern_builder
 import subsequence.sequencer
 
 DRUMS_CHANNEL = 9
+BASS_CHANNEL  = 5
 SYNTH_CHANNEL = 0
-DRUM_KICK = 36
-DRUM_SNARE = 38
-DRUM_HH = 42
 
 
 class DrumPattern (subsequence.pattern.Pattern):
+    """Kick, snare, and hi-hats — built using the PatternBuilder bridge."""
 
     def __init__ (self) -> None:
         super().__init__(channel=DRUMS_CHANNEL, length=4)
-        self._build_pattern()
+        self._build()
 
-    def _build_pattern (self) -> None:
+    def _build (self) -> None:
         self.steps = {}
-        step = subsequence.constants.MIDI_SIXTEENTH_NOTE
-        self.add_sequence([1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0], step_duration=step, pitch=DRUM_KICK, velocity=127)
-        self.add_sequence([0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0], step_duration=step, pitch=DRUM_SNARE, velocity=100)
-        self.add_sequence([1]*16, step_duration=step, pitch=DRUM_HH, velocity=80)
+        p = subsequence.pattern_builder.PatternBuilder(
+            self, cycle=0, drum_note_map=gm_drums.GM_DRUM_MAP
+        )
+        p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+        p.hit_steps("snare_1", [4, 12], velocity=100)
+        p.hit_steps("hi_hat_closed", range(16), velocity=80)
+        p.velocity_shape(low=60, high=100)
 
     def on_reschedule (self) -> None:
-        self._build_pattern()
+        self._build()
 
 
-class ChordPadPattern (subsequence.pattern.Pattern):
+class BassPattern (subsequence.pattern.Pattern):
+    """Quarter-note bass following the harmony engine's current chord."""
 
-    def __init__ (self, harmonic_state) -> None:
-        super().__init__(channel=SYNTH_CHANNEL, length=4)
+    def __init__ (self, harmonic_state: subsequence.harmonic_state.HarmonicState) -> None:
+        super().__init__(channel=BASS_CHANNEL, length=4)
         self.harmonic_state = harmonic_state
-        self._build_pattern()
+        self._build()
 
-    def _build_pattern (self) -> None:
+    def _build (self) -> None:
         self.steps = {}
         chord = self.harmonic_state.get_current_chord()
-        root = self.harmonic_state.get_chord_root_midi(52, chord)
-        duration = int(self.length * subsequence.constants.MIDI_QUARTER_NOTE)
-        for interval in chord.intervals():
-            self.add_note(0, root + interval, 90, duration)
+        root  = chord.root_note(40)
+        for beat in range(4):
+            self.add_note_beats(beat, pitch=root, velocity=100, duration_beats=0.9)
 
     def on_reschedule (self) -> None:
-        self._build_pattern()
+        self._build()
+
+
+class ArpPattern (subsequence.pattern.Pattern):
+    """Ascending arpeggio cycling through the current chord's tones."""
+
+    def __init__ (self, harmonic_state: subsequence.harmonic_state.HarmonicState) -> None:
+        super().__init__(channel=SYNTH_CHANNEL, length=4)
+        self.harmonic_state = harmonic_state
+        self._build()
+
+    def _build (self) -> None:
+        self.steps = {}
+        chord   = self.harmonic_state.get_current_chord()
+        pitches = chord.tones(root=60, count=4)
+        self.add_arpeggio_beats(pitches, step_beats=0.25, velocity=90)
+
+    def on_reschedule (self) -> None:
+        self._build()
 
 
 async def main () -> None:
@@ -263,12 +295,17 @@ async def main () -> None:
     harmonic_state = subsequence.harmonic_state.HarmonicState(
         key_name="E", graph_style="aeolian_minor", key_gravity_blend=0.8
     )
-    await subsequence.composition.schedule_harmonic_clock(seq, lambda: harmonic_state, cycle_beats=4)
+    await subsequence.composition.schedule_harmonic_clock(
+        seq, lambda: harmonic_state, cycle_beats=4
+    )
 
     drums = DrumPattern()
-    chords = ChordPadPattern(harmonic_state=harmonic_state)
-    await subsequence.composition.schedule_patterns(seq, [drums, chords])
+    bass  = BassPattern(harmonic_state)
+    arp   = ArpPattern(harmonic_state)
+
+    await subsequence.composition.schedule_patterns(seq, [drums, bass, arp])
     await subsequence.composition.run_until_stopped(seq)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -276,7 +313,7 @@ if __name__ == "__main__":
 
 </details>
 
-For the full version with form, external data, and five patterns, see `examples/demo_advanced.py`.
+For a larger example with form sections and five patterns, see `examples/arpeggiator.py`.
 
 ### API Comparison
 
@@ -1203,7 +1240,21 @@ Force the form to a named section (graph mode only). Resets the bar count within
 
 ## Examples
 
-Because Subsequence generates MIDI rather than audio, and doesn't produce sound itself, the character of what you hear is entirely determined by your choice of instruments, synthesisers, and routing.
+Because Subsequence generates MIDI rather than audio, and doesn't produce sound itself, the character of what you hear is entirely determined by your choice of instruments, synthesisers, and routing. This makes it challenging to create useful "generic" examples, and the ones included are works in progress. I'm working on it!
+
+The `examples/` directory contains self-documenting compositions, each demonstrating a different style and set of features. To run any example:
+
+```
+python examples/demo.py
+```
+
+### Demo (`examples/demo.py` and `examples/demo_advanced.py`)
+
+These two files produce the same music — drums, bass, and an ascending arpeggio over evolving aeolian minor harmony in E. `demo.py` uses the Composition API (decorated functions); `demo_advanced.py` uses the Direct Pattern API (Pattern subclasses with async lifecycle). Compare them side by side to see how the two APIs relate.
+
+### Arpeggiator (`examples/arpeggiator.py`)
+
+A more complete composition with form sections (intro → section_1 ↔ section_2), five patterns (drums, bass, arp, lead), cycle-dependent variation, and Phrygian minor harmony. Demonstrates `velocity_shape`, `legato`, non-quarter-note grids, and section-aware muting.
 
 ### ISS Telemetry (`examples/iss.py`)
 
