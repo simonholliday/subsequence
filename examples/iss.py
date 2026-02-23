@@ -1,8 +1,9 @@
-"""ISS telemetry → music.
+"""Generate MIDI from ISS Telemetry.
 
 Every musical parameter is driven by a real ISS data signal.
+
 This example shows how Subsequence turns external data into a live composition:
-  - The harmony engine changes chords every bar automatically.
+  - The harmony engine changes chords every 8 bars automatically.
   - ISS parameters modulate tempo, dynamics, rhythm density, and timbre.
   - Slowly-changing data is used as probability weights so patterns vary
     bar-to-bar even when the underlying signal barely moves.
@@ -11,19 +12,19 @@ Data is fetched from the public wheretheiss.at API every ~32 seconds (16 bars at
 120 BPM). EasedValues interpolate between fetches so patterns see smooth curves
 rather than sudden jumps.
 
-ISS parameter → musical role
-  latitude    → BPM, kick dropout, snare probability, hi-hat velocity,
+ISS parameter : musical role
+  latitude    : BPM, kick dropout, snare probability, hi-hat velocity,
                 arp direction, chord-graph gravity
-  longitude   → arp velocity
-  altitude    → chord voicing count (3 or 4 notes)
-  velocity    → (fetched and logged; very stable, available for experimentation)
-  visibility  → chord graph style (major / Dorian minor), ride / shaker gating
-  footprint   → ride cymbal pulse count
-  solar lat   → chord velocity (solar warmth)
-  solar lon   → open hi-hat accent step
-  daynum      → (fetched and logged; use as daily seed if desired)
+  longitude   : arp velocity
+  altitude    : chord voicing count (3 or 4 notes)
+  velocity    : (fetched and logged; very stable, available for experimentation)
+  visibility  : chord graph style (major / Dorian minor), ride / shaker gating
+  footprint   : ride cymbal pulse count
+  solar lat   : chord velocity (solar warmth)
+  solar lon   : open hi-hat accent step
+  daynum      : (fetched and logged; use as daily seed if desired)
 
-Listening guide — what you can determine by ear
+Listening guide: what you can determine by ear
   "Near a pole or the equator?"
       Fast tempo + solid kick + snare backbeat = near a pole.
       Slow tempo + sparse kick + no snare = near the equator.
@@ -34,11 +35,11 @@ Listening guide — what you can determine by ear
   "Daylight or eclipse?"
       Major key + ride cymbal = sunlight.
       Minor key + shaker = eclipse.
-      This is the most dramatic shift — listen for the mode change.
+      This is the most dramatic shift: listen for the mode change.
   "Northern or southern hemisphere?"
       Louder hi-hats = northern hemisphere.
       Quieter hi-hats = southern hemisphere.
-      (Subtle — easier to notice over several bars.)
+      (Subtle: easier to notice over several bars.)
 """
 
 import logging
@@ -68,11 +69,11 @@ CHORD_GRAPH_DAYLIGHT = "functional_major"
 CHORD_GRAPH_ECLIPSED = "dorian_minor"
 
 # EasedValues interpolate between API fetches, giving patterns a smooth curve
-# rather than a step jump every 32 seconds. No initial value → first fetch
+# rather than a step jump every 32 seconds. No initial value : first fetch
 # sets the target immediately with no unintended ease from 0.
 iss_lat       = subsequence.easing.EasedValue()  # 0=south pole, 0.5=equator, 1=north
 iss_lon       = subsequence.easing.EasedValue()  # 0=180°W, 1=180°E
-iss_alt       = subsequence.easing.EasedValue()  # 370–460 km → 0–1
+iss_alt       = subsequence.easing.EasedValue()  # 370–460 km : 0–1
 iss_vel       = subsequence.easing.EasedValue()  # 27,500–27,750 km/h (very stable)
 iss_footprint = subsequence.easing.EasedValue()  # Ground visibility diameter
 iss_sol_lat   = subsequence.easing.EasedValue()  # Subsolar latitude (−23.4°–23.4°)
@@ -84,7 +85,7 @@ iss_sol_lon   = subsequence.easing.EasedValue()  # Subsolar longitude (−180°�
 FETCH_BARS = 16
 
 # Safety default: gives patterns a working chord source if the first fetch fails.
-composition.harmony(style=CHORD_GRAPH_DAYLIGHT, cycle_beats=4, gravity=0.5)
+composition.harmony(style=CHORD_GRAPH_DAYLIGHT, cycle_beats=32, gravity=0.5)
 
 
 def fetch_iss (p) -> None:
@@ -141,14 +142,14 @@ def fetch_iss (p) -> None:
 
 		# Chord-graph gravity: near the equator, transitions make bolder leaps
 		# (low gravity). Near the poles they prefer strong resolution (high gravity).
-		gravity = 0.3 + (0.5 * pole_proximity)     # 0.3 equator → 0.8 poles
+		gravity = 0.3 + (0.5 * pole_proximity)     # 0.3 equator : 0.8 poles
 
 		# The harmony engine picks a new chord every 4 beats, completely independent
 		# of the fetch cycle. ISS data only steers the *style* and *character*.
 		if vis == "daylight":
-			composition.harmony(style=CHORD_GRAPH_DAYLIGHT, cycle_beats=4, gravity=gravity)
+			composition.harmony(style=CHORD_GRAPH_DAYLIGHT, cycle_beats=32, gravity=gravity)
 		else:
-			composition.harmony(style=CHORD_GRAPH_ECLIPSED, cycle_beats=4, gravity=gravity)
+			composition.harmony(style=CHORD_GRAPH_ECLIPSED, cycle_beats=32, gravity=gravity)
 
 	except Exception as exc:
 		logging.warning(f"ISS fetch failed (keeping last values): {exc}")
@@ -157,7 +158,7 @@ def fetch_iss (p) -> None:
 composition.schedule(fetch_iss, cycle_beats=FETCH_BARS * 4, wait_for_initial=True)
 
 
-# ── Core drums ─────────────────────────────────────────────────────────────────
+# Core drums
 @composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
 
@@ -185,7 +186,7 @@ def drums (p):
 	p.hit_steps("hi_hat_open", [composition.data.get("iss_hat_accent", 6)], velocity=60)
 
 
-# ── Ride cymbal (daylight only) ─────────────────────────────────────────────────
+# Ride cymbal (daylight only)
 @composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def ride (p):
 
@@ -197,13 +198,13 @@ def ride (p):
 	progress = (p.cycle % FETCH_BARS) / FETCH_BARS
 
 	# Footprint is the diameter of the ISS's ground visibility cone.
-	# A wider footprint (higher orbit) feels more expansive → more ride hits.
+	# A wider footprint (higher orbit) feels more expansive : more ride hits.
 	pulses = 3 + int(4 * iss_footprint.get(progress))   # 3–7 pulses
 	p.euclidean("ride_1", pulses)
 	p.velocity_shape(low=50, high=90)   # Organic dynamics via low-discrepancy sequence
 
 
-# ── Shaker (eclipse only) ───────────────────────────────────────────────────────
+# Shaker (eclipse only)
 @composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def shaker (p):
 
@@ -215,11 +216,11 @@ def shaker (p):
 	p.humanize(timing=0.02, velocity=0.1)   # Slight timing and velocity imprecision
 
 
-# ── Arpeggio ────────────────────────────────────────────────────────────────────
+# Arpeggio
 @composition.pattern(channel=ARP_CHANNEL, length=4)
 def arp (p, chord):
 
-	# `chord` is injected by the harmony engine and changes every bar automatically.
+	# `chord` is injected by the harmony engine and changes every 8 bars automatically.
 	progress     = (p.cycle % FETCH_BARS) / FETCH_BARS
 	arp_velocity = int(40 + 60 * iss_lon.get(progress))   # 40–100, louder heading east
 
@@ -232,11 +233,11 @@ def arp (p, chord):
 	p.arpeggio(pitches, step=0.25, velocity=arp_velocity, duration=0.05, direction=direction)
 
 
-# ── Bass ────────────────────────────────────────────────────────────────────────
+# Bass
 @composition.pattern(channel=BASS_CHANNEL, length=4)
 def bass (p, chord):
 
-	# `chord` is injected by the harmony engine — new chord each bar, same rhythm.
+	# `chord` is injected by the harmony engine — new chord each 8 bars, same rhythm.
 	# bass_note() finds the chord's root nearest to E3 (MIDI 52), then drops one octave.
 	bass_root = chord.bass_note(52, octave_offset=-1)
 
@@ -245,11 +246,11 @@ def bass (p, chord):
 	p.legato(0.9)
 
 
-# ── Chord pad ───────────────────────────────────────────────────────────────────
+# Chord pad
 @composition.pattern(channel=CHORD_CHANNEL, length=4)
 def chords (p, chord):
 
-	# `chord` is injected by the harmony engine and advances every bar.
+	# `chord` is injected by the harmony engine and advances every 8 bars.
 	progress = (p.cycle % FETCH_BARS) / FETCH_BARS
 
 	# Solar proximity: when the ISS's latitude aligns with the subsolar latitude,
