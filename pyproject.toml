@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "subsequence"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A generative MIDI sequencer"
 readme = "README.md"
-authors = [{ name = "Si", email = "si@example.com" }]
+authors = [{ name = "Simon Holliday", email = "simon.holliday@protonmail.com" }]
 license = { text = "AGPL-3.0-or-later" }
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -64,3 +64,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "rtmidi.*"
 ignore_missing_imports = true
+
+[tool.setuptools_scm]
+# Enable setuptools_scm to derive version from git tags
