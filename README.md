@@ -504,7 +504,7 @@ Subsequence offers two complementary ways to store values: **Data** (state) and 
 | **Nature** | Static snapshots - no concept of time | Time-variant signals (LFOs, ramps) |
 | **Best for** | External inputs (sensors, API data), mode switches, irregular updates | Musical evolution (fades, swells, modulation) that must be smooth and continuous |
 
-If you use `composition.schedule()` to poll external data and want to ease between each new reading, use **`subsequence.easing.EasedValue`**. Create one instance per field at module level, call `.update(value)` in your scheduled task, and `.get(progress)` in your pattern — no manual `prev`/`current` bookkeeping required. See [`subsequence.easing`](#extra-utilities) for details.
+If you use `composition.schedule()` to poll external data and want to ease between each new reading, use **`subsequence.easing.EasedValue`**. Create one instance per field at module level, call `.update(value)` in your scheduled task, and `.get(progress)` in your pattern - no manual `prev`/`current` bookkeeping required. See [`subsequence.easing`](#extra-utilities) for details.
 
 ## Chord inversions and voice leading
 
@@ -1203,14 +1203,9 @@ Force the form to a named section (graph mode only). Resets the bar count within
 
 ## Examples
 
-Example compositions are being developed and will be added to the `examples/` directory soon. Each will be a self-documenting Python file demonstrating a different style and set of features.
+Because Subsequence generates MIDI rather than audio, and doesn't produce sound itself, the character of what you hear is entirely determined by your choice of instruments, synthesisers, and routing. This makes it challenging to create useful "generic" examples.
 
-To run any example:
-
-```
-python examples/filename.py
-# Press Ctrl+C to stop
-```
+I'm working on it, and will be adding an `examples/` directory soon.
 
 ## Extra utilities
 
