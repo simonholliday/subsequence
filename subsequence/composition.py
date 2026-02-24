@@ -789,6 +789,21 @@ class Composition:
 		self._pending_hotkey_actions: typing.List[_PendingHotkeyAction] = []
 		self._keystroke_listener: typing.Optional[subsequence.keystroke.KeystrokeListener] = None
 
+	@property
+	def harmonic_state (self) -> typing.Optional[subsequence.harmonic_state.HarmonicState]:
+		"""The active ``HarmonicState``, or ``None`` if ``harmony()`` has not been called."""
+		return self._harmonic_state
+
+	@property
+	def form_state (self) -> typing.Optional["FormState"]:
+		"""The active ``FormState``, or ``None`` if ``form()`` has not been called."""
+		return self._form_state
+
+	@property
+	def sequencer (self) -> subsequence.sequencer.Sequencer:
+		"""The underlying ``Sequencer`` instance."""
+		return self._sequencer
+
 	def harmony (
 		self,
 		style: typing.Union[str, subsequence.chord_graphs.ChordGraph] = "functional_major",

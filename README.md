@@ -357,11 +357,11 @@ This gives you full control by letting you subclass `Pattern` directly. It's for
 
 ### Accessing internal state
 
-The `Composition` object stores its harmonic and form state internally. After calling `harmony()` and `form()`:
+The `Composition` object stores its harmonic and form state internally. After calling `harmony()` and `form()`, three read-only properties expose them:
 
-- `composition._harmonic_state` - the `HarmonicState` object (same one patterns read from)
-- `composition._form_state` - the `FormState` object (same one `p.section` reads from)
-- `composition._sequencer` - the underlying `Sequencer` instance
+- `composition.harmonic_state` - the `HarmonicState` object (same one patterns read from)
+- `composition.form_state` - the `FormState` object (same one `p.section` reads from)
+- `composition.sequencer` - the underlying `Sequencer` instance
 
 If you need `Pattern` subclasses alongside decorated patterns, the simplest approach is to use the Direct Pattern API for the entire composition - create a `HarmonicState` and `FormState` manually, then pass them to both simple helper patterns and complex Pattern subclasses. `examples/demo.py` and `examples/demo_advanced.py` produce the same music using each API.
 
