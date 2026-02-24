@@ -5,6 +5,7 @@ import typing
 import subsequence.chords
 import subsequence.constants
 import subsequence.constants.velocity
+import subsequence.groove
 import subsequence.intervals
 import subsequence.pattern
 import subsequence.sequence_utils
@@ -562,6 +563,24 @@ class PatternBuilder:
 		"""
 
 		self._pattern.apply_swing(swing_ratio=ratio)
+
+	def groove (self, template: subsequence.groove.Groove) -> None:
+
+		"""
+		Apply a groove template to all notes in the pattern.
+
+		A groove shifts notes at grid positions by per-step timing offsets
+		and optionally scales their velocity. Use ``Groove.swing(percent)``
+		for simple swing, ``Groove.from_agr(path)`` to import an Ableton
+		groove file, or construct a ``Groove`` directly for custom feel.
+
+		Parameters:
+			template: A Groove instance defining the timing/velocity template.
+		"""
+
+		self._pattern.steps = subsequence.groove.apply_groove(
+			self._pattern.steps, template
+		)
 
 	def _place_rhythm_sequence (
 		self,

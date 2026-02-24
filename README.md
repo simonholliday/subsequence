@@ -98,7 +98,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **Context-Aware Harmony.** Chord progressions evolve via weighted transition graphs with [adjustable gravity and melodic inertia](#harmonic-gravity-and-melodic-inertia).[^markov] [Eleven built-in palettes](#built-in-chord-graphs). Automatic [voice leading](#automatic-voice-leading) keeps voices moving smoothly.
 - **Architectural Sequencing.** Define [form](#form-and-sections) as a weighted transition graph, an ordered list, or a generator. Patterns read `p.section` to adapt.
 - **Stable clock, just-in-time scheduling.** Patterns are rescheduled ahead of time - pattern logic never blocks MIDI output.
-- **Rhythmic tools.** [Euclidean and Bresenham generators](#rhythm--pattern), swing, humanize, velocity shaping[^vdc], dropout, and [per-step probability](#composition-api).
+- **Rhythmic tools.** [Euclidean and Bresenham generators](#rhythm--pattern), [groove templates](#groove), swing, humanize, velocity shaping[^vdc], dropout, and [per-step probability](#composition-api).
 - **Randomness tools.**[^stochastic] Weighted choice, no-repeat shuffle, random walk, and probability gates - controlled randomness via `subsequence.sequence_utils`.
 - **[Mini-notation.](#mini-notation)** Write `p.seq("x x [x x] x", pitch="kick")` - subdivisions, rests, sustains, and per-step probability suffixes.
 - **Deterministic seeding.** `seed=42` makes every random decision repeatable. Use `p.rng` in patterns.
@@ -1257,6 +1257,37 @@ Queue a section to play after the current one finishes (graph mode only). Overri
 
 Force the form to a named section immediately (graph mode only). Resets the bar count within the section. Effect is heard at the next pattern rebuild. Use `form_next` for gentle transitions and `form_jump` for urgent ones.
 
+## Groove
+
+A groove is a per-step timing and velocity template that gives patterns a characteristic rhythmic feel — swing, shuffle, MPC-style pocket, or anything extracted from an Ableton `.agr` file. Unlike `p.swing()` (which only delays off-beat 8th notes by a single ratio), a groove can shift and accent every grid position independently.
+
+```python
+import subsequence
+
+# Swing from a percentage (50 = straight, 67 ≈ triplet)
+groove = subsequence.Groove.swing(percent=57)
+
+# Import from an Ableton .agr file
+groove = subsequence.Groove.from_agr("Swing 16ths 57.agr")
+
+# Custom groove — per-beat timing and velocity accents
+groove = subsequence.Groove(
+    grid=0.25,                                # 16th-note grid
+    offsets=[0.0, +0.02, 0.0, -0.01],         # timing shift per slot (beats)
+    velocities=[1.0, 0.7, 0.9, 0.6],          # velocity scale per slot
+)
+
+@composition.pattern(channel=9, length=4)
+def drums (p):
+    p.hit_steps("kick", [0, 8], velocity=100)
+    p.hit_steps("hi_hat", range(16), velocity=80)
+    p.groove(groove)
+```
+
+`p.groove()` is a post-build transform — call it at the end of your builder function after all notes are placed. The offset list repeats cyclically, so a 2-slot swing pattern covers an entire bar.
+
+Groove and `p.humanize()` pair well: apply the groove first for structured feel, then humanize on top for micro-variation.
+
 ## Examples
 
 Because Subsequence generates MIDI rather than audio, and doesn't produce sound itself, the character of what you hear is entirely determined by your choice of instruments, synthesisers, and routing. This makes it challenging to create useful "generic" examples, and the ones included are works in progress. I'm working on some more...
@@ -1295,6 +1326,7 @@ This example demonstrates how Subsequence can turn real-time external data into 
 ### Rhythm & Pattern
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
+- `subsequence.groove` provides `Groove` templates (per-step timing/velocity feel). `Groove.swing(percent)` for percentage-based swing, `Groove.from_agr(path)` to import Ableton groove files, or construct directly with custom offsets. Applied via `p.groove(template)`.
 - `subsequence.swing` applies swing timing to a pattern.
 - `subsequence.sequence_utils` provides rhythm generation (Euclidean, Bresenham, van der Corput), probability gating, random walk, and scale/clamp helpers.
 - `subsequence.mini_notation` parses a compact string syntax for step-sequencer patterns.

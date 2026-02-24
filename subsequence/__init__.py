@@ -29,6 +29,8 @@ Example:
 """
 
 import subsequence.composition
+import subsequence.groove
 
 
 Composition = subsequence.composition.Composition
+Groove = subsequence.groove.Groove
