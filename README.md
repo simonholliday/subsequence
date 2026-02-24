@@ -483,6 +483,16 @@ composition.form(my_form())
 | `progress` | `float` | `bar / bars` (0.0 → ~1.0) |
 | `first_bar` | `bool` | True on the first bar of the section |
 | `last_bar` | `bool` | True on the last bar of the section |
+| `next_section` | `str?` | Name of the upcoming section, or `None` at the end |
+
+`next_section` is pre-decided when the current section begins (graph mode picks probabilistically; list mode peeks the iterator). Use it for lead-ins:
+
+```python
+if p.section and p.section.last_bar and p.section.next_section == "chorus":
+    p.hit_steps("snare", range(0, 16, 2), velocity=100)  # Snare roll into chorus
+```
+
+A performer or code can override the pre-decided next section with `composition.form_next("chorus")` — see [Hotkeys](#hotkeys).
 
 `p.bar` is always available (regardless of form) and tracks the global bar count since playback started.
 
@@ -1200,7 +1210,8 @@ composition.hotkeys()  # enable before play()
 
 # Most actions are immediate; their musical effect lands at the next
 # pattern rebuild cycle, which provides natural musical quantization.
-composition.hotkey("a", lambda: composition.form_jump("chorus"))
+composition.hotkey("a", lambda: composition.form_next("chorus"))
+composition.hotkey("A", lambda: composition.form_jump("chorus"))
 composition.hotkey("1", lambda: composition.data.update({"density": 0.3}))
 composition.hotkey("2", lambda: composition.data.update({"density": 0.9}))
 
@@ -1238,9 +1249,13 @@ Globally enable or disable the keystroke listener. Call before `play()`. When di
 
 Labels are auto-derived: named functions use `fn.__name__`; lambdas in `.py` files use the lambda body extracted from source; fallback is `<action>`.
 
+### `composition.form_next(section_name)`
+
+Queue a section to play after the current one finishes (graph mode only). Overrides the auto-decided next section. The transition happens at the natural section boundary, keeping the music intact. Call it again to change your mind — last call wins.
+
 ### `composition.form_jump(section_name)`
 
-Force the form to a named section (graph mode only). Resets the bar count within the section. Effect is heard at the next pattern rebuild.
+Force the form to a named section immediately (graph mode only). Resets the bar count within the section. Effect is heard at the next pattern rebuild. Use `form_next` for gentle transitions and `form_jump` for urgent ones.
 
 ## Examples
 

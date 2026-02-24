@@ -60,7 +60,7 @@ def test_format_status_with_form (patch_midi: None) -> None:
 	display = subsequence.display.Display(comp)
 	status = display._format_status()
 
-	assert "[intro 1/4]" in status
+	assert "[intro 1/4 \u2192 verse]" in status
 
 
 def test_format_status_full (patch_midi: None) -> None:
@@ -81,7 +81,7 @@ def test_format_status_full (patch_midi: None) -> None:
 	assert "125.00 BPM" in status
 	assert "Key: E" in status
 	assert "Bar: 1.1" in status
-	assert "[intro 1/4]" in status
+	assert "[intro 1/4 \u2192 verse]" in status
 	assert "Chord:" in status
 
 
@@ -331,7 +331,7 @@ def test_section_display_syncs_with_bar_counter (patch_midi: None) -> None:
 
 	# First render at bar 0 (displayed as "Bar: 1.1") — section should initialise.
 	status_1 = display._format_status()
-	assert "[intro 1/4]" in status_1
+	assert "[intro 1/4 \u2192 verse]" in status_1
 
 	# Simulate what happens when form advances early (lookahead fires before
 	# the bar counter increments): advance the form state, but leave
@@ -340,13 +340,13 @@ def test_section_display_syncs_with_bar_counter (patch_midi: None) -> None:
 
 	# The form state now says bar 2, but the sequencer bar hasn't changed.
 	status_2 = display._format_status()
-	assert "[intro 1/4]" in status_2, "Section should NOT update before bar counter changes"
+	assert "[intro 1/4 \u2192 verse]" in status_2, "Section should NOT update before bar counter changes"
 
 	# Now simulate the bar counter advancing.
 	comp._sequencer.current_bar = 1
 
 	status_3 = display._format_status()
-	assert "[intro 2/4]" in status_3, "Section should update when bar counter changes"
+	assert "[intro 2/4 \u2192 verse]" in status_3, "Section should update when bar counter changes"
 
 
 def test_conductor_signals_sorted (patch_midi: None) -> None:

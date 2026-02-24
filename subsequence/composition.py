@@ -139,6 +139,10 @@ class SectionInfo:
 		bar: The current bar index within this section (0-indexed).
 		bars: Total number of bars in this section.
 		index: The global index of this section in the form's timeline.
+		next_section: The name of the upcoming section (or ``None`` if the
+			form will end after this section).  This is pre-decided when
+			the current section begins, so patterns can plan lead-ins.
+			A performer or code can override it with ``composition.form_next()``.
 
 	Example:
 		```python
@@ -150,10 +154,14 @@ class SectionInfo:
 			# Only add snare and hats during the "chorus"
 			if p.section and p.section.name == "chorus":
 				p.hit_steps("snare", [4, 12])
-				
+
 				# Use .progress (0.0 to 1.0) to build a riser
 				vel = int(60 + 40 * p.section.progress)
 				p.hit_steps("hh", list(range(16)), velocity=vel)
+
+			# Plan a lead-in on the last bar before a chorus
+			if p.section and p.section.last_bar and p.section.next_section == "chorus":
+				p.hit_steps("snare", [0, 2, 4, 6, 8, 10, 12, 14], velocity=100)
 		```
 	"""
 
@@ -161,6 +169,7 @@ class SectionInfo:
 	bar: int
 	bars: int
 	index: int
+	next_section: typing.Optional[str] = None
 
 	@property
 	def progress (self) -> float:
@@ -220,6 +229,15 @@ class FormState:
 		# Terminal sections (graph mode only): sections with None transitions.
 		self._terminal_sections: typing.Set[str] = set()
 
+		# Next-section lookahead: pre-decided when entering a section so
+		# patterns can read p.section.next_section for lead-ins.
+		# Overridable at any time via queue_next().
+		self._next_section_name: typing.Optional[str] = None
+
+		# Iterator peek buffer (list/generator mode only).
+		self._peeked: typing.Optional[typing.Tuple[str, int]] = None
+		self._peek_exhausted: bool = False
+
 		if isinstance(sections, dict):
 			# Graph mode: build a WeightedGraph from the dict.
 			self._graph = subsequence.weighted_graph.WeightedGraph()
@@ -239,6 +257,7 @@ class FormState:
 				raise ValueError(f"Start section '{start_name}' not found in form definition")
 
 			self._current = (start_name, self._section_bars[start_name])
+			self._pick_next()
 
 		elif isinstance(sections, list):
 			# List mode: convert to iterator, optionally cycling.
@@ -249,6 +268,8 @@ class FormState:
 			except StopIteration:
 				self._finished = True
 
+			self._peek_iterator()
+
 		else:
 			# Generator/iterator mode: use directly.
 			self._iterator = sections
@@ -257,6 +278,76 @@ class FormState:
 				self._current = next(self._iterator)
 			except StopIteration:
 				self._finished = True
+
+			self._peek_iterator()
+
+	def _pick_next (self) -> None:
+
+		"""Pre-decide the next section so patterns can read it as a lookahead.
+
+		In graph mode, calls ``choose_next()`` on the weighted graph.
+		In iterator mode, delegates to ``_peek_iterator()``.
+		"""
+
+		if self._graph is not None:
+			assert self._current is not None
+			current_name = self._current[0]
+
+			if current_name in self._terminal_sections:
+				self._next_section_name = None
+			else:
+				self._next_section_name = self._graph.choose_next(current_name, self._rng)
+		else:
+			self._peek_iterator()
+
+	def _peek_iterator (self) -> None:
+
+		"""Peek the next element from the iterator into a one-element buffer."""
+
+		if self._peek_exhausted or self._iterator is None:
+			self._next_section_name = None
+			return
+
+		try:
+			self._peeked = next(self._iterator)
+			self._next_section_name = self._peeked[0]
+		except StopIteration:
+			self._peeked = None
+			self._next_section_name = None
+			self._peek_exhausted = True
+
+	def queue_next (self, section_name: str) -> None:
+
+		"""Queue a section to play after the current one ends.
+
+		Overrides the automatically pre-decided next section.  The queued
+		section takes effect at the natural section boundary — the current
+		section plays to completion first.
+
+		Only available in graph mode.
+
+		Args:
+			section_name: The section to queue.
+
+		Raises:
+			ValueError: If not in graph mode or the section name is unknown.
+		"""
+
+		if self._section_bars is None:
+			raise ValueError(
+				"queue_next() is only available in graph mode. "
+				"Call composition.form() with a dict to use this feature."
+			)
+
+		if section_name not in self._section_bars:
+			known = ", ".join(sorted(self._section_bars))
+			raise ValueError(
+				f"Section '{section_name}' not found in form. "
+				f"Known sections: {known}"
+			)
+
+		self._next_section_name = section_name
+		logger.info(f"Form: next \u2192 {section_name}")
 
 	def advance (self) -> bool:
 
@@ -274,33 +365,31 @@ class FormState:
 		if self._bar_in_section >= current_bars:
 
 			if self._graph is not None:
-				# Graph mode: choose next section via weighted graph.
-				assert self._current is not None
-				current_name = self._current[0]
-
-				if current_name in self._terminal_sections:
-					# Terminal section - form ends.
+				# Graph mode: consume the pre-decided (or queued) next section.
+				if self._next_section_name is None:
+					# Terminal section — form ends.
 					self._finished = True
 					self._current = None
 					return True
 
 				assert self._section_bars is not None
-				next_name = self._graph.choose_next(current_name, self._rng)
+				next_name = self._next_section_name
 				self._current = (next_name, self._section_bars[next_name])
 				self._section_index += 1
 				self._bar_in_section = 0
+				self._pick_next()
 				return True
 
 			else:
-				# Iterator mode.
-				try:
-					assert self._iterator is not None
-					self._current = next(self._iterator)
+				# Iterator mode: consume from the peek buffer.
+				if self._peeked is not None:
+					self._current = self._peeked
+					self._peeked = None
 					self._section_index += 1
 					self._bar_in_section = 0
+					self._peek_iterator()
 					return True
-
-				except StopIteration:
+				else:
 					self._finished = True
 					self._current = None
 					return True
@@ -320,7 +409,8 @@ class FormState:
 			name = name,
 			bar = self._bar_in_section,
 			bars = bars,
-			index = self._section_index
+			index = self._section_index,
+			next_section = self._next_section_name
 		)
 
 	@property
@@ -372,7 +462,8 @@ class FormState:
 		self._bar_in_section = 0
 		self._section_index += 1
 		self._finished = False
-		logger.info(f"Form: jump → {section_name}")
+		self._pick_next()
+		logger.info(f"Form: jump \u2192 {section_name}")
 
 
 class _InjectedChord:
@@ -1011,6 +1102,36 @@ class Composition:
 			raise ValueError("form_jump() requires a form to be configured via composition.form().")
 
 		self._form_state.jump_to(section_name)
+
+
+	def form_next (self, section_name: str) -> None:
+
+		"""Queue the next section — takes effect when the current section ends.
+
+		Unlike :meth:`form_jump`, this does not interrupt the current section.
+		The queued section replaces the automatically pre-decided next section
+		and takes effect at the natural section boundary.  The performer can
+		change their mind by calling ``form_next`` again before the boundary.
+
+		Delegates to :meth:`FormState.queue_next`.  Only works when the
+		composition uses graph-mode form (a dict passed to :meth:`form`).
+
+		Args:
+		    section_name: The section to queue.
+
+		Raises:
+		    ValueError: If no form is configured, or the form is not in graph
+		        mode, or *section_name* is unknown.
+
+		Example::
+
+		    composition.hotkey("c", lambda: composition.form_next("chorus"))
+		"""
+
+		if self._form_state is None:
+			raise ValueError("form_next() requires a form to be configured via composition.form().")
+
+		self._form_state.queue_next(section_name)
 
 
 	def _list_hotkeys (self) -> None:

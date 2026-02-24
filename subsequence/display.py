@@ -210,7 +210,11 @@ class Display:
 			section = self._cached_section
 
 			if section:
-				parts.append(f"[{section.name} {section.bar + 1}/{section.bars}]")
+				section_str = f"[{section.name} {section.bar + 1}/{section.bars}"
+				if section.next_section:
+					section_str += f" \u2192 {section.next_section}"
+				section_str += "]"
+				parts.append(section_str)
 			else:
 				parts.append("[form finished]")
 

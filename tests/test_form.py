@@ -570,3 +570,177 @@ def test_form_state_graph_terminal_advance_returns_changed () -> None:
 	changed = form.advance()
 	assert changed is True
 	assert form.get_section_info() is None
+
+
+# --- next_section lookahead ---
+
+
+def test_next_section_graph_mode () -> None:
+
+	"""Graph mode should pre-decide the next section from bar 0."""
+
+	form = subsequence.composition.FormState({
+		"intro": (2, [("verse", 1)]),
+		"verse": (4, [("chorus", 1)]),
+		"chorus": (4, [("verse", 1)]),
+	}, start="intro")
+
+	section = form.get_section_info()
+	assert section.name == "intro"
+	assert section.next_section == "verse"
+
+
+def test_next_section_list_mode () -> None:
+
+	"""List mode should peek the next section from the iterator."""
+
+	form = subsequence.composition.FormState([("intro", 2), ("verse", 4), ("chorus", 4)])
+
+	section = form.get_section_info()
+	assert section.name == "intro"
+	assert section.next_section == "verse"
+
+	# Advance through intro.
+	form.advance()
+	form.advance()
+
+	section = form.get_section_info()
+	assert section.name == "verse"
+	assert section.next_section == "chorus"
+
+
+def test_next_section_list_mode_last () -> None:
+
+	"""Last section in a non-looping list should have next_section=None."""
+
+	form = subsequence.composition.FormState([("intro", 1), ("verse", 1)])
+
+	# Advance into verse (the last section).
+	form.advance()
+
+	section = form.get_section_info()
+	assert section.name == "verse"
+	assert section.next_section is None
+
+
+def test_next_section_list_mode_looping () -> None:
+
+	"""Looping list should always have a next_section."""
+
+	form = subsequence.composition.FormState([("a", 1), ("b", 1)], loop=True)
+
+	section = form.get_section_info()
+	assert section.name == "a"
+	assert section.next_section == "b"
+
+	form.advance()
+
+	section = form.get_section_info()
+	assert section.name == "b"
+	assert section.next_section == "a"
+
+
+def test_next_section_terminal () -> None:
+
+	"""Terminal graph section should have next_section=None."""
+
+	form = subsequence.composition.FormState({
+		"intro": (1, [("outro", 1)]),
+		"outro": (2, None),
+	}, start="intro")
+
+	# Advance into outro (terminal).
+	form.advance()
+
+	section = form.get_section_info()
+	assert section.name == "outro"
+	assert section.next_section is None
+
+
+def test_next_section_advance_consumes () -> None:
+
+	"""advance() should consume the pre-decided next and pick a new one."""
+
+	form = subsequence.composition.FormState({
+		"a": (1, [("b", 1)]),
+		"b": (1, [("c", 1)]),
+		"c": (1, [("a", 1)]),
+	}, start="a")
+
+	assert form.get_section_info().next_section == "b"
+
+	form.advance()
+
+	section = form.get_section_info()
+	assert section.name == "b"
+	assert section.next_section == "c"
+
+
+def test_queue_next_overrides () -> None:
+
+	"""queue_next() should override the auto-decided next section."""
+
+	form = subsequence.composition.FormState({
+		"a": (2, [("b", 1)]),
+		"b": (2, [("a", 1)]),
+		"c": (2, [("a", 1)]),
+	}, start="a")
+
+	assert form.get_section_info().next_section == "b"
+
+	form.queue_next("c")
+	assert form.get_section_info().next_section == "c"
+
+	# Advance through "a" — should transition to "c" (queued), not "b" (auto).
+	form.advance()
+	form.advance()
+
+	section = form.get_section_info()
+	assert section.name == "c"
+
+
+def test_queue_next_last_call_wins () -> None:
+
+	"""Multiple queue_next() calls: the last one takes effect."""
+
+	form = subsequence.composition.FormState({
+		"a": (2, [("b", 1)]),
+		"b": (2, [("a", 1)]),
+		"c": (2, [("a", 1)]),
+	}, start="a")
+
+	form.queue_next("b")
+	form.queue_next("c")
+	assert form.get_section_info().next_section == "c"
+
+
+def test_queue_next_invalid_section () -> None:
+
+	"""queue_next() should raise ValueError for unknown section names."""
+
+	form = subsequence.composition.FormState({
+		"a": (2, [("b", 1)]),
+		"b": (2, [("a", 1)]),
+	}, start="a")
+
+	with pytest.raises(ValueError, match="not found"):
+		form.queue_next("nonexistent")
+
+
+def test_jump_to_re_picks_next () -> None:
+
+	"""jump_to() should re-pick next_section after the jump."""
+
+	form = subsequence.composition.FormState({
+		"a": (4, [("b", 1)]),
+		"b": (4, [("c", 1)]),
+		"c": (4, [("a", 1)]),
+	}, start="a")
+
+	assert form.get_section_info().next_section == "b"
+
+	form.jump_to("c")
+
+	section = form.get_section_info()
+	assert section.name == "c"
+	assert section.next_section == "a"
