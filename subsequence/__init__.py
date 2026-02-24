@@ -30,7 +30,9 @@ Example:
 
 import subsequence.composition
 import subsequence.groove
+import subsequence.intervals
 
 
 Composition = subsequence.composition.Composition
 Groove = subsequence.groove.Groove
+register_scale = subsequence.intervals.register_scale

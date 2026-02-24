@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.chords.Chord]:
 
-	"""Return the 7 diatonic triads for a key and mode.
+	"""Return the diatonic triads for a key and mode.
 
 	This is a convenience function for generating chord sequences without
 	using the chord graph engine. The returned ``Chord`` objects can be
@@ -22,13 +22,13 @@ def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.
 
 	Parameters:
 		key: Note name for the key (e.g., ``"C"``, ``"Eb"``, ``"F#"``).
-		mode: One of ``"ionian"`` (or ``"major"``), ``"dorian"``,
-			``"phrygian"``, ``"lydian"``, ``"mixolydian"``,
-			``"aeolian"`` (or ``"minor"``), ``"locrian"``,
-			``"harmonic_minor"``, ``"melodic_minor"``.
+		mode: A mode with chord qualities defined (e.g. ``"ionian"``,
+			``"dorian"``, ``"minor"``). Scales without chord qualities
+			(e.g. ``"hirajoshi"``) will raise ``ValueError`` — use
+			``p.quantize()`` for pitch snapping instead.
 
 	Returns:
-		List of 7 ``Chord`` objects, one per scale degree.
+		List of ``Chord`` objects, one per scale degree.
 
 	Example:
 		```python
@@ -45,11 +45,18 @@ def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.
 		```
 	"""
 
-	if mode not in subsequence.intervals.DIATONIC_MODE_MAP:
-		available = ", ".join(sorted(subsequence.intervals.DIATONIC_MODE_MAP.keys()))
+	if mode not in subsequence.intervals.SCALE_MODE_MAP:
+		available = ", ".join(sorted(subsequence.intervals.SCALE_MODE_MAP.keys()))
 		raise ValueError(f"Unknown mode: {mode!r}. Available: {available}")
 
-	_, qualities = subsequence.intervals.DIATONIC_MODE_MAP[mode]
+	_, qualities = subsequence.intervals.SCALE_MODE_MAP[mode]
+
+	if qualities is None:
+		raise ValueError(
+			f"Mode {mode!r} has no chord qualities defined. "
+			"Use register_scale(..., qualities=[...]) to add them, "
+			"or use p.quantize() for pitch snapping without harmony."
+		)
 	key_pc = subsequence.chords.key_name_to_pc(key)
 	scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)
 
@@ -76,8 +83,9 @@ def diatonic_chord_sequence (
 	object (quality and pitch class) and the exact MIDI note number to use as
 	that chord's root. Pass both directly to ``p.chord(chord, root=midi_root)``.
 
-	Counts larger than 7 wrap into higher octaves automatically. The sequence
-	always steps upward — reverse the list for a falling sequence.
+	Counts larger than the number of scale degrees wrap into higher octaves
+	automatically. The sequence always steps upward — reverse the list for
+	a falling sequence.
 
 	Parameters:
 		key: Note name for the key (e.g., ``"D"``, ``"Eb"``, ``"F#"``).
@@ -116,11 +124,11 @@ def diatonic_chord_sequence (
 	# Validate mode before looking up the scale key. diatonic_chords() also
 	# validates internally, but diatonic_chord_sequence() is called directly
 	# from user code so we give a clear error here without going deeper.
-	if mode not in subsequence.intervals.DIATONIC_MODE_MAP:
-		available = ", ".join(sorted(subsequence.intervals.DIATONIC_MODE_MAP.keys()))
+	if mode not in subsequence.intervals.SCALE_MODE_MAP:
+		available = ", ".join(sorted(subsequence.intervals.SCALE_MODE_MAP.keys()))
 		raise ValueError(f"Unknown mode: {mode!r}. Available: {available}")
 
-	scale_key, _ = subsequence.intervals.DIATONIC_MODE_MAP[mode]
+	scale_key, _ = subsequence.intervals.SCALE_MODE_MAP[mode]
 	scale_ivs = subsequence.intervals.get_intervals(scale_key)
 
 	key_pc = subsequence.chords.key_name_to_pc(key)
@@ -143,9 +151,11 @@ def diatonic_chord_sequence (
 	all_chords = diatonic_chords(key, mode=mode)
 	result: typing.List[typing.Tuple[subsequence.chords.Chord, int]] = []
 
+	num_degrees = len(scale_ivs)
+
 	for i in range(count):
-		degree = (start_degree + i) % 7
-		octave_bump = (start_degree + i) // 7
+		degree = (start_degree + i) % num_degrees
+		octave_bump = (start_degree + i) // num_degrees
 		midi_root = (
 			root_midi
 			+ (scale_ivs[degree] - scale_ivs[start_degree])

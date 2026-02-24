@@ -61,11 +61,13 @@ def test_diatonic_chords_a_minor () -> None:
 
 def test_diatonic_chords_all_modes () -> None:
 
-	"""Every mode in the DIATONIC_MODE_MAP should return 7 chords without error."""
+	"""Every mode with chord qualities should return chords without error."""
 
-	for mode_name in subsequence.intervals.DIATONIC_MODE_MAP:
+	for mode_name, (_, qualities) in subsequence.intervals.SCALE_MODE_MAP.items():
+		if qualities is None:
+			continue
 		chords = subsequence.harmony.diatonic_chords("C", mode=mode_name)
-		assert len(chords) == 7, f"{mode_name} did not return 7 chords"
+		assert len(chords) == len(qualities), f"{mode_name} chord count mismatch"
 
 
 def test_diatonic_chords_invalid_mode () -> None:

@@ -109,7 +109,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **Two API levels.** [Composition API](#composition-api) for most musicians; [Direct Pattern API](#direct-pattern-api) for power users who need persistent state or custom scheduling.
 - **Pattern transforms.** Legato, staccato, reverse, double/half-time, shift, transpose, invert, humanize, `p.every()`, and `composition.layer()`.
 - **Expression.** CC messages, CC ramps, pitch bend, program changes, and SysEx - all from within patterns.
-- **Scale quantization.** `p.quantize("G", "dorian")` snaps all notes to a named scale.
+- **Scale quantization.** `p.quantize("G", "dorian")` snaps all notes to a named scale. Built-in western and non-western scales (Hirajōshi, In-Sen, Iwato, Yo, Egyptian, pentatonics), plus `register_scale()` for your own.
 - **Chord-degree helpers.** `chord.root_note()` and `chord.bass_note()` for register-aware root extraction.
 - **Arpeggio directions.** Ascending, descending, ping-pong, and shuffled via `direction=`.
 - **MIDI CC input mapping.** Map hardware knobs to `composition.data` automatically via `cc_map()`.
@@ -218,7 +218,7 @@ composition.schedule(fetch_data, cycle_beats=32, wait_for_initial=True)
 The Direct Pattern API gives you full control over the sequencer, harmony, and scheduling. Patterns are classes instead of decorated functions - you manage the event loop yourself.
 
 <details>
-<summary>Full example — same music as the Composition API demo above (click to expand)</summary>
+<summary>Full example - same music as the Composition API demo above (click to expand)</summary>
 
 ```python
 import asyncio
@@ -237,7 +237,7 @@ SYNTH_CHANNEL = 0
 
 
 class DrumPattern (subsequence.pattern.Pattern):
-    """Kick, snare, and hi-hats — built using the PatternBuilder bridge."""
+    """Kick, snare, and hi-hats - built using the PatternBuilder bridge."""
 
     def __init__ (self) -> None:
         super().__init__(channel=DRUMS_CHANNEL, length=4)
@@ -492,7 +492,7 @@ if p.section and p.section.last_bar and p.section.next_section == "chorus":
     p.hit_steps("snare", range(0, 16, 2), velocity=100)  # Snare roll into chorus
 ```
 
-A performer or code can override the pre-decided next section with `composition.form_next("chorus")` — see [Hotkeys](#hotkeys).
+A performer or code can override the pre-decided next section with `composition.form_next("chorus")` - see [Hotkeys](#hotkeys).
 
 `p.bar` is always available (regardless of form) and tracks the global bar count since playback started.
 
@@ -1118,7 +1118,17 @@ def walk (p):
     p.quantize("G", "dorian")                  # snap everything to G Dorian
 ```
 
-`quantize(key, mode)` accepts any key name (`"C"`, `"F#"`, `"Bb"`, etc.) and any mode in `DIATONIC_MODE_MAP` (`"ionian"`, `"dorian"`, `"minor"`, `"harmonic_minor"`, etc.). Equidistant notes prefer the upward direction.
+`quantize(key, mode)` accepts any key name (`"C"`, `"F#"`, `"Bb"`, etc.) and any registered scale. Equidistant notes prefer the upward direction.
+
+Built-in modes include western diatonic (`"ionian"`, `"dorian"`, `"minor"`, `"harmonic_minor"`, etc.) and non-western scales (`"hirajoshi"`, `"in_sen"`, `"iwato"`, `"yo"`, `"egyptian"`, `"major_pentatonic"`, `"minor_pentatonic"`).
+
+Register your own scales at any time:
+
+```python
+subsequence.register_scale("raga_bhairav", [0, 1, 4, 5, 7, 8, 11])
+# then in patterns:
+p.quantize("C", "raga_bhairav")
+```
 
 ### Chord root and bass helpers
 
@@ -1251,7 +1261,7 @@ Labels are auto-derived: named functions use `fn.__name__`; lambdas in `.py` fil
 
 ### `composition.form_next(section_name)`
 
-Queue a section to play after the current one finishes (graph mode only). Overrides the auto-decided next section. The transition happens at the natural section boundary, keeping the music intact. Call it again to change your mind — last call wins.
+Queue a section to play after the current one finishes (graph mode only). Overrides the auto-decided next section. The transition happens at the natural section boundary, keeping the music intact. Call it again to change your mind - last call wins.
 
 ### `composition.form_jump(section_name)`
 
@@ -1259,7 +1269,7 @@ Force the form to a named section immediately (graph mode only). Resets the bar 
 
 ## Groove
 
-A groove is a per-step timing and velocity template that gives patterns a characteristic rhythmic feel — swing, shuffle, MPC-style pocket, or anything extracted from an Ableton `.agr` file. Unlike `p.swing()` (which only delays off-beat 8th notes by a single ratio), a groove can shift and accent every grid position independently.
+A groove is a per-step timing and velocity template that gives patterns a characteristic rhythmic feel - swing, shuffle, MPC-style pocket, or anything extracted from an Ableton `.agr` file. Unlike `p.swing()` (which only delays off-beat 8th notes by a single ratio), a groove can shift and accent every grid position independently.
 
 ```python
 import subsequence
@@ -1270,7 +1280,7 @@ groove = subsequence.Groove.swing(percent=57)
 # Import from an Ableton .agr file
 groove = subsequence.Groove.from_agr("Swing 16ths 57.agr")
 
-# Custom groove — per-beat timing and velocity accents
+# Custom groove - per-beat timing and velocity accents
 groove = subsequence.Groove(
     grid=0.25,                                # 16th-note grid
     offsets=[0.0, +0.02, 0.0, -0.01],         # timing shift per slot (beats)
@@ -1284,7 +1294,7 @@ def drums (p):
     p.groove(groove)
 ```
 
-`p.groove()` is a post-build transform — call it at the end of your builder function after all notes are placed. The offset list repeats cyclically, so a 2-slot swing pattern covers an entire bar.
+`p.groove()` is a post-build transform - call it at the end of your builder function after all notes are placed. The offset list repeats cyclically, so a 2-slot swing pattern covers an entire bar.
 
 Groove and `p.humanize()` pair well: apply the groove first for structured feel, then humanize on top for micro-variation.
 
@@ -1300,7 +1310,7 @@ python examples/demo.py
 
 ### Demo (`examples/demo.py` and `examples/demo_advanced.py`)
 
-These two files produce the same music — drums, bass, and an ascending arpeggio over evolving aeolian minor harmony in E. `demo.py` uses the Composition API (decorated functions); `demo_advanced.py` uses the Direct Pattern API (Pattern subclasses with async lifecycle). Compare them side by side to see how the two APIs relate.
+These two files produce the same music - drums, bass, and an ascending arpeggio over evolving aeolian minor harmony in E. `demo.py` uses the Composition API (decorated functions); `demo_advanced.py` uses the Direct Pattern API (Pattern subclasses with async lifecycle). Compare them side by side to see how the two APIs relate.
 
 ### Arpeggiator (`examples/arpeggiator.py`)
 
@@ -1333,7 +1343,7 @@ This example demonstrates how Subsequence can turn real-time external data into 
 - `subsequence.easing` provides easing/transition curve functions used by `conductor.line()`, `target_bpm()`, `cc_ramp()`, and `pitch_bend_ramp()`. Pass `shape=` to any of these to control how a value moves over time. Built-in shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out"` (Hermite smoothstep), `"exponential"` (cubic, good for filter sweeps), `"logarithmic"` (cubic, good for volume fades), `"s_curve"` (Perlin smootherstep - smoother than `"ease_in_out"` for long transitions). Callable shapes are also accepted for custom curves. Also provides **`EasedValue`** - a lightweight stateful helper that smoothly interpolates between discrete data updates (e.g. API poll results, sensor readings) so patterns hear a continuous eased value rather than a hard jump on each fetch cycle. Create one instance per field at module level, call `.update(value)` in your scheduled task, and call `.get(progress)` in your pattern.
 
 ### Harmony & Scales
-- `subsequence.intervals` contains interval and scale definitions (`INTERVAL_DEFINITIONS`) for harmonic work, plus diatonic chord quality constants for all 9 modes and scales (`IONIAN_QUALITIES`, `DORIAN_QUALITIES`, `PHRYGIAN_QUALITIES`, `LYDIAN_QUALITIES`, `MIXOLYDIAN_QUALITIES`, `AEOLIAN_QUALITIES`, `LOCRIAN_QUALITIES`, `HARMONIC_MINOR_QUALITIES`, `MELODIC_MINOR_QUALITIES`) and a `DIATONIC_MODE_MAP` lookup table. The `get_intervals(name)` helper retrieves any named interval list. `scale_pitch_classes(key_pc, mode)` returns the pitch classes for any key and mode; `quantize_pitch(pitch, scale_pcs)` snaps a MIDI note to the nearest scale degree.
+- `subsequence.intervals` contains interval and scale definitions (`INTERVAL_DEFINITIONS`) for harmonic work, including non-western scales (Hirajōshi, In-Sen, Iwato, Yo, Egyptian) and pentatonics. `SCALE_MODE_MAP` (aliased as `DIATONIC_MODE_MAP`) maps mode/scale names to interval sets and optional chord qualities. `register_scale(name, intervals, qualities=None)` adds custom scales at runtime. `scale_pitch_classes(key_pc, mode)` returns the pitch classes for any key and mode; `quantize_pitch(pitch, scale_pcs)` snaps a MIDI note to the nearest scale degree.
 - `subsequence.harmony` provides `diatonic_chords(key, mode)` and `diatonic_chord_sequence(key, root_midi, count, mode)` for working with diatonic chord progressions without the chord graph engine, plus `ChordPattern` for a repeating chord driven by harmonic state.
 - `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, `"phrygian_minor"`, `"lydian_major"`, `"dorian_minor"`, `"suspended"`, `"chromatic_mediant"`, `"mixolydian"`, `"whole_tone"`, `"diminished"`.
 - `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
