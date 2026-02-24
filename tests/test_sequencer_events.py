@@ -1,3 +1,5 @@
+import unittest.mock
+
 import pytest
 
 import subsequence.pattern
@@ -201,3 +203,73 @@ async def test_schedule_pattern_includes_cc_events (patch_midi: None) -> None:
 	assert pb.pulse == 24
 	assert pb.channel == 3
 	assert pb.value == 4000
+
+
+@pytest.mark.asyncio
+async def test_schedule_pattern_includes_osc_events (patch_midi: None) -> None:
+
+	"""OSC events on a pattern should appear in the sequencer event queue as message_type='osc'."""
+
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	pattern.osc_events.append(
+		subsequence.pattern.OscEvent(pulse=0, address="/mixer/fader/1", args=(0.8,))
+	)
+	pattern.osc_events.append(
+		subsequence.pattern.OscEvent(pulse=24, address="/fx/reverb/wet", args=(0.4,))
+	)
+
+	await sequencer.schedule_pattern(pattern, start_pulse=0)
+
+	osc_events = [e for e in sequencer.event_queue if e.message_type == 'osc']
+
+	assert len(osc_events) == 2
+
+	e1 = next(e for e in osc_events if e.pulse == 0)
+	assert e1.data == ("/mixer/fader/1", (0.8,))
+
+	e2 = next(e for e in osc_events if e.pulse == 24)
+	assert e2.data == ("/fx/reverb/wet", (0.4,))
+
+
+@pytest.mark.asyncio
+async def test_osc_event_dispatched_to_server (patch_midi: None) -> None:
+
+	"""When osc_server is set, processing an OSC event should call osc_server.send()."""
+
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+
+	mock_osc_server = unittest.mock.MagicMock()
+	sequencer.osc_server = mock_osc_server
+
+	# Push an OSC event directly into the queue
+	import heapq
+	heapq.heappush(
+		sequencer.event_queue,
+		MidiEvent(pulse=0, message_type='osc', channel=0, data=("/fader/1", (0.75,)))
+	)
+
+	await sequencer._process_pulse(0)
+
+	mock_osc_server.send.assert_called_once_with("/fader/1", 0.75)
+
+
+@pytest.mark.asyncio
+async def test_osc_event_noop_without_server (patch_midi: None) -> None:
+
+	"""When osc_server is None, processing an OSC event should not raise."""
+
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+	assert sequencer.osc_server is None
+
+	import heapq
+	heapq.heappush(
+		sequencer.event_queue,
+		MidiEvent(pulse=0, message_type='osc', channel=0, data=("/fader/1", (0.5,)))
+	)
+
+	# Should complete without error
+	await sequencer._process_pulse(0)
+
+	assert len(sequencer.event_queue) == 0

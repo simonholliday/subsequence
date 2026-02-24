@@ -1988,6 +1988,7 @@ class Composition:
 
 		if self._osc_server is not None:
 			await self._osc_server.start()
+			self._sequencer.osc_server = self._osc_server
 
 			def _send_osc_status (bar: int) -> None:
 				if self._osc_server:
@@ -2023,6 +2024,7 @@ class Composition:
 
 		if self._osc_server is not None:
 			await self._osc_server.stop()
+			self._sequencer.osc_server = None
 
 		if self._display is not None:
 			self._display.stop()
@@ -2082,6 +2084,7 @@ class Composition:
 
 				self.steps = {}
 				self.cc_events = []
+				self.osc_events = []
 				current_cycle = self._cycle_count
 				self._cycle_count += 1
 

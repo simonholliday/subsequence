@@ -108,7 +108,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **MIDI recording.** `record=True` captures everything to a standard MIDI file, saved automatically on stop.
 - **Two API levels.** [Composition API](#composition-api) for most musicians; [Direct Pattern API](#direct-pattern-api) for power users who need persistent state or custom scheduling.
 - **Pattern transforms.** Legato, staccato, reverse, double/half-time, shift, transpose, invert, humanize, `p.every()`, and `composition.layer()`.
-- **Expression.** CC messages, CC ramps, pitch bend, program changes, and SysEx - all from within patterns.
+- **Expression.** CC messages, CC ramps, pitch bend, program changes, SysEx, and OSC output (`p.osc()`, `p.osc_ramp()`) — all from within patterns.
 - **Scale quantization.** `p.quantize("G", "dorian")` snaps all notes to a named scale. Built-in western and non-western scales (Hirajōshi, In-Sen, Iwato, Yo, Egyptian, pentatonics), plus `register_scale()` for your own.
 - **Chord-degree helpers.** `chord.root_note()` and `chord.bass_note()` for register-aware root extraction.
 - **Arpeggio directions.** Ascending, descending, ping-pong, and shuffled via `direction=`.
@@ -1192,6 +1192,35 @@ Subsequence automatically broadcasts its state via OSC (default port 9001) at th
 | `/chord` | `str` | Current chord name (e.g. `"Em7"`) |
 | `/section` | `str` | Current section name (if form is configured) |
 
+### Sending from patterns
+
+Use `p.osc()` and `p.osc_ramp()` to send arbitrary OSC messages at precise beat positions — useful for automating mixer faders, toggling effects, or controlling any OSC-capable device on the network.
+
+```python
+composition.osc(send_port=9001, send_host="192.168.1.100")  # remote mixer on LAN
+
+@composition.pattern(channel=0, length=4)
+def mixer_automation(p, chord):
+    # Ramp a fader from 0.0 to 1.0 over the full pattern
+    p.osc_ramp("/mixer/fader/1", start=0.0, end=1.0)
+
+    # Ease in a reverb send over the second half
+    p.osc_ramp("/fx/reverb/wet", 0.0, 0.8, beat_start=2, beat_end=4, shape="ease_in")
+
+    # Trigger an effect toggle at beat 2
+    p.osc("/fx/chorus/enable", 1, beat=2.0)
+
+    # Address-only message (no arguments) as a trigger
+    p.osc("/scene/next", beat=3.0)
+```
+
+| Method | Parameters | Notes |
+|--------|-----------|-------|
+| `p.osc(address, *args, beat=0.0)` | address: OSC path; args: float/int/str; beat: position | Single message at a beat |
+| `p.osc_ramp(address, start, end, beat_start=0, beat_end=None, resolution=4, shape="linear")` | start/end: arbitrary floats | Smooth ramp; resolution=4 ≈ 6 msgs/beat at 120 BPM |
+
+The same easing shapes available for `cc_ramp` (e.g. `"ease_in"`, `"ease_out"`, `"exponential"`) work with `osc_ramp`.
+
 ### Direct Pattern API
 
 ```python
@@ -1361,7 +1390,7 @@ This example demonstrates how Subsequence can turn real-time external data into 
 ### Infrastructure
 - `subsequence.composition` provides the `Composition` class and internal scheduling helpers.
 - `subsequence.event_emitter` supports sync/async events used by the sequencer.
-- `subsequence.osc` provides the OSC server/client for bi-directional communication.
+- `subsequence.osc` provides the OSC server/client for bi-directional communication. Receiving: `/bpm`, `/mute`, `/unmute`, `/data`. Status broadcasting: `/bar`, `/bpm`, `/chord`, `/section`. Pattern output: `p.osc()`, `p.osc_ramp()`.
 - `subsequence.live_server` provides the TCP eval server for live coding. Started internally by `composition.live()`.
 - `subsequence.live_client` provides the interactive REPL client. Run with `python -m subsequence.live_client`.
 

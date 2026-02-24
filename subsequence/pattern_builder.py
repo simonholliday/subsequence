@@ -1018,6 +1018,116 @@ class PatternBuilder:
 		)
 
 
+	def osc (self, address: str, *args: typing.Any, beat: float = 0.0) -> None:
+
+		"""
+		Send an OSC message at a beat position.
+
+		Requires ``composition.osc()`` to be called before ``composition.play()``.
+		If no OSC server is configured the event is silently dropped.
+
+		Parameters:
+			address: OSC address path (e.g. ``"/mixer/fader/1"``).
+			*args: OSC arguments — float, int, str, or bytes.
+			beat: Beat position within the pattern (default 0.0).
+
+		Example:
+			```python
+			# Enable a chorus effect at beat 2
+			p.osc("/fx/chorus/enable", 1, beat=2.0)
+
+			# Set a mixer pan value immediately
+			p.osc("/mixer/pan/1", -0.5)
+			```
+		"""
+
+		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		self._pattern.osc_events.append(
+			subsequence.pattern.OscEvent(
+				pulse = pulse,
+				address = address,
+				args = args
+			)
+		)
+
+
+	def osc_ramp (
+		self,
+		address: str,
+		start: float,
+		end: float,
+		beat_start: float = 0.0,
+		beat_end: typing.Optional[float] = None,
+		resolution: int = 4,
+		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear"
+	) -> None:
+
+		"""
+		Interpolate an OSC float value over a beat range.
+
+		Generates one OSC message per ``resolution`` pulses, sending the
+		interpolated value to ``address`` at each step. Useful for smoothly
+		automating mixer faders, effect parameters, and other continuous controls
+		on a remote machine.
+
+		Requires ``composition.osc()`` to be called before ``composition.play()``.
+		If no OSC server is configured the events are silently dropped.
+
+		Parameters:
+			address: OSC address path (e.g. ``"/mixer/fader/1"``).
+			start: Starting float value.
+			end: Ending float value.
+			beat_start: Beat position to begin the ramp (default 0.0).
+			beat_end: Beat position to end the ramp. Defaults to pattern length.
+			resolution: Pulses between OSC messages (default 4 — approximately
+				6 messages per beat at 120 BPM, which is smooth for fader
+				automation while keeping UDP traffic light). Use ``resolution=1``
+				for pulse-level precision.
+			shape: Easing curve — a name string (e.g. ``"ease_in"``) or any
+			       callable that maps [0, 1] → [0, 1]. Defaults to ``"linear"``.
+			       See :mod:`subsequence.easing` for available shapes.
+
+		Example:
+			```python
+			# Fade a mixer fader up over 4 beats
+			p.osc_ramp("/mixer/fader/1", start=0.0, end=1.0)
+
+			# Ease in a reverb send over the last 2 beats
+			p.osc_ramp("/fx/reverb/wet", 0.0, 0.8, beat_start=2, beat_end=4, shape="ease_in")
+			```
+		"""
+
+		if beat_end is None:
+			beat_end = self._pattern.length
+
+		pulse_start = int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE)
+		pulse_end = int(beat_end * subsequence.constants.MIDI_QUARTER_NOTE)
+		span = pulse_end - pulse_start
+
+		if span <= 0:
+			return
+
+		easing_fn = subsequence.easing.get_easing(shape)
+		pulse = pulse_start
+
+		while pulse <= pulse_end:
+
+			t = (pulse - pulse_start) / span
+			eased_t = easing_fn(t)
+			interpolated = start + (end - start) * eased_t
+
+			self._pattern.osc_events.append(
+				subsequence.pattern.OscEvent(
+					pulse = pulse,
+					address = address,
+					args = (interpolated,)
+				)
+			)
+
+			pulse += resolution
+
+
 	def legato (self, ratio: float = 1.0) -> None:
 
 		"""

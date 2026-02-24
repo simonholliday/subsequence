@@ -1886,3 +1886,140 @@ def test_cc_events_cleared_on_rebuild () -> None:
 	pattern.cc_events = []
 
 	assert len(pattern.cc_events) == 0
+
+
+# ── OSC output ────────────────────────────────────────────────────────────────
+
+
+def test_osc_adds_event () -> None:
+
+	"""p.osc() should create an OscEvent at the correct pulse."""
+
+	_, builder = _make_builder()
+
+	builder.osc("/mixer/fader/1", 0.5, beat=1.0)
+
+	assert len(builder._pattern.osc_events) == 1
+
+	event = builder._pattern.osc_events[0]
+	assert event.address == "/mixer/fader/1"
+	assert event.args == (0.5,)
+	assert event.pulse == 24  # 1 beat * 24 ppq
+
+
+def test_osc_no_args () -> None:
+
+	"""p.osc() with no extra arguments should produce an event with empty args."""
+
+	_, builder = _make_builder()
+
+	builder.osc("/scene/next", beat=0.0)
+
+	assert len(builder._pattern.osc_events) == 1
+
+	event = builder._pattern.osc_events[0]
+	assert event.address == "/scene/next"
+	assert event.args == ()
+	assert event.pulse == 0
+
+
+def test_osc_multiple_args () -> None:
+
+	"""p.osc() should accept and preserve multiple arguments."""
+
+	_, builder = _make_builder()
+
+	builder.osc("/matrix/cell", 3, 7, 0.8, beat=2.0)
+
+	event = builder._pattern.osc_events[0]
+	assert event.args == (3, 7, 0.8)
+
+
+def test_osc_ramp_generates_interpolated_events () -> None:
+
+	"""osc_ramp should produce linearly interpolated float events."""
+
+	_, builder = _make_builder()
+
+	builder.osc_ramp("/filter/cutoff", start=0.0, end=1.0, beat_start=0, beat_end=1, resolution=6)
+
+	events = builder._pattern.osc_events
+	# From pulse 0 to pulse 24 in steps of 6 → pulses 0, 6, 12, 18, 24
+	assert len(events) == 5
+
+	for event in events:
+		assert event.address == "/filter/cutoff"
+		assert len(event.args) == 1
+
+	# First and last values
+	assert events[0].args[0] == pytest.approx(0.0)
+	assert events[-1].args[0] == pytest.approx(1.0)
+
+	# Values should be monotonically increasing
+	values = [e.args[0] for e in events]
+	assert values == sorted(values)
+
+
+def test_osc_ramp_resolution () -> None:
+
+	"""Higher resolution value should produce fewer events."""
+
+	_, builder_fine = _make_builder()
+	_, builder_coarse = _make_builder()
+
+	builder_fine.osc_ramp("/fader", 0.0, 1.0, beat_start=0, beat_end=1, resolution=1)
+	builder_coarse.osc_ramp("/fader", 0.0, 1.0, beat_start=0, beat_end=1, resolution=6)
+
+	assert len(builder_fine._pattern.osc_events) > len(builder_coarse._pattern.osc_events)
+
+
+def test_osc_ramp_defaults_beat_end_to_pattern_length () -> None:
+
+	"""osc_ramp with no beat_end should ramp to the full pattern length."""
+
+	_, builder = _make_builder(length=4)
+
+	builder.osc_ramp("/fader", 0.0, 1.0, beat_start=0, resolution=96)
+
+	events = builder._pattern.osc_events
+	# 4 beats = 96 pulses; resolution=96 → events at pulse 0 and 96
+	assert len(events) == 2
+	assert events[0].pulse == 0
+	assert events[-1].pulse == 96
+
+
+def test_osc_ramp_with_easing () -> None:
+
+	"""osc_ramp with shape='ease_in' should produce non-linear values."""
+
+	_, builder = _make_builder(length=4)
+
+	# 4 beats = 96 pulses; resolution=48 → 3 events at pulses 0, 48, 96
+	builder.osc_ramp("/filter", 0.0, 1.0, beat_start=0, beat_end=4, resolution=48, shape="ease_in")
+
+	events = sorted(builder._pattern.osc_events, key=lambda e: e.pulse)
+	assert len(events) == 3
+
+	# t=0.5 → ease_in(0.5) = 0.25 (quadratic), so midpoint ≈ 0.25 not 0.5
+	mid_val = events[1].args[0]
+	assert mid_val == pytest.approx(0.25, abs=0.01)
+
+
+def test_osc_events_cleared_on_rebuild () -> None:
+
+	"""Pattern.osc_events should be reset to [] each cycle."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	pattern.osc_events.append(
+		subsequence.pattern.OscEvent(pulse=0, address="/fader", args=(0.5,))
+	)
+
+	assert len(pattern.osc_events) == 1
+
+	# Simulate what _rebuild does
+	pattern.steps = {}
+	pattern.cc_events = []
+	pattern.osc_events = []
+
+	assert len(pattern.osc_events) == 0

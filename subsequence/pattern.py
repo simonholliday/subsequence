@@ -34,6 +34,18 @@ class CcEvent:
 
 
 @dataclasses.dataclass
+class OscEvent:
+
+	"""
+	An OSC message scheduled at a pulse position within a pattern.
+	"""
+
+	pulse: int
+	address: str
+	args: typing.Tuple[typing.Any, ...] = ()
+
+
+@dataclasses.dataclass
 class Step:
 
 	"""
@@ -61,6 +73,7 @@ class Pattern:
 
 		self.steps: typing.Dict[int, Step] = {}
 		self.cc_events: typing.List[CcEvent] = []
+		self.osc_events: typing.List[OscEvent] = []
 
 
 	def add_note (self, position: int, pitch: int, velocity: int, duration: int) -> None:

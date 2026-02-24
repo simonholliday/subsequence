@@ -55,7 +55,7 @@ class MidiEvent:
 	velocity: int = dataclasses.field(compare=False, default=0)
 	control: int = dataclasses.field(compare=False, default=0)
 	value: int = dataclasses.field(compare=False, default=0)
-	data: typing.Optional[bytes] = dataclasses.field(compare=False, default=None)
+	data: typing.Any = dataclasses.field(compare=False, default=None)
 
 
 @dataclasses.dataclass
@@ -199,6 +199,9 @@ class Sequencer:
 
 		self.midi_out = None
 		self._init_midi_output()
+
+		# OSC server reference — set by Composition after osc_server.start()
+		self.osc_server: typing.Optional[typing.Any] = None
 
 
 		# Callbacks
@@ -510,6 +513,20 @@ class Sequencer:
 				)
 
 				heapq.heappush(self.event_queue, midi_event)
+
+			# OSC events
+			for osc_event in getattr(pattern, 'osc_events', []):
+
+				abs_pulse = start_pulse + osc_event.pulse
+
+				osc_midi_event = MidiEvent(
+					pulse = abs_pulse,
+					message_type = 'osc',
+					channel = 0,
+					data = (osc_event.address, osc_event.args)
+				)
+
+				heapq.heappush(self.event_queue, osc_midi_event)
 
 		logger.debug(f"Scheduled pattern at {start_pulse}, queue size: {len(self.event_queue)}")
 
@@ -986,7 +1003,7 @@ class Sequencer:
 				# Send events at or before the current pulse (late events are sent immediately).
 				self._send_midi(event)
 
-				if self.recording:
+				if self.recording and event.message_type != 'osc':
 
 					if event.message_type in ('note_on', 'note_off'):
 						self._record_event(event.pulse, mido.Message(event.message_type, channel=event.channel, note=event.note, velocity=event.velocity))
@@ -1063,6 +1080,12 @@ class Sequencer:
 						'sysex',
 						data = event.data if event.data is not None else b''
 					)
+
+				elif event.message_type == 'osc':
+					if self.osc_server is not None:
+						address, args = event.data
+						self.osc_server.send(address, *args)
+					return
 
 				else:
 					return
