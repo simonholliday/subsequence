@@ -1244,7 +1244,7 @@ Force the form to a named section (graph mode only). Resets the bar count within
 
 ## Examples
 
-Because Subsequence generates MIDI rather than audio, and doesn't produce sound itself, the character of what you hear is entirely determined by your choice of instruments, synthesisers, and routing. This makes it challenging to create useful "generic" examples, and the ones included are works in progress. I'm working on it!
+Because Subsequence generates MIDI rather than audio, and doesn't produce sound itself, the character of what you hear is entirely determined by your choice of instruments, synthesisers, and routing. This makes it challenging to create useful "generic" examples, and the ones included are works in progress. I'm working on some more...
 
 The `examples/` directory contains self-documenting compositions, each demonstrating a different style and set of features. To run any example:
 
