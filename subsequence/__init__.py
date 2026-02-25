@@ -22,6 +22,12 @@ Features:
 - **Form and sections.** Define song structure as a weighted graph, an
   ordered list, or a Python generator. Patterns read ``p.section`` to
   adapt their behaviour per section.
+- **Frozen progressions.** ``composition.freeze(bars)`` captures a
+  chord sequence from the live engine into a ``Progression`` object.
+  ``composition.section_chords(name, progression)`` binds it to a form
+  section so it replays identically on every re-entry. Unbound sections
+  continue generating live. Successive freeze calls advance the engine
+  so sections feel harmonically connected.
 - **Rhythmic tools.** Euclidean and Bresenham rhythm generators, groove
   templates (``Groove.swing()``, ``Groove.from_agr()``), swing, humanize,
   velocity shaping, dropout, and per-step probability.

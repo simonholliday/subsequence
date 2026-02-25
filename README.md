@@ -77,6 +77,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - [The Conductor](#the-conductor)
 - [Chord inversions and voice leading](#chord-inversions-and-voice-leading)
 - [Harmony and chord graphs](#harmony-and-chord-graphs)
+- [Frozen progressions](#frozen-progressions)
 - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
 - [Terminal display](#terminal-display)
 - [MIDI recording and rendering](#midi-recording-and-rendering)
@@ -96,7 +97,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 
 - **Patterns as functions.** Each pattern is a Python function rebuilt fresh each cycle - it can read the current chord, section, cycle count, or external data to decide what to play.
 - **Context-Aware Harmony.** Chord progressions evolve via weighted transition graphs with [adjustable gravity and melodic inertia](#harmonic-gravity-and-melodic-inertia).[^markov] [Eleven built-in palettes](#built-in-chord-graphs). Automatic [voice leading](#automatic-voice-leading) keeps voices moving smoothly.
-- **Architectural Sequencing.** Define [form](#form-and-sections) as a weighted transition graph, an ordered list, or a generator. Patterns read `p.section` to adapt.
+- **Architectural Sequencing.** Define [form](#form-and-sections) as a weighted transition graph, an ordered list, or a generator. Patterns read `p.section` to adapt. [Freeze progressions](#frozen-progressions) to replay the same chords every time a section recurs while letting other sections evolve freely.
 - **Stable clock, just-in-time scheduling.** Patterns are rescheduled ahead of time - pattern logic never blocks MIDI output.
 - **Rhythmic tools.** [Euclidean and Bresenham generators](#rhythm--pattern), [groove templates](#groove), swing, humanize, velocity shaping[^vdc], dropout, and [per-step probability](#composition-api).
 - **Randomness tools.**[^stochastic] Weighted choice, no-repeat shuffle, random walk, and probability gates - controlled randomness via `subsequence.sequence_utils`.
@@ -496,6 +497,8 @@ A performer or code can override the pre-decided next section with `composition.
 
 `p.bar` is always available (regardless of form) and tracks the global bar count since playback started.
 
+To replay the same chords every time a section recurs, see [Frozen progressions](#frozen-progressions).
+
 ## The Conductor
 
 Patterns often feel static when they just loop. **The Conductor** provides global signals (LFOs and automation lines) that patterns can read to modulate parameters over time.
@@ -785,6 +788,53 @@ sequence = list(reversed(diatonic_chord_sequence("A", root_midi=45, count=7, mod
 ```
 
 The `root_midi` must be a note that falls on a scale degree of the chosen key and mode. A `ValueError` is raised otherwise.
+
+## Frozen progressions
+
+The harmony engine generates chords live via the weighted graph — great for evolving, exploratory compositions. But sometimes you want **structural repetition**: the verse should always feel like the verse, with the same harmonic journey each time it plays.
+
+`composition.freeze(bars)` captures the current engine output into a `Progression` object. `composition.section_chords(section_name, progression)` then binds it to a form section. Every time that section plays, the harmonic clock replays the frozen chords instead of calling the live engine. Sections without a binding keep generating freely.
+
+Successive `freeze()` calls continue the engine's journey — so verse, chorus, and bridge progressions feel like parts of a whole rather than isolated islands.
+
+```python
+composition = subsequence.Composition(bpm=120, key="C")
+composition.harmony(style="functional_major", cycle_beats=4)
+
+# Generate progressions before playback. Each call advances the engine,
+# so the sections feel harmonically connected.
+verse  = composition.freeze(8)   # 8 chords for the verse
+chorus = composition.freeze(4)   # next 4 chords for the chorus
+
+composition.form({
+    "verse":  (8, [("chorus", 1)]),
+    "chorus": (4, [("verse", 2), ("bridge", 1)]),
+    "bridge": (8, [("verse", 1)]),
+}, start="verse")
+
+composition.section_chords("verse",  verse)
+composition.section_chords("chorus", chorus)
+# "bridge" is not bound — it generates live chords each time
+
+composition.play()
+```
+
+Patterns receive the current chord via the normal `chord` parameter - no changes needed in pattern code:
+
+```python
+@composition.pattern(channel=BASS_CHANNEL, length=4)
+def bass (p, chord):
+    root = chord.root_note(40)
+    p.sequence(steps=[0, 4, 8, 12], pitches=root)
+    p.legato(0.9)
+```
+
+**Key behaviours:**
+
+- Each time a frozen section is re-entered, playback restarts from chord 0.
+- If a section is longer than its progression (more bars than chords), the extra bars fall through to live generation.
+- NIR history is updated during frozen playback so the engine's harmonic context is coherent when transitioning into a live section.
+- `freeze()` can be called before or after `form()`.
 
 ## Seed and deterministic randomness
 

@@ -196,6 +196,27 @@ class SectionInfo:
 		return self.bar == self.bars - 1
 
 
+@dataclasses.dataclass(frozen=True)
+class Progression:
+
+	"""A frozen chord sequence captured from the harmony engine.
+
+	Created by :meth:`Composition.freeze` and bound to form sections via
+	:meth:`Composition.section_chords`.  During playback the harmonic clock
+	replays ``chords`` in order instead of calling the live engine.
+
+	Attributes:
+		chords: The captured chord sequence — one chord per harmony cycle
+			within the frozen bars.
+		trailing_history: The engine's ``history`` list at the moment the
+			freeze finished.  Restored when transitioning from a frozen
+			section back to live generation, so NIR continuity is preserved.
+	"""
+
+	chords: typing.Tuple[subsequence.chords.Chord, ...]
+	trailing_history: typing.Tuple[subsequence.chords.Chord, ...]
+
+
 class FormState:
 
 	"""Track compositional form as a sequence of named sections with bar durations."""
@@ -555,7 +576,10 @@ async def schedule_harmonic_clock (
 	sequencer: subsequence.sequencer.Sequencer,
 	get_harmonic_state: typing.Callable[[], typing.Optional[subsequence.harmonic_state.HarmonicState]],
 	cycle_beats: int,
-	reschedule_lookahead: float = 1
+	reschedule_lookahead: float = 1,
+	get_section_progression: typing.Optional[
+		typing.Callable[[], typing.Optional[typing.Tuple[str, int, typing.Optional["Progression"]]]]
+	] = None,
 ) -> None:
 
 	"""
@@ -563,17 +587,69 @@ async def schedule_harmonic_clock (
 
 	The ``get_harmonic_state`` callable is evaluated on every tick so that
 	mid-playback calls to ``composition.harmony()`` take effect immediately.
+
+	When ``get_section_progression`` is provided it is called on each tick.
+	It should return ``(section_name, section_index, Progression)`` when the
+	current section has a frozen progression bound to it,
+	``(section_name, section_index, None)`` when the section is live, or
+	``None`` when no form is active.  ``section_index`` is a global counter
+	that increments on every section entry (including re-entry of the same
+	name), ensuring the frozen index resets correctly for verse→verse etc.
+
+	The frozen index resets automatically on section change (including
+	transitions from live → frozen and re-entries).  NIR history is updated
+	during frozen playback so the engine's context remains coherent when
+	transitioning back to live generation.
 	"""
+
+	# Mutable state shared across invocations of advance_harmony.
+	_clock_state: typing.Dict[str, typing.Any] = {
+		"last_section_index": None,
+		"frozen_index": 0,
+	}
 
 	def advance_harmony (pulse: int) -> None:
 
 		"""
 		Advance the harmonic state on the composition clock.
+
+		If the current section has a frozen Progression, replay its chords
+		in sequence.  Otherwise call step() to generate the next live chord.
 		"""
 
 		hs = get_harmonic_state()
-		if hs is not None:
-			hs.step()
+		if hs is None:
+			return
+
+		prog: typing.Optional["Progression"] = None
+
+		if get_section_progression is not None:
+			result = get_section_progression()
+			if result is not None:
+				_section_name, section_index, prog = result
+
+				# Reset frozen index on any section change (live→frozen,
+				# frozen→live, frozen→frozen, and re-entry of same section).
+				# Uses section_index (a global counter) rather than name so
+				# that verse→verse re-entry is correctly detected.
+				if section_index != _clock_state["last_section_index"]:
+					_clock_state["last_section_index"] = section_index
+					_clock_state["frozen_index"] = 0
+
+		if prog is not None:
+			idx = _clock_state["frozen_index"]
+			if idx < len(prog.chords):
+				# Replay frozen chord: update current and maintain NIR history.
+				hs.current_chord = prog.chords[idx]
+				hs.history.append(hs.current_chord)
+				if len(hs.history) > 4:
+					hs.history.pop(0)
+				_clock_state["frozen_index"] = idx + 1
+				return
+
+			# Progression exhausted — fall through to live generation.
+
+		hs.step()
 
 	# HarmonicState.__init__ already sets current_chord to the tonic, so we must
 	# NOT call step() at pulse 0 (which would immediately discard the tonic).
@@ -858,6 +934,7 @@ class Composition:
 		self._harmonic_state: typing.Optional[subsequence.harmonic_state.HarmonicState] = None
 		self._harmony_cycle_beats: typing.Optional[int] = None
 		self._harmony_reschedule_lookahead: float = 1
+		self._section_progressions: typing.Dict[str, Progression] = {}
 		self._pending_patterns: typing.List[_PendingPattern] = []
 		self._pending_scheduled: typing.List[_PendingScheduled] = []
 		self._form_state: typing.Optional[FormState] = None
@@ -966,6 +1043,98 @@ class Composition:
 
 		self._harmony_cycle_beats = cycle_beats
 		self._harmony_reschedule_lookahead = reschedule_lookahead
+
+	def freeze (self, bars: int) -> "Progression":
+
+		"""Capture a chord progression from the live harmony engine.
+
+		Runs the harmony engine forward by *bars* chord changes, records each
+		chord, and returns it as a :class:`Progression` that can be bound to a
+		form section with :meth:`section_chords`.
+
+		The engine state **advances** — successive ``freeze()`` calls produce a
+		continuing compositional journey so section progressions feel like parts
+		of a whole rather than isolated islands.
+
+		Parameters:
+			bars: Number of chords to capture (one per harmony cycle).
+
+		Returns:
+			A :class:`Progression` with the captured chords and trailing
+			history for NIR continuity.
+
+		Raises:
+			ValueError: If :meth:`harmony` has not been called first.
+
+		Example::
+
+			composition.harmony(style="functional_major", cycle_beats=4)
+			verse  = composition.freeze(8)   # 8 chords, engine advances
+			chorus = composition.freeze(4)   # next 4 chords, continuing on
+			composition.section_chords("verse",  verse)
+			composition.section_chords("chorus", chorus)
+		"""
+
+		if self._harmonic_state is None:
+			raise ValueError(
+				"harmony() must be called before freeze() — "
+				"no harmonic state has been configured."
+			)
+
+		if bars < 1:
+			raise ValueError("bars must be at least 1")
+
+		hs = self._harmonic_state
+		collected: typing.List[subsequence.chords.Chord] = [hs.current_chord]
+
+		for _ in range(bars - 1):
+			hs.step()
+			collected.append(hs.current_chord)
+
+		# Advance past the last captured chord so the next freeze() call or
+		# live playback does not duplicate it.
+		hs.step()
+
+		return Progression(
+			chords = tuple(collected),
+			trailing_history = tuple(hs.history),
+		)
+
+	def section_chords (self, section_name: str, progression: "Progression") -> None:
+
+		"""Bind a frozen :class:`Progression` to a named form section.
+
+		Every time *section_name* plays, the harmonic clock replays the
+		progression's chords in order instead of calling the live engine.
+		Sections without a bound progression continue generating live chords.
+
+		Parameters:
+			section_name: Name of the section as defined in :meth:`form`.
+			progression: The :class:`Progression` returned by :meth:`freeze`.
+
+		Raises:
+			ValueError: If the form has been configured and *section_name* is
+				not a known section name.
+
+		Example::
+
+			composition.section_chords("verse",  verse_progression)
+			composition.section_chords("chorus", chorus_progression)
+			# "bridge" is not bound — it generates live chords
+		"""
+
+		if (
+			self._form_state is not None
+			and self._form_state._section_bars is not None
+			and section_name not in self._form_state._section_bars
+		):
+			known = ", ".join(sorted(self._form_state._section_bars))
+			raise ValueError(
+				f"Section '{section_name}' not found in form. "
+				f"Known sections: {known}"
+			)
+
+		self._section_progressions[section_name] = progression
 
 	def on_event (self, event_name: str, callback: typing.Callable[..., typing.Any]) -> None:
 
@@ -1883,11 +2052,22 @@ class Composition:
 
 		if self._harmonic_state is not None and self._harmony_cycle_beats is not None:
 
+			def _get_section_progression () -> typing.Optional[typing.Tuple[str, int, typing.Optional[Progression]]]:
+				"""Return (section_name, section_index, Progression|None) for the current section, or None."""
+				if self._form_state is None:
+					return None
+				info = self._form_state.get_section_info()
+				if info is None:
+					return None
+				prog = self._section_progressions.get(info.name)
+				return (info.name, info.index, prog)
+
 			await schedule_harmonic_clock(
 				sequencer = self._sequencer,
 				get_harmonic_state = lambda: self._harmonic_state,
 				cycle_beats = self._harmony_cycle_beats,
-				reschedule_lookahead = self._harmony_reschedule_lookahead
+				reschedule_lookahead = self._harmony_reschedule_lookahead,
+				get_section_progression = _get_section_progression,
 			)
 
 		if self._form_state is not None:

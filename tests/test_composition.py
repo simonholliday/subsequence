@@ -1,4 +1,7 @@
+import asyncio
 import random
+import typing
+import unittest.mock
 
 import pytest
 
@@ -962,3 +965,443 @@ def test_pattern_lookahead_not_capped_when_smaller (patch_midi: None) -> None:
 
 	pattern = composition._build_pattern_from_pending(composition._pending_patterns[0])
 	assert pattern.reschedule_lookahead == pytest.approx(0.25)
+
+
+# ── freeze() ──────────────────────────────────────────────────────────────────
+
+
+def test_freeze_requires_harmony (patch_midi: None) -> None:
+
+	"""freeze() raises ValueError when harmony() has not been called."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+
+	with pytest.raises(ValueError, match="harmony()"):
+		composition.freeze(4)
+
+
+def test_freeze_requires_positive_bars (patch_midi: None) -> None:
+
+	"""freeze() raises ValueError for bars < 1."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+
+	with pytest.raises(ValueError, match="bars"):
+		composition.freeze(0)
+
+
+def test_freeze_returns_progression (patch_midi: None) -> None:
+
+	"""freeze() should return a Progression instance."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+
+	prog = composition.freeze(4)
+
+	assert isinstance(prog, subsequence.composition.Progression)
+
+
+def test_freeze_chord_count (patch_midi: None) -> None:
+
+	"""freeze(bars) returns exactly *bars* chords."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+
+	for bars in (1, 4, 8):
+		prog = composition.freeze(bars)
+		assert len(prog.chords) == bars, f"Expected {bars} chords, got {len(prog.chords)}"
+
+
+def test_freeze_captures_current_chord_as_first (patch_midi: None) -> None:
+
+	"""The first chord in the progression is the engine's current chord before freezing."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+
+	first_chord = composition._harmonic_state.current_chord  # type: ignore[union-attr]
+	prog = composition.freeze(4)
+
+	assert prog.chords[0] is first_chord
+
+
+def test_freeze_advances_engine (patch_midi: None) -> None:
+
+	"""Successive freeze() calls continue from where the previous one left off."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+
+	composition.freeze(4)
+
+	# After freeze(), the engine has stepped past the last captured chord.
+	# The next freeze() must start with whatever chord the engine is currently on.
+	chord_between = composition._harmonic_state.current_chord  # type: ignore[union-attr]
+	prog2 = composition.freeze(4)
+
+	assert prog2.chords[0] is chord_between
+
+
+def test_freeze_extra_step_avoids_duplication (patch_midi: None) -> None:
+
+	"""freeze() takes an extra step so the next freeze starts on a fresh chord."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+
+	prog1 = composition.freeze(4)
+
+	# The engine is now on the chord AFTER prog1.chords[-1] (the extra step).
+	# prog2 should start there — not at prog1.chords[-1].
+	chord_after_extra_step = composition._harmonic_state.current_chord  # type: ignore[union-attr]
+	prog2 = composition.freeze(4)
+
+	assert prog2.chords[0] is chord_after_extra_step
+
+
+def test_freeze_trailing_history_max_length (patch_midi: None) -> None:
+
+	"""trailing_history has at most 4 entries (same cap as HarmonicState.history)."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+
+	prog = composition.freeze(8)
+
+	assert len(prog.trailing_history) <= 4
+
+
+def test_freeze_deterministic_with_seed (patch_midi: None) -> None:
+
+	"""freeze() with a seeded RNG produces the same progression each run.
+
+	The composition-level seed is applied in _run() (async), so for this
+	unit test we seed the harmonic state's RNG directly — the property under
+	test is that freeze() is deterministic given identical initial conditions.
+	"""
+
+	def _run () -> subsequence.composition.Progression:
+		comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+		comp.harmony(style="functional_major", cycle_beats=4)
+		comp._harmonic_state.rng = random.Random(42)  # type: ignore[union-attr]
+		return comp.freeze(8)
+
+	prog1 = _run()
+	prog2 = _run()
+
+	assert [c.name() for c in prog1.chords] == [c.name() for c in prog2.chords]
+
+
+def test_freeze_progression_is_immutable (patch_midi: None) -> None:
+
+	"""Progression is a frozen dataclass — attempts to mutate it raise FrozenInstanceError."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+	prog = composition.freeze(4)
+
+	import dataclasses
+	with pytest.raises(dataclasses.FrozenInstanceError):
+		prog.chords = ()  # type: ignore[misc]
+
+
+# ── section_chords() ──────────────────────────────────────────────────────────
+
+
+def test_section_chords_stores_progression (patch_midi: None) -> None:
+
+	"""section_chords() stores the progression under the section name."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+	prog = composition.freeze(4)
+
+	composition.section_chords("verse", prog)
+
+	assert composition._section_progressions["verse"] is prog
+
+
+def test_section_chords_without_form_succeeds (patch_midi: None) -> None:
+
+	"""section_chords() succeeds even when form() has not yet been called."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+	prog = composition.freeze(4)
+
+	# Should not raise — form may be configured later or not at all.
+	composition.section_chords("verse", prog)
+	assert "verse" in composition._section_progressions
+
+
+def test_section_chords_unknown_section_raises (patch_midi: None) -> None:
+
+	"""section_chords() raises ValueError for a section not defined in the form."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+	composition.form({
+		"verse":  (8, [("chorus", 1)]),
+		"chorus": (4, [("verse", 1)]),
+	}, start="verse")
+	prog = composition.freeze(4)
+
+	with pytest.raises(ValueError, match="bridge"):
+		composition.section_chords("bridge", prog)
+
+
+def test_section_chords_multiple_sections (patch_midi: None) -> None:
+
+	"""Multiple progressions can be bound to different sections independently."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.harmony(style="functional_major", cycle_beats=4)
+
+	verse  = composition.freeze(8)
+	chorus = composition.freeze(4)
+
+	composition.section_chords("verse",  verse)
+	composition.section_chords("chorus", chorus)
+
+	assert composition._section_progressions["verse"]  is verse
+	assert composition._section_progressions["chorus"] is chorus
+
+
+# ── schedule_harmonic_clock() — frozen progression integration ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_frozen_section_replays_chords (patch_midi: None) -> None:
+
+	"""When a section has a frozen progression, advance_harmony replays its chords."""
+
+
+	hs = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
+
+	# Build a progression manually so we know the exact chords.
+	chord_a = hs.current_chord
+	hs.step()
+	chord_b = hs.current_chord
+	hs.step()
+	chord_c = hs.current_chord
+
+	prog = subsequence.composition.Progression(
+		chords = (chord_a, chord_b, chord_c),
+		trailing_history = (),
+	)
+
+	# Reset the engine to a clean state.
+	hs2 = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
+
+	captured: typing.List[typing.Callable] = []
+
+	mock_seq = unittest.mock.MagicMock()
+	mock_seq.pulses_per_beat = 24
+
+	async def capture_cb (callback: typing.Callable, **_: typing.Any) -> None:
+		captured.append(callback)
+
+	mock_seq.schedule_callback_repeating = capture_cb
+
+	def get_prog () -> typing.Optional[typing.Tuple[str, int, typing.Optional[subsequence.composition.Progression]]]:
+		return ("verse", 0, prog)
+
+	await subsequence.composition.schedule_harmonic_clock(
+		mock_seq,
+		lambda: hs2,
+		cycle_beats = 4,
+		get_section_progression = get_prog,
+	)
+
+	cb = captured[0]
+
+	# Each call to advance_harmony should replay the next frozen chord.
+	cb(0)
+	assert hs2.current_chord is chord_a
+
+	cb(24)
+	assert hs2.current_chord is chord_b
+
+	cb(48)
+	assert hs2.current_chord is chord_c
+
+
+@pytest.mark.asyncio
+async def test_frozen_index_resets_on_section_change (patch_midi: None) -> None:
+
+	"""advance_harmony resets the frozen index when the section index changes."""
+
+
+	hs = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
+	chord_a = hs.current_chord
+	hs.step(); chord_b = hs.current_chord
+
+	prog = subsequence.composition.Progression(chords=(chord_a, chord_b), trailing_history=())
+
+	hs2 = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
+
+	captured: typing.List[typing.Callable] = []
+	mock_seq = unittest.mock.MagicMock()
+	mock_seq.pulses_per_beat = 24
+
+	async def capture_cb (callback: typing.Callable, **_: typing.Any) -> None:
+		captured.append(callback)
+
+	mock_seq.schedule_callback_repeating = capture_cb
+
+	current_section = ["verse", 0]  # [name, index]
+
+	def get_prog () -> typing.Optional[typing.Tuple[str, int, typing.Optional[subsequence.composition.Progression]]]:
+		return (current_section[0], current_section[1], prog)
+
+	await subsequence.composition.schedule_harmonic_clock(
+		mock_seq, lambda: hs2, cycle_beats=4, get_section_progression=get_prog
+	)
+	cb = captured[0]
+
+	cb(0)  # chord_a, frozen_index → 1
+	assert hs2.current_chord is chord_a
+
+	cb(24)  # chord_b, frozen_index → 2
+	assert hs2.current_chord is chord_b
+
+	# Change section (new index) — frozen index should reset.
+	current_section[0] = "chorus"
+	current_section[1] = 1
+	cb(48)  # frozen_index reset to 0 → chord_a again
+	assert hs2.current_chord is chord_a
+
+
+@pytest.mark.asyncio
+async def test_unbound_section_calls_step (patch_midi: None) -> None:
+
+	"""Sections without a bound progression call hs.step() (live generation)."""
+
+
+	hs = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
+	initial_chord = hs.current_chord
+
+	captured: typing.List[typing.Callable] = []
+	mock_seq = unittest.mock.MagicMock()
+	mock_seq.pulses_per_beat = 24
+
+	async def capture_cb (callback: typing.Callable, **_: typing.Any) -> None:
+		captured.append(callback)
+
+	mock_seq.schedule_callback_repeating = capture_cb
+
+	def get_prog () -> typing.Optional[typing.Tuple[str, int, typing.Optional[subsequence.composition.Progression]]]:
+		# Section is live — no bound progression.
+		return ("bridge", 0, None)
+
+	await subsequence.composition.schedule_harmonic_clock(
+		mock_seq, lambda: hs, cycle_beats=4, get_section_progression=get_prog
+	)
+	cb = captured[0]
+
+	cb(0)
+	# step() must have been called — chord should have changed.
+	assert hs.current_chord is not initial_chord or len(hs.history) > 0
+
+
+@pytest.mark.asyncio
+async def test_frozen_updates_history (patch_midi: None) -> None:
+
+	"""Frozen playback updates hs.history for NIR continuity."""
+
+
+	hs_src = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
+	chord_a = hs_src.current_chord
+
+	prog = subsequence.composition.Progression(chords=(chord_a,), trailing_history=())
+
+	hs = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
+
+	captured: typing.List[typing.Callable] = []
+	mock_seq = unittest.mock.MagicMock()
+	mock_seq.pulses_per_beat = 24
+
+	async def capture_cb (callback: typing.Callable, **_: typing.Any) -> None:
+		captured.append(callback)
+
+	mock_seq.schedule_callback_repeating = capture_cb
+
+	await subsequence.composition.schedule_harmonic_clock(
+		mock_seq, lambda: hs, cycle_beats=4,
+		get_section_progression=lambda: ("verse", 0, prog),
+	)
+	cb = captured[0]
+
+	history_before = len(hs.history)
+	cb(0)
+
+	assert len(hs.history) == history_before + 1
+	assert hs.history[-1] is chord_a
+
+
+@pytest.mark.asyncio
+async def test_exhausted_progression_falls_through_to_live (patch_midi: None) -> None:
+
+	"""When all frozen chords have been played, advance_harmony falls through to step()."""
+
+
+	hs_src = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
+	chord_a = hs_src.current_chord
+
+	# Progression has only 1 chord.
+	prog = subsequence.composition.Progression(chords=(chord_a,), trailing_history=())
+
+	hs = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
+
+	captured: typing.List[typing.Callable] = []
+	mock_seq = unittest.mock.MagicMock()
+	mock_seq.pulses_per_beat = 24
+
+	async def capture_cb (callback: typing.Callable, **_: typing.Any) -> None:
+		captured.append(callback)
+
+	mock_seq.schedule_callback_repeating = capture_cb
+
+	await subsequence.composition.schedule_harmonic_clock(
+		mock_seq, lambda: hs, cycle_beats=4,
+		get_section_progression=lambda: ("verse", 0, prog),
+	)
+	cb = captured[0]
+
+	cb(0)   # plays chord_a from frozen progression
+	assert hs.current_chord is chord_a
+
+	chord_after_frozen = hs.current_chord
+	cb(24)  # exhausted — should call step(), advancing the engine
+	assert hs.current_chord is not chord_after_frozen or len(hs.history) > 1
+
+
+@pytest.mark.asyncio
+async def test_no_section_progression_calls_step (patch_midi: None) -> None:
+
+	"""When get_section_progression is None, advance_harmony always calls step()."""
+
+
+	hs = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major")
+	initial_chord = hs.current_chord
+
+	captured: typing.List[typing.Callable] = []
+	mock_seq = unittest.mock.MagicMock()
+	mock_seq.pulses_per_beat = 24
+
+	async def capture_cb (callback: typing.Callable, **_: typing.Any) -> None:
+		captured.append(callback)
+
+	mock_seq.schedule_callback_repeating = capture_cb
+
+	# No get_section_progression — pure live generation.
+	await subsequence.composition.schedule_harmonic_clock(
+		mock_seq, lambda: hs, cycle_beats=4,
+	)
+	cb = captured[0]
+
+	cb(0)
+	assert len(hs.history) > 0  # step() was called (history updated)
