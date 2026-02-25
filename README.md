@@ -108,7 +108,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **MIDI recording.** `record=True` captures everything to a standard MIDI file, saved automatically on stop.
 - **Two API levels.** [Composition API](#composition-api) for most musicians; [Direct Pattern API](#direct-pattern-api) for power users who need persistent state or custom scheduling.
 - **Pattern transforms.** Legato, staccato, reverse, double/half-time, shift, transpose, invert, humanize, `p.every()`, and `composition.layer()`.
-- **Expression.** CC messages, CC ramps, pitch bend, program changes, SysEx, and OSC output (`p.osc()`, `p.osc_ramp()`) — all from within patterns.
+- **Expression.** CC messages, CC ramps, pitch bend, note-correlated bend/portamento/slide, program changes, SysEx, and OSC output (`p.osc()`, `p.osc_ramp()`) — all from within patterns.
 - **Scale quantization.** `p.quantize("G", "dorian")` snaps all notes to a named scale. Built-in western and non-western scales (Hirajōshi, In-Sen, Iwato, Yo, Egyptian, pentatonics), plus `register_scale()` for your own.
 - **Chord-degree helpers.** `chord.root_note()` and `chord.bass_note()` for register-aware root extraction.
 - **Arpeggio directions.** Ascending, descending, ping-pong, and shuffled via `direction=`.
@@ -1104,6 +1104,67 @@ def init (p):
 ```
 
 Pass `data` as a `bytes` object or a list of integers (0–127). The surrounding `0xF0`/`0xF7` framing is added automatically by mido. `beat` sets the position within the pattern (default 0.0).
+
+### Pitch bend automation
+
+Three post-build transforms generate correctly-timed pitch bend events by reading actual note positions and durations — no manual beat arithmetic required. Call them *after* `legato()` / `staccato()` so durations are final.
+
+**`p.bend()` — bend a specific note by index:**
+
+```python
+p.sequence(steps=[0, 4, 8, 12], pitches=midi_notes.E1)
+p.legato(0.95)
+
+# Bend the last note up 1 semitone (±2 st range), easing in over its full duration
+p.bend(note=-1, amount=0.5, shape="ease_in")
+
+# Bend the 2nd note down, starting halfway through
+p.bend(note=1, amount=-0.3, start=0.5, shape="ease_out")
+```
+
+`amount` is normalised to -1.0..1.0. With a standard ±2-semitone pitch wheel range, `0.5` = 1 semitone up. `start` and `end` are fractions of the note's duration (defaults: 0.0 and 1.0). A pitch bend reset is inserted automatically at the next note's onset.
+
+**`p.portamento()` — glide between all consecutive notes:**
+
+```python
+p.sequence(steps=[0, 4, 8, 12], pitches=[40, 42, 40, 43])
+p.legato(0.95)
+
+# Gentle glide using the last 15% of each note
+p.portamento(time=0.15, shape="ease_in_out")
+
+# Wide bend range (synth set to ±12 semitones)
+p.portamento(time=0.2, bend_range=12)
+
+# No range limit — let the instrument decide
+p.portamento(time=0.1, bend_range=None)
+```
+
+`bend_range` tells Subsequence the instrument's pitch wheel range in semitones (default `2.0`). Pairs with a larger interval are skipped. Pass `None` to disable range checking. `wrap=True` (default) also glides from the last note toward the first note of the next cycle.
+
+**`p.slide()` — TB-303-style selective slide:**
+
+```python
+p.sequence(steps=[0, 4, 8, 12], pitches=[40, 42, 40, 43])
+p.legato(0.95)
+
+# Slide into the 2nd and 4th notes (by note index)
+p.slide(notes=[1, 3], time=0.2, shape="ease_in")
+
+# Same thing using step grid indices
+p.slide(steps=[4, 12], time=0.2, shape="ease_in")
+
+# Without extending the preceding note
+p.slide(notes=[1, 3], extend=False)
+```
+
+`slide()` is like `portamento()` but only applies to flagged destination notes. With `extend=True` (default) the preceding note is extended to reach the slide target's onset — matching the 303's behaviour where slide notes do not retrigger.
+
+| Method | Key parameters |
+|--------|---------------|
+| `p.bend(note, amount, start=0.0, end=1.0, shape, resolution)` | `note`: index; `amount`: -1.0..1.0 |
+| `p.portamento(time=0.15, shape, resolution, bend_range=2.0, wrap=True)` | `bend_range=None` disables range check |
+| `p.slide(notes=None, steps=None, time=0.15, shape, resolution, bend_range=2.0, wrap=True, extend=True)` | `notes` or `steps` required |
 
 ### Scale quantization
 

@@ -2023,3 +2023,390 @@ def test_osc_events_cleared_on_rebuild () -> None:
 	pattern.osc_events = []
 
 	assert len(pattern.osc_events) == 0
+
+
+# ── p.bend() ──────────────────────────────────────────────────────────────────
+
+
+def test_bend_last_note () -> None:
+
+	"""bend(note=-1) should place ramp events within the last note's duration."""
+
+	_, builder = _make_builder(length=4)
+
+	# 4 notes at pulses 0, 24, 48, 72; use add_note to avoid needing a drum_note_map
+	for pos in (0, 24, 48, 72):
+		builder._pattern.add_note(position=pos, pitch=40, velocity=80, duration=6)
+	builder.legato(0.9)
+
+	sorted_positions = sorted(builder._pattern.steps.keys())
+	last_pos = sorted_positions[-1]
+	last_duration = max(n.duration for n in builder._pattern.steps[last_pos].notes)
+
+	builder.bend(note=-1, amount=0.5)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+
+	# All ramp events (excluding reset) should be within [last_pos, last_pos + duration]
+	ramp_events = bend_events[:-1]  # last event is the reset
+	for e in ramp_events:
+		assert last_pos <= e.pulse <= last_pos + last_duration
+
+
+def test_bend_first_note () -> None:
+
+	"""bend(note=0) should place ramp events starting at position 0."""
+
+	_, builder = _make_builder(length=4)
+	for pos in (0, 24, 48, 72):
+		builder._pattern.add_note(position=pos, pitch=40, velocity=80, duration=6)
+	builder.legato(0.9)
+
+	builder.bend(note=0, amount=-0.5)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	assert bend_events[0].pulse == 0  # ramp starts at note onset
+
+
+def test_bend_with_start_end_fraction () -> None:
+
+	"""bend() with start=0.5, end=0.9 should narrow the ramp to that fraction."""
+
+	_, builder = _make_builder(length=4)
+	for pos in (0, 24, 48, 72):
+		builder._pattern.add_note(position=pos, pitch=40, velocity=80, duration=6)
+	builder.legato(0.9)
+
+	sorted_positions = sorted(builder._pattern.steps.keys())
+	first_pos = sorted_positions[0]
+	duration = max(n.duration for n in builder._pattern.steps[first_pos].notes)
+
+	builder.bend(note=0, amount=1.0, start=0.5, end=0.9, resolution=1)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	ramp_events = bend_events[:-1]
+
+	expected_start = first_pos + int(duration * 0.5)
+	expected_end = first_pos + int(duration * 0.9)
+
+	assert ramp_events[0].pulse == expected_start
+	assert ramp_events[-1].pulse == expected_end
+
+
+def test_bend_inserts_reset_at_next_note () -> None:
+
+	"""bend() should insert a pitch_bend(0) at the onset of the following note."""
+
+	_, builder = _make_builder(length=4)
+	for pos in (0, 24, 48, 72):
+		builder._pattern.add_note(position=pos, pitch=40, velocity=80, duration=6)
+	builder.legato(0.9)
+
+	sorted_positions = sorted(builder._pattern.steps.keys())
+	next_note_pulse = sorted_positions[1]  # note after note 0
+
+	builder.bend(note=0, amount=0.5)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	reset_event = bend_events[-1]
+
+	assert reset_event.pulse == next_note_pulse
+	assert reset_event.value == 0
+
+
+def test_bend_reset_wraps_to_bar_start () -> None:
+
+	"""bend() on the last note should place the reset at pulse 0."""
+
+	_, builder = _make_builder(length=4)
+	for pos in (0, 24, 48, 72):
+		builder._pattern.add_note(position=pos, pitch=40, velocity=80, duration=6)
+	builder.legato(0.9)
+
+	builder.bend(note=-1, amount=0.5)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	reset_event = bend_events[-1]
+
+	assert reset_event.pulse == 0
+	assert reset_event.value == 0
+
+
+def test_bend_with_easing () -> None:
+
+	"""bend() with shape='ease_in' should produce a non-linear ramp."""
+
+	_, builder = _make_builder(length=4)
+	# Single note at pulse 0 with long duration so we can observe the curve
+	builder._pattern.add_note(position=0, pitch=40, velocity=80, duration=48)
+
+	# resolution=48 → 2 events: pulse 0 (t=0) and pulse 48 (t=1)
+	builder.bend(note=0, amount=1.0, shape="ease_in", resolution=48)
+
+	bend_events = sorted(
+		[e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel'],
+		key=lambda e: e.pulse
+	)
+	ramp_events = [e for e in bend_events if e.value != 0 or e.pulse == 0]
+
+	# t=0 → ease_in(0)=0 → value=0; t=1 → ease_in(1)=1 → value≈8191
+	assert ramp_events[0].value == 0
+	assert ramp_events[-1].value == 8191
+
+
+def test_bend_empty_pattern () -> None:
+
+	"""bend() on an empty pattern should be a no-op."""
+
+	_, builder = _make_builder(length=4)
+	builder.bend(note=0, amount=0.5)  # should not raise
+
+	assert builder._pattern.cc_events == []
+
+
+def test_bend_index_out_of_range () -> None:
+
+	"""bend() with an out-of-range index should raise IndexError."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0, pitch=40, velocity=80, duration=6)
+
+	with pytest.raises(IndexError):
+		builder.bend(note=5, amount=0.5)
+
+
+# ── p.portamento() ────────────────────────────────────────────────────────────
+
+
+def test_portamento_generates_glides_between_notes () -> None:
+
+	"""portamento() should insert pitchwheel events in the tail of each note."""
+
+	_, builder = _make_builder(length=4)
+	# Two notes at pulse 0 and 48
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=40)
+	builder._pattern.add_note(position=48, pitch=42, velocity=80, duration=40)
+
+	builder.portamento(time=0.25, resolution=1, wrap=False)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+
+	# Ramp events should be in the tail of note at pulse 0: [0 + int(40*0.75), 0+40] = [30, 40]
+	ramp_events = [e for e in bend_events if e.value != 0]
+	assert len(ramp_events) > 0
+	for e in ramp_events:
+		assert 30 <= e.pulse <= 40
+
+
+def test_portamento_resets_at_each_note_onset () -> None:
+
+	"""portamento() should insert a pitch_bend(0) reset at each destination note onset."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=40)
+	builder._pattern.add_note(position=48, pitch=42, velocity=80, duration=40)
+
+	builder.portamento(time=0.25, resolution=1, wrap=False)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	reset_events = [e for e in bend_events if e.value == 0 and e.pulse == 48]
+
+	assert len(reset_events) == 1
+
+
+def test_portamento_skips_large_intervals () -> None:
+
+	"""portamento() should skip pairs whose interval exceeds bend_range."""
+
+	_, builder = _make_builder(length=4)
+	# Interval of 5 semitones — exceeds default bend_range=2
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=40)
+	builder._pattern.add_note(position=48, pitch=45, velocity=80, duration=40)
+
+	builder.portamento(time=0.25, bend_range=2.0, wrap=False)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	assert len(bend_events) == 0  # skipped — no events generated
+
+
+def test_portamento_bend_range_none () -> None:
+
+	"""portamento(bend_range=None) should generate events regardless of interval size."""
+
+	_, builder = _make_builder(length=4)
+	# Large interval
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=40)
+	builder._pattern.add_note(position=48, pitch=55, velocity=80, duration=40)
+
+	builder.portamento(time=0.25, bend_range=None, wrap=False)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	# Should have generated events despite large interval; value clamped to ±8191
+	assert len(bend_events) > 0
+	for e in bend_events:
+		assert -8192 <= e.value <= 8191
+
+
+def test_portamento_wrap_true () -> None:
+
+	"""portamento(wrap=True) should glide from the last note toward the first."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=40)
+	builder._pattern.add_note(position=48, pitch=42, velocity=80, duration=40)
+
+	builder.portamento(time=0.25, resolution=1, wrap=True)
+
+	# With wrap=True there should be a reset at pulse 0 (wrapping from last→first)
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	reset_at_zero = [e for e in bend_events if e.pulse == 0 and e.value == 0]
+
+	assert len(reset_at_zero) >= 1
+
+
+def test_portamento_wrap_false () -> None:
+
+	"""portamento(wrap=False) should not generate a glide from the last note."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=40)
+	builder._pattern.add_note(position=48, pitch=42, velocity=80, duration=40)
+
+	builder.portamento(time=0.25, resolution=1, wrap=False)
+
+	# With wrap=False there should be no *ramp* events (non-zero value) in the tail
+	# of the last note (position 48, duration 40, tail starts at 60)
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	events_in_last_note_tail = [e for e in bend_events if e.pulse > 48 and e.value != 0]
+	assert len(events_in_last_note_tail) == 0
+
+
+def test_portamento_time_fraction () -> None:
+
+	"""portamento() glide should occupy the correct fraction of the note duration."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=40)
+	builder._pattern.add_note(position=48, pitch=42, velocity=80, duration=40)
+
+	time_frac = 0.5
+	builder.portamento(time=time_frac, resolution=1, wrap=False)
+
+	# Collect all pitchwheel events except the reset at pulse 48
+	all_bend = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	ramp_events = [e for e in all_bend if e.pulse != 48]
+
+	# Glide starts at 0 + int(40 * 0.5) = 20, ends at 40
+	assert ramp_events[0].pulse == 20
+	assert ramp_events[-1].pulse == 40
+
+
+# ── p.slide() ─────────────────────────────────────────────────────────────────
+
+
+def test_slide_by_note_index () -> None:
+
+	"""slide(notes=[1]) should only glide into the 2nd note."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=40)
+	builder._pattern.add_note(position=48, pitch=42, velocity=80, duration=40)
+	builder._pattern.add_note(position=72, pitch=43, velocity=80, duration=20)
+
+	# Only slide into note index 1 (position 48)
+	builder.slide(notes=[1], time=0.25, wrap=False)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+
+	# Ramp events should be in tail of note 0 (pos 0, duration 40) → [30, 40]
+	ramp_events = [e for e in bend_events if e.value != 0]
+	assert len(ramp_events) > 0
+	for e in ramp_events:
+		assert 30 <= e.pulse <= 40
+
+	# No ramp events in tail of note 1 (pos 48) since note 2 isn't flagged
+	events_in_note1_tail = [e for e in ramp_events if 60 <= e.pulse <= 72]
+	assert len(events_in_note1_tail) == 0
+
+
+def test_slide_by_step_index () -> None:
+
+	"""slide(steps=[4]) should slide into the note at step 4 (pulse 24)."""
+
+	_, builder = _make_builder(length=4, default_grid=16)
+	# step 0 → pulse 0, step 4 → pulse 24 (16-step grid over 4 beats = 6 pulses/step)
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=20)
+	builder._pattern.add_note(position=24, pitch=42, velocity=80, duration=20)
+
+	builder.slide(steps=[4], time=0.5, wrap=False)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+
+	# Glide should be in tail of note at pulse 0
+	ramp_events = [e for e in bend_events if e.value != 0]
+	assert len(ramp_events) > 0
+	reset_events = [e for e in bend_events if e.pulse == 24 and e.value == 0]
+	assert len(reset_events) == 1
+
+
+def test_slide_extend_true () -> None:
+
+	"""slide(extend=True) should extend the preceding note to meet the target."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=20)
+	builder._pattern.add_note(position=48, pitch=42, velocity=80, duration=20)
+
+	builder.slide(notes=[1], time=0.25, extend=True, wrap=False)
+
+	# Preceding note (at position 0) should be extended to reach position 48
+	preceding_note = builder._pattern.steps[0].notes[0]
+	assert preceding_note.duration == 48
+
+
+def test_slide_extend_false () -> None:
+
+	"""slide(extend=False) should leave the preceding note's duration unchanged."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=20)
+	builder._pattern.add_note(position=48, pitch=42, velocity=80, duration=20)
+
+	builder.slide(notes=[1], time=0.25, extend=False, wrap=False)
+
+	preceding_note = builder._pattern.steps[0].notes[0]
+	assert preceding_note.duration == 20  # unchanged
+
+
+def test_slide_requires_notes_or_steps () -> None:
+
+	"""slide() with neither notes nor steps should raise ValueError."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0, pitch=40, velocity=80, duration=20)
+
+	with pytest.raises(ValueError):
+		builder.slide()
+
+
+def test_slide_wrap () -> None:
+
+	"""slide(notes=[-1 mapped to last], wrap=True) glides from last to first."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=40)
+	builder._pattern.add_note(position=48, pitch=42, velocity=80, duration=40)
+
+	# Flag note at index 0 as the destination (wrap from last → first)
+	builder.slide(notes=[0], time=0.5, wrap=True, extend=False)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+
+	# Ramp events should be in tail of last note (pos 48, duration 40)
+	ramp_events = [e for e in bend_events if e.value != 0]
+	for e in ramp_events:
+		assert e.pulse >= 48  # within or after the last note's position
+
+	# Reset at pulse 0 (wrap-around)
+	reset_at_zero = [e for e in bend_events if e.pulse == 0 and e.value == 0]
+	assert len(reset_at_zero) >= 1
