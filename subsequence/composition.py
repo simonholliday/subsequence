@@ -209,8 +209,9 @@ class Progression:
 		chords: The captured chord sequence — one chord per harmony cycle
 			within the frozen bars.
 		trailing_history: The engine's ``history`` list at the moment the
-			freeze finished.  Restored when transitioning from a frozen
-			section back to live generation, so NIR continuity is preserved.
+			freeze finished.  Restored into the harmonic state at the start
+			of each frozen replay, so every re-entry of the section begins
+			with the same NIR context as when it was originally generated.
 	"""
 
 	chords: typing.Tuple[subsequence.chords.Chord, ...]
@@ -635,6 +636,11 @@ async def schedule_harmonic_clock (
 				if section_index != _clock_state["last_section_index"]:
 					_clock_state["last_section_index"] = section_index
 					_clock_state["frozen_index"] = 0
+					# Restore the NIR history that was current when this
+					# progression was frozen, so every replay starts from
+					# the same harmonic context.
+					if prog is not None and prog.trailing_history:
+						hs.history = list(prog.trailing_history)
 
 		if prog is not None:
 			idx = _clock_state["frozen_index"]

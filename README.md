@@ -833,7 +833,7 @@ def bass (p, chord):
 
 - Each time a frozen section is re-entered, playback restarts from chord 0.
 - If a section is longer than its progression (more bars than chords), the extra bars fall through to live generation.
-- NIR history is updated during frozen playback so the engine's harmonic context is coherent when transitioning into a live section.
+- NIR history is restored at the start of each frozen replay so every re-entry begins with the same harmonic context as when the progression was originally generated.
 - `freeze()` can be called before or after `form()`.
 
 ## Seed and deterministic randomness
