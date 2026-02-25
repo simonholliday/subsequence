@@ -108,7 +108,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **MIDI recording.** `record=True` captures everything to a standard MIDI file, saved automatically on stop.
 - **Two API levels.** [Composition API](#composition-api) for most musicians; [Direct Pattern API](#direct-pattern-api) for power users who need persistent state or custom scheduling.
 - **Pattern transforms.** Legato, staccato, reverse, double/half-time, shift, transpose, invert, humanize, `p.every()`, and `composition.layer()`.
-- **Expression.** CC messages, CC ramps, pitch bend, note-correlated bend/portamento/slide, program changes, SysEx, and OSC output (`p.osc()`, `p.osc_ramp()`) — all from within patterns.
+- **Expression.** CC messages, CC ramps, pitch bend, note-correlated bend/portamento/slide, program changes, SysEx, and OSC output (`p.osc()`, `p.osc_ramp()`) - all from within patterns.
 - **Scale quantization.** `p.quantize("G", "dorian")` snaps all notes to a named scale. Built-in western and non-western scales (Hirajōshi, In-Sen, Iwato, Yo, Egyptian, pentatonics), plus `register_scale()` for your own.
 - **Chord-degree helpers.** `chord.root_note()` and `chord.bass_note()` for register-aware root extraction.
 - **Arpeggio directions.** Ascending, descending, ping-pong, and shuffled via `direction=`.
@@ -1107,9 +1107,9 @@ Pass `data` as a `bytes` object or a list of integers (0–127). The surrounding
 
 ### Pitch bend automation
 
-Three post-build transforms generate correctly-timed pitch bend events by reading actual note positions and durations — no manual beat arithmetic required. Call them *after* `legato()` / `staccato()` so durations are final.
+Three post-build transforms generate correctly-timed pitch bend events by reading actual note positions and durations - no manual beat arithmetic required. Call them *after* `legato()` / `staccato()` so durations are final.
 
-**`p.bend()` — bend a specific note by index:**
+**`p.bend()` - bend a specific note by index:**
 
 ```python
 p.sequence(steps=[0, 4, 8, 12], pitches=midi_notes.E1)
@@ -1124,7 +1124,7 @@ p.bend(note=1, amount=-0.3, start=0.5, shape="ease_out")
 
 `amount` is normalised to -1.0..1.0. With a standard ±2-semitone pitch wheel range, `0.5` = 1 semitone up. `start` and `end` are fractions of the note's duration (defaults: 0.0 and 1.0). A pitch bend reset is inserted automatically at the next note's onset.
 
-**`p.portamento()` — glide between all consecutive notes:**
+**`p.portamento()` - glide between all consecutive notes:**
 
 ```python
 p.sequence(steps=[0, 4, 8, 12], pitches=[40, 42, 40, 43])
@@ -1136,13 +1136,13 @@ p.portamento(time=0.15, shape="ease_in_out")
 # Wide bend range (synth set to ±12 semitones)
 p.portamento(time=0.2, bend_range=12)
 
-# No range limit — let the instrument decide
+# No range limit - let the instrument decide
 p.portamento(time=0.1, bend_range=None)
 ```
 
 `bend_range` tells Subsequence the instrument's pitch wheel range in semitones (default `2.0`). Pairs with a larger interval are skipped. Pass `None` to disable range checking. `wrap=True` (default) also glides from the last note toward the first note of the next cycle.
 
-**`p.slide()` — TB-303-style selective slide:**
+**`p.slide()` - TB-303-style selective slide:**
 
 ```python
 p.sequence(steps=[0, 4, 8, 12], pitches=[40, 42, 40, 43])
@@ -1158,7 +1158,7 @@ p.slide(steps=[4, 12], time=0.2, shape="ease_in")
 p.slide(notes=[1, 3], extend=False)
 ```
 
-`slide()` is like `portamento()` but only applies to flagged destination notes. With `extend=True` (default) the preceding note is extended to reach the slide target's onset — matching the 303's behaviour where slide notes do not retrigger.
+`slide()` is like `portamento()` but only applies to flagged destination notes. With `extend=True` (default) the preceding note is extended to reach the slide target's onset - matching the 303's behaviour where slide notes do not retrigger.
 
 | Method | Key parameters |
 |--------|---------------|
@@ -1255,7 +1255,7 @@ Subsequence automatically broadcasts its state via OSC (default port 9001) at th
 
 ### Sending from patterns
 
-Use `p.osc()` and `p.osc_ramp()` to send arbitrary OSC messages at precise beat positions — useful for automating mixer faders, toggling effects, or controlling any OSC-capable device on the network.
+Use `p.osc()` and `p.osc_ramp()` to send arbitrary OSC messages at precise beat positions - useful for automating mixer faders, toggling effects, or controlling any OSC-capable device on the network.
 
 ```python
 composition.osc(send_port=9001, send_host="192.168.1.100")  # remote mixer on LAN
