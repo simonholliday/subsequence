@@ -8,7 +8,7 @@ For the same music built with the Direct Pattern API, see demo_advanced.py.
 """
 
 import subsequence
-import subsequence.constants.gm_drums as gm_drums
+import subsequence.constants.instruments.gm_drums as gm_drums
 
 DRUMS_CHANNEL = 9
 BASS_CHANNEL  = 5

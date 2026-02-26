@@ -12,7 +12,7 @@ import asyncio
 
 import subsequence.composition
 import subsequence.constants
-import subsequence.constants.gm_drums as gm_drums
+import subsequence.constants.instruments.gm_drums as gm_drums
 import subsequence.harmonic_state
 import subsequence.pattern
 import subsequence.pattern_builder

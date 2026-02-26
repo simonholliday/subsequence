@@ -61,17 +61,17 @@ Minimal example:
 
     ```python
     import subsequence
-    import subsequence.constants.gm_drums as gm_drums
+    import subsequence.constants.instruments.gm_drums as gm_drums
 
-    composition = subsequence.Composition(bpm=120)
+    comp = subsequence.Composition(bpm=120, key="Cm")
 
-    @composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+    @comp.pattern(channel=0, drum_note_map=gm_drums.GM_DRUM_MAP)
     def drums (p):
         p.seq("x ~ x ~", pitch="kick_1", velocity=100)
         p.seq("~ x ~ x", pitch="snare_1", velocity=90)
         p.seq("[x x] [x x] [x x] [x x]", pitch="hi_hat_closed", velocity=70)
 
-    composition.play()
+    comp.play()
     ```
 
 Package-level exports: ``Composition``, ``Groove``, ``register_scale``.

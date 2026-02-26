@@ -26,7 +26,7 @@ In this simplest example, using [mini-notation](#mini-notation), we create and p
 
 ```
 import subsequence
-import subsequence.constants.gm_drums as gm_drums
+import subsequence.constants.instruments.gm_drums as gm_drums
 
 composition = subsequence.Composition(bpm=120)
 
@@ -140,7 +140,7 @@ The `Composition` class is the main entry point. Define your MIDI setup, create 
 
 ```python
 import subsequence
-import subsequence.constants.gm_drums as gm_drums
+import subsequence.constants.instruments.gm_drums as gm_drums
 
 DRUMS_CHANNEL = 9
 BASS_CHANNEL  = 5
@@ -226,7 +226,7 @@ import asyncio
 
 import subsequence.composition
 import subsequence.constants
-import subsequence.constants.gm_drums as gm_drums
+import subsequence.constants.instruments.gm_drums as gm_drums
 import subsequence.harmonic_state
 import subsequence.pattern
 import subsequence.pattern_builder

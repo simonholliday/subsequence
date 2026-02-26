@@ -46,7 +46,7 @@ import logging
 import requests
 
 import subsequence
-import subsequence.constants.gm_drums as gm_drums
+import subsequence.constants.instruments.gm_drums as gm_drums
 import subsequence.easing
 import subsequence.sequence_utils
 

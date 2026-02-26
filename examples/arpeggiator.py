@@ -3,12 +3,12 @@ import logging
 import subsequence
 
 import subsequence.constants.durations as dur
-import subsequence.constants.gm_drums as gm_drums
+import subsequence.constants.instruments.gm_drums as gm_drums
 import subsequence.sequence_utils
 
 logging.basicConfig(level=logging.INFO)
 
-DRUM_CHANNEL = 9
+DRUM_CHANNEL = 10
 BASS_CHANNEL = 5
 ARP_CHANNEL = 0
 LEAD_CHANNEL = 3
