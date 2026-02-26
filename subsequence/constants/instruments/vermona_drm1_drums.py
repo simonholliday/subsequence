@@ -44,6 +44,7 @@ CLAP = 39                # D#2
 # ─── Complete drum note map ──────────────────────────────────────────
 
 VERMONA_DRM1_DRUM_MAP: typing.Dict[str, int] = {
+	# Native DRM1 mapping
 	"kick": KICK,
 	"drum_1": DRUM_1,
 	"drum_2": DRUM_2,
@@ -54,4 +55,69 @@ VERMONA_DRM1_DRUM_MAP: typing.Dict[str, int] = {
 	"hihat_2_closed": HIHAT_2_CLOSED,
 	"hihat_2_open": HIHAT_2_OPEN,
 	"clap": CLAP,
+	
+	# GM Drums aliases (for drop-in compatibility).
+	# 
+	# This comprehensive mapping ensures that sequences written for standard
+	# General MIDI kits will still produce sound when played on the DRM1,
+	# avoiding "silent" beats. While some mappings are obvious (kick -> kick),
+	# others are creative approximations (e.g., cymbals -> hi-hat 2 open, 
+	# cowbell -> multi) designed to trigger the best available alternative
+	# physical instrument channel.
+	
+	# Kicks
+	"kick_1": KICK,
+	"kick_2": KICK,
+	
+	# Snares & Claps
+	"snare_1": SNARE,
+	"snare_2": SNARE,
+	"side_stick": SNARE,
+	"hand_clap": CLAP,
+
+	# Toms (Low toms -> Drum 1, Mid/High toms -> Drum 2)
+	"low_floor_tom": DRUM_1,
+	"high_floor_tom": DRUM_1,
+	"low_tom": DRUM_1,
+	"low_mid_tom": DRUM_2,
+	"high_mid_tom": DRUM_2,
+	"high_tom": DRUM_2,
+
+	# Hi-Hats
+	"hi_hat_closed": HIHAT_1_CLOSED,
+	"hi_hat_pedal": HIHAT_1_CLOSED,
+	"hi_hat_open": HIHAT_1_OPEN,
+
+	# Ride & Crash Cymbals (Mapped to the 2nd Hi-Hat channel's open decay)
+	"crash_1": HIHAT_2_OPEN,
+	"crash_2": HIHAT_2_OPEN,
+	"splash_cymbal": HIHAT_2_OPEN,
+	"chinese_cymbal": HIHAT_2_OPEN,
+	"ride_1": HIHAT_2_OPEN,
+	"ride_2": HIHAT_2_OPEN,
+	"ride_bell": HIHAT_2_OPEN,
+
+	# Shakers & Tambourines (Mapped to 2nd Hi-Hat channel's closed decay)
+	"tambourine": HIHAT_2_CLOSED,
+	"cabasa": HIHAT_2_CLOSED,
+	"maracas": HIHAT_2_CLOSED,
+	"shaker": HIHAT_2_CLOSED,
+
+	# Percussion (Cowbell, Woodblocks, Claves, Congas, etc. -> Multi channel)
+	"cowbell": MULTI,
+	"claves": MULTI,
+	"high_woodblock": MULTI,
+	"low_woodblock": MULTI,
+	"high_bongo": MULTI,
+	"low_bongo": MULTI,
+	"mute_high_conga": MULTI,
+	"open_high_conga": MULTI,
+	"low_conga": MULTI,
+	"high_timbale": MULTI,
+	"low_timbale": MULTI,
+	"high_agogo": MULTI,
+	"low_agogo": MULTI,
+	"mute_triangle": MULTI,
+	"open_triangle": MULTI,
+	"vibraslap": MULTI,
 }
