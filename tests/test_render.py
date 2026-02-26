@@ -79,7 +79,7 @@ def test_render_default_max_minutes_is_60 (patch_midi: None) -> None:
 	import asyncio
 	import unittest.mock as mock
 
-	with mock.patch("asyncio.run"):
+	with mock.patch("asyncio.run", side_effect=lambda coro: coro.close()):
 		composition.render(filename="dummy.mid")
 
 	assert composition._sequencer.render_max_seconds == pytest.approx(3600.0)
@@ -98,7 +98,7 @@ def test_render_default_bars_is_none (patch_midi: None) -> None:
 	import asyncio
 	import unittest.mock as mock
 
-	with mock.patch("asyncio.run"):
+	with mock.patch("asyncio.run", side_effect=lambda coro: coro.close()):
 		composition.render(filename="dummy.mid")
 
 	assert composition._sequencer.render_bars == 0
