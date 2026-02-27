@@ -62,6 +62,9 @@ Integration:
   tweak parameters during playback via a built-in TCP eval server.
 - **Hotkeys.** Single keystrokes to jump sections, toggle mutes, or
   fire any action - with optional bar-boundary quantization.
+- **Terminal display.** Live status line (BPM, bar, section, chord).
+  Add ``grid=True`` for an ASCII pattern grid showing velocity and
+  sustain - makes legato and staccato visually distinct at a glance.
 - **Recording.** Record to standard MIDI file. Render to file without
   waiting for real-time playback.
 

@@ -1410,21 +1410,25 @@ class Composition:
 
 		self._seed = value
 
-	def display (self, enabled: bool = True) -> None:
+	def display (self, enabled: bool = True, grid: bool = False) -> None:
 
 		"""
 		Enable or disable the live terminal dashboard.
 
-		When enabled, Subsequence uses a safe logging handler that allows a 
-		persistent status line (BPM, Key, Bar, Section, Chord) to stay at 
+		When enabled, Subsequence uses a safe logging handler that allows a
+		persistent status line (BPM, Key, Bar, Section, Chord) to stay at
 		the bottom of the terminal while logs scroll above it.
 
 		Parameters:
 			enabled: Whether to show the display (default True).
+			grid: When True, render an ASCII grid visualisation of all
+				running patterns above the status line. The grid updates
+				once per bar, showing which steps have notes and at what
+				velocity.
 		"""
 
 		if enabled:
-			self._display = subsequence.display.Display(self)
+			self._display = subsequence.display.Display(self, grid=grid)
 		else:
 			self._display = None
 

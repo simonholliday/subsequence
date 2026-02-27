@@ -895,13 +895,44 @@ composition.display()
 composition.play()
 ```
 
-The status line updates every bar and looks like:
+The status line updates every beat and looks like:
 
 ```
-125 BPM  Key: E  Bar: 17  [chorus 1/8]  Chord: Em7  Swell: 0.42  Tide: 0.78
+125.00 BPM  Key: E  Bar: 17.1  [chorus 1/8]  Chord: Em7  Swell: 0.42  Tide: 0.78
 ```
 
 Components adapt to what's configured - the section is omitted if no form is set, the chord is omitted if no harmony is configured, and conductor signals only appear when registered. Log messages scroll cleanly above the status line without disruption.
+
+### Pattern grid
+
+Add `grid=True` to also render an ASCII grid above the status line showing what each pattern is doing - which steps have notes, at what velocity, and for how long:
+
+```python
+composition.display(grid=True)
+composition.play()
+```
+
+The grid updates once per bar and looks like:
+
+```
+  drums
+  kick        |O o . . O . . . O . . . O . . o|
+  snare       |. . . . O . . . . . . . O . . .|
+  bass        |O - - O - - - - O - - - O - - .|
+125.00 BPM  Key: E  Bar: 3.1  [intro 3/8 → section_1]
+```
+
+Each column is one grid step (16th notes by default). Velocity and duration are encoded in the character at each position:
+
+| Glyph | Meaning |
+|-------|---------|
+| `.` | Empty step (no note) |
+| `o` | Soft attack (velocity 41–80) |
+| `O` | Medium attack (velocity 81–110) |
+| `X` | Loud attack (velocity 111–127) |
+| `-` | Sustain (note still sounding from a previous step) |
+
+The sustain marker makes legato and staccato patterns visually distinct - a legato bass line fills its steps with `-` between attacks; drum hits are short and show no sustain. Drum patterns show one row per distinct drum sound, labelled from the drum note map. Pitched patterns show a single summary row.
 
 To disable:
 
@@ -1547,13 +1578,11 @@ Planned features, roughly in order of priority.
 
 - **Example library.** More short, self-contained compositions in different styles - minimal techno, ambient generative, polyrhythmic exploration, data-driven - so musicians can hear what the tool does before investing time. Each example should demonstrate 2-3 features and fit on one screen.
 
-- **Pattern visualisation.** An ASCII grid view in the terminal showing what each pattern is doing - which steps have notes, at what velocity. Makes the invisible visible, transforming both the debugging and the learning experience. Toggled via `composition.display(grid=True)`.
-
 ### Medium priority
 
-- **Ableton Link support.** The de facto standard for wireless tempo sync between devices in a modern studio. Bidirectional, latency-compensated, works over WiFi without cables. Most competing tools and hardware sequencers already support it.
+- **Ableton Link support.** The de facto standard for wireless tempo sync between devices in a modern studio.
 
-- **Melody generation using NIR.** Extend the Narmour Implication-Realization model from chord-root transitions to single-note melodic lines. The harmony engine is our strongest differentiator - applying the same cognitive principles to melody generation would be genuinely novel.
+- **Melody generation using NIR.** Extend the Narmour Implication-Realization model from chord-root transitions to single-note melodic lines.
 
 - **Starter templates.** Lower the blank-page barrier with ready-made starting points for common genres. Musicians tweak from a working composition rather than building from scratch.
 
@@ -1567,7 +1596,7 @@ Planned features, roughly in order of priority.
 
 - **Live coding UX improvements.** Richer feedback in the live client - syntax highlighting, error display, undo/history for hot-swapped patterns. Explore integration with editors (VS Code extension, Jupyter notebooks).
 
-- **CV/Gate output.** Direct control voltage output for modular synthesisers via supported hardware interfaces (Expert Sleepers, Befaco), bridging the gap between code and analogue.
+- **CV/Gate output.** Direct control voltage output for modular synthesisers via supported hardware interfaces, bridging the gap between code and analogue.
 
 ## Tests
 This project uses `pytest`.
