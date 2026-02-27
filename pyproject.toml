@@ -9,6 +9,7 @@ description = "A generative MIDI sequencer"
 readme = "README.md"
 authors = [{ name = "Simon Holliday", email = "simon.holliday@protonmail.com" }]
 license = { text = "AGPL-3.0-or-later" }
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
@@ -18,7 +19,10 @@ dependencies = [
     "python-rtmidi",
     "python-osc",
 ]
-requires-python = ">=3.10"
+
+[project.urls]
+Repository = "https://github.com/simonholliday/subsequence"
+Issues = "https://github.com/simonholliday/subsequence/issues"
 
 [project.optional-dependencies]
 test = [
@@ -30,6 +34,7 @@ docs = [
 ]
 dev = [
     "mypy>=1.8.0",
+    "ruff>=0.4.0",
 ]
 
 [project.scripts]
@@ -40,6 +45,18 @@ include = ["subsequence*"]
 
 [tool.setuptools.package-data]
 subsequence = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]  # line length handled by formatter
 
 [tool.mypy]
 python_version = "3.10"

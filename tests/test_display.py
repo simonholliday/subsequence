@@ -440,7 +440,7 @@ def _make_pitched_pattern () -> subsequence.pattern.Pattern:
 
 def test_grid_build_drum_pattern (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
 
-	"""Drum patterns should produce one header line plus one row per distinct drum pitch."""
+	"""Drum patterns should produce one row per distinct drum sound."""
 
 	# Ensure terminal width is wide enough for 16 columns.
 	import os
@@ -459,10 +459,7 @@ def test_grid_build_drum_pattern (patch_midi: None, monkeypatch: pytest.MonkeyPa
 	grid = subsequence.display.GridDisplay(comp)
 	grid.build()
 
-	assert grid.line_count >= 3  # header + kick row + snare row
-
-	# Header should contain pattern name.
-	assert "drums" in grid._lines[0]
+	assert grid.line_count >= 2  # kick row + snare row
 
 	# Find the kick row and snare row.
 	kick_line = next(l for l in grid._lines if "kick_1" in l)
@@ -658,9 +655,9 @@ def test_grid_fit_columns () -> None:
 	assert fit(16, 80) == 16
 
 	# Narrow terminal: fewer columns.
-	# Overhead = 2 (indent) + 16 (label) + 2 (pipes) = 20.
-	# Available = 30 - 20 = 10.  Max cols = (10 + 1) // 2 = 5.
-	assert fit(16, 30) == 5
+	# Overhead = 16 (label) + 2 (pipes) = 18.
+	# Available = 30 - 18 = 12.  Max cols = (12 + 1) // 2 = 6.
+	assert fit(16, 30) == 6
 
 	# Very narrow terminal: no columns.
 	assert fit(16, 16) == 0

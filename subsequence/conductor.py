@@ -1,8 +1,12 @@
 
 import math
 import typing
+import warnings
 
 import subsequence.easing
+
+
+_VALID_LFO_SHAPES = frozenset({"sine", "triangle", "saw", "square"})
 
 
 class Signal:
@@ -40,6 +44,12 @@ class LFO(Signal):
 		if cycle_beats <= 0:
 			raise ValueError("cycle_beats must be positive")
 
+		if shape not in _VALID_LFO_SHAPES:
+			raise ValueError(
+				f"Unknown LFO shape {shape!r}. "
+				f"Valid shapes: {sorted(_VALID_LFO_SHAPES)}"
+			)
+
 		self.shape = shape
 		self.cycle_beats = cycle_beats
 		self.min_val = min_val
@@ -70,14 +80,9 @@ class LFO(Signal):
 		elif self.shape == "saw":
 			val = progress
 			
-		elif self.shape == "square":
+		else:  # "square"
 			val = 1.0 if progress < 0.5 else 0.0
-			
-		else:
-			# Default to sine
-			raw = math.sin(progress * 2 * math.pi)
-			val = (raw + 1) / 2
-			
+
 		return self.min_val + (val * (self.max_val - self.min_val))
 
 
@@ -147,6 +152,12 @@ class Conductor:
 
 	def __init__ (self) -> None:
 		self._signals: typing.Dict[str, Signal] = {}
+		self._warned_missing: typing.Set[str] = set()
+
+	@property
+	def signal_names (self) -> typing.Tuple[str, ...]:
+		"""Names of all registered signals, in sorted order."""
+		return tuple(sorted(self._signals))
 
 	def lfo (self, name: str, shape: str = "sine", cycle_beats: float = 16.0, min_val: float = 0.0, max_val: float = 1.0, phase: float = 0.0) -> None:
 		
@@ -198,6 +209,13 @@ class Conductor:
 		"""
 		
 		if name not in self._signals:
+			if name not in self._warned_missing:
+				warnings.warn(
+					f"Conductor signal {name!r} not found; returning 0.0. "
+					"Register it with conductor.lfo() or conductor.line() first.",
+					stacklevel=2,
+				)
+				self._warned_missing.add(name)
 			return 0.0
-			
+
 		return self._signals[name].value_at(beat)

@@ -52,7 +52,7 @@ import subsequence.sequence_utils
 
 logging.basicConfig(level=logging.INFO)
 
-DRUMS_CHANNEL = 9
+DRUMS_CHANNEL = 10
 BASS_CHANNEL  = 5
 CHORD_CHANNEL = 0
 ARP_CHANNEL   = 3
@@ -266,5 +266,5 @@ def chords (p, chord):
 
 
 if __name__ == "__main__":
-	composition.display()
+	composition.display(grid=True, grid_scale=2)
 	composition.play()

@@ -1,4 +1,6 @@
 
+import warnings
+
 import pytest
 import subsequence.conductor
 import subsequence.pattern
@@ -180,10 +182,39 @@ def test_line_invalid_duration ():
 
 def test_missing_signal ():
 
-	"""Test querying a non-existent signal."""
+	"""Querying an unregistered signal returns 0.0 and issues a warning."""
 
 	conductor = subsequence.conductor.Conductor()
-	assert conductor.get("ghost", 0.0) == 0.0
+
+	with pytest.warns(UserWarning, match="ghost"):
+		result = conductor.get("ghost", 0.0)
+
+	assert result == 0.0
+
+
+def test_missing_signal_warns_once ():
+
+	"""The missing-signal warning is issued only once per signal name."""
+
+	conductor = subsequence.conductor.Conductor()
+
+	with pytest.warns(UserWarning):
+		conductor.get("ghost", 0.0)
+
+	# Second call must not issue another warning.
+	with warnings.catch_warnings():
+		warnings.simplefilter("error")
+		assert conductor.get("ghost", 1.0) == 0.0
+
+
+def test_lfo_invalid_shape ():
+
+	"""An unrecognised LFO shape raises ValueError at construction time."""
+
+	conductor = subsequence.conductor.Conductor()
+
+	with pytest.raises(ValueError, match="wobbly"):
+		conductor.lfo("bad", shape="wobbly")
 
 
 def test_signal_helper ():

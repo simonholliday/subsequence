@@ -20,10 +20,9 @@ The status line updates every beat and looks like::
 
 The grid (when enabled) updates every bar and looks like::
 
-	drums
-	  kick_2      |X . . . X . . . X . . . X . . .|
-	  snare_1     |. . . . X . . . . . . . X . . .|
-	bass          |X . . X . . X . X . . . X . . .|
+	kick_2          |X . . . X . . . X . . . X . . .|
+	snare_1         |. . . . X . . . . . . . X . . .|
+	bass            |X . . X . . X . X . . . X . . .|
 """
 
 import logging
@@ -146,7 +145,7 @@ class GridDisplay:
 			self._lines = []
 			return
 
-		for name, pattern in self._composition._running_patterns.items():
+		for name, pattern in self._composition.running_patterns.items():
 
 			grid_size = min(getattr(pattern, "_default_grid", 16), _MAX_GRID_COLUMNS)
 			muted = getattr(pattern, "_muted", False)
@@ -183,7 +182,7 @@ class GridDisplay:
 
 		cells = " ".join("-" if col in on_grid else " " for col in range(display_cols))
 		label = f"({name})"[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)
-		return [f"  {label}|{cells}|"]
+		return [f"{label}|{cells}|"]
 
 	def _render_drum_pattern (
 		self,
@@ -209,16 +208,13 @@ class GridDisplay:
 		velocity_grid = self._build_velocity_grid(pattern, visual_cols, display_cols)
 
 		if not velocity_grid:
-			# Pattern has no notes — just show the header.
-			lines.append(f"  {name}")
 			return lines
 
 		# Sort rows by MIDI pitch (lowest first — kick before hi-hat).
-		lines.append(f"  {name}")
 
 		for pitch in sorted(velocity_grid):
 			label_text = reverse_map.get(pitch, self._midi_note_name(pitch))
-			label = f"  {label_text[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)}"
+			label = label_text[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)
 			cells = " ".join(
 				self._cell_char(v, col in on_grid)
 				for col, v in enumerate(velocity_grid[pitch][:display_cols])
@@ -252,7 +248,7 @@ class GridDisplay:
 			self._cell_char(v, col in on_grid)
 			for col, v in enumerate(summary)
 		)
-		return [f"  {label}|{cells}|"]
+		return [f"{label}|{cells}|"]
 
 	# ------------------------------------------------------------------
 	# Internal helpers
@@ -315,10 +311,10 @@ class GridDisplay:
 		prefix and pipe delimiters.
 		"""
 
-		# "  " + label (LABEL_WIDTH) + "|" + cells + "|"
+		# label (LABEL_WIDTH) + "|" + cells + "|"
 		# Each cell is "X " (2 chars) but last cell has no trailing space
 		# inside the pipes: "X . X ." is grid_size * 2 - 1 chars.
-		overhead = 2 + _LABEL_WIDTH + 2  # indent + label + pipes
+		overhead = _LABEL_WIDTH + 2  # label + pipes
 		available = term_width - overhead
 
 		if available <= 0:
@@ -473,7 +469,7 @@ class Display:
 
 		# Rebuild grid data only when the bar counter changes.
 		if self._grid is not None:
-			current_bar = self._composition._sequencer.current_bar
+			current_bar = self._composition.sequencer.current_bar
 			if current_bar != self._last_grid_bar:
 				self._last_grid_bar = current_bar
 				self._grid.build()
@@ -490,6 +486,9 @@ class Display:
 		grid_lines = self._grid._lines if self._grid is not None else []
 		total = len(grid_lines) + 1  # grid lines + status line
 
+		if grid_lines:
+			total += 1  # separator line
+
 		# Move cursor up to overwrite the previously drawn region.
 		# Cursor sits on the last line (status) with no trailing newline,
 		# so we move up (total - 1) to reach the first line.
@@ -497,11 +496,17 @@ class Display:
 			sys.stderr.write(f"\033[{self._drawn_line_count - 1}A")
 
 		if grid_lines:
+			sep = "-" * len(grid_lines[0])
+			sys.stderr.write(f"\r\033[K{sep}\n")
 			for line in grid_lines:
 				sys.stderr.write(f"\r\033[K{line}\n")
 
 		# Status line (no trailing newline — cursor stays on this line).
 		sys.stderr.write(f"\r\033[K{self._last_line}")
+		# Clear to end of screen in case the grid shrank since the last draw
+		# (e.g. a pattern disappeared), which would otherwise leave the old
+		# status line stranded one line below the new one.
+		sys.stderr.write("\033[J")
 		sys.stderr.flush()
 
 		self._drawn_line_count = total
@@ -537,25 +542,25 @@ class Display:
 		parts: typing.List[str] = []
 		comp = self._composition
 
-		parts.append(f"{comp._sequencer.current_bpm:.2f} BPM")
+		parts.append(f"{comp.sequencer.current_bpm:.2f} BPM")
 
 		if comp.key:
 			parts.append(f"Key: {comp.key}")
 
-		bar  = max(0, comp._sequencer.current_bar)  + 1
-		beat = max(0, comp._sequencer.current_beat) + 1
+		bar  = max(0, comp.sequencer.current_bar)  + 1
+		beat = max(0, comp.sequencer.current_beat) + 1
 		parts.append(f"Bar: {bar}.{beat}")
 
 		# Section info (only when form is configured).
 		# Cache refreshes only when the bar counter changes, keeping
 		# the section display in sync with the bar display even though
 		# the form state advances one beat early (due to lookahead).
-		if comp._form_state is not None:
-			current_bar = comp._sequencer.current_bar
+		if comp.form_state is not None:
+			current_bar = comp.sequencer.current_bar
 
 			if current_bar != self._last_bar:
 				self._last_bar = current_bar
-				self._cached_section = comp._form_state.get_section_info()
+				self._cached_section = comp.form_state.get_section_info()
 
 			section = self._cached_section
 
@@ -569,15 +574,15 @@ class Display:
 				parts.append("[form finished]")
 
 		# Current chord (only when harmony is configured).
-		if comp._harmonic_state is not None:
-			chord = comp._harmonic_state.get_current_chord()
+		if comp.harmonic_state is not None:
+			chord = comp.harmonic_state.get_current_chord()
 			parts.append(f"Chord: {chord.name()}")
 
 		# Conductor signals (when any are registered).
 		conductor = comp.conductor
-		if conductor._signals:
-			beat = comp._builder_bar * 4
-			for name in sorted(conductor._signals):
+		if conductor.signal_names:
+			beat = comp.builder_bar * 4
+			for name in conductor.signal_names:
 				value = conductor.get(name, beat)
 				parts.append(f"{name.title()}: {value:.2f}")
 

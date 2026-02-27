@@ -31,6 +31,19 @@ class EventEmitter:
 
 		self._listeners[event_name].append(callback)
 
+	def off (self, event_name: str, callback: CallbackType) -> None:
+
+		"""
+		Unregister a previously registered callback.
+
+		Raises ``ValueError`` if the callback is not registered for the event.
+		"""
+
+		if event_name not in self._listeners or callback not in self._listeners[event_name]:
+			raise ValueError(f"Callback not registered for event {event_name!r}")
+
+		self._listeners[event_name].remove(callback)
+
 
 	def emit_sync (self, event_name: str, *args: typing.Any, **kwargs: typing.Any) -> None:
 
