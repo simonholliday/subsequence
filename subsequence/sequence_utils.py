@@ -5,6 +5,7 @@ sequence manipulation (roll, legato, probability gate), and general-purpose
 generative helpers (random walk, weighted choice, shuffled choices, scale/clamp).
 """
 
+import math
 import random
 import typing
 
@@ -370,3 +371,106 @@ def scale_clamp (value: float, in_min: float, in_max: float, out_min: float = 0.
 		return max(out_min, min(out_max, scaled))
 	else:
 		return max(out_max, min(out_min, scaled))
+
+
+def perlin_1d (x: float, seed: int = 0) -> float:
+
+	"""Generate smooth 1D noise at position *x*.
+
+	Returns a value in [0.0, 1.0] that varies smoothly as *x* changes.
+	Same *x* and *seed* always produce the same output.  Use to drive
+	density, velocity, or probability parameters that should wander
+	organically over time — the "parameter wandering within boundaries"
+	quality of generative electronic music systems.
+
+	Parameters:
+		x: Position along the noise field.  Use ``bar * scale`` where
+			``scale`` controls the rate of change (smaller = slower).
+			0.05–0.1 is good for bar-level wandering.
+		seed: Seed for the hash function.  Different seeds produce
+			different but equally smooth noise fields.
+
+	Example:
+		```python
+		# Smooth density that wanders over bars
+		density = subsequence.sequence_utils.perlin_1d(p.cycle * 0.08, seed=42)
+		p.bresenham("snare_1", pulses=max(1, round(density * 6)),
+		            velocity=35, no_overlap=True)
+		```
+	"""
+
+	x0 = math.floor(x)
+	x1 = x0 + 1
+	t = x - x0
+
+	def _grad (pos: int) -> float:
+		h = ((pos * 1103515245 + seed * 374761393 + 12345) & 0x7FFFFFFF)
+		return (h / 0x3FFFFFFF) - 1.0
+
+	# Smootherstep fade (6t^5 - 15t^4 + 10t^3)
+	fade = t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+
+	d0 = _grad(x0) * t
+	d1 = _grad(x1) * (t - 1.0)
+
+	value = d0 + fade * (d1 - d0)
+
+	# Normalize from roughly [-0.5, 0.5] to [0, 1]
+	return max(0.0, min(1.0, value + 0.5))
+
+
+def generate_cellular_automaton (steps: int, rule: int = 30, generation: int = 0, seed: int = 1) -> typing.List[int]:
+
+	"""Generate a binary sequence using an elementary cellular automaton.
+
+	Evolves a 1D CA from an initial state for the specified number of
+	generations, returning the final state as a binary rhythm.  Each
+	generation the pattern evolves — use ``p.cycle`` as the generation
+	to get a rhythm that changes every bar.
+
+	Rule 30 produces "structured chaos" — patterns that look random but
+	have hidden self-similarity.  Rule 90 produces fractal (Sierpiński
+	triangle) patterns.  Rule 110 is Turing-complete.
+
+	Parameters:
+		steps: Length of the output sequence.
+		rule: Wolfram rule number (0–255).  Default 30.
+		generation: Number of generations to evolve from the initial state.
+		seed: Initial state as a bit field.  Default 1 (single centre cell).
+
+	Returns:
+		Binary list of length *steps* (0s and 1s).
+
+	Example:
+		```python
+		seq = subsequence.sequence_utils.generate_cellular_automaton(
+			16, rule=30, generation=p.cycle
+		)
+		indices = subsequence.sequence_utils.sequence_to_indices(seq)
+		p.hit_steps("snare_1", indices, velocity=35)
+		```
+	"""
+
+	if steps <= 0:
+		return []
+
+	state = [0] * steps
+
+	if seed == 1:
+		state[steps // 2] = 1
+	else:
+		for i in range(min(steps, seed.bit_length())):
+			if seed & (1 << i):
+				state[i] = 1
+
+	for _ in range(generation):
+		new_state = [0] * steps
+		for i in range(steps):
+			left = state[(i - 1) % steps]
+			center = state[i]
+			right = state[(i + 1) % steps]
+			neighborhood = (left << 2) | (center << 1) | right
+			new_state[i] = (rule >> neighborhood) & 1
+		state = new_state
+
+	return state

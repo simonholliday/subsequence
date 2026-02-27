@@ -813,6 +813,205 @@ class PatternBuilder:
 
 			self.note(pitch=pitch, beat=step_idx * step_duration, velocity=vel, duration=duration)
 
+	@staticmethod
+	def _build_ghost_bias (grid: int, bias: str) -> typing.List[float]:
+
+		"""Build probability weights for ``ghost_fill()`` bias modes."""
+
+		steps_per_beat = max(1, grid // 4)
+		weights: typing.List[float] = []
+
+		for i in range(grid):
+			pos = i % steps_per_beat
+
+			if bias == "uniform":
+				weights.append(1.0)
+			elif bias == "offbeat":
+				if pos == 0:
+					weights.append(0.05)
+				elif steps_per_beat > 1 and pos == steps_per_beat // 2:
+					weights.append(0.3)
+				else:
+					weights.append(1.0)
+			elif bias == "syncopated":
+				if pos == 0:
+					weights.append(0.05)
+				elif steps_per_beat > 1 and pos == steps_per_beat // 2:
+					weights.append(1.0)
+				else:
+					weights.append(0.3)
+			elif bias == "before":
+				if pos == steps_per_beat - 1:
+					weights.append(1.0)
+				elif pos == 0:
+					weights.append(0.05)
+				else:
+					weights.append(0.25)
+			elif bias == "after":
+				if steps_per_beat > 1 and pos == 1:
+					weights.append(1.0)
+				elif pos == 0:
+					weights.append(0.05)
+				else:
+					weights.append(0.25)
+			else:
+				raise ValueError(
+					f"Unknown ghost_fill bias {bias!r}. "
+					f"Use 'uniform', 'offbeat', 'syncopated', 'before', 'after', "
+					f"or a list of floats."
+				)
+
+		return weights
+
+	def ghost_fill (
+		self,
+		pitch: typing.Union[int, str],
+		density: float = 0.3,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = 35,
+		bias: typing.Union[str, typing.List[float]] = "uniform",
+		no_overlap: bool = True,
+		grid: typing.Optional[int] = None,
+		duration: float = 0.1,
+		rng: typing.Optional[random.Random] = None,
+	) -> None:
+
+		"""Fill the pattern with probability-biased ghost notes.
+
+		A single method for generating musically-aware ghost note layers.
+		Combines density control, velocity randomisation, and rhythmic bias
+		to produce the micro-detail layering heard in dense electronic
+		music production.
+
+		Parameters:
+			pitch: MIDI note number or drum name.
+			density: Overall density (0.0–1.0).  How many available steps
+				receive ghost notes.  0.3 = roughly 30% of steps at peak bias.
+			velocity: Single velocity or ``(low, high)`` tuple.  When a tuple,
+				each ghost note gets a random velocity in that range.
+			bias: Probability distribution shape:
+
+				- ``"uniform"``    — equal probability everywhere
+				- ``"offbeat"``    — prefer sixteenth-note off-beats
+				- ``"syncopated"`` — prefer eighth-note "and" positions
+				- ``"before"``     — cluster just before beat positions
+				- ``"after"``      — cluster just after beat positions
+				- Or: a list of floats (one per grid step) for a custom field.
+
+			no_overlap: If True (default), skip where same pitch already exists.
+				Essential for layering ghosts around hand-placed anchors.
+			grid: Grid resolution.  Defaults to the pattern's default grid.
+			duration: Note duration in beats (default 0.1).
+			rng: Random generator.  Defaults to ``self.rng``.
+
+		Example:
+			```python
+			p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+			p.hit_steps("snare_1", [4, 12], velocity=95)
+			p.ghost_fill("kick_1", density=0.2, velocity=(30, 45),
+			             bias="offbeat", no_overlap=True)
+			p.ghost_fill("snare_1", density=0.15, velocity=(25, 40),
+			             bias="before")
+			```
+		"""
+
+		if rng is None:
+			rng = self.rng
+
+		if grid is None:
+			grid = self._default_grid
+
+		if isinstance(bias, list):
+			weights = list(bias)
+			if len(weights) < grid:
+				weights.extend([weights[-1] if weights else 0.0] * (grid - len(weights)))
+			elif len(weights) > grid:
+				weights = weights[:grid]
+		else:
+			weights = self._build_ghost_bias(grid, bias)
+
+		max_weight = max(weights) if weights else 1.0
+
+		if max_weight <= 0:
+			return
+
+		midi_pitch = self._resolve_pitch(pitch)
+		step_duration = self._pattern.length / grid
+
+		for i in range(grid):
+			prob = density * weights[i] / max_weight
+
+			if rng.random() >= prob:
+				continue
+
+			if no_overlap:
+				pulse = int(i * step_duration * subsequence.constants.MIDI_QUARTER_NOTE)
+				if pulse in self._pattern.steps:
+					if any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes):
+						continue
+
+			if isinstance(velocity, tuple):
+				vel = rng.randint(velocity[0], velocity[1])
+			else:
+				vel = velocity
+
+			self.note(pitch=pitch, beat=i * step_duration, velocity=vel, duration=duration)
+
+	def cellular (
+		self,
+		pitch: typing.Union[int, str],
+		rule: int = 30,
+		generation: typing.Optional[int] = None,
+		velocity: int = 60,
+		duration: float = 0.1,
+		no_overlap: bool = False,
+		dropout: float = 0.0,
+		rng: typing.Optional[random.Random] = None,
+	) -> None:
+
+		"""Generate an evolving rhythm using a cellular automaton.
+
+		Uses an elementary CA (1D binary cellular automaton) to produce
+		rhythmic patterns that change organically each bar.  The CA state
+		evolves by one generation per cycle, creating patterns that are
+		deterministic yet surprising — structured chaos.
+
+		Rule 30 is the default: it produces quasi-random patterns with hidden
+		self-similarity.  Rule 90 produces fractal patterns.  Rule 110 is
+		Turing-complete.
+
+		Parameters:
+			pitch: MIDI note number or drum name.
+			rule: Wolfram rule number (0–255).  Default 30.
+			generation: CA generation to render.  Defaults to ``self.cycle``
+				so the pattern evolves each bar automatically.
+			velocity: MIDI velocity.
+			duration: Note duration in beats.
+			no_overlap: If True, skip where same pitch already exists.
+			dropout: Probability (0.0–1.0) of skipping each hit.
+			rng: Random generator for dropout.
+
+		Example:
+			```python
+			p.hit_steps("kick_1", [0, 8], velocity=100)
+			p.cellular("kick_1", rule=30, velocity=40, no_overlap=True)
+			```
+		"""
+
+		if generation is None:
+			generation = self.cycle
+
+		if rng is None:
+			rng = self.rng
+
+		steps = self._default_grid
+		sequence = subsequence.sequence_utils.generate_cellular_automaton(
+			steps=steps, rule=rule, generation=generation
+		)
+
+		self._place_rhythm_sequence(
+			sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap
+		)
+
 	# These methods transform existing notes after they have been placed.
 	# Call them at the end of your builder function, after all notes are
 	# in position. They operate on self._pattern.steps (the pulse-position

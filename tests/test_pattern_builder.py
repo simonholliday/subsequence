@@ -2682,3 +2682,236 @@ def test_no_overlap_allows_different_pitches_on_same_step () -> None:
 
 	total_notes = sum(len(s.notes) for s in pattern.steps.values())
 	assert total_notes == 8  # 4 kicks + 4 hats, no collisions because different pitches
+
+
+# --- ghost_fill ---
+
+
+def test_ghost_fill_places_notes () -> None:
+
+	"""ghost_fill should place at least some notes at moderate density."""
+
+	drum_map = {"snare": 38}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+	builder.rng = random.Random(42)
+
+	builder.ghost_fill("snare", density=0.5, velocity=35, bias="uniform")
+
+	total = sum(len(s.notes) for s in pattern.steps.values())
+	assert total > 0
+
+
+def test_ghost_fill_no_overlap_respects_anchors () -> None:
+
+	"""ghost_fill with no_overlap should not place notes where anchors exist."""
+
+	drum_map = {"kick": 36}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+	builder.rng = random.Random(42)
+
+	builder.hit_steps("kick", [0, 4, 8, 12], velocity=100)
+	builder.ghost_fill("kick", density=1.0, velocity=40, bias="uniform", no_overlap=True)
+
+	# Check anchor positions — should have exactly 1 kick each
+	step_dur = 4.0 / 16
+	for step_idx in [0, 4, 8, 12]:
+		pulse = int(step_idx * step_dur * subsequence.constants.MIDI_QUARTER_NOTE)
+		if pulse in pattern.steps:
+			kick_notes = [n for n in pattern.steps[pulse].notes if n.pitch == 36]
+			assert len(kick_notes) == 1
+
+
+def test_ghost_fill_offbeat_bias () -> None:
+
+	"""Offbeat bias should strongly prefer non-downbeat positions."""
+
+	drum_map = {"hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+	builder.rng = random.Random(42)
+
+	builder.ghost_fill("hat", density=0.8, velocity=50, bias="offbeat")
+
+	# Count hits on downbeats vs offbeats
+	step_dur = 4.0 / 16
+	downbeat_hits = 0
+	offbeat_hits = 0
+	for step_idx in range(16):
+		pulse = int(step_idx * step_dur * subsequence.constants.MIDI_QUARTER_NOTE)
+		if pulse in pattern.steps:
+			count = len(pattern.steps[pulse].notes)
+			if step_idx % 4 == 0:
+				downbeat_hits += count
+			else:
+				offbeat_hits += count
+
+	assert offbeat_hits > downbeat_hits
+
+
+def test_ghost_fill_velocity_tuple () -> None:
+
+	"""When velocity is a (low, high) tuple, all velocities should be in range."""
+
+	drum_map = {"snare": 38}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+	builder.rng = random.Random(42)
+
+	builder.ghost_fill("snare", density=0.8, velocity=(25, 45), bias="uniform")
+
+	for step in pattern.steps.values():
+		for note in step.notes:
+			assert 25 <= note.velocity <= 45
+
+
+def test_ghost_fill_density_zero () -> None:
+
+	"""Density 0 should place no notes."""
+
+	drum_map = {"snare": 38}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.ghost_fill("snare", density=0.0, velocity=35)
+
+	total = sum(len(s.notes) for s in pattern.steps.values())
+	assert total == 0
+
+
+def test_ghost_fill_custom_bias_list () -> None:
+
+	"""A custom probability list should work as bias."""
+
+	drum_map = {"hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+	builder.rng = random.Random(42)
+
+	# Only allow ghost notes on steps 0 and 8
+	probs = [0.0] * 16
+	probs[0] = 1.0
+	probs[8] = 1.0
+
+	builder.ghost_fill("hat", density=1.0, velocity=60, bias=probs)
+
+	# All hits should be on steps 0 and 8 only
+	step_dur = 4.0 / 16
+	for step_idx in range(16):
+		pulse = int(step_idx * step_dur * subsequence.constants.MIDI_QUARTER_NOTE)
+		if pulse in pattern.steps and pattern.steps[pulse].notes:
+			assert step_idx in (0, 8), f"Unexpected hit at step {step_idx}"
+
+
+def test_ghost_fill_unknown_bias_raises () -> None:
+
+	"""An unknown bias string should raise ValueError."""
+
+	drum_map = {"snare": 38}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	with pytest.raises(ValueError, match="Unknown ghost_fill bias"):
+		builder.ghost_fill("snare", density=0.5, bias="nonexistent")
+
+
+def test_ghost_fill_deterministic () -> None:
+
+	"""Same seed should produce the same ghost pattern."""
+
+	drum_map = {"snare": 38}
+
+	def _run (seed: int) -> list:
+		pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+		builder.rng = random.Random(seed)
+		builder.ghost_fill("snare", density=0.4, velocity=35, bias="offbeat")
+		return sorted(pattern.steps.keys())
+
+	assert _run(42) == _run(42)
+
+
+# --- cellular ---
+
+
+def test_cellular_places_notes () -> None:
+
+	"""cellular() should place notes from the CA pattern."""
+
+	drum_map = {"hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+	builder.rng = random.Random(42)
+
+	# Use generation 5 where Rule 30 produces multiple active cells
+	builder.cellular("hat", rule=30, generation=5, velocity=50)
+
+	total = sum(len(s.notes) for s in pattern.steps.values())
+	assert total > 0
+
+
+def test_cellular_evolves_across_cycles () -> None:
+
+	"""Different generations should produce different patterns."""
+
+	drum_map = {"hat": 42}
+
+	def _run (gen: int) -> list:
+		pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+		builder.rng = random.Random(42)
+		builder.cellular("hat", rule=30, generation=gen, velocity=50)
+		return sorted(pattern.steps.keys())
+
+	assert _run(5) != _run(10)
+
+
+def test_cellular_no_overlap () -> None:
+
+	"""cellular with no_overlap should skip positions where the pitch exists."""
+
+	drum_map = {"kick": 36}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+	builder.rng = random.Random(42)
+
+	builder.hit_steps("kick", [0, 4, 8, 12], velocity=100)
+	builder.cellular("kick", rule=30, generation=5, velocity=40, no_overlap=True)
+
+	# Anchor positions should have exactly 1 kick
+	step_dur = 4.0 / 16
+	for step_idx in [0, 4, 8, 12]:
+		pulse = int(step_idx * step_dur * subsequence.constants.MIDI_QUARTER_NOTE)
+		if pulse in pattern.steps:
+			kick_notes = [n for n in pattern.steps[pulse].notes if n.pitch == 36]
+			assert len(kick_notes) == 1
+
+
+def test_cellular_defaults_to_cycle () -> None:
+
+	"""When generation is not specified, it should use self.cycle."""
+
+	drum_map = {"hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+	builder.rng = random.Random(42)
+
+	# Set cycle to a specific value
+	builder.cycle = 7
+	builder.cellular("hat", rule=30, velocity=50)
+
+	# Compare with explicit generation=7
+	pattern2, builder2 = _make_builder(length=4, drum_note_map=drum_map)
+	builder2.rng = random.Random(42)
+	builder2.cellular("hat", rule=30, generation=7, velocity=50)
+
+	assert sorted(pattern.steps.keys()) == sorted(pattern2.steps.keys())
+
+
+def test_cellular_dropout () -> None:
+
+	"""Dropout should reduce the number of placed notes."""
+
+	drum_map = {"hat": 42}
+
+	pattern_full, builder_full = _make_builder(length=4, drum_note_map=drum_map)
+	builder_full.rng = random.Random(42)
+	builder_full.cellular("hat", rule=30, generation=10, velocity=50, dropout=0.0)
+
+	pattern_drop, builder_drop = _make_builder(length=4, drum_note_map=drum_map)
+	builder_drop.rng = random.Random(42)
+	builder_drop.cellular("hat", rule=30, generation=10, velocity=50, dropout=0.5)
+
+	full_count = sum(len(s.notes) for s in pattern_full.steps.values())
+	drop_count = sum(len(s.notes) for s in pattern_drop.steps.values())
+
+	assert drop_count < full_count

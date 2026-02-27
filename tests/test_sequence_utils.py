@@ -442,3 +442,135 @@ def test_bresenham_weighted_empty_weights_raises () -> None:
 	import pytest
 	with pytest.raises(ValueError):
 		subsequence.sequence_utils.generate_bresenham_sequence_weighted(16, [])
+
+
+# --- perlin_1d ---
+
+
+def test_perlin_1d_range () -> None:
+
+	"""Output should always be in [0.0, 1.0]."""
+
+	for i in range(200):
+		x = i * 0.13 - 5.0
+		value = subsequence.sequence_utils.perlin_1d(x, seed=42)
+		assert 0.0 <= value <= 1.0, f"perlin_1d({x}) = {value} out of range"
+
+
+def test_perlin_1d_deterministic () -> None:
+
+	"""Same x and seed should always produce the same result."""
+
+	a = subsequence.sequence_utils.perlin_1d(3.14, seed=7)
+	b = subsequence.sequence_utils.perlin_1d(3.14, seed=7)
+	assert a == b
+
+
+def test_perlin_1d_smooth () -> None:
+
+	"""Adjacent samples should be close (no large jumps)."""
+
+	step = 0.01
+	prev = subsequence.sequence_utils.perlin_1d(0.0, seed=42)
+
+	for i in range(1, 100):
+		x = i * step
+		curr = subsequence.sequence_utils.perlin_1d(x, seed=42)
+		assert abs(curr - prev) < 0.15, f"Jump too large at x={x}: {prev} -> {curr}"
+		prev = curr
+
+
+def test_perlin_1d_different_seeds () -> None:
+
+	"""Different seeds should produce different noise fields."""
+
+	values_a = [subsequence.sequence_utils.perlin_1d(i * 0.1, seed=0) for i in range(20)]
+	values_b = [subsequence.sequence_utils.perlin_1d(i * 0.1, seed=99) for i in range(20)]
+
+	assert values_a != values_b
+
+
+def test_perlin_1d_varies () -> None:
+
+	"""Output should not be constant — it should vary over the range."""
+
+	values = [subsequence.sequence_utils.perlin_1d(i * 0.3, seed=42) for i in range(50)]
+
+	assert max(values) - min(values) > 0.1
+
+
+# --- generate_cellular_automaton ---
+
+
+def test_cellular_automaton_length () -> None:
+
+	"""Output length should match the requested step count."""
+
+	for steps in [8, 16, 32]:
+		result = subsequence.sequence_utils.generate_cellular_automaton(steps, rule=30, generation=5)
+		assert len(result) == steps
+
+
+def test_cellular_automaton_binary () -> None:
+
+	"""Output should contain only 0s and 1s."""
+
+	result = subsequence.sequence_utils.generate_cellular_automaton(16, rule=30, generation=10)
+	assert all(v in (0, 1) for v in result)
+
+
+def test_cellular_automaton_generation_zero () -> None:
+
+	"""Generation 0 with default seed should have a single centre cell."""
+
+	result = subsequence.sequence_utils.generate_cellular_automaton(16, rule=30, generation=0)
+	assert result[8] == 1
+	assert sum(result) == 1
+
+
+def test_cellular_automaton_evolves () -> None:
+
+	"""Different generations should produce different patterns."""
+
+	gen_0 = subsequence.sequence_utils.generate_cellular_automaton(16, rule=30, generation=0)
+	gen_5 = subsequence.sequence_utils.generate_cellular_automaton(16, rule=30, generation=5)
+	gen_10 = subsequence.sequence_utils.generate_cellular_automaton(16, rule=30, generation=10)
+
+	assert gen_0 != gen_5
+	assert gen_5 != gen_10
+
+
+def test_cellular_automaton_deterministic () -> None:
+
+	"""Same parameters should always produce the same output."""
+
+	a = subsequence.sequence_utils.generate_cellular_automaton(16, rule=30, generation=7)
+	b = subsequence.sequence_utils.generate_cellular_automaton(16, rule=30, generation=7)
+	assert a == b
+
+
+def test_cellular_automaton_rule_90_symmetry () -> None:
+
+	"""Rule 90 from a single centre cell should produce symmetric patterns (odd grid)."""
+
+	result = subsequence.sequence_utils.generate_cellular_automaton(17, rule=90, generation=3)
+	assert result == list(reversed(result))
+
+
+def test_cellular_automaton_empty () -> None:
+
+	"""Steps <= 0 should return an empty list."""
+
+	assert subsequence.sequence_utils.generate_cellular_automaton(0, rule=30, generation=5) == []
+
+
+def test_cellular_automaton_custom_seed () -> None:
+
+	"""A custom seed should set the initial state from its bit pattern."""
+
+	# seed=5 = binary 101 → state[0]=1, state[1]=0, state[2]=1
+	result = subsequence.sequence_utils.generate_cellular_automaton(8, rule=30, generation=0, seed=5)
+	assert result[0] == 1
+	assert result[1] == 0
+	assert result[2] == 1
+	assert sum(result) == 2
