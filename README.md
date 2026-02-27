@@ -106,7 +106,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 
 ### Composition tools
 
-- **Rhythm and feel.** [Euclidean and Bresenham generators](#rhythm--pattern), [groove templates](#groove) (including [Ableton .agr import](#groove)), swing, humanize, velocity shaping[^vdc], dropout, per-step probability, and polyrhythms via independent pattern lengths.
+- **Rhythm and feel.** [Euclidean and Bresenham generators](#rhythm--pattern), [groove templates](#groove) (including [Ableton .agr import](#groove)), swing, humanize, velocity shaping[^vdc], dropout, per-step probability, polyrhythms via independent pattern lengths, and multi-voice weighted Bresenham distribution (`bresenham_poly()`) with `no_overlap` collision avoidance.
 - **Expression.** CC messages and ramps, pitch bend, note-correlated [bend/portamento/slide](#pitch-bend-automation), program changes, SysEx, and [OSC output](#osc-integration) - all from within patterns.
 - **Form and structure.** Define [song form](#form-and-sections) as a weighted graph, ordered list, or generator. Patterns read `p.section` to adapt. [Conductor signals](#the-conductor) (LFOs, ramps) shape intensity over time.
 - **[Mini-notation.](#mini-notation)** Write `p.seq("x x [x x] x", pitch="kick")` - subdivisions, rests, sustains, per-step probability suffixes. Quick ideas in one line.
@@ -1537,6 +1537,10 @@ Drums, bass, and an ascending arpeggio over evolving aeolian minor harmony in E.
 
 A more complete composition with form sections (intro → section_1 ↔ section_2), five patterns (drums, bass, arp, lead), cycle-dependent variation, and Phrygian minor harmony. Demonstrates `velocity_shape`, `legato`, non-quarter-note grids, and section-aware muting.
 
+### Bresenham builds (`examples/bresenham_poly.py`)
+
+A 64-bar additive drum build from silence to maximum density, demonstrating `bresenham_poly()`, `bresenham()` with `no_overlap`, and `hit_steps()` working together as layered anchor→ghost→texture architecture. Seven layers enter progressively (kick → snare → ghost kicks → hats → ghost snares → claps → toms) with easing-shaped velocity and density curves from `subsequence.easing`. Shows the practical difference between integer-pulse stable patterns and continuous-density shifting patterns, with inline notes explaining when each approach suits a given sound.
+
 ### Frozen progressions (`examples/frozen.py`)
 
 Demonstrates `freeze()` and `section_chords()` - pre-baking chord progressions with different `gravity` and `nir_strength` settings for verse, chorus, and bridge. The verse and chorus replay their frozen chords on every re-entry; the bridge generates live chords each time. Shows how to combine structural repetition with generative freedom in a single composition.
@@ -1562,7 +1566,7 @@ Turns real-time International Space Station telemetry into an evolving compositi
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
 - `subsequence.groove` provides `Groove` templates (per-step timing/velocity feel). `Groove.swing(percent)` for percentage-based swing, `Groove.from_agr(path)` to import Ableton groove files, or construct directly with custom offsets. Applied via `p.groove(template)`.
 - `subsequence.swing` applies swing timing to a pattern.
-- `subsequence.sequence_utils` provides rhythm generation (Euclidean, Bresenham, van der Corput), probability gating, random walk, and scale/clamp helpers.
+- `subsequence.sequence_utils` provides rhythm generation (Euclidean, Bresenham, weighted multi-voice Bresenham, van der Corput), probability gating, random walk, and scale/clamp helpers. The weighted Bresenham function (`generate_bresenham_sequence_weighted`) underlies `p.bresenham_poly()` - pass a `parts` dict mapping pitch names to density weights (0.0–1.0) and the voices are distributed across the step grid in interlocking Bresenham patterns. Add `no_overlap=True` to any of `euclidean()`, `bresenham()`, or `bresenham_poly()` to skip placement when the same MIDI pitch already occupies that step - prevents double-triggers when layering an anchor pattern with a ghost-note layer.
 - `subsequence.mini_notation` parses a compact string syntax for step-sequencer patterns.
 - `subsequence.easing` provides easing/transition curve functions used by `conductor.line()`, `target_bpm()`, `cc_ramp()`, and `pitch_bend_ramp()`. Pass `shape=` to any of these to control how a value moves over time. Built-in shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out"` (Hermite smoothstep), `"exponential"` (cubic, good for filter sweeps), `"logarithmic"` (cubic, good for volume fades), `"s_curve"` (Perlin smootherstep - smoother than `"ease_in_out"` for long transitions). Callable shapes are also accepted for custom curves. Also provides **`EasedValue`** - a lightweight stateful helper that smoothly interpolates between discrete data updates (e.g. API poll results, sensor readings) so patterns hear a continuous eased value rather than a hard jump on each fetch cycle. Create one instance per field at module level, call `.update(value)` in your scheduled task, and call `.get(progress)` in your pattern.
 

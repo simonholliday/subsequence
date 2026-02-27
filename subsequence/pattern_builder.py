@@ -589,7 +589,8 @@ class PatternBuilder:
 		velocity: int,
 		duration: float,
 		dropout: float,
-		rng: random.Random
+		rng: random.Random,
+		no_overlap: bool = False
 	) -> None:
 
 		"""Place hits from a binary sequence into the pattern.
@@ -599,6 +600,7 @@ class PatternBuilder:
 		across the pattern length. Zeros and dropout-gated steps are skipped.
 		"""
 
+		midi_pitch = self._resolve_pitch(pitch)
 		step_duration = self._pattern.length / len(sequence)
 
 		for i, hit_value in enumerate(sequence):
@@ -609,15 +611,21 @@ class PatternBuilder:
 			if dropout > 0 and rng.random() < dropout:
 				continue
 
+			if no_overlap:
+				pulse = int(i * step_duration * subsequence.constants.MIDI_QUARTER_NOTE)
+				if pulse in self._pattern.steps:
+					if any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes):
+						continue
+
 			self.note(pitch=pitch, beat=i * step_duration, velocity=velocity, duration=duration)
 
-	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
+	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""
 		Generate a Euclidean rhythm.
-		
-		This distributes a fixed number of 'pulses' as evenly as possible 
-		across the pattern. This produces many of the world's most 
+
+		This distributes a fixed number of 'pulses' as evenly as possible
+		across the pattern. This produces many of the world's most
 		common musical rhythms.
 
 		Parameters:
@@ -626,6 +634,9 @@ class PatternBuilder:
 			velocity: MIDI velocity.
 			duration: Note duration.
 			dropout: Probability (0.0 to 1.0) of skipping each pulse.
+			no_overlap: If True, skip steps where a note of the same pitch
+				already exists. Useful for layering ghost notes around
+				hand-placed anchors.
 
 		Example:
 			```python
@@ -639,15 +650,25 @@ class PatternBuilder:
 
 		steps = int(self._pattern.length * 4)
 		sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=steps, pulses=pulses)
-		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng)
+		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap)
 
-	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, rng: typing.Optional[random.Random] = None) -> None:
+	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> None:
 
 		"""
 		Generate a rhythm using the Bresenham line algorithm.
-		
-		This is an alternative to Euclidean rhythms that often results in 
+
+		This is an alternative to Euclidean rhythms that often results in
 		slightly different (but still mathematically even) distributions.
+
+		Parameters:
+			pitch: MIDI note or drum name.
+			pulses: Total number of notes to place.
+			velocity: MIDI velocity.
+			duration: Note duration.
+			dropout: Probability (0.0 to 1.0) of skipping each pulse.
+			no_overlap: If True, skip steps where a note of the same pitch
+				already exists. Useful for layering ghost notes around
+				hand-placed anchors.
 		"""
 
 		if rng is None:
@@ -655,7 +676,142 @@ class PatternBuilder:
 
 		steps = int(self._pattern.length * 4)
 		sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=steps, pulses=pulses)
-		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng)
+		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap)
+
+	def bresenham_poly (
+		self,
+		parts: typing.Dict[typing.Union[int, str], float],
+		velocity: typing.Union[int, typing.Dict[typing.Union[int, str], int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+		duration: float = 0.1,
+		grid: typing.Optional[int] = None,
+		dropout: float = 0.0,
+		no_overlap: bool = False,
+		rng: typing.Optional[random.Random] = None,
+	) -> None:
+
+		"""
+		Distribute multiple drum voices across the pattern using weighted Bresenham.
+
+		Each step is assigned to exactly one voice — voices never overlap, producing
+		interlocking rhythmic patterns. Density weights control how frequently each
+		voice fires. If the weights sum to less than 1.0, the remainder becomes
+		evenly-distributed rests (silent steps).
+
+		Because notes are placed via ``self.note()``, all post-placement transforms
+		(``groove``, ``humanize``, ``velocity_shape``, ``shift``, etc.) work normally.
+
+		Parameters:
+			parts: Mapping of pitch (MIDI note or drum name) to density weight.
+				Higher weight means more hits per bar. Weights in the range (0, 1]
+				are typical; a weight of 0.5 targets roughly one hit every two steps.
+			velocity: Either a single MIDI velocity applied to all voices, or a dict
+				mapping each pitch to its own velocity. Pitches absent from the dict
+				fall back to the default velocity (100).
+			duration: Note duration in beats (default 0.1).
+			grid: Number of steps to divide the pattern into. Defaults to the
+				pattern's standard sixteenth-note grid (``length * 4``).
+			dropout: Probability (0.0–1.0) of randomly skipping each placed hit.
+			no_overlap: If True, skip steps where a note of the same pitch already
+				exists. Useful for layering ghost notes around hand-placed anchors.
+			rng: Optional random generator (overrides the pattern's seed).
+
+		Example:
+			```python
+			p.bresenham_poly(
+				parts={"kick_1": 0.25, "snare_1": 0.125, "hi_hat_closed": 0.5},
+				velocity={"kick_1": 100, "snare_1": 90, "hi_hat_closed": 70},
+			)
+			```
+
+		Layering with hand-placed hits:
+			```python
+			# Algorithmic base — interlocking texture, no overlaps within this layer
+			p.bresenham_poly(
+				parts={"hi_hat_closed": 0.5, "snare_2": 0.1},
+				velocity={"hi_hat_closed": 65, "snare_2": 40},
+			)
+			# Hand-placed anchors on top — these CAN overlap the algorithmic layer
+			p.hit_steps("kick_1", [0, 8], velocity=110)
+			p.hit_steps("snare_1", [4, 12], velocity=100)
+			```
+
+		Stable vs shifting patterns:
+			Because the algorithm redistributes all positions when weights change,
+			a single voice with a continuously ramping density will shift positions
+			every bar. This is great for background texture (hats, shakers) but
+			can sound jarring for prominent, distinctive sounds (claps, cowbells).
+
+			**For stable patterns** — use ``bresenham()`` with integer pulses.
+			Positions stay fixed until the pulse count steps up::
+
+				pulses = max(1, round(density * 16))
+				p.bresenham("hand_clap", pulses=pulses, velocity=95)
+
+			**For shifting texture** — use ``bresenham_poly()`` with continuous
+			density. Positions evolve every bar::
+
+				p.bresenham_poly(parts={"hi_hat_closed": density}, velocity=70)
+
+			**To stabilise a solo voice** — pair it with a second voice. More
+			voices in a single call means less positional shift per voice::
+
+				p.bresenham_poly(
+					parts={"hand_clap": 0.12, "snare_2": 0.08},
+					velocity={"hand_clap": 95, "snare_2": 40},
+				)
+		"""
+
+		if not parts:
+			raise ValueError("parts dict cannot be empty")
+
+		if any(w < 0 for w in parts.values()):
+			raise ValueError("All density weights must be non-negative")
+
+		if rng is None:
+			rng = self.rng
+
+		if grid is None:
+			grid = self._default_grid
+
+		voice_names = list(parts.keys())
+		weights = [parts[name] for name in voice_names]
+
+		# If weights don't fill the bar, add an implicit rest voice.
+		weight_sum = sum(weights)
+		rest_index: typing.Optional[int] = None
+		if weight_sum < 1.0:
+			rest_index = len(voice_names)
+			weights.append(1.0 - weight_sum)
+
+		sequence = subsequence.sequence_utils.generate_bresenham_sequence_weighted(
+			steps=grid, weights=weights
+		)
+
+		step_duration = self._pattern.length / grid
+
+		for step_idx, voice_idx in enumerate(sequence):
+
+			if voice_idx == rest_index:
+				continue
+
+			if dropout > 0 and rng.random() < dropout:
+				continue
+
+			pitch = voice_names[voice_idx]
+
+			if no_overlap:
+				midi_pitch = self._resolve_pitch(pitch)
+				pulse = int(step_idx * step_duration * subsequence.constants.MIDI_QUARTER_NOTE)
+				if pulse in self._pattern.steps:
+					if any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes):
+						continue
+
+			if isinstance(velocity, dict):
+				vel = velocity.get(pitch, subsequence.constants.velocity.DEFAULT_VELOCITY)
+			else:
+				vel = velocity
+
+			self.note(pitch=pitch, beat=step_idx * step_duration, velocity=vel, duration=duration)
 
 	# These methods transform existing notes after they have been placed.
 	# Call them at the end of your builder function, after all notes are

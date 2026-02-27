@@ -5,6 +5,7 @@ import pytest
 import subsequence.chords
 import subsequence.constants
 import subsequence.constants.durations
+import subsequence.constants.velocity
 import subsequence.pattern
 import subsequence.pattern_builder
 
@@ -2410,3 +2411,274 @@ def test_slide_wrap () -> None:
 	# Reset at pulse 0 (wrap-around)
 	reset_at_zero = [e for e in bend_events if e.pulse == 0 and e.value == 0]
 	assert len(reset_at_zero) >= 1
+
+
+# --- bresenham_poly ---
+
+def test_bresenham_poly_full_density_fills_all_steps () -> None:
+
+	"""Weights summing to 1.0 should produce a hit on every grid step."""
+
+	drum_map = {"kick": 36, "snare": 38, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.bresenham_poly(
+		parts={"kick": 0.25, "snare": 0.25, "hat": 0.5},
+		velocity=100,
+	)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+	assert total_notes == 16
+
+
+def test_bresenham_poly_rest_voice_reduces_notes () -> None:
+
+	"""Weights summing to 0.5 should produce half as many notes as grid steps."""
+
+	drum_map = {"kick": 36, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.bresenham_poly(
+		parts={"kick": 0.25, "hat": 0.25},
+		velocity=100,
+	)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+	assert total_notes == 8
+
+
+def test_bresenham_poly_no_overlaps () -> None:
+
+	"""No two voices should fire on the same step."""
+
+	drum_map = {"kick": 36, "snare": 38, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.bresenham_poly(
+		parts={"kick": 0.3, "snare": 0.2, "hat": 0.5},
+		velocity=100,
+	)
+
+	for step in pattern.steps.values():
+		assert len(step.notes) <= 1
+
+
+def test_bresenham_poly_per_voice_velocity () -> None:
+
+	"""Each voice should use its own velocity from the velocity dict."""
+
+	drum_map = {"kick": 36, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.bresenham_poly(
+		parts={"kick": 0.5, "hat": 0.5},
+		velocity={"kick": 127, "hat": 60},
+	)
+
+	pitch_velocities: dict = {}
+	for step in pattern.steps.values():
+		for note in step.notes:
+			pitch_velocities[note.pitch] = note.velocity
+
+	assert pitch_velocities[36] == 127
+	assert pitch_velocities[42] == 60
+
+
+def test_bresenham_poly_scalar_velocity_applies_to_all () -> None:
+
+	"""A single int velocity should apply to every placed note."""
+
+	drum_map = {"kick": 36, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.bresenham_poly(
+		parts={"kick": 0.5, "hat": 0.5},
+		velocity=77,
+	)
+
+	for step in pattern.steps.values():
+		for note in step.notes:
+			assert note.velocity == 77
+
+
+def test_bresenham_poly_velocity_dict_missing_key_uses_default () -> None:
+
+	"""Voices absent from the velocity dict should use DEFAULT_VELOCITY."""
+
+	drum_map = {"kick": 36, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.bresenham_poly(
+		parts={"kick": 0.5, "hat": 0.5},
+		velocity={"kick": 127},  # hat not specified
+	)
+
+	for step in pattern.steps.values():
+		for note in step.notes:
+			if note.pitch == 42:
+				assert note.velocity == subsequence.constants.velocity.DEFAULT_VELOCITY
+
+
+def test_bresenham_poly_dropout_reduces_notes () -> None:
+
+	"""Dropout should reduce the total number of placed notes."""
+
+	drum_map = {"kick": 36, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+	builder.rng = random.Random(42)
+
+	builder.bresenham_poly(
+		parts={"kick": 0.5, "hat": 0.5},
+		velocity=100,
+		dropout=0.5,
+	)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+	assert 0 < total_notes < 16
+
+
+def test_bresenham_poly_custom_grid () -> None:
+
+	"""A custom grid should be used as the step count."""
+
+	drum_map = {"kick": 36, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.bresenham_poly(
+		parts={"kick": 0.5, "hat": 0.5},
+		velocity=100,
+		grid=8,
+	)
+
+	total_notes = sum(len(step.notes) for step in pattern.steps.values())
+	assert total_notes == 8
+
+
+def test_bresenham_poly_empty_parts_raises () -> None:
+
+	"""An empty parts dict should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError):
+		builder.bresenham_poly(parts={})
+
+
+def test_bresenham_poly_negative_weight_raises () -> None:
+
+	"""Negative density weights should raise ValueError."""
+
+	drum_map = {"kick": 36}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	with pytest.raises(ValueError):
+		builder.bresenham_poly(parts={"kick": -0.5})
+
+
+def test_bresenham_poly_deterministic_with_seed () -> None:
+
+	"""Same seed should produce the same pattern when dropout is used."""
+
+	drum_map = {"kick": 36, "hat": 42}
+
+	def build (seed: int) -> set:
+		pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+		builder.rng = random.Random(seed)
+		builder.bresenham_poly(
+			parts={"kick": 0.25, "hat": 0.5},
+			velocity=100,
+			dropout=0.3,
+		)
+		return set(pattern.steps.keys())
+
+	assert build(42) == build(42)
+
+
+# --- no_overlap ---
+
+def test_bresenham_no_overlap_skips_existing_pitch () -> None:
+
+	"""With no_overlap=True, bresenham should not place a note where the same pitch exists."""
+
+	drum_map = {"kick": 36}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	# Place anchor kicks on beats 1, 2, 3, 4 (steps 0, 4, 8, 12).
+	builder.hit_steps("kick", [0, 4, 8, 12], velocity=100)
+	anchors_placed = sum(len(s.notes) for s in pattern.steps.values())
+	assert anchors_placed == 4
+
+	# Ghost kicks with no_overlap — should skip steps that already have kick.
+	builder.bresenham("kick", pulses=5, velocity=45, no_overlap=True)
+
+	for step in pattern.steps.values():
+		kick_notes = [n for n in step.notes if n.pitch == 36]
+		assert len(kick_notes) <= 1
+
+
+def test_bresenham_without_no_overlap_allows_duplicates () -> None:
+
+	"""Without no_overlap, bresenham places notes even where the same pitch exists."""
+
+	drum_map = {"kick": 36}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.hit_steps("kick", [0, 4, 8, 12], velocity=100)
+	builder.bresenham("kick", pulses=5, velocity=45)
+
+	total_notes = sum(len(s.notes) for s in pattern.steps.values())
+	assert total_notes == 9  # 4 anchors + 5 ghost kicks, overlaps allowed
+
+
+def test_euclidean_no_overlap () -> None:
+
+	"""no_overlap should work for euclidean too (shared _place_rhythm_sequence)."""
+
+	drum_map = {"snare": 38}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	builder.hit_steps("snare", [4, 12], velocity=100)
+	builder.euclidean("snare", pulses=4, velocity=50, no_overlap=True)
+
+	for step in pattern.steps.values():
+		snare_notes = [n for n in step.notes if n.pitch == 38]
+		assert len(snare_notes) <= 1
+
+
+def test_bresenham_poly_no_overlap () -> None:
+
+	"""bresenham_poly with no_overlap should skip steps with existing same-pitch notes."""
+
+	drum_map = {"kick": 36, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	# Place kick anchors first.
+	builder.hit_steps("kick", [0, 4, 8, 12], velocity=100)
+
+	# Poly layer includes kick at ghost velocity — should skip occupied kick steps.
+	builder.bresenham_poly(
+		parts={"kick": 0.5, "hat": 0.5},
+		velocity={"kick": 45, "hat": 70},
+		no_overlap=True,
+	)
+
+	for step in pattern.steps.values():
+		kick_notes = [n for n in step.notes if n.pitch == 36]
+		assert len(kick_notes) <= 1
+
+
+def test_no_overlap_allows_different_pitches_on_same_step () -> None:
+
+	"""no_overlap only prevents same-pitch collisions — different pitches can share a step."""
+
+	drum_map = {"kick": 36, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+
+	# Place kicks on every beat.
+	builder.hit_steps("kick", [0, 4, 8, 12], velocity=100)
+
+	# Bresenham hat with no_overlap — hats are a different pitch, should still be placed.
+	builder.bresenham("hat", pulses=4, velocity=70, no_overlap=True)
+
+	total_notes = sum(len(s.notes) for s in pattern.steps.values())
+	assert total_notes == 8  # 4 kicks + 4 hats, no collisions because different pitches

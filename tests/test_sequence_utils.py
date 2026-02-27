@@ -369,3 +369,76 @@ def test_probability_gate_deterministic () -> None:
 	result_2 = subsequence.sequence_utils.probability_gate(seq, 0.6, random.Random(42))
 
 	assert result_1 == result_2
+
+
+# --- generate_bresenham_sequence_weighted ---
+
+def test_bresenham_weighted_length_matches_steps () -> None:
+
+	"""Output length should equal the requested step count."""
+
+	for steps in [1, 8, 16, 32]:
+		seq = subsequence.sequence_utils.generate_bresenham_sequence_weighted(steps, [0.3, 0.7])
+		assert len(seq) == steps
+
+
+def test_bresenham_weighted_equal_voices () -> None:
+
+	"""Two equal-weight voices should each get exactly half the steps."""
+
+	seq = subsequence.sequence_utils.generate_bresenham_sequence_weighted(16, [0.5, 0.5])
+	assert seq.count(0) == 8
+	assert seq.count(1) == 8
+
+
+def test_bresenham_weighted_single_voice () -> None:
+
+	"""A single voice should claim every step."""
+
+	seq = subsequence.sequence_utils.generate_bresenham_sequence_weighted(8, [1.0])
+	assert seq == [0] * 8
+
+
+def test_bresenham_weighted_heavier_voice_gets_more_steps () -> None:
+
+	"""The voice with double the weight should get roughly double the steps."""
+
+	seq = subsequence.sequence_utils.generate_bresenham_sequence_weighted(16, [0.5, 0.25])
+	assert seq.count(0) > seq.count(1)
+
+
+def test_bresenham_weighted_three_voices_all_present () -> None:
+
+	"""All three voices should appear when given non-trivial weights."""
+
+	seq = subsequence.sequence_utils.generate_bresenham_sequence_weighted(16, [0.4, 0.3, 0.3])
+	assert 0 in seq
+	assert 1 in seq
+	assert 2 in seq
+
+
+def test_bresenham_weighted_deterministic () -> None:
+
+	"""Same inputs should always produce the same sequence (no randomness)."""
+
+	a = subsequence.sequence_utils.generate_bresenham_sequence_weighted(16, [0.3, 0.5, 0.2])
+	b = subsequence.sequence_utils.generate_bresenham_sequence_weighted(16, [0.3, 0.5, 0.2])
+	assert a == b
+
+
+def test_bresenham_weighted_zero_steps_raises () -> None:
+
+	"""Steps <= 0 should raise ValueError."""
+
+	import pytest
+	with pytest.raises(ValueError):
+		subsequence.sequence_utils.generate_bresenham_sequence_weighted(0, [0.5])
+
+
+def test_bresenham_weighted_empty_weights_raises () -> None:
+
+	"""Empty weights list should raise ValueError."""
+
+	import pytest
+	with pytest.raises(ValueError):
+		subsequence.sequence_utils.generate_bresenham_sequence_weighted(16, [])

@@ -30,7 +30,8 @@ What makes it different:
 
 Composition tools:
 
-- **Rhythm and feel.** Euclidean and Bresenham generators, groove
+- **Rhythm and feel.** Euclidean and Bresenham generators, multi-voice
+  weighted Bresenham distribution (``bresenham_poly()``), groove
   templates (``Groove.swing()``, ``Groove.from_agr()``), swing,
   humanize, velocity shaping, dropout, per-step probability, and
   polyrhythms via independent pattern lengths.
