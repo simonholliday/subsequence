@@ -9,53 +9,61 @@ compositions that evolve over time as natural to write as static loops.
 It generates pure MIDI (no audio engine) to control hardware synths,
 modular gear, drum machines, or software VSTs/DAWs.
 
-Features:
+What makes it different:
 
-- **Patterns as functions.** Decorated Python functions rebuilt each cycle
-  with full musical context - chord, section, bar count, external data.
+- **Stateful patterns that evolve.** Each pattern is a Python function
+  rebuilt fresh every cycle with full context - current chord, section,
+  cycle count, external data. Patterns remember what happened last bar
+  and decide what to do next.
+- **Cognitive harmony engine.** Chord progressions evolve via weighted
+  transition graphs with adjustable gravity and Narmour-based melodic
+  inertia. Eleven built-in palettes, automatic voice leading, and frozen
+  progressions to lock some sections while others evolve freely.
+- **Sub-microsecond clock.** Hybrid sleep+spin timing achieves typical
+  pulse jitter of < 5 us on Linux, with zero long-term drift.
+- **Turn anything into music.** ``composition.schedule()`` runs any
+  Python function on a beat cycle - APIs, sensors, files. Anything
+  Python can reach becomes a musical parameter.
+- **Pure MIDI, zero sound engine.** No audio synthesis, no heavyweight
+  dependencies. Route to hardware synths, drum machines, Eurorack, or
+  software instruments.
+
+Composition tools:
+
+- **Rhythm and feel.** Euclidean and Bresenham generators, groove
+  templates (``Groove.swing()``, ``Groove.from_agr()``), swing,
+  humanize, velocity shaping, dropout, per-step probability, and
+  polyrhythms via independent pattern lengths.
+- **Expression.** CC messages/ramps, pitch bend, note-correlated
+  bend/portamento/slide, program changes, SysEx, and OSC output - all
+  from within patterns.
+- **Form and structure.** Song form as a weighted graph, ordered list,
+  or generator. Patterns read ``p.section`` to adapt. Conductor signals
+  (LFOs, ramps) shape intensity over time.
 - **Mini-notation.** ``p.seq("x x [x x] x", pitch="kick")`` - concise
-  string syntax for rhythms, melodies, subdivisions, and per-step
-  probability.
-- **Context-aware harmony.** Weighted chord-transition graphs with
-  adjustable gravity, Narmour melodic cognition, and automatic voice
-  leading. Eleven built-in harmonic palettes.
-- **Form and sections.** Define song structure as a weighted graph, an
-  ordered list, or a Python generator. Patterns read ``p.section`` to
-  adapt their behaviour per section.
-- **Frozen progressions.** ``composition.freeze(bars)`` captures a
-  chord sequence from the live engine into a ``Progression`` object.
-  ``composition.section_chords(name, progression)`` binds it to a form
-  section so it replays identically on every re-entry. Unbound sections
-  continue generating live. Successive freeze calls advance the engine
-  so sections feel harmonically connected.
-- **Rhythmic tools.** Euclidean and Bresenham rhythm generators, groove
-  templates (``Groove.swing()``, ``Groove.from_agr()``), swing, humanize,
-  velocity shaping, dropout, and per-step probability.
-- **The Conductor.** Global time-varying signals - LFOs and automation
-  ramps with easing curves - that patterns read via ``p.signal()``.
-- **Expression and OSC output.** CC messages, CC ramps, pitch bend,
-  note-correlated bend/portamento/slide (``p.bend()``,
-  ``p.portamento()``, ``p.slide()``), program changes, SysEx, and OSC
-  automation (``p.osc()``, ``p.osc_ramp()``) - all from within
-  pattern builders.
-- **Scale quantization.** ``p.quantize()`` snaps notes to any scale.
-  Built-in western and non-western modes (Hirajoshi, In-Sen, Iwato, Yo,
-  Egyptian, pentatonics), plus ``register_scale()`` for your own.
-- **External data.** ``composition.schedule()`` runs any Python function
-  on a beat cycle - feed in APIs, sensors, or files and read the results
-  from any pattern via ``composition.data``.
-- **Live coding.** Hot-swap pattern logic, change tempo, mute/unmute, and
-  tweak parameters during playback via a built-in TCP eval server.
-- **MIDI I/O.** Record to file, render offline, follow an external clock,
-  output clock to hardware, and map incoming CC to ``composition.data``.
-- **Hotkeys.** Assign single keystrokes to jump sections, toggle mutes,
-  or fire any action - with optional bar-boundary quantization.
+  string syntax for rhythms, subdivisions, and per-step probability.
+- **Scales and quantization.** ``p.quantize()`` snaps notes to any
+  scale. Built-in western and non-western modes, plus
+  ``register_scale()`` for your own.
+- **Randomness tools.** Weighted choice, no-repeat shuffle, random
+  walk, probability gates. Deterministic seeding (``seed=42``) makes
+  every decision repeatable.
 - **Pattern transforms.** Legato, staccato, reverse, double/half-time,
   shift, transpose, invert, humanize, and conditional ``p.every()``.
-- **Deterministic seeding.** ``seed=42`` makes every random decision -
-  chords, form, note choices - repeatable and tweakable.
-- **Pure MIDI.** No audio synthesis, no heavyweight dependencies. Route
-  to any hardware or software instrument.
+
+Integration:
+
+- **MIDI clock.** Master (``clock_output()``) or follower
+  (``clock_follow=True``). Sync to a DAW or drive hardware.
+- **Hardware control.** CC input mapping from knobs/faders to
+  ``composition.data``. OSC for bidirectional communication with
+  mixers, lighting, visuals.
+- **Live coding.** Hot-swap patterns, change tempo, mute/unmute, and
+  tweak parameters during playback via a built-in TCP eval server.
+- **Hotkeys.** Single keystrokes to jump sections, toggle mutes, or
+  fire any action - with optional bar-boundary quantization.
+- **Recording.** Record to standard MIDI file. Render to file without
+  waiting for real-time playback.
 
 Minimal example:
 
