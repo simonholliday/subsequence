@@ -115,7 +115,9 @@ class Sequencer:
 		clock_follow: bool = False,
 		clock_output: bool = False,
 		record: bool = False,
-		record_filename: typing.Optional[str] = None
+		record_filename: typing.Optional[str] = None,
+		spin_wait: bool = True,
+		_jitter_log: typing.Optional[typing.List[float]] = None
 	) -> None:
 
 		"""Initialize the sequencer with MIDI devices and initial BPM.
@@ -133,6 +135,13 @@ class Sequencer:
 				are set, to prevent feedback loops).
 			record: When True, record all MIDI events to a file.
 			record_filename: Optional filename for the recording (defaults to timestamp).
+			spin_wait: When True (default), use a hybrid sleep+spin strategy for the
+				final sub-millisecond of each pulse interval.  This significantly
+				reduces clock jitter at the cost of ~1–5% extra CPU.  Set to False
+				to use pure ``asyncio.sleep()`` (lower CPU, higher jitter).
+			_jitter_log: Optional list to append per-pulse jitter values (seconds)
+				to during playback.  Intended for the clock jitter benchmark — not
+				for general use.
 		"""
 
 		if clock_follow and input_device_name is None:
@@ -193,6 +202,12 @@ class Sequencer:
 		self.seconds_per_pulse = 0.0
 		self.running = False
 		self._bpm_transition: typing.Optional[BpmTransition] = None
+		self._spin_wait: bool = spin_wait
+		# Spin threshold: sleep all the way to this many seconds before the target,
+		# then busy-wait for the remainder.  1ms is enough to absorb OS wakeup latency
+		# while keeping spin time short enough not to starve the event loop.
+		self._spin_threshold: float = 0.001
+		self._jitter_log: typing.Optional[typing.List[float]] = _jitter_log
 
 		self.set_bpm(initial_bpm)
 
@@ -266,12 +281,27 @@ class Sequencer:
 		except Exception as e:
 			logger.error(f"Failed to save MIDI recording: {e}")
 
+	def disable_spin_wait (self) -> None:
+
+		"""Disable the hybrid sleep+spin timing strategy.
+
+		By default the sequencer busy-waits for the final sub-millisecond of each
+		pulse interval to minimise clock jitter.  Call this to revert to pure
+		``asyncio.sleep()`` — lower CPU usage at the cost of higher jitter (typically
+		±0.5–2 ms on Linux vs ±50–200 μs with spin-wait enabled).
+
+		Can also be set at construction time: ``Sequencer(spin_wait=False)``.
+		"""
+
+		self._spin_wait = False
+
+
 	def set_bpm (self, bpm: float) -> None:
 
 		"""
 		Instantly change the tempo.
-		
-		Note: If `clock_follow` is enabled and the sequencer is running, 
+
+		Note: If `clock_follow` is enabled and the sequencer is running,
 		this method will be ignored as the tempo is slaved to the external source.
 		"""
 
@@ -845,17 +875,31 @@ class Sequencer:
 				break  # type: ignore[unreachable]
 
 			if not self.render_mode:
-				# Check if queue is empty and we are past the last event
-				async with self.queue_lock:
-					if not self.event_queue and not self.active_notes:
-						logger.info("Sequence complete (no more events or active notes).")
-						self.running = False
-						break
+				# Check if queue is empty and we are past the last event.
+				# Skipped in benchmark mode (_jitter_log set) so the clock
+				# runs until explicitly cancelled via asyncio.
+				if self._jitter_log is None:
+					async with self.queue_lock:
+						if not self.event_queue and not self.active_notes:
+							logger.info("Sequence complete (no more events or active notes).")
+							self.running = False
+							break
 
 				sleep_time = next_pulse_time - time.perf_counter()
 
 				if sleep_time > 0:
-					await asyncio.sleep(sleep_time)
+					if self._spin_wait and sleep_time > self._spin_threshold:
+						# Sleep to within _spin_threshold of the target, then busy-wait
+						# for the remaining sub-millisecond.  Trades ~1ms of CPU spin per
+						# pulse for significantly tighter timing than asyncio.sleep alone.
+						await asyncio.sleep(sleep_time - self._spin_threshold)
+						while time.perf_counter() < next_pulse_time:
+							pass
+					else:
+						await asyncio.sleep(sleep_time)
+
+				if self._jitter_log is not None:
+					self._jitter_log.append(time.perf_counter() - next_pulse_time)
 			else:
 				# Yield to the event loop so queued tasks (pattern rescheduling,
 				# asyncio.create_task callbacks) can run between pulses.

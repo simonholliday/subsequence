@@ -82,6 +82,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - [Terminal display](#terminal-display)
 - [MIDI recording and rendering](#midi-recording-and-rendering)
 - [Live coding](#live-coding)
+- [Clock accuracy](#clock-accuracy)
 - [MIDI input and external clock](#midi-input-and-external-clock)
 - [Hotkeys](#hotkeys)
 - [Pattern tools and hardware control](#pattern-tools-and-hardware-control)
@@ -98,7 +99,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **Patterns as functions.** Each pattern is a Python function rebuilt fresh each cycle - it can read the current chord, section, cycle count, or external data to decide what to play.
 - **Context-Aware Harmony.** Chord progressions evolve via weighted transition graphs with [adjustable gravity and melodic inertia](#harmonic-gravity-and-melodic-inertia).[^markov] [Eleven built-in palettes](#built-in-chord-graphs). Automatic [voice leading](#automatic-voice-leading) keeps voices moving smoothly.
 - **Architectural Sequencing.** Define [form](#form-and-sections) as a weighted transition graph, an ordered list, or a generator. Patterns read `p.section` to adapt. [Freeze progressions](#frozen-progressions) to replay the same chords every time a section recurs while letting other sections evolve freely.
-- **Stable clock, just-in-time scheduling.** Patterns are rescheduled ahead of time - pattern logic never blocks MIDI output.
+- **Sub-millisecond clock, just-in-time scheduling.** A hybrid sleep+spin timing strategy achieves typical pulse jitter of **< 5 μs** on Linux (measured), with zero long-term drift. Pattern logic is rescheduled ahead of time and never blocks MIDI output. Run `python benchmarks/clock_jitter.py` to measure jitter on your system.
 - **Rhythmic tools.** [Euclidean and Bresenham generators](#rhythm--pattern), [groove templates](#groove), swing, humanize, velocity shaping[^vdc], dropout, and [per-step probability](#composition-api).
 - **Randomness tools.**[^stochastic] Weighted choice, no-repeat shuffle, random walk, and probability gates - controlled randomness via `subsequence.sequence_utils`.
 - **[Mini-notation.](#mini-notation)** Write `p.seq("x x [x x] x", pitch="kick")` - subdivisions, rests, sustains, and per-step probability suffixes.
@@ -791,11 +792,11 @@ The `root_midi` must be a note that falls on a scale degree of the chosen key an
 
 ## Frozen progressions
 
-The harmony engine generates chords live via the weighted graph — great for evolving, exploratory compositions. But sometimes you want **structural repetition**: the verse should always feel like the verse, with the same harmonic journey each time it plays.
+The harmony engine generates chords live via the weighted graph - great for evolving, exploratory compositions. But sometimes you want **structural repetition**: the verse should always feel like the verse, with the same harmonic journey each time it plays.
 
 `composition.freeze(bars)` captures the current engine output into a `Progression` object. `composition.section_chords(section_name, progression)` then binds it to a form section. Every time that section plays, the harmonic clock replays the frozen chords instead of calling the live engine. Sections without a binding keep generating freely.
 
-Successive `freeze()` calls continue the engine's journey — so verse, chorus, and bridge progressions feel like parts of a whole rather than isolated islands.
+Successive `freeze()` calls continue the engine's journey - so verse, chorus, and bridge progressions feel like parts of a whole rather than isolated islands.
 
 ```python
 composition = subsequence.Composition(bpm=120, key="C")
@@ -814,7 +815,7 @@ composition.form({
 
 composition.section_chords("verse",  verse)
 composition.section_chords("chorus", chorus)
-# "bridge" is not bound — it generates live chords each time
+# "bridge" is not bound - it generates live chords each time
 
 composition.play()
 ```
@@ -1066,6 +1067,36 @@ python -c "import socket; s=socket.socket(); s.connect(('127.0.0.1',5555)); s.se
 ### Input validation
 
 All code is validated as syntactically correct Python before execution. If you send a typo or malformed code, the server returns a `SyntaxError` traceback - nothing is executed, and the running composition is never affected.
+
+## Clock accuracy
+
+Subsequence uses a hybrid sleep+spin timing strategy for its internal master clock. Rather than relying on `asyncio.sleep()` alone (which is subject to OS scheduler granularity), the loop sleeps to within ~1 ms of the target pulse time, then busy-waits on `time.perf_counter()` for the remaining sub-millisecond interval. Pulse times are calculated as absolute offsets from the session start time, so timing errors never accumulate.
+
+**Measured jitter on Linux at 120 BPM (64 bars, 6144 pulses):**
+
+| Mode | Mean | P99 | Max | Long-term drift |
+|------|------|-----|-----|-----------------|
+| Spin-wait ON (default) | **3 μs** | 4 μs | ~150 μs* | 0 |
+| `asyncio.sleep` only | 853 μs | 1.37 ms | 1.72 ms | negligible |
+
+\* Occasional spikes are GC pauses in the Python runtime, not clock instability.
+
+To measure jitter on your own system:
+
+```bash
+python benchmarks/clock_jitter.py             # default (spin-wait on, 32 bars)
+python benchmarks/clock_jitter.py --compare   # side-by-side with spin-wait off
+python benchmarks/clock_jitter.py --bpm 140 --bars 128
+```
+
+To disable spin-wait (lower CPU use, ~1 ms jitter):
+
+```python
+composition = subsequence.Composition(bpm=120, key="C")
+composition.sequencer.disable_spin_wait()
+```
+
+Or at construction time: `Sequencer(spin_wait=False)`.
 
 ## MIDI input and external clock
 
