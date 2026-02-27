@@ -40,7 +40,7 @@ if typing.TYPE_CHECKING:
 _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 _MAX_GRID_COLUMNS = 32
-_LABEL_WIDTH = 12
+_LABEL_WIDTH = 16
 _MIN_TERMINAL_WIDTH = 40
 _SUSTAIN = -1
 
@@ -56,16 +56,21 @@ class GridDisplay:
 	Not used directly — instantiated by ``Display`` when ``grid=True``.
 	"""
 
-	def __init__ (self, composition: "Composition") -> None:
+	def __init__ (self, composition: "Composition", scale: float = 1.0) -> None:
 
 		"""Store composition reference for reading pattern state.
 
 		Parameters:
 			composition: The ``Composition`` instance to read running
 				patterns from.
+			scale: Horizontal zoom factor.  Snapped to the nearest
+				integer ``cols_per_step`` so that all on-grid markers
+				are uniformly spaced.  Default ``1.0`` = one visual
+				column per grid step (current behaviour).
 		"""
 
 		self._composition = composition
+		self._scale = scale
 		self._lines: typing.List[str] = []
 
 	@property
@@ -101,6 +106,20 @@ class GridDisplay:
 		return "X"
 
 	@staticmethod
+	def _cell_char (velocity: int, is_on_grid: bool) -> str:
+
+		"""Return the display character for a grid cell.
+
+		Non-zero velocities (attacks and sustain) always show their
+		velocity glyph.  Empty on-grid positions show ``"."``, empty
+		between-grid positions show ``" "`` (space).
+		"""
+
+		if velocity != 0:
+			return GridDisplay._velocity_char(velocity)
+		return "." if is_on_grid else " "
+
+	@staticmethod
 	def _midi_note_name (pitch: int) -> str:
 
 		"""Convert a MIDI note number to a human-readable name.
@@ -133,12 +152,24 @@ class GridDisplay:
 			muted = getattr(pattern, "_muted", False)
 			drum_map: typing.Optional[typing.Dict[str, int]] = getattr(pattern, "_drum_note_map", None)
 
+			# Snap to integer cols_per_step for uniform marker spacing.
+			cols_per_step = max(1, round(self._scale))
+			visual_cols = grid_size * cols_per_step
+			display_cols = self._fit_columns(visual_cols, term_width)
+
+			# On-grid columns: exact multiples of cols_per_step.
+			on_grid = frozenset(
+				i * cols_per_step
+				for i in range(grid_size)
+				if i * cols_per_step < display_cols
+			)
+
 			if muted:
-				lines.extend(self._render_muted(name, grid_size, term_width))
+				lines.extend(self._render_muted(name, display_cols, on_grid))
 			elif drum_map:
-				lines.extend(self._render_drum_pattern(name, pattern, drum_map, grid_size, term_width))
+				lines.extend(self._render_drum_pattern(name, pattern, drum_map, visual_cols, display_cols, on_grid))
 			else:
-				lines.extend(self._render_pitched_pattern(name, pattern, grid_size, term_width))
+				lines.extend(self._render_pitched_pattern(name, pattern, visual_cols, display_cols, on_grid))
 
 		self._lines = lines
 
@@ -146,12 +177,11 @@ class GridDisplay:
 	# Rendering helpers
 	# ------------------------------------------------------------------
 
-	def _render_muted (self, name: str, grid_size: int, term_width: int) -> typing.List[str]:
+	def _render_muted (self, name: str, display_cols: int, on_grid: typing.FrozenSet[int]) -> typing.List[str]:
 
 		"""Render a muted pattern as a single row of dashes."""
 
-		display_cols = self._fit_columns(grid_size, term_width)
-		cells = " ".join(["-"] * display_cols)
+		cells = " ".join("-" if col in on_grid else " " for col in range(display_cols))
 		label = f"({name})"[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)
 		return [f"  {label}|{cells}|"]
 
@@ -160,14 +190,14 @@ class GridDisplay:
 		name: str,
 		pattern: typing.Any,
 		drum_map: typing.Dict[str, int],
-		grid_size: int,
-		term_width: int,
+		visual_cols: int,
+		display_cols: int,
+		on_grid: typing.FrozenSet[int],
 	) -> typing.List[str]:
 
 		"""Render a drum pattern with one row per distinct drum sound."""
 
 		lines: typing.List[str] = []
-		display_cols = self._fit_columns(grid_size, term_width)
 
 		# Build reverse map: {midi_note: drum_name}.
 		reverse_map: typing.Dict[int, str] = {}
@@ -176,7 +206,7 @@ class GridDisplay:
 				reverse_map[midi_note] = drum_name
 
 		# Discover which pitches are present in the pattern.
-		velocity_grid = self._build_velocity_grid(pattern, grid_size, display_cols)
+		velocity_grid = self._build_velocity_grid(pattern, visual_cols, display_cols)
 
 		if not velocity_grid:
 			# Pattern has no notes — just show the header.
@@ -189,7 +219,10 @@ class GridDisplay:
 		for pitch in sorted(velocity_grid):
 			label_text = reverse_map.get(pitch, self._midi_note_name(pitch))
 			label = f"  {label_text[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)}"
-			cells = " ".join(self._velocity_char(v) for v in velocity_grid[pitch][:display_cols])
+			cells = " ".join(
+				self._cell_char(v, col in on_grid)
+				for col, v in enumerate(velocity_grid[pitch][:display_cols])
+			)
 			lines.append(f"{label}|{cells}|")
 
 		return lines
@@ -198,16 +231,15 @@ class GridDisplay:
 		self,
 		name: str,
 		pattern: typing.Any,
-		grid_size: int,
-		term_width: int,
+		visual_cols: int,
+		display_cols: int,
+		on_grid: typing.FrozenSet[int],
 	) -> typing.List[str]:
 
 		"""Render a pitched pattern as a single summary row."""
 
-		display_cols = self._fit_columns(grid_size, term_width)
-
 		# Collapse all pitches into a single row using max velocity per slot.
-		velocity_grid = self._build_velocity_grid(pattern, grid_size, display_cols)
+		velocity_grid = self._build_velocity_grid(pattern, visual_cols, display_cols)
 
 		summary = [0] * display_cols
 		for pitch_velocities in velocity_grid.values():
@@ -216,7 +248,10 @@ class GridDisplay:
 					summary[i] = vel
 
 		label = name[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)
-		cells = " ".join(self._velocity_char(v) for v in summary)
+		cells = " ".join(
+			self._cell_char(v, col in on_grid)
+			for col, v in enumerate(summary)
+		)
 		return [f"  {label}|{cells}|"]
 
 	# ------------------------------------------------------------------
@@ -343,7 +378,7 @@ class Display:
 		```
 	"""
 
-	def __init__ (self, composition: "Composition", grid: bool = False) -> None:
+	def __init__ (self, composition: "Composition", grid: bool = False, grid_scale: float = 1.0) -> None:
 
 		"""Store composition reference for reading playback state.
 
@@ -351,6 +386,9 @@ class Display:
 			composition: The ``Composition`` instance to read state from.
 			grid: When True, render an ASCII grid of running patterns
 				above the status line.
+			grid_scale: Horizontal zoom factor for the grid (default
+				``1.0``).  Snapped internally to the nearest integer
+				``cols_per_step`` for uniform marker spacing.
 		"""
 
 		self._composition = composition
@@ -360,7 +398,7 @@ class Display:
 		self._last_line: str = ""
 		self._last_bar: typing.Optional[int] = None
 		self._cached_section: typing.Any = None
-		self._grid: typing.Optional[GridDisplay] = GridDisplay(composition) if grid else None
+		self._grid: typing.Optional[GridDisplay] = GridDisplay(composition, scale=grid_scale) if grid else None
 		self._last_grid_bar: typing.Optional[int] = None
 		self._drawn_line_count: int = 0
 

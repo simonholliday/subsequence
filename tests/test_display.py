@@ -658,9 +658,9 @@ def test_grid_fit_columns () -> None:
 	assert fit(16, 80) == 16
 
 	# Narrow terminal: fewer columns.
-	# Overhead = 2 (indent) + 12 (label) + 2 (pipes) = 16.
-	# Available = 30 - 16 = 14.  Max cols = (14 + 1) // 2 = 7.
-	assert fit(16, 30) == 7
+	# Overhead = 2 (indent) + 16 (label) + 2 (pipes) = 20.
+	# Available = 30 - 20 = 10.  Max cols = (10 + 1) // 2 = 5.
+	assert fit(16, 30) == 5
 
 	# Very narrow terminal: no columns.
 	assert fit(16, 16) == 0
@@ -827,3 +827,271 @@ def test_grid_pitched_summary_sustain (patch_midi: None, monkeypatch: pytest.Mon
 	assert chars[0] == "O"   # attack
 	assert chars[1] == "-"   # sustain visible in summary
 	assert chars[2] == "-"   # sustain visible in summary
+
+
+# ---------------------------------------------------------------------------
+# Grid scale tests
+# ---------------------------------------------------------------------------
+
+
+def test_grid_scale_default (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""scale=1.0 (default) should produce identical output to unscaled grid."""
+
+	import os
+	monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): os.terminal_size((120, 24)))
+
+	comp = _make_composition(patch_midi)
+
+	pat = _make_pitched_pattern()
+	pat._drum_note_map = None  # type: ignore[attr-defined]
+	pat._default_grid = 16  # type: ignore[attr-defined]
+	pat._muted = False  # type: ignore[attr-defined]
+
+	comp._running_patterns["bass"] = pat
+
+	grid_default = subsequence.display.GridDisplay(comp)
+	grid_default.build()
+
+	grid_scale1 = subsequence.display.GridDisplay(comp, scale=1.0)
+	grid_scale1.build()
+
+	assert grid_default._lines == grid_scale1._lines
+
+
+def test_grid_scale_doubles_columns (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""scale=2.0 should produce 32 visual columns for a 16-step pattern."""
+
+	import os
+	monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): os.terminal_size((200, 24)))
+
+	comp = _make_composition(patch_midi)
+
+	pat = _make_pitched_pattern()
+	pat._drum_note_map = None  # type: ignore[attr-defined]
+	pat._default_grid = 16  # type: ignore[attr-defined]
+	pat._muted = False  # type: ignore[attr-defined]
+
+	comp._running_patterns["bass"] = pat
+
+	grid = subsequence.display.GridDisplay(comp, scale=2.0)
+	grid.build()
+
+	assert grid.line_count == 1
+
+	parts = grid._lines[0].split("|")[1]
+	# Can't use .split() — space cells merge with separators.
+	# Every other char is a cell (cells separated by single spaces).
+	individual_cells = list(parts[::2])
+
+	# 32 visual columns (16 grid steps * cols_per_step=2).
+	assert len(individual_cells) == 32
+
+
+def test_grid_scale_on_grid_dot_between_grid_space (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""Empty on-grid positions should show '.', empty between-grid positions should show ' '."""
+
+	import os
+	monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): os.terminal_size((200, 24)))
+
+	comp = _make_composition(patch_midi)
+
+	# Pattern with a single note at pulse 0 — most positions are empty.
+	pat = subsequence.pattern.Pattern(channel=5, length=4)
+	pat.add_note(position=0, pitch=60, velocity=100, duration=3)  # short note, no sustain
+	pat._drum_note_map = None  # type: ignore[attr-defined]
+	pat._default_grid = 16  # type: ignore[attr-defined]
+	pat._muted = False  # type: ignore[attr-defined]
+
+	comp._running_patterns["lead"] = pat
+
+	grid = subsequence.display.GridDisplay(comp, scale=2.0)
+	grid.build()
+
+	parts = grid._lines[0].split("|")[1]
+	chars = parts.split()
+
+	# col 0 = on-grid, has attack.
+	assert chars[0] == "O"
+	# col 1 = between-grid, empty → space (represented as empty string after split).
+	# col 2 = on-grid, empty → ".".
+	assert chars[1] == "."
+
+	# Verify the raw string has spaces at between-grid empty positions.
+	# Between col 0 ("O") and col 2 ("."), the raw cells are "O" + " " + " " + " " + ".".
+	# That's: "O     ." — three spaces between them (separator + space-cell + separator).
+	raw = grid._lines[0].split("|")[1]
+	# Find a between-grid empty cell: col 1 should be a space character, col 2 should be a dot.
+	# The raw format is "X Y Z ..." where each cell is separated by a space.
+	# Cell at position 0 is O, cell at position 1 is space, cell at position 2 is dot.
+	individual_cells = list(raw[::2])  # every other char (skip separators)
+	assert individual_cells[0] == "O"
+	assert individual_cells[1] == " "   # between-grid empty
+	assert individual_cells[2] == "."   # on-grid empty
+
+
+def test_grid_scale_sustain_fills_between_grid (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""Sustain markers should appear at both on-grid and between-grid positions."""
+
+	import os
+	monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): os.terminal_size((200, 24)))
+
+	comp = _make_composition(patch_midi)
+
+	pat = subsequence.pattern.Pattern(channel=5, length=4)
+	# Note spanning 4 grid slots = 8 visual columns at scale=2.
+	# At 96 pulses / 16 steps = 6 pulses per step, 4 steps = 24 pulses.
+	pat.add_note(position=0, pitch=60, velocity=100, duration=24)
+	pat._drum_note_map = None  # type: ignore[attr-defined]
+	pat._default_grid = 16  # type: ignore[attr-defined]
+	pat._muted = False  # type: ignore[attr-defined]
+
+	comp._running_patterns["synth"] = pat
+
+	grid = subsequence.display.GridDisplay(comp, scale=2.0)
+	grid.build()
+
+	parts = grid._lines[0].split("|")[1]
+	individual_cells = list(parts[::2])  # every other char (skip separators)
+
+	# Col 0: attack.
+	assert individual_cells[0] == "O"
+	# Cols 1-7: sustain (both on-grid and between-grid).
+	for i in range(1, 8):
+		assert individual_cells[i] == "-", f"col {i} should be sustain '-', got '{individual_cells[i]}'"
+	# Col 8: note ended (on-grid empty).
+	assert individual_cells[8] == "."
+
+
+def test_grid_scale_muted (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""Muted pattern at scale=2 should show '-' at on-grid positions, space at between-grid."""
+
+	import os
+	monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): os.terminal_size((200, 24)))
+
+	comp = _make_composition(patch_midi)
+
+	pat = _make_drum_pattern()
+	pat._drum_note_map = {"kick_1": 36, "snare_1": 38}  # type: ignore[attr-defined]
+	pat._default_grid = 16  # type: ignore[attr-defined]
+	pat._muted = True  # type: ignore[attr-defined]
+
+	comp._running_patterns["drums"] = pat
+
+	grid = subsequence.display.GridDisplay(comp, scale=2.0)
+	grid.build()
+
+	assert grid.line_count == 1
+
+	parts = grid._lines[0].split("|")[1]
+	individual_cells = list(parts[::2])
+
+	# 32 visual columns. On-grid at even indices: '-', between-grid at odd: ' '.
+	for i in range(32):
+		if i % 2 == 0:
+			assert individual_cells[i] == "-", f"on-grid col {i} should be '-'"
+		else:
+			assert individual_cells[i] == " ", f"between-grid col {i} should be ' '"
+
+
+def test_grid_scale_float_snaps (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""Non-integer scale values should snap to the nearest integer cols_per_step."""
+
+	import os
+	monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): os.terminal_size((200, 24)))
+
+	comp = _make_composition(patch_midi)
+
+	pat = _make_pitched_pattern()
+	pat._drum_note_map = None  # type: ignore[attr-defined]
+	pat._default_grid = 16  # type: ignore[attr-defined]
+	pat._muted = False  # type: ignore[attr-defined]
+
+	comp._running_patterns["bass"] = pat
+
+	# scale=1.5 → round(1.5) = 2 → cols_per_step=2 → 32 visual columns.
+	grid_15 = subsequence.display.GridDisplay(comp, scale=1.5)
+	grid_15.build()
+	parts_15 = grid_15._lines[0].split("|")[1]
+	assert len(list(parts_15[::2])) == 32
+
+	# scale=2.6 → round(2.6) = 3 → cols_per_step=3 → 48 visual columns.
+	grid_26 = subsequence.display.GridDisplay(comp, scale=2.6)
+	grid_26.build()
+	parts_26 = grid_26._lines[0].split("|")[1]
+	assert len(list(parts_26[::2])) == 48
+
+
+def test_grid_scale_below_one (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""Scale values below 1.0 should clamp to cols_per_step=1 (no change)."""
+
+	import os
+	monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): os.terminal_size((120, 24)))
+
+	comp = _make_composition(patch_midi)
+
+	pat = _make_pitched_pattern()
+	pat._drum_note_map = None  # type: ignore[attr-defined]
+	pat._default_grid = 16  # type: ignore[attr-defined]
+	pat._muted = False  # type: ignore[attr-defined]
+
+	comp._running_patterns["bass"] = pat
+
+	grid_default = subsequence.display.GridDisplay(comp, scale=1.0)
+	grid_default.build()
+
+	grid_low = subsequence.display.GridDisplay(comp, scale=0.5)
+	grid_low.build()
+
+	assert grid_default._lines == grid_low._lines
+
+
+def test_grid_scale_uniform_spacing (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""All adjacent on-grid markers should be exactly cols_per_step apart."""
+
+	import os
+	monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): os.terminal_size((200, 24)))
+
+	comp = _make_composition(patch_midi)
+
+	pat = _make_pitched_pattern()
+	pat._drum_note_map = None  # type: ignore[attr-defined]
+	pat._default_grid = 16  # type: ignore[attr-defined]
+	pat._muted = False  # type: ignore[attr-defined]
+
+	comp._running_patterns["bass"] = pat
+
+	for scale, expected_step in [(1.0, 1), (2.0, 2), (3.0, 3), (1.5, 2), (2.6, 3)]:
+		grid = subsequence.display.GridDisplay(comp, scale=scale)
+		grid.build()
+
+		parts = grid._lines[0].split("|")[1]
+		individual_cells = list(parts[::2])
+
+		# Identify on-grid positions: they are at multiples of expected_step.
+		on_grid_positions = [i for i in range(len(individual_cells)) if i % expected_step == 0]
+
+		# All gaps between adjacent on-grid positions should be identical.
+		gaps = [on_grid_positions[j + 1] - on_grid_positions[j] for j in range(len(on_grid_positions) - 1)]
+		assert all(g == expected_step for g in gaps), (
+			f"scale={scale}: expected uniform gap of {expected_step}, got {gaps}"
+		)
+
+
+def test_composition_display_grid_scale (patch_midi: None) -> None:
+
+	"""composition.display(grid=True, grid_scale=2.0) should pass scale through to GridDisplay."""
+
+	comp = _make_composition(patch_midi)
+	comp.display(grid=True, grid_scale=2.0)
+
+	assert comp._display is not None
+	assert comp._display._grid is not None
+	assert comp._display._grid._scale == 2.0

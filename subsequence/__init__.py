@@ -65,6 +65,8 @@ Integration:
 - **Terminal display.** Live status line (BPM, bar, section, chord).
   Add ``grid=True`` for an ASCII pattern grid showing velocity and
   sustain - makes legato and staccato visually distinct at a glance.
+  Add ``grid_scale=2`` to zoom in horizontally, revealing swing and
+  groove micro-timing.
 - **Recording.** Record to standard MIDI file. Render to file without
   waiting for real-time playback.
 

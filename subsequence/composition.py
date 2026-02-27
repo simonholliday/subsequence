@@ -1410,7 +1410,7 @@ class Composition:
 
 		self._seed = value
 
-	def display (self, enabled: bool = True, grid: bool = False) -> None:
+	def display (self, enabled: bool = True, grid: bool = False, grid_scale: float = 1.0) -> None:
 
 		"""
 		Enable or disable the live terminal dashboard.
@@ -1425,10 +1425,15 @@ class Composition:
 				running patterns above the status line. The grid updates
 				once per bar, showing which steps have notes and at what
 				velocity.
+			grid_scale: Horizontal zoom factor for the grid (default
+				``1.0``).  Higher values add visual columns between
+				grid steps, revealing micro-timing from swing and groove.
+				Snapped to the nearest integer internally for uniform
+				marker spacing.
 		"""
 
 		if enabled:
-			self._display = subsequence.display.Display(self, grid=grid)
+			self._display = subsequence.display.Display(self, grid=grid, grid_scale=grid_scale)
 		else:
 			self._display = None
 

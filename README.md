@@ -934,6 +934,27 @@ Each column is one grid step (16th notes by default). Velocity and duration are 
 
 The sustain marker makes legato and staccato patterns visually distinct - a legato bass line fills its steps with `-` between attacks; drum hits are short and show no sustain. Drum patterns show one row per distinct drum sound, labelled from the drum note map. Pitched patterns show a single summary row.
 
+### Grid scale
+
+Add `grid_scale` to zoom in horizontally and reveal micro-timing from swing and groove:
+
+```python
+composition.display(grid=True, grid_scale=2)
+composition.play()
+```
+
+At `grid_scale=2` each base grid step expands to 2 visual columns. Empty columns *between* the original grid steps show as spaces; notes shifted by swing or groove appear at those in-between positions. Sustain markers fill all occupied columns:
+
+```
+grid_scale=1 (default):
+  bass        |O - - O - - - - O - - - O - - .|
+
+grid_scale=2:
+  bass        |O -   - O -   -   -   - O -   -   - O -   - .  |
+```
+
+`grid_scale` accepts any float and snaps to the nearest integer columns-per-step, guaranteeing all on-grid markers are exactly the same distance apart. Values below 1.5 are equivalent to the default.
+
 To disable:
 
 ```python
