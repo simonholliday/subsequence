@@ -991,7 +991,7 @@ class PatternBuilder:
 			if callable(velocity):
 				vel = int(velocity(i))
 			elif isinstance(velocity, tuple) and len(velocity) == 2:
-				vel = rng.randint(velocity[0], velocity[1])
+				vel = rng.randint(int(velocity[0]), int(velocity[1]))
 			elif isinstance(velocity, (list, tuple)):
 				vel = int(velocity[i % len(velocity)])
 			else:
