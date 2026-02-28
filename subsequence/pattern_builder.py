@@ -7,6 +7,7 @@ import subsequence.constants
 import subsequence.constants.velocity
 import subsequence.groove
 import subsequence.intervals
+import subsequence.melodic_state
 import subsequence.pattern
 import subsequence.sequence_utils
 import subsequence.mini_notation
@@ -1097,6 +1098,72 @@ class PatternBuilder:
 				self.note(pitch=pitch_map[state], beat=beat, velocity=velocity, duration=duration)
 
 			state = graph.choose_next(state, self.rng)
+			beat += step
+
+	def melody (
+		self,
+		state: subsequence.melodic_state.MelodicState,
+		step: float = 0.25,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = 90,
+		duration: float = 0.2,
+		chord_tones: typing.Optional[typing.List[int]] = None,
+	) -> None:
+
+		"""Generate a melodic line by querying a persistent :class:`~subsequence.melodic_state.MelodicState`.
+
+		Places one note (or rest) per ``step`` beats for the full pattern
+		length.  Pitch selection is guided by the NIR cognitive model inside
+		``state``: after a large leap the model expects a direction reversal;
+		after a small step it expects continuation.  Chord tones, range
+		gravity, and a pitch-diversity penalty further shape the output.
+
+		Because ``state`` lives outside the pattern builder and persists
+		across bar rebuilds, melodic continuity is maintained automatically —
+		no manual history management is required.
+
+		Parameters:
+			state: Persistent :class:`~subsequence.melodic_state.MelodicState`
+			    instance created once at module level.
+			step: Time between note onsets in beats (default 0.25 = 16th note).
+			velocity: MIDI velocity.  An ``int`` applies a fixed level; a
+			    ``(low, high)`` tuple draws uniformly from that range each step.
+			duration: Note duration in beats (default 0.2 — slightly shorter
+			    than a 16th note, giving a crisp attack).
+			chord_tones: Optional list of MIDI note numbers that are chord
+			    tones this bar (e.g. from ``chord.tones(root)``).  Chord-tone
+			    pitch classes receive a ``chord_weight`` bonus inside ``state``.
+
+		Example:
+			```python
+			melody_state = subsequence.MelodicState(
+			    key="A", mode="aeolian",
+			    low=60, high=84,
+			    nir_strength=0.6,
+			    chord_weight=0.4,
+			)
+
+			@composition.pattern(channel=3, length=4, chord=True)
+			def lead (p, chord):
+			    tones = chord.tones(72) if chord else None
+			    p.melody(melody_state, step=0.5, velocity=(70, 100), chord_tones=tones)
+			```
+		"""
+
+		n_steps = int(self._pattern.length / step)
+		beat = 0.0
+
+		for _ in range(n_steps):
+
+			pitch = state.choose_next(chord_tones, self.rng)
+
+			if pitch is not None:
+				vel = (
+					self.rng.randint(velocity[0], velocity[1])
+					if isinstance(velocity, tuple)
+					else velocity
+				)
+				self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
+
 			beat += step
 
 	# These methods transform existing notes after they have been placed.

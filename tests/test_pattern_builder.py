@@ -6,6 +6,7 @@ import subsequence.chords
 import subsequence.constants
 import subsequence.constants.durations
 import subsequence.constants.velocity
+import subsequence.melodic_state
 import subsequence.pattern
 import subsequence.pattern_builder
 
@@ -3072,3 +3073,172 @@ def test_markov_step_size_controls_density () -> None:
 	# step=0.25 → 16 notes; step=0.5 → 8 notes
 	assert _count(0.25) == 16
 	assert _count(0.5) == 8
+
+
+# --- p.melody() ---
+
+
+def _melody_state (
+	key: str = "C",
+	mode: str = "ionian",
+	low: int = 60,
+	high: int = 72,
+	nir_strength: float = 0.5,
+	chord_weight: float = 0.0,
+	rest_probability: float = 0.0,
+	pitch_diversity: float = 1.0,
+) -> subsequence.melodic_state.MelodicState:
+
+	"""Return a MelodicState with test defaults."""
+
+	return subsequence.melodic_state.MelodicState(
+		key=key, mode=mode, low=low, high=high,
+		nir_strength=nir_strength, chord_weight=chord_weight,
+		rest_probability=rest_probability, pitch_diversity=pitch_diversity,
+	)
+
+
+def test_melody_places_notes () -> None:
+
+	"""melody() should place at least one note over a default-length pattern."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(42)
+
+	ms = _melody_state()
+	builder.melody(state=ms)
+
+	total = sum(len(s.notes) for s in pattern.steps.values())
+
+	assert total > 0
+
+
+def test_melody_correct_step_count () -> None:
+
+	"""melody() should place int(length / step) notes when rest_probability is 0."""
+
+	# length=4, step=0.25 → 16 steps, all filled (no rests)
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(0)
+
+	ms = _melody_state(rest_probability=0.0)
+	builder.melody(state=ms, step=0.25)
+
+	total = sum(len(s.notes) for s in pattern.steps.values())
+
+	assert total == 16
+
+
+def test_melody_step_size_controls_density () -> None:
+
+	"""Larger step should produce fewer notes over the same pattern length."""
+
+	def _count (step: float) -> int:
+		pattern, builder = _make_builder(length=4)
+		builder.rng = random.Random(0)
+		ms = _melody_state(rest_probability=0.0)
+		builder.melody(state=ms, step=step)
+		return sum(len(s.notes) for s in pattern.steps.values())
+
+	assert _count(0.25) == 16
+	assert _count(0.5) == 8
+
+
+def test_melody_pitches_in_scale (self=None) -> None:
+
+	"""All placed pitches should belong to the scale defined in MelodicState."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(42)
+
+	ms = _melody_state(key="C", mode="ionian", low=60, high=72)
+	builder.melody(state=ms, step=0.25)
+
+	allowed = set(ms._pitch_pool)
+
+	for step in pattern.steps.values():
+		for note in step.notes:
+			assert note.pitch in allowed
+
+
+def test_melody_velocity_fixed (self=None) -> None:
+
+	"""A fixed integer velocity should be applied to all placed notes."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(0)
+
+	ms = _melody_state(rest_probability=0.0)
+	builder.melody(state=ms, velocity=77)
+
+	for step in pattern.steps.values():
+		for note in step.notes:
+			assert note.velocity == 77
+
+
+def test_melody_velocity_tuple (self=None) -> None:
+
+	"""A velocity tuple should produce values within the specified range."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(0)
+
+	low_vel, high_vel = 60, 100
+	ms = _melody_state(rest_probability=0.0)
+	builder.melody(state=ms, velocity=(low_vel, high_vel))
+
+	for step in pattern.steps.values():
+		for note in step.notes:
+			assert low_vel <= note.velocity <= high_vel
+
+
+def test_melody_deterministic () -> None:
+
+	"""Same seed and same MelodicState should produce identical pitch sequences."""
+
+	def _run (seed: int) -> list:
+		pattern, builder = _make_builder(length=4)
+		builder.rng = random.Random(seed)
+		ms = _melody_state()
+		builder.melody(state=ms, step=0.25, velocity=80)
+		return sorted(
+			(beat, n.pitch, n.velocity)
+			for beat, step in pattern.steps.items()
+			for n in step.notes
+		)
+
+	assert _run(42) == _run(42)
+	assert _run(42) != _run(99)
+
+
+def test_melody_rest_probability_produces_gaps () -> None:
+
+	"""With rest_probability=0.5, fewer than all steps should contain a note."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(7)
+
+	ms = _melody_state(rest_probability=0.5)
+	builder.melody(state=ms, step=0.25)
+
+	total = sum(len(s.notes) for s in pattern.steps.values())
+
+	assert total < 16
+
+
+def test_melody_chord_tones_passed_through () -> None:
+
+	"""chord_tones list should be forwarded to MelodicState without error."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(0)
+
+	ms = _melody_state(chord_weight=0.8, rest_probability=0.0)
+	chord_tones = [60, 64, 67]
+
+	# Should not raise; notes should be placed
+	builder.melody(state=ms, step=0.5, chord_tones=chord_tones)
+
+	total = sum(len(s.notes) for s in pattern.steps.values())
+
+	assert total == 8

@@ -107,6 +107,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 ### Composition tools
 
 - **Rhythm and feel.** [Euclidean and Bresenham generators](#rhythm--pattern), [groove templates](#groove) (including [Ableton .agr import](#groove)), swing, humanize, velocity shaping[^vdc], dropout, per-step probability, polyrhythms via independent pattern lengths, multi-voice weighted Bresenham distribution (`bresenham_poly()`) with `no_overlap` collision avoidance, `ghost_fill()` for probability-biased ghost note layers, `cellular()` for evolving cellular-automaton rhythms, `logistic_map()` for a deterministic chaos modulation source (dial from stable → periodic → chaos with one `r` parameter), and `p.markov()` for Markov-chain melody and bassline generation.
+- **Melody generation.** `p.melody()` with `MelodicState` applies the [Narmour Implication-Realization model](#melody-generation) to single-note melodic lines: continuation after small steps, direction reversal after large leaps, chord-tone weighting, range gravity, and pitch-diversity penalty. History persists across bar rebuilds for natural phrase continuity.
 - **Expression.** CC messages and ramps, pitch bend, note-correlated [bend/portamento/slide](#pitch-bend-automation), program changes, SysEx, and [OSC output](#osc-integration) - all from within patterns.
 - **Form and structure.** Define [song form](#form-and-sections) as a weighted graph, ordered list, or generator. Patterns read `p.section` to adapt. [Conductor signals](#the-conductor) (LFOs, ramps) shape intensity over time.
 - **[Mini-notation.](#mini-notation)** Write `p.seq("x x [x x] x", pitch="kick")` - subdivisions, rests, sustains, per-step probability suffixes. Quick ideas in one line.
@@ -886,6 +887,56 @@ density = subsequence.sequence_utils.weighted_choice([(3, 0.5), (5, 0.3), (7, 0.
 p.euclidean("snare", pulses=density)
 ```
 
+## Melody generation
+
+`p.melody()` generates a single-note melodic line guided by the Narmour Implication-Realization (NIR) model - the same cognitive framework used by the chord engine, now adapted for absolute pitch. It expects a `MelodicState` instance created once at module level, which persists history across bar rebuilds so melodic continuity is maintained automatically.
+
+```python
+# Create once at module level - history persists across bars.
+melody_state = subsequence.MelodicState(
+    key="A",
+    mode="aeolian",
+    low=57,     # A3
+    high=84,    # C6
+    nir_strength=0.6,    # How strongly NIR rules shape pitch choice (0–1)
+    chord_weight=0.4,    # Bonus for chord tones
+    rest_probability=0.1,  # 10% chance of silence per step
+    pitch_diversity=0.6,   # Penalise recently-repeated pitches
+)
+
+@composition.pattern(channel=3, length=4, chord=True)
+def lead (p, chord):
+    tones = chord.tones(72) if chord else None
+    p.melody(melody_state, step=0.5, velocity=(70, 100), chord_tones=tones)
+```
+
+**NIR rules in melody:**
+
+| Rule | Trigger | Effect |
+|------|---------|--------|
+| **Reversal** | Previous interval > 4 semitones (large leap) | Favours direction change (+0.5) and a smaller gap-fill interval (+0.3) |
+| **Process** | Previous interval 1–2 semitones (small step) | Favours same direction (+0.4) and similar interval size (+0.2) |
+| **Closure** | Candidate is the tonic | +0.2 boost - the tonic feels like a natural landing |
+| **Proximity** | Candidate is ≤ 3 semitones from last note | +0.3 boost - small intervals are generally preferred |
+
+Unlike chord NIR, melody NIR operates on **absolute MIDI pitch differences** (not pitch-class modular arithmetic), so it correctly distinguishes an upward leap from a downward one even across octaves.
+
+**Additional factors:**
+
+- **Chord tone boost.** If `chord_tones` is provided, pitch classes that match receive a multiplicative bonus of `1 + chord_weight`. This keeps melodies harmonically grounded without locking them to arpeggios.
+- **Range gravity.** A soft quadratic penalty pulls notes toward the centre of `[low, high]`, preventing the melody from drifting to register extremes.
+- **Pitch diversity.** Each time a pitch appears in the recent history, its score is multiplied by `pitch_diversity`. Low values (e.g. `0.3`) strongly suppress repetition; `1.0` disables the penalty entirely.
+
+`p.melody()` parameters:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `state` | - | A `MelodicState` instance (required) |
+| `step` | `0.25` | Time between note onsets in beats (0.25 = 16th note) |
+| `velocity` | `90` | Fixed int or `(low, high)` tuple for random range per step |
+| `duration` | `0.2` | Note duration in beats |
+| `chord_tones` | `None` | MIDI notes that are chord tones this bar |
+
 ## Terminal display
 
 Enable a live status line showing the current bar, section, chord, BPM, and key with a single call:
@@ -1581,6 +1632,7 @@ Turns real-time International Space Station telemetry into an evolving compositi
 - `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
 - `subsequence.voicings` provides chord inversions and voice leading. `invert_chord()` rotates intervals; `VoiceLeadingState` picks the closest inversion to the previous chord automatically.
 - `subsequence.markov_chain` provides a generic weighted Markov chain utility.
+- `subsequence.melodic_state` provides `MelodicState` - the persistent melodic context for `p.melody()`. Tracks pitch history across bar rebuilds and applies NIR scoring (Reversal, Process, Closure, Proximity) to absolute MIDI pitches. Constructor params: `key`, `mode`, `low`, `high`, `nir_strength`, `chord_weight`, `rest_probability`, `pitch_diversity`. Exported from the top-level package as `subsequence.MelodicState`.
 - `subsequence.weighted_graph` provides a generic weighted directed graph used for transitions. Used internally by `composition.form()` (section transitions), the harmony engine (chord progressions), and `p.markov()` (Markov-chain melody/bassline generation).
 
 ### MIDI Data
@@ -1610,8 +1662,6 @@ Planned features, roughly in order of priority.
 ### Medium priority
 
 - **Ableton Link support.** The de facto standard for wireless tempo sync between devices in a modern studio.
-
-- **Melody generation using NIR.** Extend the Narmour Implication-Realization model from chord-root transitions to single-note melodic lines.
 
 - **Starter templates.** Lower the blank-page barrier with ready-made starting points for common genres. Musicians tweak from a working composition rather than building from scratch.
 

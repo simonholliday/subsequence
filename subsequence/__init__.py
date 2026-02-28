@@ -38,6 +38,11 @@ Composition tools:
   (``p.markov()``), groove templates (``Groove.swing()``,
   ``Groove.from_agr()``), swing, humanize, velocity shaping, dropout,
   per-step probability, and polyrhythms via independent pattern lengths.
+- **Melody generation.** ``p.melody()`` with ``MelodicState`` applies
+  the Narmour Implication-Realization model to single-note lines:
+  continuation after small steps, reversal after large leaps, chord-tone
+  weighting, range gravity, and pitch-diversity penalty.  History persists
+  across bar rebuilds for natural phrase continuity.
 - **Expression.** CC messages/ramps, pitch bend, note-correlated
   bend/portamento/slide, program changes, SysEx, and OSC output - all
   from within patterns.
@@ -91,14 +96,16 @@ Minimal example:
     comp.play()
     ```
 
-Package-level exports: ``Composition``, ``Groove``, ``register_scale``.
+Package-level exports: ``Composition``, ``Groove``, ``MelodicState``, ``register_scale``.
 """
 
 import subsequence.composition
 import subsequence.groove
 import subsequence.intervals
+import subsequence.melodic_state
 
 
 Composition = subsequence.composition.Composition
 Groove = subsequence.groove.Groove
+MelodicState = subsequence.melodic_state.MelodicState
 register_scale = subsequence.intervals.register_scale
