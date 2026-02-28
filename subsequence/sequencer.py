@@ -880,7 +880,8 @@ class Sequencer:
 				# runs until explicitly cancelled via asyncio.
 				if self._jitter_log is None:
 					async with self.queue_lock:
-						if not self.event_queue and not self.active_notes:
+						if (not self.event_queue and not self.active_notes
+								and not self.reschedule_queue and not self.callback_queue):
 							logger.info("Sequence complete (no more events or active notes).")
 							self.running = False
 							break

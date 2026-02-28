@@ -419,6 +419,50 @@ def perlin_1d (x: float, seed: int = 0) -> float:
 	return max(0.0, min(1.0, value + 0.5))
 
 
+def logistic_map (r: float, steps: int, x0: float = 0.5) -> typing.List[float]:
+
+	"""Generate a deterministic chaos sequence using the logistic map.
+
+	A single parameter ``r`` controls behaviour from stability to chaos:
+	``r < 3.0`` converges to a fixed point; ``r`` 3.0–3.57 produces
+	periodic oscillations (period-2, -4, -8…); ``r > 3.57`` enters chaos.
+	At ``r ≈ 3.83`` a stable period-3 window briefly returns.
+
+	Complements :func:`perlin_1d` — use Perlin for smooth organic
+	wandering and logistic_map when you need controllable order-to-chaos
+	behaviour.  Feeding logistic_map values into ``hit_steps`` probability
+	or ghost note velocity gives ghost notes that are "the same but never
+	exactly the same."
+
+	Parameters:
+		r: Growth rate, typically 0.0–4.0.  Values outside [0, 4] will
+			cause ``x`` to diverge; clamp externally if needed.
+		steps: Number of values to generate.
+		x0: Seed value in the open interval (0, 1).  Default 0.5.
+
+	Example:
+		```python
+		# Ghost snare density that hovers at the edge of chaos
+		chaos = subsequence.sequence_utils.logistic_map(r=3.7, steps=16)
+		for i, v in enumerate(chaos):
+		    if v > 0.5:
+		        p.hit_steps("snare_2", [i], velocity=round(30 + 50 * v), no_overlap=True)
+		```
+	"""
+
+	if steps <= 0:
+		return []
+
+	x = x0
+	result: typing.List[float] = []
+
+	for _ in range(steps):
+		x = r * x * (1.0 - x)
+		result.append(x)
+
+	return result
+
+
 def generate_cellular_automaton (steps: int, rule: int = 30, generation: int = 0, seed: int = 1) -> typing.List[int]:
 
 	"""Generate a binary sequence using an elementary cellular automaton.

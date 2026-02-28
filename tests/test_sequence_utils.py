@@ -574,3 +574,90 @@ def test_cellular_automaton_custom_seed () -> None:
 	assert result[1] == 0
 	assert result[2] == 1
 	assert sum(result) == 2
+
+
+# --- logistic_map ---
+
+
+def test_logistic_map_correct_length () -> None:
+
+	"""Should return exactly the requested number of values."""
+
+	result = subsequence.sequence_utils.logistic_map(r=3.5, steps=16)
+
+	assert len(result) == 16
+
+
+def test_logistic_map_zero_steps_returns_empty () -> None:
+
+	"""steps <= 0 should return an empty list."""
+
+	assert subsequence.sequence_utils.logistic_map(r=3.5, steps=0) == []
+
+
+def test_logistic_map_deterministic () -> None:
+
+	"""Same r and x0 should always produce the same sequence."""
+
+	a = subsequence.sequence_utils.logistic_map(r=3.7, steps=32, x0=0.4)
+	b = subsequence.sequence_utils.logistic_map(r=3.7, steps=32, x0=0.4)
+
+	assert a == b
+
+
+def test_logistic_map_stable_regime_converges () -> None:
+
+	"""For r < 3.0, the sequence should converge toward a fixed point."""
+
+	result = subsequence.sequence_utils.logistic_map(r=2.5, steps=100, x0=0.4)
+
+	# After many iterations the last few values should be nearly identical.
+	assert abs(result[-1] - result[-2]) < 1e-6
+
+
+def test_logistic_map_periodic_regime () -> None:
+
+	"""For r ≈ 3.2, the sequence should oscillate between two values."""
+
+	result = subsequence.sequence_utils.logistic_map(r=3.2, steps=200, x0=0.5)
+
+	# After settling, even-indexed and odd-indexed tail values should cluster.
+	tail = result[150:]
+	even = tail[0::2]
+	odd = tail[1::2]
+
+	# All even-indexed values should be close to each other (one attractor).
+	assert max(even) - min(even) < 0.01
+
+	# The two attractors should be clearly separated.
+	assert abs(sum(even) / len(even) - sum(odd) / len(odd)) > 0.1
+
+
+def test_logistic_map_chaos_regime_varies () -> None:
+
+	"""For r > 3.57, successive values should not converge."""
+
+	result = subsequence.sequence_utils.logistic_map(r=3.9, steps=32, x0=0.5)
+
+	# In the chaotic regime the range of values should be wide.
+	assert max(result) - min(result) > 0.5
+
+
+def test_logistic_map_different_r_different_output () -> None:
+
+	"""Different r values should produce different sequences."""
+
+	a = subsequence.sequence_utils.logistic_map(r=3.2, steps=16, x0=0.5)
+	b = subsequence.sequence_utils.logistic_map(r=3.8, steps=16, x0=0.5)
+
+	assert a != b
+
+
+def test_logistic_map_different_x0_different_output () -> None:
+
+	"""Different starting values should produce different sequences."""
+
+	a = subsequence.sequence_utils.logistic_map(r=3.7, steps=16, x0=0.3)
+	b = subsequence.sequence_utils.logistic_map(r=3.7, steps=16, x0=0.7)
+
+	assert a != b

@@ -2915,3 +2915,160 @@ def test_cellular_dropout () -> None:
 	drop_count = sum(len(s.notes) for s in pattern_drop.steps.values())
 
 	assert drop_count < full_count
+
+
+# --- p.markov() ---
+
+
+def test_markov_places_notes () -> None:
+
+	"""markov() should place at least one note for a simple chain."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(42)
+
+	builder.markov(
+		transitions={"root": [("3rd", 2), ("5th", 1)], "3rd": [("root", 1)], "5th": [("root", 1)]},
+		pitch_map={"root": 52, "3rd": 56, "5th": 59},
+		velocity=80,
+	)
+
+	total = sum(len(s.notes) for s in pattern.steps.values())
+
+	assert total > 0
+
+
+def test_markov_correct_step_count () -> None:
+
+	"""markov() should place int(length / step) notes (one per grid position)."""
+
+	# length=4, step=0.25 → 16 notes
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(42)
+
+	builder.markov(
+		transitions={"root": [("root", 1)]},
+		pitch_map={"root": 52},
+		velocity=80,
+		step=0.25,
+	)
+
+	total = sum(len(s.notes) for s in pattern.steps.values())
+
+	assert total == 16
+
+
+def test_markov_pitches_come_from_pitch_map () -> None:
+
+	"""All placed pitches should be values from the pitch_map dict."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(42)
+
+	pitch_map = {"root": 52, "3rd": 56, "5th": 59}
+
+	builder.markov(
+		transitions={"root": [("3rd", 3), ("5th", 2)], "3rd": [("root", 1)], "5th": [("root", 1)]},
+		pitch_map=pitch_map,
+		velocity=80,
+	)
+
+	allowed = set(pitch_map.values())
+
+	for step in pattern.steps.values():
+		for note in step.notes:
+			assert note.pitch in allowed
+
+
+def test_markov_deterministic () -> None:
+
+	"""Same seed should produce identical pitch sequences."""
+
+	def _run (seed: int) -> list:
+		pattern, builder = _make_builder(length=4)
+		builder.rng = random.Random(seed)
+		builder.markov(
+			transitions={"root": [("3rd", 3), ("5th", 2)], "3rd": [("5th", 3), ("root", 2)], "5th": [("root", 3)]},
+			pitch_map={"root": 52, "3rd": 56, "5th": 59},
+		)
+		return [n.pitch for s in sorted(pattern.steps.keys()) for n in pattern.steps[s].notes]
+
+	assert _run(42) == _run(42)
+	assert _run(42) != _run(99)
+
+
+def test_markov_custom_start_state () -> None:
+
+	"""When start is given, the first note should use that state's pitch."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(42)
+
+	builder.markov(
+		transitions={"root": [("3rd", 1)], "3rd": [("root", 1)], "5th": [("root", 1)]},
+		pitch_map={"root": 52, "3rd": 56, "5th": 59},
+		start="5th",
+		step=0.25,
+	)
+
+	# The first note placed (beat 0) should be pitch 59 (5th).
+	first_note = pattern.steps[0].notes[0]
+
+	assert first_note.pitch == 59
+
+
+def test_markov_velocity_applied () -> None:
+
+	"""All placed notes should have the specified velocity."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(42)
+
+	builder.markov(
+		transitions={"root": [("root", 1)]},
+		pitch_map={"root": 52},
+		velocity=73,
+	)
+
+	for step in pattern.steps.values():
+		for note in step.notes:
+			assert note.velocity == 73
+
+
+def test_markov_empty_transitions_raises () -> None:
+
+	"""An empty transitions dict should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="transitions dict cannot be empty"):
+		builder.markov(transitions={}, pitch_map={"root": 52})
+
+
+def test_markov_empty_pitch_map_raises () -> None:
+
+	"""An empty pitch_map should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="pitch_map dict cannot be empty"):
+		builder.markov(transitions={"root": [("root", 1)]}, pitch_map={})
+
+
+def test_markov_step_size_controls_density () -> None:
+
+	"""Larger step should place fewer notes over the same pattern length."""
+
+	def _count (step: float) -> int:
+		pattern, builder = _make_builder(length=4)
+		builder.rng = random.Random(42)
+		builder.markov(
+			transitions={"root": [("root", 1)]},
+			pitch_map={"root": 52},
+			step=step,
+		)
+		return sum(len(s.notes) for s in pattern.steps.values())
+
+	# step=0.25 → 16 notes; step=0.5 → 8 notes
+	assert _count(0.25) == 16
+	assert _count(0.5) == 8

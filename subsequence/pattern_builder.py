@@ -12,6 +12,7 @@ import subsequence.sequence_utils
 import subsequence.mini_notation
 import subsequence.conductor
 import subsequence.easing
+import subsequence.weighted_graph
 
 logger = logging.getLogger(__name__)
 
@@ -1011,6 +1012,86 @@ class PatternBuilder:
 		self._place_rhythm_sequence(
 			sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap
 		)
+
+	def markov (
+		self,
+		transitions: typing.Dict[str, typing.List[typing.Tuple[str, int]]],
+		pitch_map: typing.Dict[str, int],
+		velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY,
+		duration: float = 0.1,
+		step: float = 0.25,
+		start: typing.Optional[str] = None,
+	) -> None:
+
+		"""Generate a sequence by walking a first-order Markov chain.
+
+		Builds a :class:`~subsequence.weighted_graph.WeightedGraph` from
+		``transitions`` and walks it, placing one note per ``step`` beats.
+		The probability of each next state depends only on the current one —
+		use this to generate basslines, melodies, or rhythm motifs that have
+		stylistic coherence without being perfectly repetitive.
+
+		The transition dict uses the same ``(target, weight)`` pair format
+		as :meth:`Composition.form`, so the idiom is already familiar.
+
+		Parameters:
+			transitions: Mapping of state name to a list of
+				``(next_state, weight)`` tuples.  Higher weight means higher
+				probability of that transition.
+			pitch_map: Mapping of state name to absolute MIDI note number.
+				States absent from this dict are walked but produce no note.
+			velocity: MIDI velocity for all placed notes (default 100).
+			duration: Note duration in beats (default 0.1).
+			step: Time between note onsets in beats (default 0.25 = 16th note).
+			start: Name of the starting state.  Defaults to the first key
+				in ``transitions`` when not provided.
+
+		Raises:
+			ValueError: If ``transitions`` or ``pitch_map`` is empty.
+
+		Example:
+			```python
+			# Walking bassline: root anchors, 3rd and 5th passing tones
+			p.markov(
+			    transitions={
+			        "root": [("3rd", 3), ("5th", 2), ("root", 1)],
+			        "3rd":  [("5th", 3), ("root", 2)],
+			        "5th":  [("root", 3), ("3rd", 1)],
+			    },
+			    pitch_map={"root": 52, "3rd": 56, "5th": 59},
+			    velocity=80,
+			    step=0.5,
+			)
+			```
+		"""
+
+		if not transitions:
+			raise ValueError("transitions dict cannot be empty")
+
+		if not pitch_map:
+			raise ValueError("pitch_map dict cannot be empty")
+
+		graph: subsequence.weighted_graph.WeightedGraph = subsequence.weighted_graph.WeightedGraph()
+
+		for source, targets in transitions.items():
+			for target, weight in targets:
+				graph.add_transition(source, target, weight)
+
+		if start is None:
+			start = next(iter(transitions))
+
+		n_steps = int(self._pattern.length / step)
+
+		state = start
+		beat = 0.0
+
+		for _ in range(n_steps):
+
+			if state in pitch_map:
+				self.note(pitch=pitch_map[state], beat=beat, velocity=velocity, duration=duration)
+
+			state = graph.choose_next(state, self.rng)
+			beat += step
 
 	# These methods transform existing notes after they have been placed.
 	# Call them at the end of your builder function, after all notes are
