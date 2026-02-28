@@ -13,10 +13,10 @@ It is a **compositional engine** for your studio - generating pure MIDI to contr
 - **Plain Python, no custom language.** Write patterns in a standard, popular language - no domain-specific syntax to learn. Your music is versionable, shareable, and lives in standard `.py` files.
 - **Infinite, evolving compositions.** Patterns rebuild each cycle with full context - chord, section, history, external data - so music can grow and develop indefinitely, or run to a fixed structure. Or both.
 - **Multiple APIs and notation styles.** Start with a one-line mini-notation drum pattern. Graduate to per-step control, harmonic injection, or the full Direct Pattern API - without changing tools.
-- **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition. Use as much or as little music theory as you want.
+- **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition. The cognitive engine writes melodies that sound *human* because it models deep listener expectations.
 - **Turn data into music.** Schedule any Python function on a beat cycle. Feed in APIs, sensors, files, weather, ISS telemetry - anything Python can reach becomes a musical parameter.
 - **Pure MIDI, zero sound engine.** No audio synthesis, no heavyweight dependencies. Route MIDI to your existing hardware or software instruments.
-- **Deterministic when you want it.** Set a seed and every "random" decision - chords, form, note choices - becomes repeatable and tweakable.
+- **Controlled randomness, not chaos.** Every generative decision can be bounded by musical theory and constraints. Set a seed and every "random" decision - chords, form, note choices - becomes repeatable, intentional, and tweakable.
 
 **[Full API documentation →](https://simonholliday.github.io/subsequence)**
 
@@ -48,7 +48,7 @@ Most live-coding environments are **stateless**: passing time determines the eve
 This means a pattern can look back at the previous cycle to decide its next move ("if I played a C last bar, play an E this bar"). It allows for **motivic development** - ideas that evolve over time rather than just repeating. It also supports traditional linear composition: because the system tracks "Song Position" and "Section", you can write a piece with a distinct Intro, Verse, and Chorus, where specific notes play at specific times, just like in a DAW.
 
 ### Cognitive Melody Generation
-Standard generative tools often rely on "scale masking" (picking random notes from a scale), which ensures no "wrong" notes but often results in aimless melodies.
+We believe algorithms should sound like musicians, not random number generators. Standard generative tools often rely on "scale masking" (picking random notes from a scale), which ensures no "wrong" notes but often results in aimless melodies.
 
 Subsequence integrates the **Narmour Implication-Realization model**, a theory of music cognition that predicts what listeners *expect* to hear. It models **melodic inertia**:
 *   **Implication:** A series of small steps in one direction implies continuation.
@@ -1655,11 +1655,15 @@ Planned features, roughly in order of priority.
 
 ### High priority
 
-- **Getting Started tutorial.** A guided, progressive walkthrough that takes a new user from zero to an evolving composition in 15 minutes - "Your first beat", "Adding a bassline", "Making it evolve". The README is a reference; the tutorial is the on-ramp.
+- **Comprehensive Cookbook and Tutorials.** A guided, progressive walkthrough that takes a new user from zero to an evolving composition in 15 minutes, alongside bite-sized, copy-paste recipes for common musical requests (e.g., "generative techno kick", "functional bassline"). The README is a reference; the tutorial and cookbook are the on-ramp.
 
 - **Example library.** More short, self-contained compositions in different styles - minimal techno, ambient generative, polyrhythmic exploration, data-driven - so musicians can hear what the tool does before investing time. Each example should demonstrate 2-3 features and fit on one screen.
 
 ### Medium priority
+
+- **Visual Dashboard / Web UI.** A lightweight local web dashboard to provide real-time visual feedback of the current Chord Graph, global Conductor signals, and active patterns, making the generative process more observable.
+
+- **Cross-track / Inter-pattern awareness.** Implementing a high-level compositional capability allowing patterns to easily listen to and react to the current musical density or activity of other patterns.
 
 - **Ableton Link support.** The de facto standard for wireless tempo sync between devices in a modern studio.
 
