@@ -822,9 +822,33 @@ class PatternBuilder:
 			self.note(pitch=pitch, beat=step_idx * step_duration, velocity=vel, duration=duration)
 
 	@staticmethod
-	def _build_ghost_bias (grid: int, bias: str) -> typing.List[float]:
+	def build_ghost_bias (grid: int, bias: str) -> typing.List[float]:
 
-		"""Build probability weights for ``ghost_fill()`` bias modes."""
+		"""Build probability weights for ghost notes or other generative functions.
+
+		Generates a list of probability weights (values between 0.0 and 1.0) spanning
+		a given grid size. These curves shape probability over a beat,
+		assigning higher or lower chances of an event occurring based on the rhythmic
+		position within the beat (downbeat, offbeat, syncopated 16th note, etc).
+
+		Can be passed back into the `bias` argument of :meth:`ghost_fill()`. Exposing
+		this method allows users to generate a standard curve and then manually
+		modify specific probabilities on specific steps before passing it
+		to generative methods.
+
+		Parameters:
+			grid: The total number of steps in the sequence (usually 16 or 32).
+			bias: The probability distribution shape to generate:
+				- ``"uniform"``    — 1.0 everywhere.
+				- ``"offbeat"``    — 1.0 on 8th note off-beats, 0.3 on 16ths, 0.05 on downbeats.
+				- ``"syncopated"`` — 1.0 on 8th note off-beats, 0.3 on 16th notes, 0.05 on downbeats.
+				- ``"before"``     — 1.0 preceding a beat, 0.25 on other 16ths, 0.05 on beats.
+				- ``"after"``      — 1.0 following a beat, 0.25 on other 16ths, 0.05 on beats.
+
+		Returns:
+			A list of floats with length equal to `grid`, where each value
+			is a probability multiplier from 0.0 to 1.0.
+		"""
 
 		steps_per_beat = max(1, grid // 4)
 		weights: typing.List[float] = []
@@ -875,7 +899,12 @@ class PatternBuilder:
 		self,
 		pitch: typing.Union[int, str],
 		density: float = 0.3,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 35,
+		velocity: typing.Union[
+			int, 
+			typing.Tuple[int, int], 
+			typing.Sequence[typing.Union[int, float]],
+			typing.Callable[[int], typing.Union[int, float]]
+		] = 35,
 		bias: typing.Union[str, typing.List[float]] = "uniform",
 		no_overlap: bool = True,
 		grid: typing.Optional[int] = None,
@@ -894,8 +923,10 @@ class PatternBuilder:
 			pitch: MIDI note number or drum name.
 			density: Overall density (0.0–1.0).  How many available steps
 				receive ghost notes.  0.3 = roughly 30% of steps at peak bias.
-			velocity: Single velocity or ``(low, high)`` tuple.  When a tuple,
-				each ghost note gets a random velocity in that range.
+			velocity: Single velocity, ``(low, high)`` tuple for random range,
+				a list/sequence of values (indexed by step), or a callable
+				that takes the step index ``i`` and returns a velocity.
+				Allows dynamic values like Perlin noise curves.
 			bias: Probability distribution shape:
 
 				- ``"uniform"``    — equal probability everywhere
@@ -935,7 +966,7 @@ class PatternBuilder:
 			elif len(weights) > grid:
 				weights = weights[:grid]
 		else:
-			weights = self._build_ghost_bias(grid, bias)
+			weights = self.build_ghost_bias(grid, bias)
 
 		max_weight = max(weights) if weights else 1.0
 
@@ -952,15 +983,19 @@ class PatternBuilder:
 				continue
 
 			if no_overlap:
-				pulse = int(i * step_duration * subsequence.constants.MIDI_QUARTER_NOTE)
+				pulse = int(round(i * step_duration * subsequence.constants.MIDI_QUARTER_NOTE))
 				if pulse in self._pattern.steps:
 					if any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes):
 						continue
 
-			if isinstance(velocity, tuple):
+			if callable(velocity):
+				vel = int(velocity(i))
+			elif isinstance(velocity, tuple) and len(velocity) == 2:
 				vel = rng.randint(velocity[0], velocity[1])
+			elif isinstance(velocity, (list, tuple)):
+				vel = int(velocity[i % len(velocity)])
 			else:
-				vel = velocity
+				vel = int(typing.cast(typing.Union[int, float], velocity))
 
 			self.note(pitch=pitch, beat=i * step_duration, velocity=vel, duration=duration)
 

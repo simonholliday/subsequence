@@ -117,6 +117,58 @@ def get_easing (shape: typing.Union[str, EasingFn]) -> EasingFn:
         )
     return EASING_FUNCTIONS[shape]
 
+def map_value (
+    value: float,
+    in_min: float = 0.0,
+    in_max: float = 1.0,
+    out_min: float = 0.0,
+    out_max: float = 1.0,
+    shape: typing.Union[str, EasingFn] = "linear",
+    clamp: bool = True
+) -> float:
+    """Map a value from an input range to an output range, with optional easing.
+
+    Linearly maps *value* from the range ``[in_min, in_max]`` into a normalised
+    progress ratio [0.0, 1.0], applies the designated easing curve, and
+    interpolates that eased ratio into the output range ``[out_min, out_max]``.
+
+    This is particularly useful for musically scaling raw generative outputs
+    (which usually fall between 0.0 and 1.0) into MIDI ranges like pitch or
+    velocity, while automatically applying musical volume or tension curves.
+
+    Parameters:
+        value: The raw input to scale.
+        in_min: The lower bound of the input's expected range.
+        in_max: The upper bound of the input's expected range.
+        out_min: The lower bound of the mapped output range.
+        out_max: The upper bound of the mapped output range.
+        shape: The easing curve to apply to the mapped ratio before
+            outputting (e.g. \"linear\", \"ease_in_out\"). See
+            :func:`get_easing` for all available shapes.
+        clamp: If True (the default), values outside the input range
+            will be clamped so they never exceed the output bounds.
+            Essential for ensuring MIDI values don't break valid ranges.
+
+    Returns:
+        The mapped and eased value as a float.
+    """
+
+    if in_min == in_max:
+        return out_min
+
+    # 1. Normalise to [0.0, 1.0]
+    t = (value - in_min) / (in_max - in_min)
+
+    # 2. Clamp
+    if clamp:
+        t = max(0.0, min(1.0, t))
+
+    # 3. Apply easing curve
+    eased_t = get_easing(shape)(t)
+
+    # 4. Map to output range
+    return out_min + (out_max - out_min) * eased_t
+
 
 # ─── Stateful interpolation ───────────────────────────────────────────────────
 

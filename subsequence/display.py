@@ -84,39 +84,45 @@ class GridDisplay:
 	# ------------------------------------------------------------------
 
 	@staticmethod
-	def _velocity_char (velocity: int) -> str:
+	def _velocity_char (velocity: typing.Union[int, float]) -> str:
 
-		"""Map a MIDI velocity (0-127) to a single ASCII character.
+		"""Map a MIDI velocity (0-127) to a single ANSI block character.
 
 		Returns:
-			``"-"`` for sustain (note still sounding), ``"."`` for
-			no hit / ghost (0-40), ``"o"`` for soft (41-80), ``"O"`` for
-			medium (81-110), ``"X"`` for loud (111-127).
+			``">"`` for sustain (note still sounding),
+			``"░"`` for velocity > 0 to < 31.75 (0 - < 25%),
+			``"▒"`` for velocity >= 31.75 to < 63.5 (25% to < 50%),
+			``"▓"`` for velocity >= 63.5 to < 95.25 (50% to < 75%),
+			``"█"`` for velocity >= 95.25 (75% to 100%).
 		"""
 
 		if velocity == _SUSTAIN:
-			return "-"
-		if velocity <= 40:
-			return "."
-		if velocity <= 80:
-			return "o"
-		if velocity <= 110:
-			return "O"
-		return "X"
+			return ">"
+		if velocity == 0:
+			return "·"
+		
+		pct = velocity / 127.0
+		if pct < 0.25:
+			return "░"
+		if pct < 0.50:
+			return "▒"
+		if pct < 0.75:
+			return "▓"
+		return "█"
 
 	@staticmethod
-	def _cell_char (velocity: int, is_on_grid: bool) -> str:
+	def _cell_char (velocity: typing.Union[int, float], is_on_grid: bool) -> str:
 
 		"""Return the display character for a grid cell.
 
 		Non-zero velocities (attacks and sustain) always show their
-		velocity glyph.  Empty on-grid positions show ``"."``, empty
+		velocity glyph.  Empty on-grid positions show ``"·"``, empty
 		between-grid positions show ``" "`` (space).
 		"""
 
 		if velocity != 0:
 			return GridDisplay._velocity_char(velocity)
-		return "." if is_on_grid else " "
+		return "·" if is_on_grid else " "
 
 	@staticmethod
 	def _midi_note_name (pitch: int) -> str:

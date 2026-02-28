@@ -2825,6 +2825,38 @@ def test_ghost_fill_deterministic () -> None:
 	assert _run(42) == _run(42)
 
 
+def test_ghost_fill_velocity_sequence () -> None:
+
+	"""A sequence passed to velocity should assign per-step velocities."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(42)
+
+	velocities = [20, 40, 60, 80]
+	builder.ghost_fill(38, density=1.0, velocity=velocities, bias="uniform")
+
+	# grid is 16 by default, so steps 0-15.
+	for step_idx in range(16):
+		pulse = int(step_idx * 0.25 * subsequence.constants.MIDI_QUARTER_NOTE)
+		assert pattern.steps[pulse].notes[0].velocity == velocities[step_idx % len(velocities)]
+
+
+def test_ghost_fill_velocity_callable () -> None:
+
+	"""A callable passed to velocity should evaluate per step."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(42)
+
+	def my_vel (i: int) -> int:
+		return 10 + (i * 5)
+
+	builder.ghost_fill(38, density=1.0, velocity=my_vel, bias="uniform")
+
+	for step_idx in range(16):
+		pulse = int(step_idx * 0.25 * subsequence.constants.MIDI_QUARTER_NOTE)
+		assert pattern.steps[pulse].notes[0].velocity == 10 + (step_idx * 5)
+
 # --- cellular ---
 
 

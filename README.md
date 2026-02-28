@@ -969,9 +969,9 @@ The grid updates once per bar and looks like:
 
 ```
   drums
-  kick        |O o . . O . . . O . . . O . . o|
-  snare       |. . . . O . . . . . . . O . . .|
-  bass        |O - - O - - - - O - - - O - - .|
+  kick        |█ ▒ · · █ · · · █ · · · █ · · ▒|
+  snare       |· · · · █ · · · · · · · █ · · ·|
+  bass        |█ > > █ > > > > █ > > > █ > > ·|
 125.00 BPM  Key: E  Bar: 3.1  [intro 3/8 → section_1]
 ```
 
@@ -979,13 +979,15 @@ Each column is one grid step (16th notes by default). Velocity and duration are 
 
 | Glyph | Meaning |
 |-------|---------|
-| `.` | Empty step (no note) |
-| `o` | Soft attack (velocity 41–80) |
-| `O` | Medium attack (velocity 81–110) |
-| `X` | Loud attack (velocity 111–127) |
-| `-` | Sustain (note still sounding from a previous step) |
+| `·` | Empty step on the grid |
+| ` ` | Empty step between grid lines |
+| `░` | Ghost attack (velocity < 25%) |
+| `▒` | Soft attack (velocity 25% to < 50%) |
+| `▓` | Medium attack (velocity 50% to < 75%) |
+| `█` | Loud attack (velocity >= 75%) |
+| `>` | Sustain (note still sounding from a previous step) |
 
-The sustain marker makes legato and staccato patterns visually distinct - a legato bass line fills its steps with `-` between attacks; drum hits are short and show no sustain. Drum patterns show one row per distinct drum sound, labelled from the drum note map. Pitched patterns show a single summary row.
+The sustain marker makes legato and staccato patterns visually distinct - a legato bass line fills its steps with `>` between attacks; drum hits are short and show no sustain. Drum patterns show one row per distinct drum sound, labelled from the drum note map. Pitched patterns show a single summary row.
 
 ### Grid scale
 

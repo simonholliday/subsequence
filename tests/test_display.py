@@ -377,16 +377,16 @@ def test_grid_velocity_char () -> None:
 	"""Velocity characters should map to the correct glyphs at all thresholds."""
 
 	vc = subsequence.display.GridDisplay._velocity_char
-	assert vc(-1)  == "-"
-	assert vc(0)   == "."
-	assert vc(1)   == "."
-	assert vc(40)  == "."
-	assert vc(41)  == "o"
-	assert vc(80)  == "o"
-	assert vc(81)  == "O"
-	assert vc(110) == "O"
-	assert vc(111) == "X"
-	assert vc(127) == "X"
+	assert vc(-1)  == ">"
+	assert vc(0)   == "·"
+	assert vc(1)   == "░"
+	assert vc(31)  == "░"
+	assert vc(32)  == "▒"
+	assert vc(63)  == "▒"
+	assert vc(64)  == "▓"
+	assert vc(95)  == "▓"
+	assert vc(96)  == "█"
+	assert vc(127) == "█"
 
 
 def test_grid_midi_note_name () -> None:
@@ -465,17 +465,17 @@ def test_grid_build_drum_pattern (patch_midi: None, monkeypatch: pytest.MonkeyPa
 	kick_line = next(l for l in grid._lines if "kick_1" in l)
 	snare_line = next(l for l in grid._lines if "snare_1" in l)
 
-	# Kick at step 0 (vel 120 → X) and step 8 (vel 100 → O).
+	# Kick at step 0 (vel 120 → █) and step 8 (vel 100 → █).
 	assert "|" in kick_line
 	parts = kick_line.split("|")[1]  # content between pipes
 	chars = parts.split()
-	assert chars[0] == "X"   # step 0, velocity 120
-	assert chars[8] == "O"   # step 8, velocity 100
+	assert chars[0] == "█"   # step 0, velocity 120
+	assert chars[8] == "█"   # step 8, velocity 100
 
-	# Snare at step 4 (vel 90 → O).
+	# Snare at step 4 (vel 90 → ▓).
 	parts = snare_line.split("|")[1]
 	chars = parts.split()
-	assert chars[4] == "O"   # step 4, velocity 90
+	assert chars[4] == "▓"   # step 4, velocity 90
 
 
 def test_grid_build_pitched_pattern (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -508,9 +508,9 @@ def test_grid_build_pitched_pattern (patch_midi: None, monkeypatch: pytest.Monke
 	# Check velocity chars at known positions.
 	parts = line.split("|")[1]
 	chars = parts.split()
-	assert chars[0] == "O"   # step 0, velocity 100
-	assert chars[8] == "o"   # step 8, velocity 80
-	assert chars[12] == "o"  # step 12, velocity 60
+	assert chars[0] == "█"   # step 0, velocity 100 (100/127=78% -> █)
+	assert chars[8] == "▓"   # step 8, velocity 80 (80/127=63% -> ▓)
+	assert chars[12] == "▒"  # step 12, velocity 60 (60/127=47% -> ▒)
 
 
 def test_grid_build_muted_pattern (patch_midi: None) -> None:
@@ -536,9 +536,10 @@ def test_grid_build_muted_pattern (patch_midi: None) -> None:
 	assert "(drums)" in line
 	assert "-" in line
 	# No velocity chars.
-	assert "X" not in line
-	assert "O" not in line
-	assert "o" not in line
+	assert "█" not in line
+	assert "▓" not in line
+	assert "▒" not in line
+	assert "░" not in line
 
 
 def test_display_grid_flag (patch_midi: None) -> None:
@@ -732,10 +733,10 @@ def test_grid_sustain_single_note (patch_midi: None, monkeypatch: pytest.MonkeyP
 
 	parts = grid._lines[0].split("|")[1]
 	chars = parts.split()
-	assert chars[0] == "O"   # attack (velocity 100)
-	assert chars[1] == "-"   # sustain
-	assert chars[2] == "-"   # sustain
-	assert chars[3] == "."   # empty — note ended
+	assert chars[0] == "█"   # attack (velocity 100)
+	assert chars[1] == ">"   # sustain
+	assert chars[2] == ">"   # sustain
+	assert chars[3] == "·"   # empty — note ended
 
 
 def test_grid_sustain_short_note (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -763,8 +764,8 @@ def test_grid_sustain_short_note (patch_midi: None, monkeypatch: pytest.MonkeyPa
 	kick_line = next(l for l in grid._lines if "kick_1" in l)
 	parts = kick_line.split("|")[1]
 	chars = parts.split()
-	assert chars[0] == "X"   # attack
-	assert chars[1] == "."   # no sustain — note too short
+	assert chars[0] == "█"   # attack
+	assert chars[1] == "·"   # no sustain — note too short
 
 
 def test_grid_sustain_does_not_overwrite_attack (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -792,10 +793,10 @@ def test_grid_sustain_does_not_overwrite_attack (patch_midi: None, monkeypatch: 
 
 	parts = grid._lines[0].split("|")[1]
 	chars = parts.split()
-	assert chars[0] == "O"   # Note A attack (vel 100)
-	assert chars[1] == "-"   # Note A sustain
-	assert chars[2] == "o"   # Note B attack (vel 80) — NOT sustain
-	assert chars[3] == "-"   # Note A still sustaining
+	assert chars[0] == "█"   # Note A attack (vel 100)
+	assert chars[1] == ">"   # Note A sustain
+	assert chars[2] == "▓"   # Note B attack (vel 80) — NOT sustain
+	assert chars[3] == ">"   # Note A still sustaining
 
 
 def test_grid_pitched_summary_sustain (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -821,9 +822,9 @@ def test_grid_pitched_summary_sustain (patch_midi: None, monkeypatch: pytest.Mon
 
 	parts = grid._lines[0].split("|")[1]
 	chars = parts.split()
-	assert chars[0] == "O"   # attack
-	assert chars[1] == "-"   # sustain visible in summary
-	assert chars[2] == "-"   # sustain visible in summary
+	assert chars[0] == "█"   # attack
+	assert chars[1] == ">"   # sustain visible in summary
+	assert chars[2] == ">"   # sustain visible in summary
 
 
 # ---------------------------------------------------------------------------
@@ -911,10 +912,10 @@ def test_grid_scale_on_grid_dot_between_grid_space (patch_midi: None, monkeypatc
 	chars = parts.split()
 
 	# col 0 = on-grid, has attack.
-	assert chars[0] == "O"
+	assert chars[0] == "█"
 	# col 1 = between-grid, empty → space (represented as empty string after split).
-	# col 2 = on-grid, empty → ".".
-	assert chars[1] == "."
+	# col 2 = on-grid, empty → "·".
+	assert chars[1] == "·"
 
 	# Verify the raw string has spaces at between-grid empty positions.
 	# Between col 0 ("O") and col 2 ("."), the raw cells are "O" + " " + " " + " " + ".".
@@ -924,9 +925,9 @@ def test_grid_scale_on_grid_dot_between_grid_space (patch_midi: None, monkeypatc
 	# The raw format is "X Y Z ..." where each cell is separated by a space.
 	# Cell at position 0 is O, cell at position 1 is space, cell at position 2 is dot.
 	individual_cells = list(raw[::2])  # every other char (skip separators)
-	assert individual_cells[0] == "O"
+	assert individual_cells[0] == "█"
 	assert individual_cells[1] == " "   # between-grid empty
-	assert individual_cells[2] == "."   # on-grid empty
+	assert individual_cells[2] == "·"   # on-grid empty
 
 
 def test_grid_scale_sustain_fills_between_grid (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -955,12 +956,12 @@ def test_grid_scale_sustain_fills_between_grid (patch_midi: None, monkeypatch: p
 	individual_cells = list(parts[::2])  # every other char (skip separators)
 
 	# Col 0: attack.
-	assert individual_cells[0] == "O"
+	assert individual_cells[0] == "█"
 	# Cols 1-7: sustain (both on-grid and between-grid).
 	for i in range(1, 8):
-		assert individual_cells[i] == "-", f"col {i} should be sustain '-', got '{individual_cells[i]}'"
+		assert individual_cells[i] == ">", f"col {i} should be sustain '>', got '{individual_cells[i]}'"
 	# Col 8: note ended (on-grid empty).
-	assert individual_cells[8] == "."
+	assert individual_cells[8] == "·"
 
 
 def test_grid_scale_muted (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:

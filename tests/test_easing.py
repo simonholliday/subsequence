@@ -191,3 +191,69 @@ def test_bpm_transition_default_easing_is_linear ():
 	bpm = transition.start_bpm + (transition.target_bpm - transition.start_bpm) * eased
 
 	assert bpm == pytest.approx(120.0)  # linear midpoint
+
+
+# ─── map_value ────────────────────────────────────────────────────────────────
+
+
+def test_map_value_linear ():
+
+	"""map_value should interpolate linearly by default."""
+
+	# Map 0.5 from [0, 1] to [0, 100] -> 50.0
+	val = subsequence.easing.map_value(0.5, 0.0, 1.0, 0.0, 100.0)
+	assert val == pytest.approx(50.0)
+
+	# Map 5 from [0, 10] to [100, 200] -> 150.0
+	val = subsequence.easing.map_value(5, 0, 10, 100, 200)
+	assert val == pytest.approx(150.0)
+
+
+def test_map_value_clamp ():
+
+	"""map_value should clamp to output bounds when clamp=True."""
+
+	# Value exceeds in_max (1.5 > 1.0)
+	val = subsequence.easing.map_value(1.5, 0.0, 1.0, 0.0, 100.0)
+	assert val == pytest.approx(100.0)
+
+	# Value below in_min (-0.5 < 0.0)
+	val = subsequence.easing.map_value(-0.5, 0.0, 1.0, 0.0, 100.0)
+	assert val == pytest.approx(0.0)
+
+
+def test_map_value_no_clamp ():
+
+	"""map_value should extrapolate when clamp=False."""
+
+	val = subsequence.easing.map_value(1.5, 0.0, 1.0, 0.0, 100.0, clamp=False)
+	assert val == pytest.approx(150.0)
+
+
+def test_map_value_easing_shape ():
+
+	"""map_value should apply the requested easing curve."""
+
+	# At 0.5 progress, ease_in is < 0.5.
+	line_val = subsequence.easing.map_value(0.5, 0.0, 1.0, 0.0, 100.0, shape="linear")
+	ease_val = subsequence.easing.map_value(0.5, 0.0, 1.0, 0.0, 100.0, shape="ease_in")
+
+	assert line_val == pytest.approx(50.0)
+	assert ease_val < 50.0
+
+
+def test_map_value_reversed_range ():
+
+	"""map_value should handle descending output ranges."""
+
+	# Map 0.25 from [0, 1] to [100, 0] -> 75.0
+	val = subsequence.easing.map_value(0.25, 0.0, 1.0, 100.0, 0.0)
+	assert val == pytest.approx(75.0)
+
+
+def test_map_value_zero_range_safeguard ():
+
+	"""map_value should handle in_min == in_max safely."""
+
+	val = subsequence.easing.map_value(0.5, 0.0, 0.0, 0.0, 100.0)
+	assert val == pytest.approx(0.0)
