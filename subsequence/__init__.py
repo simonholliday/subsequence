@@ -76,6 +76,9 @@ Integration:
   sustain - makes legato and staccato visually distinct at a glance.
   Add ``grid_scale=2`` to zoom in horizontally, revealing swing and
   groove micro-timing.
+- **Web UI Dashboard (Beta).** Enable with ``composition.web_ui()`` to 
+  broadcast live composition metadata and visualize piano-roll pattern 
+  grids in a reactive HTTP/WebSocket browser dashboard.
 - **Recording.** Record to standard MIDI file. Render to file without
   waiting for real-time playback.
 

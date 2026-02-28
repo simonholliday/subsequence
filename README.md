@@ -80,6 +80,7 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - [Frozen progressions](#frozen-progressions)
 - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
 - [Terminal display](#terminal-display)
+- [Web UI Dashboard (Beta)](#web-ui-dashboard-beta)
 - [MIDI recording and rendering](#midi-recording-and-rendering)
 - [Live coding](#live-coding)
 - [Clock accuracy](#clock-accuracy)
@@ -121,7 +122,8 @@ Subsequence connects to your existing world. Sync it to your DAW's clock, or let
 - **MIDI clock.** [Master](#clock-accuracy) (`clock_output()`) or [follower](#midi-input-and-external-clock) (`clock_follow=True`). Sync to a DAW, drive a Eurorack system, or both.
 - **Hardware control.** [CC input mapping](#midi-cc-input-mapping) from knobs and faders to `composition.data`. [OSC](#osc-integration) for bidirectional communication with mixers, lighting, visuals.
 - **[Live coding.](#live-coding)** Hot-swap patterns, change tempo, mute/unmute, tweak parameters - all during playback.
-- **[Hotkeys.](#hotkeys)** Single keystrokes to jump sections, tweak patterns, or trigger actions - with optional bar-boundary quantization.
+- [Hotkeys.](#hotkeys) Single keystrokes to jump sections, tweak patterns, or trigger actions - with optional bar-boundary quantization.
+- **Web UI Dashboard (Beta).** Broadcast live composition state and pattern grids to your browser via standard WebSockets.
 - **Recording and rendering.** [Record](#midi-recording-and-rendering) to standard MIDI file. [Render to file](#rendering-to-file-no-real-time-wait) without waiting for real-time playback.
 
 ## Quick start
@@ -1011,6 +1013,22 @@ To disable:
 ```python
 composition.display(enabled=False)
 ```
+
+## Web UI Dashboard (Beta)
+
+For an improved visual experience without relying on the terminal, you can enable the experimental Web UI Dashboard. This spins up an HTTP server and a WebSocket connection in the background to serve a reactive web interface that mirrors your composition state:
+
+```python
+composition.web_ui()
+composition.play()
+```
+
+Opening `http://localhost:8080/` in your browser will display:
+* A live transport bar showing the current BPM, Key, Bar, and Form Section.
+* Gauge bars representing all active Conductor signals (e.g., LFOs and automation lines).
+* High-precision visual playheads and piano-roll style Pattern Grids for every pattern currently rendering. 
+
+*Note: The Web UI is an optional beta feature. When you don't call `web_ui()`, it consumes zero threads and zero CPU overhead. It currently relies on an active internet connection to load the Preact frontend dependencies from a CDN.*
 
 ## MIDI recording and rendering
 

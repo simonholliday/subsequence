@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsequence Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --text-color: #c9d1d9;
+            --accent-color: #58a6ff;
+            --panel-bg: #161b22;
+            --border-color: #30363d;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Inter', -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .dashboard {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            gap: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        .status {
+            display: flex;
+            gap: 20px;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .status span {
+            color: var(--accent-color);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .panel h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .gauge-container {
+            margin-bottom: 20px;
+        }
+
+        .gauge-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .gauge-bar {
+            width: 100%;
+            height: 12px;
+            background: var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .gauge-fill {
+            height: 100%;
+            background: var(--accent-color);
+            transition: width 0.1s linear;
+        }
+
+        .pattern-grid-container {
+            margin-bottom: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px;
+        }
+
+        .pattern-grid-container:last-child {
+            margin-bottom: 0;
+        }
+
+        .pattern-grid-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-family: monospace;
+            font-size: 1.1rem;
+        }
+
+        .pattern-grid {
+            position: relative;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .note-rect {
+            position: absolute;
+            border-radius: 2px;
+        }
+
+        .piano-roll-label {
+            position: absolute;
+            left: 4px;
+            font-size: 0.70rem;
+            color: rgba(255, 255, 255, 0.6);
+            font-family: monospace;
+            text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.7);
+            pointer-events: none;
+            z-index: 5;
+            white-space: nowrap;
+        }
+
+        .playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background-color: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app"></div>
+
+    <script type="module">
+        import { h, Component, render } from 'https://esm.sh/preact@10.19.6';
+        import { useState, useEffect } from 'https://esm.sh/preact@10.19.6/hooks';
+        import htm from 'https://esm.sh/htm@3.1.1';
+
+        const html = htm.bind(h);
+
+        function Transport({ state }) {
+            let sectionStr = state.section || '---';
+            if (state.section && state.section_bars) {
+                sectionStr = `[${state.section} ${state.section_bar}/${state.section_bars}`;
+                if (state.next_section) {
+                    sectionStr += ` \u2192 ${state.next_section}`;
+                }
+                sectionStr += ']';
+            }
+
+            return html`
+                <div class="header">
+                    <h1>Subsequence <span>Dashboard</span></h1>
+                    <div class="status">
+                        <div>BPM: <span>${state.bpm ? state.bpm.toFixed(1) : '---'}</span></div>
+                        ${state.key ? html`<div>Key: <span>${state.key}</span></div>` : ''}
+                        <div>Bar: <span>${state.global_bar || 0}.${state.global_beat || 0}</span></div>
+                        <div>Section: <span>${sectionStr}</span></div>
+                        <div>Chord: <span>${state.chord || '---'}</span></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function SignalGauge({ name, value }) {
+            // value is expected to be roughly 0.0 - 1.0. Clamp it to 0-100% just in case
+            const pct = Math.max(0, Math.min(100, value * 100));
+            return html`
+                <div class="gauge-container">
+                    <div class="gauge-label">
+                        <span>${name}</span>
+                        <span>${value.toFixed(2)}</span>
+                    </div>
+                    <div class="gauge-bar">
+                        <div class="gauge-fill" style="width: ${pct}%"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function PatternGrid({ pattern, state }) {
+            const color = pattern.muted ? '#ff7b72' : '#3fb950';
+            const notes = pattern.notes || [];
+            const length_pulses = pattern.length_pulses || 1;
+            const drum_map = pattern.drum_map || {};
+
+            // Reverse the drum map: { midi_note: "kick" }
+            const reverseDrumMap = {};
+            for (const [name, noteNum] of Object.entries(drum_map)) {
+                if (!reverseDrumMap[noteNum]) reverseDrumMap[noteNum] = name;
+            }
+
+            // Find unique pitches and sort descending (higher pitches at top)
+            const pitches = [...new Set(notes.map(n => n.p))].sort((a, b) => b - a);
+            const rowHeight = 16;
+            const gridHeight = Math.max(48, pitches.length * rowHeight);
+
+            const pitchToY = (p) => {
+                const idx = pitches.indexOf(p);
+                if (idx === -1) return 0;
+                // Center the note vertically in its "row"
+                return idx * rowHeight + 1;
+            };
+
+            const getPitchName = (p) => {
+                if (reverseDrumMap[p]) return reverseDrumMap[p];
+                const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+                const octave = Math.floor(p / 12) - 1;
+                const note = noteNames[p % 12];
+                return `${note}${octave}`;
+            };
+
+            const localPlayhead = (state.playhead_pulse || 0) % length_pulses;
+            const playheadLeft = (localPlayhead / length_pulses) * 100;
+
+            const renderLabel = (p) => {
+                const top = pitchToY(p);
+                return html`<div class="piano-roll-label" style="top: ${top}px; line-height: ${rowHeight - 2}px;">${getPitchName(p)}</div>`;
+            };
+
+            const renderNote = (n, i) => {
+                const left = (n.s / length_pulses) * 100;
+                // Clamp width to remainder of bar so it doesn't spill over
+                const width = Math.min((n.d / length_pulses) * 100, 100 - left);
+                const top = pitchToY(n.p);
+                const opacity = Math.max(0.3, n.v / 127);
+                return html`<div key=${i} class="note-rect" style="left: ${left}%; width: ${Math.max(0.5, width)}%; top: ${top}px; height: ${rowHeight - 2}px; opacity: ${opacity}; background-color: ${color};"></div>`;
+            };
+
+            return html`
+                <div class="pattern-grid-container">
+                    <div class="pattern-grid-header">
+                        <span>${pattern.name}</span>
+                        <span style="color: ${color}; font-weight: bold; font-size: 0.85rem;">${pattern.muted ? 'MUTED' : 'PLAYING'}</span>
+                    </div>
+                    <div class="pattern-grid" style="height: ${gridHeight}px;">
+                        ${pitches.map(renderLabel)}
+                        ${notes.map(renderNote)}
+                        <div class="playhead" style="left: ${playheadLeft}%;"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function App() {
+            const [state, setState] = useState({
+                bpm: null,
+                chord: null,
+                section: null,
+                patterns: [],
+                signals: {}
+            });
+            const [connected, setConnected] = useState(false);
+
+            useEffect(() => {
+                let ws;
+
+                function connect() {
+                    ws = new WebSocket('ws://' + window.location.hostname + ':8765');
+
+                    ws.onopen = () => setConnected(true);
+
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        setState(data);
+                    };
+
+                    ws.onclose = () => {
+                        setConnected(false);
+                        // Try to reconnect in 2s
+                        setTimeout(connect, 2000);
+                    };
+                }
+
+                connect();
+
+                return () => {
+                    if (ws) ws.close();
+                };
+            }, []);
+
+            return html`
+                <div class="dashboard">
+                    <${Transport} state=${state} />
+                    
+                    ${!connected ? html`<div style="color: #ff7b72; padding: 20px; text-align: center; border: 1px solid #ff7b72; border-radius: 8px;">Not connected to Subsequence websocket...</div>` : null}
+
+            <div class="grid">
+                <div class="panel">
+                    <h2>Signals & Conductor</h2>
+                    ${Object.keys(state.signals).length === 0 ? html`<p style="color: grey; font-style: italic;">No active signals</p>` : null}
+                    ${Object.entries(state.signals).map(([name, value]) =>
+                html`<${SignalGauge} key=${name} name=${name} value=${value} />`
+            )}
+                </div>
+                <div class="panel">
+                    <h2>Active Patterns</h2>
+                    ${state.patterns.length === 0 ? html`<p style="color: grey; font-style: italic;">No active patterns</p>` : null}
+                    ${state.patterns.map(p => html`<${PatternGrid} key=${p.name} pattern=${p} state=${state} />`)}
+                </div>
+            </div>
+                </div>
+                `;
+        }
+
+        render(html`<${App} />`, document.getElementById('app'));
+    </script>
+</body>
+
+</html>

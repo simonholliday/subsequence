@@ -18,6 +18,7 @@ dependencies = [
     "mido",
     "python-rtmidi",
     "python-osc",
+    "websockets",
 ]
 
 [project.urls]

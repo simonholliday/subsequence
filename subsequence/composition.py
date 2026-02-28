@@ -19,6 +19,7 @@ import subsequence.pattern
 import subsequence.pattern_builder
 import subsequence.sequencer
 import subsequence.voicings
+import subsequence.web_ui
 import subsequence.weighted_graph
 import subsequence.conductor
 import subsequence.form_state
@@ -617,6 +618,8 @@ class Composition:
 		self.data: typing.Dict[str, typing.Any] = {}
 		self._osc_server: typing.Optional[subsequence.osc.OscServer] = None
 		self.conductor = subsequence.conductor.Conductor()
+		self._web_ui_enabled: bool = False
+		self._web_ui_server: typing.Optional[subsequence.web_ui.WebUI] = None
 
 		# Hotkey state — populated by hotkeys() and hotkey().
 		self._hotkeys_enabled: bool = False
@@ -1110,6 +1113,18 @@ class Composition:
 			self._display = subsequence.display.Display(self, grid=grid, grid_scale=grid_scale)
 		else:
 			self._display = None
+
+	def web_ui (self) -> None:
+
+		"""
+		Enable the realtime Web UI Dashboard.
+
+		When enabled, Subsequence instantiates a WebSocket server that broadcasts 
+		the current state, signals, and active patterns (with high-res timing and note data) 
+		to any connected browser clients.
+		"""
+
+		self._web_ui_enabled = True
 
 	def midi_input (self, device: str, clock_follow: bool = False) -> None:
 
@@ -1886,7 +1901,14 @@ class Composition:
 				self._list_hotkeys()
 			# If not active, KeystrokeListener.start() already logged a warning.
 
+		if self._web_ui_enabled and not self._sequencer.render_mode:
+			self._web_ui_server = subsequence.web_ui.WebUI(self)
+			self._web_ui_server.start()
+
 		await run_until_stopped(self._sequencer)
+
+		if self._web_ui_server is not None:
+			self._web_ui_server.stop()
 
 		if self._live_server is not None:
 			await self._live_server.stop()
