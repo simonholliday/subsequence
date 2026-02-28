@@ -21,7 +21,7 @@ import subsequence.easing
 import subsequence.sequence_utils
 import subsequence.constants.instruments.gm_drums as gm_drums
 
-DRUM_CHANNEL = 10
+DRUM_CHANNEL = 9
 
 composition = subsequence.Composition(bpm=120)
 
