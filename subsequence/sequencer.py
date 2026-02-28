@@ -10,7 +10,6 @@ import typing
 import mido
 
 import subsequence.constants
-import subsequence.constants
 import subsequence.easing
 import subsequence.event_emitter
 import subsequence.midi_utils

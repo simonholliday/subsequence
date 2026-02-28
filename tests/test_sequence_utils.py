@@ -657,7 +657,7 @@ def test_logistic_map_different_x0_different_output () -> None:
 
 	"""Different starting values should produce different sequences."""
 
-	a = subsequence.sequence_utils.logistic_map(r=3.7, steps=16, x0=0.3)
+	a = subsequence.sequence_utils.logistic_map(r=3.7, steps=16, x0=0.4)
 	b = subsequence.sequence_utils.logistic_map(r=3.7, steps=16, x0=0.7)
 
 	assert a != b

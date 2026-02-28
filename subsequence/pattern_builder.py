@@ -21,9 +21,15 @@ def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 
 	"""Expand a scalar to a list of length n, or adjust a list to length n.
 
-	If value is a scalar (int, float, or str), returns [value] * n.
-	If value is a list longer than n, truncates and logs a warning.
-	If value is a list shorter than n, repeats the last value and logs a warning.
+	Parameters:
+		name: The name of the parameter being expanded (used for logging).
+		value: A scalar (e.g., int, float, str) or an iterable to expand.
+		n: The target length for the returned list.
+
+	Returns:
+		A list of length `n`. If `value` is a scalar, returns `[value] * n`.
+		If `value` is a list longer than `n`, truncates it and logs a warning.
+		If `value` is a list shorter than `n`, repeats the last value and logs a warning.
 	"""
 
 	if isinstance(value, (int, float, str)):
@@ -613,7 +619,7 @@ class PatternBuilder:
 				continue
 
 			if no_overlap:
-				pulse = int(i * step_duration * subsequence.constants.MIDI_QUARTER_NOTE)
+				pulse = int(i * step_duration * subsequence.constants.MIDI_QUARTER_NOTE + 0.5)
 				if pulse in self._pattern.steps:
 					if any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes):
 						continue
@@ -802,7 +808,7 @@ class PatternBuilder:
 
 			if no_overlap:
 				midi_pitch = self._resolve_pitch(pitch)
-				pulse = int(step_idx * step_duration * subsequence.constants.MIDI_QUARTER_NOTE)
+				pulse = int(step_idx * step_duration * subsequence.constants.MIDI_QUARTER_NOTE + 0.5)
 				if pulse in self._pattern.steps:
 					if any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes):
 						continue

@@ -649,6 +649,15 @@ class Composition:
 		"""Current bar index used by pattern builders."""
 		return self._builder_bar
 
+	def _require_harmonic_state (self) -> subsequence.harmonic_state.HarmonicState:
+		"""Return the active HarmonicState, raising ValueError if none is configured."""
+		if self._harmonic_state is None:
+			raise ValueError(
+				"harmony() must be called before this action — "
+				"no harmonic state has been configured."
+			)
+		return self._harmonic_state
+
 	def harmony (
 		self,
 		style: typing.Union[str, subsequence.chord_graphs.ChordGraph] = "functional_major",
@@ -752,16 +761,10 @@ class Composition:
 			composition.section_chords("chorus", chorus)
 		"""
 
-		if self._harmonic_state is None:
-			raise ValueError(
-				"harmony() must be called before freeze() — "
-				"no harmonic state has been configured."
-			)
+		hs = self._require_harmonic_state()
 
 		if bars < 1:
 			raise ValueError("bars must be at least 1")
-
-		hs = self._harmonic_state
 		collected: typing.List[subsequence.chords.Chord] = [hs.current_chord]
 
 		for _ in range(bars - 1):
