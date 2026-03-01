@@ -24,16 +24,6 @@ composition = subsequence.Composition(
 
 groove = subsequence.Groove.from_agr("Swing 16ths 57.agr")
 
-# Auto-discover the Behringer WING on the local network and connect.
-# If no WING is found, OSC automation is simply skipped (p.osc() calls
-# are silently dropped when no OSC server is configured).
-_wing = wing.discover()
-if _wing:
-	logging.info("WING found at %s (%s firmware %s)", _wing["ip"], _wing["model"], _wing["firmware"])
-	composition.osc(send_port=wing.WING_PORT, send_host=_wing["ip"])
-else:
-	logging.info("No WING found on the network — OSC automation disabled")
-
 composition.form({
 	"intro":		(8, [("section_1", 1)]),
 	"section_1":	(8, [("section_2", 2), ("section_1", 1)]),
@@ -163,5 +153,6 @@ def bass (p):
 if __name__ == "__main__":
 
 	composition.display(grid=True, grid_scale=4)
+	composition.web_ui()
 	composition.play()
 	

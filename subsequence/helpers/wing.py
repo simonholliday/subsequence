@@ -76,6 +76,8 @@ import typing
 import pythonosc.osc_message
 import pythonosc.osc_message_builder
 
+import subsequence.helpers.network
+
 
 WING_PORT: int = 2223
 """Default UDP port for the Behringer WING."""
@@ -99,33 +101,6 @@ def _parse_osc(data: bytes) -> typing.Optional[pythonosc.osc_message.OscMessage]
 		return pythonosc.osc_message.OscMessage(data)
 	except Exception:
 		return None
-
-
-def _local_broadcasts () -> typing.List[str]:
-	"""Return subnet broadcast addresses inferred from local interface IPs.
-
-	Uses a non-connecting UDP socket trick to find the IP of the default
-	outbound interface, then computes its /24 broadcast address.
-	"""
-	broadcasts: typing.List[str] = []
-	try:
-		# Connecting a UDP socket to an external address (no data is actually
-		# sent) reveals which local IP the OS would use for that route.
-		probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		try:
-			probe.connect(("8.8.8.8", 80))
-			local_ip = probe.getsockname()[0]
-		finally:
-			probe.close()
-
-		if not local_ip.startswith("127.") and not local_ip.startswith("169.254."):
-			parts = local_ip.split(".")
-			if len(parts) == 4:
-				parts[3] = "255"
-				broadcasts.append(".".join(parts))
-	except Exception:
-		pass
-	return broadcasts
 
 
 def _classify (params: typing.List[typing.Any]) -> str:
@@ -175,7 +150,7 @@ def discover (
 	dgram = _build_osc("/?")
 
 	# Build list of broadcast addresses to try: global first, then subnet-specific
-	broadcasts = list(_BROADCAST_ADDRS) + _local_broadcasts()
+	broadcasts = list(_BROADCAST_ADDRS) + subsequence.helpers.network.get_local_broadcasts()
 	# Deduplicate while preserving order
 	seen: typing.Set[str] = set()
 	unique_broadcasts: typing.List[str] = []

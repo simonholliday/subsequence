@@ -12,6 +12,8 @@ import websockets
 import websockets.asyncio.server
 import websockets.exceptions
 
+import subsequence.helpers.network
+
 logger = logging.getLogger(__name__)
 
 class WebUI:
@@ -62,7 +64,15 @@ class WebUI:
 
         self._http_thread = threading.Thread(target=run_server, daemon=True)
         self._http_thread.start()
-        logger.info(f"Web UI Dashboard available at http://localhost:{self.http_port}")
+        
+        local_ip = subsequence.helpers.network.get_local_ip()
+        urls = [f"http://localhost:{self.http_port}"]
+        # If a distinct LAN IP was discovered, add the standard loopback and the LAN IP
+        if local_ip != "127.0.0.1":
+            urls.append(f"http://127.0.0.1:{self.http_port}")
+            urls.append(f"http://{local_ip}:{self.http_port}")
+            
+        logger.info("Web UI Dashboard available at:\n  " + "\n  ".join(urls))
 
     async def _handle_client (self, websocket: websockets.asyncio.server.ServerConnection) -> None:
 
