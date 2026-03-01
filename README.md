@@ -1725,6 +1725,13 @@ mypy subsequence/
 
 Type checking runs automatically in CI on all pull requests.
 
+## Community and Feedback
+
+All feedback and suggestions will be gratefully received! Please use these channels:
+
+* [Discussions](https://github.com/simonholliday/subsequence/discussions): The best place to ask questions and share ideas.
+* [Issues](https://github.com/simonholliday/subsequence/issues): If you ran into a bug, or have a specific feature request for the codebase, please open an Issue here.
+
 ## About the Author
 
 Subsequence was created by me, Simon Holliday ([https://simonholliday.com/](https://simonholliday.com/)), a senior technologist and a junior (but trying) musician. From running an electronic music label in the 2000s to prototyping new passive SONAR techniques for defence research, my work has often explored the intersection of code and sound.

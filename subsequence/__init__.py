@@ -99,6 +99,11 @@ Minimal example:
     comp.play()
     ```
 
+Community and Feedback:
+
+- **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
+- **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
+
 Package-level exports: ``Composition``, ``Groove``, ``MelodicState``, ``register_scale``.
 """
 
