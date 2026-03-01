@@ -22,7 +22,10 @@ composition = subsequence.Composition(
 	key="E"
 )
 
-groove = subsequence.Groove.from_agr("Swing 16ths 57.agr")
+groove = subsequence.Groove(
+	offsets=[0.0, 0.035, 0.0, 0.035, 0.0, 0.035, 0.0, 0.035, 0.0, 0.035, 0.0, 0.035, 0.0, 0.035, 0.0, 0.035],
+	grid=0.25
+)
 
 composition.form({
 	"intro":		(8, [("section_1", 1)]),
@@ -31,33 +34,29 @@ composition.form({
 	"section_3":	(8, [("section_3", 1), ("section_1", 1)]),
 }, start="intro")
 
+# A Sine wave LFO over 16 bars (64 beats) that cycles between 0.0 and 1.0.
+# We'll refer to it by name ("drum_swell") inside the pattern.
+composition.conductor.lfo("drum_swell", shape="sine", cycle_beats=128.0, min_val=0.0, max_val=1.0, phase=0.75)
+
 @composition.pattern(channel=DRUM_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
 
-	# ── Six Perlin fields - the wandering soul of the piece ───────
-	# Each has a different speed (prime-ish multipliers) so they
-	# never synchronise.  p.cycle increments every bar across all
-	# sections, so each pass through the form samples a fresh region
-	# of every noise field.
-	ghost_wander = subsequence.sequence_utils.perlin_1d(p.cycle * 0.07, seed=1)
-	hat_feel     = subsequence.sequence_utils.perlin_1d(p.cycle * 0.05, seed=2)
-	tom_swell    = subsequence.sequence_utils.perlin_1d(p.cycle * 0.04, seed=3)
-	kick_morph   = subsequence.sequence_utils.perlin_1d(p.cycle * 0.09, seed=4)
-	space        = subsequence.sequence_utils.perlin_1d(p.cycle * 0.06, seed=5)
-	chaos_spark  = subsequence.sequence_utils.perlin_1d(p.cycle * 0.13, seed=6)
+	# Read the sine wave value for the current bar (0.0 to 1.0)
+	swell = p.signal("drum_swell")
+
+	perlin = subsequence.sequence_utils.perlin_1d(p.cycle * 0.07, seed=1)
 
 	p.hit_steps("kick_2", {0, 4, 8, 12}, velocity=100)
 
 	# Ghost layering: CA + probability fill
 	p.cellular("kick_2", rule=30, velocity=40, no_overlap=True, dropout=0.25)
-	logging.info(p.cycle)
-	logging.info(ghost_wander)
-	gf_d = 0.25 * (0.5 + ghost_wander * 0.5)
-	logging.info(gf_d)
-	p.ghost_fill("kick_2", density=gf_d, velocity=(15, 35), bias="offbeat", no_overlap=True)
+
+	logging.info(f"Cycle: {p.cycle}")
+	logging.info(f"Swell: {swell:.2f}")
+	p.ghost_fill("kick_2", density=swell * perlin, velocity=(15, 35), bias="offbeat", no_overlap=True)
 
 	p.hit_steps("snare_1", {4, 12}, velocity=100)
-	p.ghost_fill("snare_1", density=0.5, velocity=(40, 65), bias="syncopated", no_overlap=True)
+	p.ghost_fill("snare_1", density=swell, velocity=(40, 65), bias="syncopated", no_overlap=True)
 
 	if not p.section:
 		return
@@ -88,7 +87,7 @@ def drums (p):
 
 		p.ghost_fill(
 			"hi_hat_closed",
-			density=1,
+			density=swell,
 			velocity=hat_velocities,
 			bias=bias_sync,
 			no_overlap=True
@@ -99,6 +98,21 @@ def drums (p):
 
 @composition.pattern(channel=BASS_CHANNEL, length=4)
 def bass (p):
+
+	return
+
+	bass_pitch = midi_notes.E1
+
+	bass_steps = set(range(0,16,1))
+
+	p.sequence(
+		steps=bass_steps,
+		pitches=bass_pitch,
+		durations=0.05,
+		velocities=25
+	)
+
+	return
 
 	bass_steps = {0, 3, 8, 12}
 
@@ -134,8 +148,6 @@ def bass (p):
 				bass_steps.update({6,7,9,10,11})
 		"""
 
-	bass_pitch = midi_notes.E1
-
 	if p.cycle % 8 == 7:
 		bass_pitch = midi_notes.G1
 
@@ -153,6 +165,6 @@ def bass (p):
 if __name__ == "__main__":
 
 	composition.display(grid=True, grid_scale=4)
-	composition.web_ui()
+#	composition.web_ui()
 	composition.play()
 	

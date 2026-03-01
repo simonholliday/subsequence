@@ -33,7 +33,7 @@ Composition tools:
 - **Rhythm and feel.** Euclidean and Bresenham generators, multi-voice
   weighted Bresenham distribution (``bresenham_poly()``), ghost note
   layers (``ghost_fill()``), evolving cellular-automaton rhythms
-  (``cellular()``), smooth Perlin noise (``perlin_1d()``), deterministic
+  (``cellular()``), smooth Perlin noise (``perlin_1d()``, ``perlin_2d()``), deterministic
   chaos sequences (``logistic_map()``), Markov-chain generation
   (``p.markov()``), groove templates (``Groove.swing()``,
   ``Groove.from_agr()``), swing, humanize, velocity shaping, dropout,

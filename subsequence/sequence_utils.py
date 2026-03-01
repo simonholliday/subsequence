@@ -404,6 +404,10 @@ def perlin_1d (x: float, seed: int = 0) -> float:
 	t = x - x0
 
 	def _grad (pos: int) -> float:
+		# Hash function using Linear Congruential Generator (LCG) constants.
+		# The "magic numbers" (e.g. 1103515245) distribute bits evenly and are 
+		# drawn from standard C library rand() implementations to ensure high 
+		# quality pseudo-randomness quickly.
 		h = ((pos * 1103515245 + seed * 374761393 + 12345) & 0x7FFFFFFF)
 		return (h / 0x3FFFFFFF) - 1.0
 
@@ -417,6 +421,74 @@ def perlin_1d (x: float, seed: int = 0) -> float:
 
 	# Normalize from roughly [-0.5, 0.5] to [0, 1]
 	return max(0.0, min(1.0, value + 0.5))
+
+
+def perlin_2d (x: float, y: float, seed: int = 0) -> float:
+
+	"""Generate smooth 2D noise at position *(x, y)*.
+
+	Returns a value in [0.0, 1.0] that varies smoothly as *x* and *y* change.
+	Same coordinates and *seed* always produce the same output. Use to drive
+	correlated parameters that should weave around each other organically over time,
+	or for spatialized parameter wandering.
+
+	Parameters:
+		x: Position along the X axis of the noise field.
+		y: Position along the Y axis of the noise field.
+		seed: Seed for the hash function. Different seeds produce
+			different but equally smooth noise fields.
+
+	Example:
+		```python
+		# Two parameters wandering smoothly but with related movement.
+		# By locking X to time and slightly separating Y, the two values
+		# will move in a correlated, organic dance over the bars.
+		density = subsequence.sequence_utils.perlin_2d(p.cycle * 0.08, 0.0, seed=42)
+		velocity = subsequence.sequence_utils.perlin_2d(p.cycle * 0.08, 0.5, seed=42)
+		```
+	"""
+
+	x0 = math.floor(x)
+	y0 = math.floor(y)
+	x1 = x0 + 1
+	y1 = y0 + 1
+
+	tx = x - x0
+	ty = y - y0
+
+	def _grad (pos_x: int, pos_y: int) -> float:
+		# Note: The math here (smootherstep fade and hash function) is deliberately 
+		# duplicated from perlin_1d rather than extracted into helper functions.
+		# This avoids Python function call overhead, maximizing execution speed for
+		# dense sequences. See perlin_1d for details on the LCG hash constants.
+		h = ((pos_x * 1103515245 + pos_y * 741103597 + seed * 374761393 + 12345) & 0x7FFFFFFF)
+		# 4 diagonal gradients
+		h4 = h & 3
+		dx = x - pos_x
+		dy = y - pos_y
+		if h4 == 0: return  dx + dy
+		if h4 == 1: return -dx + dy
+		if h4 == 2: return  dx - dy
+		return -dx - dy
+
+	# Smootherstep fade (6t^5 - 15t^4 + 10t^3)
+	fadex = tx * tx * tx * (tx * (tx * 6.0 - 15.0) + 10.0)
+	fadey = ty * ty * ty * (ty * (ty * 6.0 - 15.0) + 10.0)
+
+	d00 = _grad(x0, y0)
+	d10 = _grad(x1, y0)
+	d01 = _grad(x0, y1)
+	d11 = _grad(x1, y1)
+
+	# Interpolate along x
+	ix0 = d00 + fadex * (d10 - d00)
+	ix1 = d01 + fadex * (d11 - d01)
+
+	# Interpolate along y
+	value = ix0 + fadey * (ix1 - ix0)
+
+	# Normalize from roughly [-1.0, 1.0] to [0.0, 1.0]
+	return max(0.0, min(1.0, (value + 1.0) / 2.0))
 
 
 def logistic_map (r: float, steps: int, x0: float = 0.5) -> typing.List[float]:
