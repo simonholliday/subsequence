@@ -17,6 +17,7 @@ It is a **compositional engine** for your studio - generating pure MIDI to contr
 - **Turn data into music.** Schedule any Python function on a beat cycle. Feed in APIs, sensors, files, weather, ISS telemetry - anything Python can reach becomes a musical parameter.
 - **Pure MIDI, zero sound engine.** No audio synthesis, no heavyweight dependencies. Route MIDI to your existing hardware or software instruments.
 - **Controlled randomness, not chaos.** Every generative decision can be bounded by musical theory and constraints. Set a seed and every "random" decision - chords, form, note choices - becomes repeatable, intentional, and tweakable.
+- **From sketch to studio.** Subsequence is a fast way to explore ideas - try rhythms, test harmonies, let the algorithms surprise you. When something clicks, [record the session](#midi-recording-and-rendering) as a standard multi-channel MIDI file and bring it straight into your DAW to arrange, edit, and polish. The generative process feeds the finished product.
 
 **[Full API documentation →](https://simonholliday.github.io/subsequence)**
 
