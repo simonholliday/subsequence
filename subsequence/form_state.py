@@ -107,7 +107,19 @@ class FormState:
 		rng: typing.Optional[random.Random] = None
 	) -> None:
 
-		"""Initialize from a list, iterator, or dict of weighted section transitions."""
+		"""
+		Initialize from a list, iterator, or dict of weighted section transitions.
+
+		Parameters:
+			sections: Form definition. A list of `(name, bars)` tuples, an iterator 
+				yielding `(name, bars)` tuples, or a dictionary defining a weighted 
+				directed graph for generative progression.
+			loop: When using a list, whether to cycle back to the beginning 
+				automatically (default `False`).
+			start: Name of the starting section when using a graph dict. If omitted, 
+				it defaults to the first key in the dictionary.
+			rng: Optional seeded ``random.Random`` for deterministic graph decisions.
+		"""
 
 		self._current: typing.Optional[typing.Tuple[str, int]] = None
 		self._bar_in_section: int = 0

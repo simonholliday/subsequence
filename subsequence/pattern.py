@@ -65,6 +65,14 @@ class Pattern:
 
 		"""
 		Initialize a new pattern with MIDI channel, length in beats, and reschedule lookahead.
+
+		Parameters:
+			channel: The MIDI channel (0-15) this pattern will output to.
+			length: The duration of the pattern before it loops/rebuilds, measured 
+				in beats (e.g., 16 = 4 bars in 4/4 time). Defaults to 16.
+			reschedule_lookahead: How many beats before the end of the pattern the next 
+				cycle is built. Defaults to 1 beat. This provides a safe computational 
+				buffer so events are queued before the clock actually needs them.
 		"""
 
 		self.channel = channel
