@@ -1596,12 +1596,12 @@ def test_param_returns_none_when_no_default () -> None:
 	assert builder.param("missing") is None
 
 
-# --- Humanize ---
+# --- Randomize ---
 
 
-def test_humanize_timing_shifts_notes () -> None:
+def test_randomize_timing_shifts_notes () -> None:
 
-	"""humanize(timing=0.5) should shift at least one note from its original pulse."""
+	"""randomize(timing=0.5) should shift at least one note from its original pulse."""
 
 	import random
 
@@ -1611,7 +1611,7 @@ def test_humanize_timing_shifts_notes () -> None:
 	builder.hit_steps(36, list(range(16)), velocity=100)
 	original_pulses = set(builder._pattern.steps.keys())
 
-	builder.humanize(timing=0.5, rng=random.Random(42))
+	builder.randomize(timing=0.5, rng=random.Random(42))
 
 	new_pulses = set(builder._pattern.steps.keys())
 
@@ -1619,9 +1619,9 @@ def test_humanize_timing_shifts_notes () -> None:
 	assert new_pulses != original_pulses
 
 
-def test_humanize_timing_zero_no_change () -> None:
+def test_randomize_timing_zero_no_change () -> None:
 
-	"""humanize(timing=0.0) should leave all pulse positions unchanged."""
+	"""randomize(timing=0.0) should leave all pulse positions unchanged."""
 
 	import random
 
@@ -1629,14 +1629,14 @@ def test_humanize_timing_zero_no_change () -> None:
 	builder.hit_steps(36, list(range(16)), velocity=100)
 	original_pulses = set(builder._pattern.steps.keys())
 
-	builder.humanize(timing=0.0, rng=random.Random(42))
+	builder.randomize(timing=0.0, rng=random.Random(42))
 
 	assert set(builder._pattern.steps.keys()) == original_pulses
 
 
-def test_humanize_velocity_changes_velocity () -> None:
+def test_randomize_velocity_changes_velocity () -> None:
 
-	"""humanize(velocity=0.5) should change at least one note's velocity."""
+	"""randomize(velocity=0.5) should change at least one note's velocity."""
 
 	import random
 
@@ -1649,7 +1649,7 @@ def test_humanize_velocity_changes_velocity () -> None:
 		for note in step.notes
 	]
 
-	builder.humanize(velocity=0.5, rng=random.Random(42))
+	builder.randomize(velocity=0.5, rng=random.Random(42))
 
 	new_velocities = [
 		note.velocity
@@ -1660,9 +1660,9 @@ def test_humanize_velocity_changes_velocity () -> None:
 	assert new_velocities != original_velocities
 
 
-def test_humanize_velocity_zero_no_change () -> None:
+def test_randomize_velocity_zero_no_change () -> None:
 
-	"""humanize(velocity=0.0) should leave all velocities unchanged."""
+	"""randomize(velocity=0.0) should leave all velocities unchanged."""
 
 	import random
 
@@ -1675,7 +1675,7 @@ def test_humanize_velocity_zero_no_change () -> None:
 		for note in step.notes
 	]
 
-	builder.humanize(velocity=0.0, rng=random.Random(42))
+	builder.randomize(velocity=0.0, rng=random.Random(42))
 
 	new_velocities = [
 		note.velocity
@@ -1686,7 +1686,7 @@ def test_humanize_velocity_zero_no_change () -> None:
 	assert new_velocities == original_velocities
 
 
-def test_humanize_deterministic_with_rng () -> None:
+def test_randomize_deterministic_with_rng () -> None:
 
 	"""Same RNG seed produces identical results; different seed produces different results."""
 
@@ -1695,7 +1695,7 @@ def test_humanize_deterministic_with_rng () -> None:
 	def build_with_seed (seed: int) -> set:
 		_, builder = _make_builder()
 		builder.hit_steps(36, list(range(16)), velocity=80)
-		builder.humanize(timing=0.5, velocity=0.3, rng=random.Random(seed))
+		builder.randomize(timing=0.5, velocity=0.3, rng=random.Random(seed))
 		return set(builder._pattern.steps.keys())
 
 	run_a = build_with_seed(1)
@@ -1706,9 +1706,9 @@ def test_humanize_deterministic_with_rng () -> None:
 	assert run_a != run_c
 
 
-def test_humanize_velocity_stays_in_range () -> None:
+def test_randomize_velocity_stays_in_range () -> None:
 
-	"""All velocities must remain in the valid MIDI range (1–127) after humanize."""
+	"""All velocities must remain in the valid MIDI range (1–127) after randomize."""
 
 	import random
 
@@ -1719,7 +1719,7 @@ def test_humanize_velocity_stays_in_range () -> None:
 	builder.note(60, beat=1, velocity=127)
 	builder.note(60, beat=2, velocity=64)
 
-	builder.humanize(velocity=1.0, rng=random.Random(42))
+	builder.randomize(velocity=1.0, rng=random.Random(42))
 
 	for step in builder._pattern.steps.values():
 		for note in step.notes:

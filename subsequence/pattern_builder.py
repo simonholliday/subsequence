@@ -1258,7 +1258,7 @@ class PatternBuilder:
 			for note in step.notes:
 				note.velocity = int(low + (high - low) * vdc_value)
 
-	def humanize (
+	def randomize (
 		self,
 		timing: float = 0.03,
 		velocity: float = 0.0,
@@ -1266,24 +1266,23 @@ class PatternBuilder:
 	) -> None:
 
 		"""
-		Add subtle random variations to note timing and velocity.
+		Add random variations to note timing and velocity.
 
-		This makes patterns feel less mechanical by introducing small
-		imperfections — the micro-variations that distinguish a played
-		performance from a perfectly quantized sequence.
+		Introduces small imperfections — the micro-variations that distinguish
+		a played performance from a perfectly quantized sequence.
 
 		Called with no arguments, only timing variation is applied
 		(velocity defaults to 0.0 — no change). Pass a velocity value
 		to also randomise dynamics:
 
 		    # Timing only (default)
-		    p.humanize()
+		    p.randomize()
 
 		    # Both axes
-		    p.humanize(timing=0.04, velocity=0.08)
+		    p.randomize(timing=0.04, velocity=0.08)
 
 		    # Stronger feel
-		    p.humanize(timing=0.08, velocity=0.15)
+		    p.randomize(timing=0.08, velocity=0.15)
 
 		Resolution note: the sequencer runs at 24 PPQN. At 120 BPM, one
 		pulse ≈ 20ms. Timing shifts smaller than roughly 0.04 beats may
@@ -1291,7 +1290,7 @@ class PatternBuilder:
 		Recommended range: timing=0.02–0.08, velocity=0.05–0.15.
 
 		When the composition has a seed set, ``p.rng`` is deterministic,
-		so ``p.humanize()`` produces the same result on every run.
+		so ``p.randomize()`` produces the same result on every run.
 
 		Parameters:
 			timing: Maximum timing offset in beats (e.g. 0.05 = ±1.2

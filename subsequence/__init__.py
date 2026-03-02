@@ -36,7 +36,7 @@ Composition tools:
   (``cellular()``), smooth Perlin noise (``perlin_1d()``, ``perlin_2d()``), deterministic
   chaos sequences (``logistic_map()``), Markov-chain generation
   (``p.markov()``), groove templates (``Groove.swing()``,
-  ``Groove.from_agr()``), swing, humanize, velocity shaping, dropout,
+  ``Groove.from_agr()``), swing, randomize, velocity shaping, dropout,
   per-step probability, and polyrhythms via independent pattern lengths.
 - **Melody generation.** ``p.melody()`` with ``MelodicState`` applies
   the Narmour Implication-Realization model to single-note lines:
@@ -58,7 +58,7 @@ Composition tools:
   walk, probability gates. Deterministic seeding (``seed=42``) makes
   every decision repeatable.
 - **Pattern transforms.** Legato, staccato, reverse, double/half-time,
-  shift, transpose, invert, humanize, and conditional ``p.every()``.
+  shift, transpose, invert, randomize, and conditional ``p.every()``.
 
 Integration:
 

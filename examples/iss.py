@@ -222,7 +222,7 @@ def shaker (p):
 		return
 
 	p.hit_steps("shaker", range(16), velocity=45)
-	p.humanize(timing=0.02, velocity=0.1)   # Slight timing and velocity imprecision
+	p.randomize(timing=0.02, velocity=0.1)   # Slight timing and velocity imprecision
 
 
 # Arpeggio
