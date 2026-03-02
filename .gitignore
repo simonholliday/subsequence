@@ -1,6 +1,3 @@
-# Configuration
-config.yaml
-
 # Project metadata and instructions
 AGENTS.md
 README-AGENTS.md
@@ -25,4 +22,4 @@ docs/html/
 docs/*.html
 
 # Work in progress
-examples_wip/
+examples/wip
