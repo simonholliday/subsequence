@@ -706,7 +706,7 @@ class PatternBuilder:
 		evenly-distributed rests (silent steps).
 
 		Because notes are placed via ``self.note()``, all post-placement transforms
-		(``groove``, ``humanize``, ``velocity_shape``, ``shift``, etc.) work normally.
+		(``groove``, ``randomize``, ``velocity_shape``, ``shift``, etc.) work normally.
 
 		Parameters:
 			parts: Mapping of pitch (MIDI note or drum name) to density weight.
