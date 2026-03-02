@@ -21,7 +21,8 @@ build/
 session_*.mid
 
 # Documentation build output
-docs/
+docs/html/
+docs/*.html
 
 # Work in progress
 examples_wip/
