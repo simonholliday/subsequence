@@ -163,6 +163,7 @@ def test_swing_applies () -> None:
 
 	"""
 	Swing should modify step positions in the pattern.
+	p.swing() takes a percentage: 67 ≈ triplet swing.
 	"""
 
 	pattern, builder = _make_builder(length=2)
@@ -173,7 +174,7 @@ def test_swing_applies () -> None:
 
 	positions_before = set(pattern.steps.keys())
 
-	builder.swing(2.0)
+	builder.swing(67, grid=0.5)  # triplet swing on 8th-note grid
 
 	positions_after = set(pattern.steps.keys())
 

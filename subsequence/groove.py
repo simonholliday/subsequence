@@ -78,10 +78,31 @@ class Groove:
 	def from_agr (path: str) -> "Groove":
 
 		"""
-		Import an Ableton .agr groove file.
+		Import timing and velocity data from an Ableton .agr groove file.
 
-		Parses the XML, extracts note timing and velocity data, and
-		calculates per-step offsets from the ideal grid positions.
+		An ``.agr`` file is an XML document containing a MIDI clip whose
+		note positions encode the groove's rhythmic feel. This method reads
+		those note start times and velocities and converts them into the
+		``Groove`` dataclass format (per-step offsets and velocity scales).
+
+		**What is extracted:**
+
+		- ``Time`` attribute of each ``MidiNoteEvent`` → timing offsets
+		  relative to ideal grid positions.
+		- ``Velocity`` attribute of each ``MidiNoteEvent`` → velocity
+		  scaling (normalised to the highest velocity in the file).
+
+		**What is NOT imported:**
+
+		Ableton's ``.agr`` format also stores Groove Pool blend parameters
+		(``TimingAmount``, ``RandomAmount``, ``VelocityAmount``,
+		``QuantizationAmount``). These control how much of the groove is
+		applied in Live — we extract the raw timing and velocity from the
+		embedded clip data and always apply it at full strength. The blend
+		controls are present in the file but are ignored.
+
+		Other ``MidiNoteEvent`` fields (``Duration``, ``VelocityDeviation``,
+		``OffVelocity``, ``Probability``) are also ignored.
 
 		Parameters:
 			path: Path to the .agr file.

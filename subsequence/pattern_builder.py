@@ -560,30 +560,63 @@ class PatternBuilder:
 		if legato is not None:
 			self.legato(legato)
 
-	def swing (self, ratio: float = 2.0) -> None:
+	def swing (self, amount: float = 57.0, grid: float = 0.25) -> None:
 
 		"""
-		Apply a 'swing' offset to all notes in the pattern.
+		Apply swing feel to all notes in the pattern.
+
+		A shortcut for ``p.groove(Groove.swing(amount, grid))``. Swing is a
+		groove where every other grid note is delayed — the simplest way to
+		give a mechanical pattern a pushed, human feel.
+
+		50% is perfectly straight (no swing). 57% is the Ableton default
+		(a gentle shuffle). 67% is classic triplet swing.
 
 		Parameters:
-			ratio: The swing ratio. 2.0 is standard triplet swing (the 
-				off-beat is delayed to the third triplet).
+			amount: Swing amount as a percentage (50–75 is the useful range).
+				50 = straight, 57 = moderate shuffle, 67 ≈ triplet swing.
+			grid: Grid size in beats (0.25 = 16th notes, 0.5 = 8th notes).
+
+		Example::
+
+			p.hit_steps("hh", range(16), velocity=80)
+			p.swing(57)  # gentle 16th-note shuffle
 		"""
 
-		self._pattern.apply_swing(swing_ratio=ratio)
+		self.groove(subsequence.groove.Groove.swing(percent=amount, grid=grid))
 
 	def groove (self, template: subsequence.groove.Groove) -> None:
 
 		"""
 		Apply a groove template to all notes in the pattern.
 
-		A groove shifts notes at grid positions by per-step timing offsets
-		and optionally scales their velocity. Use ``Groove.swing(percent)``
-		for simple swing, ``Groove.from_agr(path)`` to import an Ableton
-		groove file, or construct a ``Groove`` directly for custom feel.
+		A groove is a repeating pattern of per-step timing offsets and
+		optional velocity adjustments. It gives a pattern its characteristic
+		rhythmic feel — swing, shuffle, MPC pocket, or any custom shape.
+
+		Construct a groove with one of the factory methods:
+
+		- ``Groove.swing(percent)`` — simple swing by percentage
+		  (or use the ``p.swing()`` shortcut for common cases)
+		- ``Groove.from_agr(path)`` — import timing from an Ableton .agr file
+		- ``Groove(offsets=[...], grid=0.25, velocities=[...])`` — fully custom
+
+		``p.groove()`` is a post-build transform — call it after all notes
+		have been placed. It pairs well with ``p.randomize()`` for
+		structured feel plus organic micro-variation.
 
 		Parameters:
-			template: A Groove instance defining the timing/velocity template.
+			template: A ``Groove`` instance defining the timing/velocity template.
+
+		Example::
+
+			groove = subsequence.Groove.swing(percent=57)
+
+			@composition.pattern(channel=9, length=4)
+			def drums(p):
+				p.hit_steps("kick", [0, 8], velocity=100)
+				p.hit_steps("hh", range(16), velocity=80)
+				p.groove(groove)
 		"""
 
 		self._pattern.steps = subsequence.groove.apply_groove(
