@@ -560,53 +560,62 @@ class PatternBuilder:
 		if legato is not None:
 			self.legato(legato)
 
-	def swing (self, amount: float = 57.0, grid: float = 0.25) -> None:
+	def swing (self, amount: float = 57.0, grid: float = 0.25, strength: float = 1.0) -> None:
 
 		"""
 		Apply swing feel to all notes in the pattern.
 
-		A shortcut for ``p.groove(Groove.swing(amount, grid))``. Swing is a
-		groove where every other grid note is delayed — the simplest way to
+		A shortcut for ``p.groove(Groove.swing(amount, grid), strength)``. Swing is a
+		groove where every other grid note is delayed - the simplest way to
 		give a mechanical pattern a pushed, human feel.
 
 		50% is perfectly straight (no swing). 57% is the Ableton default
 		(a gentle shuffle). 67% is classic triplet swing.
 
 		Parameters:
-			amount: Swing amount as a percentage (50–75 is the useful range).
+			amount: Swing amount as a percentage (50-75 is the useful range).
 				50 = straight, 57 = moderate shuffle, 67 ≈ triplet swing.
 			grid: Grid size in beats (0.25 = 16th notes, 0.5 = 8th notes).
+			strength: How much swing to apply (0.0-1.0). 0.0 = no effect,
+				1.0 = full swing at the given amount. Useful for dialling
+				back the feel without changing the swing percentage.
 
 		Example::
 
 			p.hit_steps("hh", range(16), velocity=80)
-			p.swing(57)  # gentle 16th-note shuffle
+			p.swing(57)                # gentle 16th-note shuffle
+			p.swing(57, strength=0.5)  # half-strength — subtler feel
 		"""
 
-		self.groove(subsequence.groove.Groove.swing(percent=amount, grid=grid))
+		self.groove(subsequence.groove.Groove.swing(percent=amount, grid=grid), strength=strength)
 
-	def groove (self, template: subsequence.groove.Groove) -> None:
+
+	def groove (self, template: subsequence.groove.Groove, strength: float = 1.0) -> None:
 
 		"""
 		Apply a groove template to all notes in the pattern.
 
 		A groove is a repeating pattern of per-step timing offsets and
 		optional velocity adjustments. It gives a pattern its characteristic
-		rhythmic feel — swing, shuffle, MPC pocket, or any custom shape.
+		rhythmic feel - swing, shuffle, MPC pocket, or any custom shape.
 
 		Construct a groove with one of the factory methods:
 
-		- ``Groove.swing(percent)`` — simple swing by percentage
+		- ``Groove.swing(percent)`` - simple swing by percentage
 		  (or use the ``p.swing()`` shortcut for common cases)
-		- ``Groove.from_agr(path)`` — import timing from an Ableton .agr file
-		- ``Groove(offsets=[...], grid=0.25, velocities=[...])`` — fully custom
+		- ``Groove.from_agr(path)`` - import timing from an Ableton .agr file
+		- ``Groove(offsets=[...], grid=0.25, velocities=[...])`` - fully custom
 
-		``p.groove()`` is a post-build transform — call it after all notes
+		``p.groove()`` is a post-build transform - call it after all notes
 		have been placed. It pairs well with ``p.randomize()`` for
 		structured feel plus organic micro-variation.
 
 		Parameters:
 			template: A ``Groove`` instance defining the timing/velocity template.
+			strength: How much of the groove to apply (0.0-1.0). 0.0 = no
+				effect, 1.0 = full groove. Blends timing offsets and velocity
+				deviation proportionally - equivalent to Ableton's
+				TimingAmount and VelocityAmount dials.
 
 		Example::
 
@@ -616,11 +625,12 @@ class PatternBuilder:
 			def drums(p):
 				p.hit_steps("kick", [0, 8], velocity=100)
 				p.hit_steps("hh", range(16), velocity=80)
-				p.groove(groove)
+				p.groove(groove)               # full strength
+				p.groove(groove, strength=0.5) # half-strength blend
 		"""
 
 		self._pattern.steps = subsequence.groove.apply_groove(
-			self._pattern.steps, template
+			self._pattern.steps, template, strength=strength
 		)
 
 	def _place_rhythm_sequence (

@@ -1615,14 +1615,22 @@ def drums(p):
 
 `p.groove()` is a post-build transform - call it at the end of your builder function after all notes are placed. The offset list repeats cyclically, so a 2-slot swing pattern covers the whole bar. Groove and `p.randomize()` pair well: apply the groove first for structured feel, then randomize on top for micro-variation.
 
+Both `p.groove()` and `p.swing()` accept a `strength` parameter (0.0-1.0, default 1.0) that blends the groove's timing offsets and velocity deviation proportionally - equivalent to Ableton's TimingAmount and VelocityAmount dials:
+
+```python
+p.groove(groove)               # full groove
+p.groove(groove, strength=0.5) # half-strength - subtler feel
+p.swing(57, strength=0.7)      # 70% of 57% swing
+```
+
 ### Ableton `.agr` import
 
 `Groove.from_agr(path)` reads the note timing and velocity data from the embedded MIDI clip inside the `.agr` file:
 
-- **Extracted:** note start positions → per-step timing offsets; note velocities → velocity scaling (normalised to the loudest note in the file).
-- **Not imported:** Ableton's Groove Pool blend controls (`TimingAmount`, `RandomAmount`, `VelocityAmount`, `QuantizationAmount`). These are present in the file but ignored - the groove is always applied at full strength.
+- **Extracted:** note start positions → per-step timing offsets; note velocities → velocity scaling (normalised to the loudest note in the file); `TimingAmount` and `VelocityAmount` from the Groove Pool section → pre-scale offsets and velocity deviation so the returned `Groove` reflects the file author's intended strength.
+- **Not imported:** `RandomAmount` (use `p.randomize()` separately for random timing jitter) and `QuantizationAmount` (not applicable - Subsequence notes are already grid-quantized by construction). Other per-note fields (`Duration`, `VelocityDeviation`, `OffVelocity`, `Probability`) are also ignored.
 
-For a simple swing file like Ableton's built-in "Swing 16ths 57", `from_agr()` and `Groove.swing(57)` produce equivalent results.
+For a simple swing file like Ableton's built-in "Swing 16ths 57", `from_agr()` and `Groove.swing(57)` produce equivalent results. Use `strength=` when applying to further dial back the effect.
 
 ## Examples
 
@@ -1671,7 +1679,7 @@ Turns real-time International Space Station telemetry into an evolving compositi
 ### Rhythm & Pattern
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
-- `subsequence.groove` provides `Groove` templates (per-step timing/velocity feel). Swing is a type of groove - `p.swing(amount)` is a shortcut for the common case. For full control: `Groove.swing(percent)` for percentage-based swing; `Groove.from_agr(path)` to import timing and velocity from an Ableton `.agr` file (note: the Groove Pool blend controls in the file are not imported - the groove is applied at full strength); or construct `Groove(offsets=..., velocities=...)` directly for a custom feel. Applied via `p.groove(template)`.
+- `subsequence.groove` provides `Groove` templates (per-step timing/velocity feel). Swing is a type of groove - `p.swing(amount)` is a shortcut for the common case. For full control: `Groove.swing(percent)` for percentage-based swing; `Groove.from_agr(path)` to import timing and velocity from an Ableton `.agr` file (note: the Groove Pool blend controls in the file are not imported - use `strength=` when applying to partially blend the effect); or construct `Groove(offsets=..., velocities=...)` directly for a custom feel. Applied via `p.groove(template, strength=1.0)` - `strength` (0.0-1.0) blends the groove's timing and velocity proportionally, equivalent to Ableton's TimingAmount and VelocityAmount dials.
 - `subsequence.sequence_utils` provides rhythm generation (Euclidean, Bresenham, weighted multi-voice Bresenham, van der Corput), probability gating, random walk, scale/clamp helpers, smooth 1D/2D Perlin noise (`perlin_1d(x, seed)`, `perlin_2d(x, y, seed)`), elementary cellular automaton sequences (`generate_cellular_automaton(steps, rule, generation, seed)`), and deterministic chaos sequences (`logistic_map(r, steps, x0=0.5)` - a single `r` parameter controls behaviour from stable fixed point through period-doubling to full chaos, complementing Perlin noise for modulation that can be dialled between order and unpredictability). The weighted Bresenham function (`generate_bresenham_sequence_weighted`) underlies `p.bresenham_poly()` - pass a `parts` dict mapping pitch names to density weights (0.0–1.0) and the voices are distributed across the step grid in interlocking Bresenham patterns. Add `no_overlap=True` to any of `euclidean()`, `bresenham()`, or `bresenham_poly()` to skip placement when the same MIDI pitch already occupies that step - prevents double-triggers when layering an anchor pattern with a ghost-note layer.
 - `subsequence.mini_notation` parses a compact string syntax for step-sequencer patterns.
 - `subsequence.easing` provides easing/transition curve functions used by `conductor.line()`, `target_bpm()`, `cc_ramp()`, and `pitch_bend_ramp()`. Pass `shape=` to any of these to control how a value moves over time. Built-in shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out"` (Hermite smoothstep), `"exponential"` (cubic, good for filter sweeps), `"logarithmic"` (cubic, good for volume fades), `"s_curve"` (Perlin smootherstep - smoother than `"ease_in_out"` for long transitions). Callable shapes are also accepted for custom curves. Also provides **`EasedValue`** - a lightweight stateful helper that smoothly interpolates between discrete data updates (e.g. API poll results, sensor readings) so patterns hear a continuous eased value rather than a hard jump on each fetch cycle. Create one instance per field at module level, call `.update(value)` in your scheduled task, and call `.get(progress)` in your pattern.

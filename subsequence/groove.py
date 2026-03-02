@@ -91,15 +91,19 @@ class Groove:
 		  relative to ideal grid positions.
 		- ``Velocity`` attribute of each ``MidiNoteEvent`` → velocity
 		  scaling (normalised to the highest velocity in the file).
+		- ``TimingAmount`` from the Groove element → pre-scales the timing
+		  offsets (100 = full, 70 = 70% of the groove's timing).
+		- ``VelocityAmount`` from the Groove element → pre-scales velocity
+		  deviation (100 = full groove velocity, 0 = no velocity changes).
+
+		The resulting ``Groove`` reflects the file author's intended
+		strength. Use ``strength=`` when applying to further adjust.
 
 		**What is NOT imported:**
 
-		Ableton's ``.agr`` format also stores Groove Pool blend parameters
-		(``TimingAmount``, ``RandomAmount``, ``VelocityAmount``,
-		``QuantizationAmount``). These control how much of the groove is
-		applied in Live — we extract the raw timing and velocity from the
-		embedded clip data and always apply it at full strength. The blend
-		controls are present in the file but are ignored.
+		``RandomAmount`` (use ``p.randomize()`` separately for random
+		jitter) and ``QuantizationAmount`` (not applicable - Subsequence
+		notes are already grid-quantized by construction).
 
 		Other ``MidiNoteEvent`` fields (``Duration``, ``VelocityDeviation``,
 		``OffVelocity``, ``Probability``) are also ignored.
@@ -122,6 +126,21 @@ class Groove:
 			raise ValueError(f"No CurrentEnd found in {path}")
 		clip_length = float(current_end.get("Value", "4"))
 
+		# Read Groove Pool blend parameters
+		groove_elem = root.find(".//Groove")
+		timing_amount = 100.0
+		velocity_amount = 100.0
+		if groove_elem is not None:
+			timing_el = groove_elem.find("TimingAmount")
+			if timing_el is not None:
+				timing_amount = float(timing_el.get("Value", "100"))
+			velocity_el = groove_elem.find("VelocityAmount")
+			if velocity_el is not None:
+				velocity_amount = float(velocity_el.get("Value", "100"))
+
+		timing_scale = timing_amount / 100.0
+		velocity_scale = velocity_amount / 100.0
+
 		# Extract note events sorted by time
 		events = clip.findall(".//MidiNoteEvent")
 		if not events:
@@ -139,18 +158,24 @@ class Groove:
 		# Infer grid from clip length and note count
 		grid = clip_length / note_count
 
-		# Calculate offsets from ideal grid positions
+		# Calculate offsets from ideal grid positions, scaled by TimingAmount
 		offsets: typing.List[float] = []
 		for i, time in enumerate(times):
 			ideal = i * grid
-			offsets.append(time - ideal)
+			offsets.append((time - ideal) * timing_scale)
 
-		# Calculate velocity scales (relative to max velocity in the file)
+		# Calculate velocity scales (relative to max velocity in the file),
+		# blended toward 1.0 by VelocityAmount
 		max_vel = max(velocities_raw)
 		has_velocity_variation = any(v != max_vel for v in velocities_raw)
 		groove_velocities: typing.Optional[typing.List[float]] = None
 		if has_velocity_variation and max_vel > 0:
-			groove_velocities = [v / max_vel for v in velocities_raw]
+			raw_scales = [v / max_vel for v in velocities_raw]
+			# velocity_scale=1.0 → full groove velocity; 0.0 → all 1.0 (no change)
+			groove_velocities = [1.0 + (s - 1.0) * velocity_scale for s in raw_scales]
+			# If blending has removed all variation, set to None
+			if all(abs(v - 1.0) < 1e-9 for v in groove_velocities):
+				groove_velocities = None
 
 		return Groove(offsets=offsets, grid=grid, velocities=groove_velocities)
 
@@ -158,7 +183,8 @@ class Groove:
 def apply_groove (
 	steps: typing.Dict[int, "subsequence.pattern.Step"],
 	groove: Groove,
-	pulses_per_quarter: int = subsequence.constants.MIDI_QUARTER_NOTE
+	pulses_per_quarter: int = subsequence.constants.MIDI_QUARTER_NOTE,
+	strength: float = 1.0,
 ) -> typing.Dict[int, "subsequence.pattern.Step"]:
 
 	"""
@@ -166,7 +192,19 @@ def apply_groove (
 
 	Notes close to a grid position are shifted by the groove's offset for
 	that slot. Notes between grid positions are left untouched.
+
+	Parameters:
+		steps: Step dictionary (pulse → Step).
+		groove: The groove template to apply.
+		pulses_per_quarter: Internal MIDI clock resolution (default 24).
+		strength: How much of the groove to apply (0.0–1.0).
+			0.0 leaves all timing and velocity unchanged; 1.0 applies
+			the full groove. Intermediate values blend between the two,
+			equivalent to Ableton’s TimingAmount / VelocityAmount dials.
 	"""
+
+	if not 0.0 <= strength <= 1.0:
+		raise ValueError("strength must be between 0.0 and 1.0")
 
 	grid_pulses = groove.grid * pulses_per_quarter
 	if grid_pulses <= 0:
@@ -189,14 +227,15 @@ def apply_groove (
 			new_pulse = old_pulse
 		else:
 			slot = grid_index % num_offsets
-			offset_pulses = groove.offsets[slot] * pulses_per_quarter
+			offset_pulses = groove.offsets[slot] * pulses_per_quarter * strength
 			new_pulse = int(round(ideal_pulse + offset_pulses))
 			new_pulse = max(0, new_pulse)
 
 		# Apply velocity scaling if present
 		if groove.velocities and num_velocities > 0:
 			vel_slot = grid_index % num_velocities
-			vel_scale = groove.velocities[vel_slot]
+			# Blend between 1.0 (no effect) and the groove's scale (full effect)
+			vel_scale = 1.0 + (groove.velocities[vel_slot] - 1.0) * strength
 			step = _scale_step_velocity(step, vel_scale)
 
 		if new_pulse not in new_steps:

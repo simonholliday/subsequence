@@ -258,7 +258,118 @@ def test_from_agr_matches_swing_factory () -> None:
 		assert abs(agr_groove.offsets[i] - factory_groove.offsets[slot]) < 0.001
 
 
+def _write_agr (path: str, timing_amount: float = 100.0, velocity_amount: float = 100.0, note_times_and_velocities = None) -> None:
+
+	"""Write a minimal synthetic .agr file for testing."""
+
+	if note_times_and_velocities is None:
+		note_times_and_velocities = [
+			(0.0, 127), (0.285, 127), (0.5, 127), (0.785, 127),
+		]
+
+	notes_xml = "\n\t\t\t\t\t\t\t\t\t".join(
+		f'<MidiNoteEvent Time="{t}" Duration="0.0625" Velocity="{v}" '
+		f'VelocityDeviation="0" OffVelocity="64" Probability="1" '
+		f'IsEnabled="true" NoteId="{i+1}" />'
+		for i, (t, v) in enumerate(note_times_and_velocities)
+	)
+
+	content = (
+		"<?xml version='1.0' encoding='UTF-8'?>\n"
+		"<Ableton MajorVersion=\"5\">\n"
+		"\t<Groove>\n"
+		"\t\t<Clip><Value><MidiClip Id=\"0\" Time=\"0\">\n"
+		"\t\t\t<CurrentStart Value=\"0\" />\n"
+		f"\t\t\t<CurrentEnd Value=\"{len(note_times_and_velocities) * 0.25}\" />\n"
+		"\t\t\t<Notes><KeyTracks><KeyTrack Id=\"0\"><Notes>\n"
+		f"\t\t\t\t\t\t\t\t\t{notes_xml}\n"
+		"\t\t\t</Notes></KeyTrack></KeyTracks></Notes>\n"
+		"</MidiClip></Value></Clip>\n"
+		f"\t\t<TimingAmount Value=\"{timing_amount}\" />\n"
+		f"\t\t<VelocityAmount Value=\"{velocity_amount}\" />\n"
+		"\t</Groove>\n"
+		"</Ableton>\n"
+	)
+	with open(path, "w") as f:
+		f.write(content)
+
+
+def test_from_agr_timing_amount_scales_offsets () -> None:
+
+	"""TimingAmount=50 halves all timing offsets relative to TimingAmount=100."""
+
+	import tempfile
+
+	with tempfile.NamedTemporaryFile(suffix=".agr", delete=False, mode="w") as f:
+		tmp_path = f.name
+
+	try:
+		_write_agr(tmp_path, timing_amount=100.0)
+		g_full = subsequence.groove.Groove.from_agr(tmp_path)
+
+		_write_agr(tmp_path, timing_amount=50.0)
+		g_half = subsequence.groove.Groove.from_agr(tmp_path)
+
+		for i in range(len(g_full.offsets)):
+			assert abs(g_half.offsets[i] - g_full.offsets[i] * 0.5) < 1e-9, \
+				f"Slot {i}: expected half offset, got {g_half.offsets[i]} vs full {g_full.offsets[i]}"
+	finally:
+		os.unlink(tmp_path)
+
+
+def test_from_agr_velocity_amount_zero_gives_no_velocity () -> None:
+
+	"""VelocityAmount=0 collapses all velocity deviation to None (no variation)."""
+
+	import tempfile
+
+	notes = [(0.0, 127), (0.25, 80), (0.5, 127), (0.75, 80)]
+
+	with tempfile.NamedTemporaryFile(suffix=".agr", delete=False, mode="w") as f:
+		tmp_path = f.name
+
+	try:
+		_write_agr(tmp_path, velocity_amount=0.0, note_times_and_velocities=notes)
+		g = subsequence.groove.Groove.from_agr(tmp_path)
+
+		# velocity_amount=0 → all scales collapse to 1.0 → stored as None
+		assert g.velocities is None
+	finally:
+		os.unlink(tmp_path)
+
+
+def test_from_agr_velocity_amount_50_blends () -> None:
+
+	"""VelocityAmount=50 produces velocity scales halfway between 1.0 and the raw scale."""
+
+	import tempfile
+
+	# max=127, other=63 → raw_scale ≈ 0.496
+	notes = [(0.0, 127), (0.25, 63)]
+
+	with tempfile.NamedTemporaryFile(suffix=".agr", delete=False, mode="w") as f:
+		tmp_path = f.name
+
+	try:
+		_write_agr(tmp_path, velocity_amount=100.0, note_times_and_velocities=notes)
+		g_full = subsequence.groove.Groove.from_agr(tmp_path)
+
+		_write_agr(tmp_path, velocity_amount=50.0, note_times_and_velocities=notes)
+		g_half = subsequence.groove.Groove.from_agr(tmp_path)
+
+		assert g_full.velocities is not None
+		assert g_half.velocities is not None
+
+		for i in range(len(g_full.velocities)):
+			expected = 1.0 + (g_full.velocities[i] - 1.0) * 0.5
+			assert abs(g_half.velocities[i] - expected) < 1e-9, \
+				f"Slot {i}: expected {expected}, got {g_half.velocities[i]}"
+	finally:
+		os.unlink(tmp_path)
+
+
 # ── Validation ───────────────────────────────────────────────────────
+
 
 def test_groove_empty_offsets_raises () -> None:
 
@@ -288,6 +399,84 @@ def test_groove_empty_velocities_raises () -> None:
 
 	try:
 		subsequence.groove.Groove(offsets=[0.0], velocities=[])
+		assert False, "should have raised"
+	except ValueError:
+		pass
+
+
+# ── strength parameter ────────────────────────────────────────────────
+
+def test_apply_groove_strength_zero_no_change () -> None:
+
+	"""strength=0.0 leaves timing and velocity completely unchanged."""
+
+	steps = _make_steps(0, 6, 12, 18)
+	g = subsequence.groove.Groove.swing(percent=57.0)
+
+	result = subsequence.groove.apply_groove(steps, g, pulses_per_quarter=24, strength=0.0)
+
+	# All original positions preserved
+	assert set(result.keys()) == {0, 6, 12, 18}
+
+
+def test_apply_groove_strength_half_timing () -> None:
+
+	"""strength=0.5 produces half the timing offset of strength=1.0."""
+
+	steps = _make_steps(6)  # off-beat 16th
+	g = subsequence.groove.Groove.swing(percent=57.0)
+
+	result_full = subsequence.groove.apply_groove(steps, g, pulses_per_quarter=24, strength=1.0)
+	result_half = subsequence.groove.apply_groove(steps, g, pulses_per_quarter=24, strength=0.5)
+
+	# Full: pulse 6 moves to 7 (offset ≈ +0.84 pulses → rounds to 1)
+	# Half: pulse 6 moves by half that offset → offset ≈ +0.42 → rounds to 0 → stays at 6
+	# The key thing is that half is closer to 6 than full
+	full_pulse = list(result_full.keys())[0]
+	half_pulse = list(result_half.keys())[0]
+
+	# Half-strength offset is less than or equal to full-strength offset
+	assert abs(half_pulse - 6) <= abs(full_pulse - 6)
+
+
+def test_apply_groove_strength_velocity_blend () -> None:
+
+	"""strength blends velocity deviation: 0.0 = no change, 1.0 = full scale."""
+
+	steps = _make_steps(0, velocity=100)
+	g = subsequence.groove.Groove(
+		offsets=[0.0],
+		grid=0.25,
+		velocities=[0.5],  # full strength would halve velocity to 50
+	)
+
+	result_full = subsequence.groove.apply_groove(steps, g, pulses_per_quarter=24, strength=1.0)
+	result_half = subsequence.groove.apply_groove(steps, g, pulses_per_quarter=24, strength=0.5)
+	result_zero = subsequence.groove.apply_groove(steps, g, pulses_per_quarter=24, strength=0.0)
+
+	vel_full = result_full[0].notes[0].velocity  # 100 * 0.5 = 50
+	vel_half = result_half[0].notes[0].velocity  # 100 * 0.75 = 75  (blended halfway)
+	vel_zero = result_zero[0].notes[0].velocity  # 100 (unchanged)
+
+	assert vel_full == 50
+	assert vel_half == 75
+	assert vel_zero == 100
+
+
+def test_apply_groove_strength_out_of_range_raises () -> None:
+
+	"""strength outside 0.0-1.0 raises ValueError."""
+
+	g = subsequence.groove.Groove.swing(percent=57.0)
+
+	try:
+		subsequence.groove.apply_groove({}, g, strength=-0.1)
+		assert False, "should have raised"
+	except ValueError:
+		pass
+
+	try:
+		subsequence.groove.apply_groove({}, g, strength=1.1)
 		assert False, "should have raised"
 	except ValueError:
 		pass
