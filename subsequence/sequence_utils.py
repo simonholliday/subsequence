@@ -9,6 +9,8 @@ import math
 import random
 import typing
 
+import subsequence.easing
+
 T = typing.TypeVar("T")
 
 
@@ -411,9 +413,7 @@ def perlin_1d (x: float, seed: int = 0) -> float:
 		h = ((pos * 1103515245 + seed * 374761393 + 12345) & 0x7FFFFFFF)
 		return (h / 0x3FFFFFFF) - 1.0
 
-	# Smootherstep fade (6t^5 - 15t^4 + 10t^3) — same polynomial as easing.s_curve(),
-	# inlined here to avoid function-call overhead in tight loops.
-	fade = t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+	fade = subsequence.easing.s_curve(t)
 
 	d0 = _grad(x0) * t
 	d1 = _grad(x1) * (t - 1.0)
@@ -472,10 +472,8 @@ def perlin_2d (x: float, y: float, seed: int = 0) -> float:
 		if h4 == 2: return  dx - dy
 		return -dx - dy
 
-	# Smootherstep fade (6t^5 - 15t^4 + 10t^3) — same polynomial as easing.s_curve(),
-	# inlined here to avoid function-call overhead in tight loops.
-	fadex = tx * tx * tx * (tx * (tx * 6.0 - 15.0) + 10.0)
-	fadey = ty * ty * ty * (ty * (ty * 6.0 - 15.0) + 10.0)
+	fadex = subsequence.easing.s_curve(tx)
+	fadey = subsequence.easing.s_curve(ty)
 
 	d00 = _grad(x0, y0)
 	d10 = _grad(x1, y0)
