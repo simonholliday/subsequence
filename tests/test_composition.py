@@ -1405,3 +1405,123 @@ async def test_no_section_progression_calls_step (patch_midi: None) -> None:
 
 	cb(0)
 	assert len(hs.history) > 0  # step() was called (history updated)
+
+
+# ── zero_indexed_channels ─────────────────────────────────────────────────────
+
+
+def test_zero_indexed_channels_default_is_true (patch_midi: None) -> None:
+
+	"""Default zero_indexed_channels=True maintains backward compatibility."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=9, length=4)
+	def drums (p):
+		pass
+
+	# Internal channel should be 9 (unchanged)
+	assert composition._pending_patterns[0].channel == 9
+
+
+def test_one_indexed_channels_subtracts_one (patch_midi: None) -> None:
+
+	"""zero_indexed_channels=False converts channel 10 → internal 9."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=False)
+
+	@composition.pattern(channel=10, length=4)
+	def drums (p):
+		pass
+
+	assert composition._pending_patterns[0].channel == 9
+
+
+def test_one_indexed_channels_channel_1 (patch_midi: None) -> None:
+
+	"""zero_indexed_channels=False converts channel 1 → internal 0."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=False)
+
+	@composition.pattern(channel=1, length=4)
+	def bass (p):
+		pass
+
+	assert composition._pending_patterns[0].channel == 0
+
+
+def test_one_indexed_channels_rejects_zero (patch_midi: None) -> None:
+
+	"""zero_indexed_channels=False rejects channel=0."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=False)
+
+	with pytest.raises(ValueError, match="1-16"):
+		@composition.pattern(channel=0, length=4)
+		def bad (p):
+			pass
+
+
+def test_one_indexed_channels_rejects_17 (patch_midi: None) -> None:
+
+	"""zero_indexed_channels=False rejects channel=17."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=False)
+
+	with pytest.raises(ValueError, match="1-16"):
+		@composition.pattern(channel=17, length=4)
+		def bad (p):
+			pass
+
+
+def test_zero_indexed_channels_rejects_16 (patch_midi: None) -> None:
+
+	"""zero_indexed_channels=True rejects channel=16."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=True)
+
+	with pytest.raises(ValueError, match="0-15"):
+		@composition.pattern(channel=16, length=4)
+		def bad (p):
+			pass
+
+
+def test_one_indexed_layer (patch_midi: None) -> None:
+
+	"""layer() also resolves channels when 1-indexed."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=False)
+
+	def kick (p):
+		pass
+
+	composition.layer(kick, channel=10, length=4)
+
+	assert composition._pending_patterns[0].channel == 9
+
+
+def test_live_info_reports_user_convention (patch_midi: None) -> None:
+
+	"""live_info() adds 1 back to channels when 1-indexed."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=False)
+
+	def my_builder (p):
+		pass
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 9,  # internally 0-indexed
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1,
+		default_grid = 16
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+	composition._running_patterns["my_builder"] = pattern
+
+	info = composition.live_info()
+
+	# Should report channel 10 (9 + 1) to the user
+	assert info["patterns"][0]["channel"] == 10

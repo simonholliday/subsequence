@@ -178,7 +178,15 @@ if __name__ == "__main__":
 
 When `output_device` is omitted, Subsequence auto-discovers available MIDI devices. If only one device is connected it is used automatically; if several are found you are prompted to choose. To skip the prompt, pass the device name directly: `Composition(output_device="Your Device:Port", ...)`.
 
-MIDI channels and drum note mappings are defined by the musician in their composition file - the module does not ship studio-specific constants.
+MIDI channels and drum note mappings are defined by the musician in their composition file - the module does not ship studio-specific constants. Channels default to 0-based numbering (0-15, matching the MIDI protocol). To use 1-based numbering (1-16, matching instrument panels - channel 10 is drums), pass `zero_indexed_channels=False`:
+
+```python
+composition = subsequence.Composition(bpm=120, key="E", zero_indexed_channels=False)
+
+@composition.pattern(channel=10, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+def drums (p):
+    ...
+```
 
 Patterns are plain Python functions, so anything you can express in Python is fair game. A few more features:
 

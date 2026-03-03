@@ -563,7 +563,8 @@ class Composition:
 		key: typing.Optional[str] = None,
 		seed: typing.Optional[int] = None,
 		record: bool = False,
-		record_filename: typing.Optional[str] = None
+		record_filename: typing.Optional[str] = None,
+		zero_indexed_channels: bool = True
 	) -> None:
 
 		"""
@@ -580,6 +581,11 @@ class Composition:
 				will be identical on every run.
 			record: When True, record all MIDI events to a file.
 			record_filename: Optional filename for the recording (defaults to timestamp).
+			zero_indexed_channels: When False (default), MIDI channels use
+				1-based numbering (1-16) matching instrument labelling.
+				Channel 10 is drums, the way musicians and hardware panels
+				show it. When True, channels use 0-based numbering (0-15)
+				matching the raw MIDI protocol.
 
 		Example:
 			```python
@@ -591,6 +597,7 @@ class Composition:
 		self.bpm = bpm
 		self.key = key
 		self._seed: typing.Optional[int] = seed
+		self._zero_indexed_channels: bool = zero_indexed_channels
 
 		self._sequencer = subsequence.sequencer.Sequencer(
 			output_device_name = output_device,
@@ -626,6 +633,25 @@ class Composition:
 		self._hotkey_bindings: typing.Dict[str, HotkeyBinding] = {}
 		self._pending_hotkey_actions: typing.List[_PendingHotkeyAction] = []
 		self._keystroke_listener: typing.Optional[subsequence.keystroke.KeystrokeListener] = None
+
+	def _resolve_channel (self, channel: int) -> int:
+
+		"""
+		Convert a user-supplied MIDI channel to the 0-indexed value used internally.
+
+		When ``zero_indexed_channels`` is True, the channel is validated as
+		0-15 and returned unchanged. When False (1-indexed), the channel is
+		validated as 1-16 and decremented by one.
+		"""
+
+		if self._zero_indexed_channels:
+			if not 0 <= channel <= 15:
+				raise ValueError(f"MIDI channel must be 0-15 (zero_indexed_channels=True), got {channel}")
+			return channel
+		else:
+			if not 1 <= channel <= 16:
+				raise ValueError(f"MIDI channel must be 1-16, got {channel}")
+			return channel - 1
 
 	@property
 	def harmonic_state (self) -> typing.Optional[subsequence.harmonic_state.HarmonicState]:
@@ -1200,8 +1226,10 @@ class Composition:
 		Parameters:
 			cc: MIDI Control Change number (0–127).
 			key: The ``composition.data`` key to write.
-			channel: If given, only respond to CC messages on this channel
-			         (0-indexed, 0–15). ``None`` matches any channel (default).
+			channel: If given, only respond to CC messages on this channel.
+				Uses the same numbering convention as ``pattern()`` (1-16
+				by default, or 0-15 with ``zero_indexed_channels=True``).
+				``None`` matches any channel (default).
 			min_val: Scaled minimum — written when CC value is 0 (default 0.0).
 			max_val: Scaled maximum — written when CC value is 127 (default 1.0).
 
@@ -1213,10 +1241,12 @@ class Composition:
 			```
 		"""
 
+		resolved_channel = self._resolve_channel(channel) if channel is not None else None
+
 		self._cc_mappings.append({
 			'cc': cc,
 			'key': key,
-			'channel': channel,
+			'channel': resolved_channel,
 			'min_val': min_val,
 			'max_val': max_val,
 		})
@@ -1322,10 +1352,11 @@ class Composition:
 				chord_name = chord.name()
 
 		pattern_list = []
+		channel_offset = 0 if self._zero_indexed_channels else 1
 		for name, pat in self._running_patterns.items():
 			pattern_list.append({
 				"name": name,
-				"channel": pat.channel,
+				"channel": pat.channel + channel_offset,
 				"length": pat.length,
 				"cycle": pat._cycle_count,
 				"muted": pat._muted,
@@ -1522,7 +1553,10 @@ class Composition:
 		the grid defaults to sixteenth-note resolution.
 
 		Parameters:
-			channel: MIDI channel (0-15).
+			channel: MIDI channel. By default uses 1-based numbering (1-16)
+				matching instrument labelling — channel 10 is drums. Set
+				``zero_indexed_channels=True`` on the ``Composition`` to use
+				0-based numbering (0-15) instead.
 			length: Note count when ``unit`` is given, otherwise duration
 				in beats (default 4).
 			unit: Duration of one note in beats (e.g. ``dur.SIXTEENTH``).
@@ -1535,11 +1569,13 @@ class Composition:
 
 		Example:
 			```python
-			@comp.pattern(channel=0, length=6, unit=dur.SIXTEENTH)
+			@comp.pattern(channel=1, length=6, unit=dur.SIXTEENTH)
 			def riff(p):
 				p.sequence(steps=[0, 1, 3, 5], pitches=60)
 			```
 		"""
+
+		channel = self._resolve_channel(channel)
 
 		if unit is not None:
 			beat_length = length * unit
@@ -1565,7 +1601,7 @@ class Composition:
 
 			pending = _PendingPattern(
 				builder_fn = fn,
-				channel = channel,
+				channel = channel,  # already resolved to 0-indexed
 				length = beat_length,
 				default_grid = default_grid,
 				drum_note_map = drum_note_map,
@@ -1598,7 +1634,7 @@ class Composition:
 
 		Parameters:
 			builder_fns: One or more pattern builder functions.
-			channel: MIDI channel (0-15).
+			channel: MIDI channel (1-16, or 0-15 with ``zero_indexed_channels=True``).
 			length: Note count when ``unit`` is given, otherwise duration
 				in beats (default 4).
 			unit: Duration of one note in beats (e.g. ``dur.SIXTEENTH``).
@@ -1635,9 +1671,11 @@ class Composition:
 				for fn in builder_fns:
 					fn(p)
 
+		resolved = self._resolve_channel(channel)
+
 		pending = _PendingPattern(
 			builder_fn = merged_builder,
-			channel = channel,
+			channel = resolved,  # already resolved to 0-indexed
 			length = beat_length,
 			default_grid = default_grid,
 			drum_note_map = drum_note_map,
