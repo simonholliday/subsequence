@@ -115,11 +115,11 @@ import subsequence.composition
 import subsequence.groove
 import subsequence.intervals
 import subsequence.melodic_state
-import subsequence.sequence_utils
+import subsequence.midi_utils
 
 
 Composition = subsequence.composition.Composition
 Groove = subsequence.groove.Groove
 MelodicState = subsequence.melodic_state.MelodicState
 register_scale = subsequence.intervals.register_scale
-bank_select = subsequence.sequence_utils.bank_select
+bank_select = subsequence.midi_utils.bank_select

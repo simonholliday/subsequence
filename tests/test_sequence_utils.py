@@ -1,5 +1,6 @@
 import random
 
+import subsequence.midi_utils
 import subsequence.sequence_utils
 
 
@@ -1119,51 +1120,51 @@ def test_bank_select_zero () -> None:
 
 	"""Bank 0 → MSB 0, LSB 0."""
 
-	assert subsequence.sequence_utils.bank_select(0) == (0, 0)
+	assert subsequence.midi_utils.bank_select(0) == (0, 0)
 
 
 def test_bank_select_lsb_only () -> None:
 
 	"""Banks 1–127 fit in LSB alone (MSB stays 0)."""
 
-	assert subsequence.sequence_utils.bank_select(1) == (0, 1)
-	assert subsequence.sequence_utils.bank_select(127) == (0, 127)
+	assert subsequence.midi_utils.bank_select(1) == (0, 1)
+	assert subsequence.midi_utils.bank_select(127) == (0, 127)
 
 
 def test_bank_select_msb_boundary () -> None:
 
 	"""Bank 128 is the first bank requiring MSB=1."""
 
-	assert subsequence.sequence_utils.bank_select(128) == (1, 0)
+	assert subsequence.midi_utils.bank_select(128) == (1, 0)
 
 
 def test_bank_select_mixed () -> None:
 
 	"""Bank 256 → MSB 2, LSB 0; bank 257 → MSB 2, LSB 1."""
 
-	assert subsequence.sequence_utils.bank_select(256) == (2, 0)
-	assert subsequence.sequence_utils.bank_select(257) == (2, 1)
+	assert subsequence.midi_utils.bank_select(256) == (2, 0)
+	assert subsequence.midi_utils.bank_select(257) == (2, 1)
 
 
 def test_bank_select_max () -> None:
 
 	"""Maximum 14-bit bank (16383) → MSB 127, LSB 127."""
 
-	assert subsequence.sequence_utils.bank_select(16383) == (127, 127)
+	assert subsequence.midi_utils.bank_select(16383) == (127, 127)
 
 
 def test_bank_select_clamps_negative () -> None:
 
 	"""Negative values are clamped to bank 0."""
 
-	assert subsequence.sequence_utils.bank_select(-1) == (0, 0)
+	assert subsequence.midi_utils.bank_select(-1) == (0, 0)
 
 
 def test_bank_select_clamps_overflow () -> None:
 
 	"""Values above 16383 are clamped to the maximum bank."""
 
-	assert subsequence.sequence_utils.bank_select(99999) == (127, 127)
+	assert subsequence.midi_utils.bank_select(99999) == (127, 127)
 
 
 def test_bank_select_roundtrip () -> None:
@@ -1171,5 +1172,5 @@ def test_bank_select_roundtrip () -> None:
 	"""MSB and LSB reconstruct the original bank number."""
 
 	for bank in [0, 1, 127, 128, 255, 256, 1000, 16383]:
-		msb, lsb = subsequence.sequence_utils.bank_select(bank)
+		msb, lsb = subsequence.midi_utils.bank_select(bank)
 		assert (msb << 7) | lsb == bank

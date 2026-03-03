@@ -5,6 +5,37 @@ import mido
 
 logger = logging.getLogger(__name__)
 
+
+def bank_select (bank: int) -> typing.Tuple[int, int]:
+
+	"""
+	Convert a 14-bit MIDI bank number to (MSB, LSB) for use with
+	``p.program_change()``.
+
+	MIDI bank select uses two control-change messages: CC 0 (Bank MSB) and
+	CC 32 (Bank LSB).  Together they encode a 14-bit bank number in the
+	range 0–16,383:
+
+	    MSB = bank // 128   (upper 7 bits, sent on CC 0)
+	    LSB = bank % 128    (lower 7 bits, sent on CC 32)
+
+	Args:
+		bank: Integer bank number, 0–16,383.  Values outside this range are
+		      clamped.
+
+	Returns:
+		``(msb, lsb)`` tuple, each value in 0–127.
+
+	Example:
+		```python
+		msb, lsb = subsequence.bank_select(128)   # → (1, 0)
+		p.program_change(48, bank_msb=msb, bank_lsb=lsb)
+		```
+	"""
+
+	bank = max(0, min(16383, bank))
+	return bank >> 7, bank & 0x7F
+
 def select_output_device(device_name: typing.Optional[str] = None) -> typing.Tuple[typing.Optional[str], typing.Optional[typing.Any]]:
     """
     Select and open a MIDI output device.
