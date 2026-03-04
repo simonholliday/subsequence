@@ -1,16 +1,17 @@
 # Subsequence
 
-**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence combines pattern-based sequencing with the full depth of Python code. It is designed for **the musician who wants compositions that evolve** - where patterns respond to what came before, know where they are in the song, and make musical decisions based on context.
+**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence is an algorithmic composition framework that gives you a palette of mathematical building blocks - Euclidean rhythms, cellular automata, L-systems, Markov chains, cognitive melody generation - and a stateful engine that lets them interact and evolve over time. It is designed for **the musician who wants to build compositions that surprise them** - where patterns combine, react to context, and develop in ways that reward exploration.
 
-Unlike stateless libraries that loop forever, Subsequence rebuilds patterns each time they play (before they're due). This stateful architecture allows for context-aware harmony, long-form structure, and determinism. You can create complex, evolving compositions where patterns know what happened in the previous bar, as well as traditional linear pieces with fixed notes and sections.
+Unlike tools that loop a fixed pattern forever, Subsequence rebuilds every pattern fresh before each cycle. Each rebuild has full context - the current chord, the song section, the cycle count, shared data from other patterns - so a Euclidean rhythm can thin itself as tension builds, a cellular automaton can seed from the harmony, and a Markov chain can shift behaviour between sections. The result is music that develops over time, not music that repeats.
 
-It is a **compositional engine** for your studio - generating pure MIDI to control hardware instruments, modular synthesizers, or VSTs, with no fixed limits on complexity or length.
+It is a **compositional platform** for your studio - generating pure MIDI to control hardware synths, modular systems, or software instruments, with no fixed limits on complexity or length.
 
 > **What you need:** Basic Python knowledge and any MIDI-controllable instrument - hardware synths, drum machines, modular gear, or software VSTs/DAWs. Subsequence generates MIDI data; it does not produce sound itself.
 
 ### Why Subsequence?
 
 - **Plain Python, no custom language.** Write patterns in a standard, popular language - no domain-specific syntax to learn. Your music is versionable, shareable, and lives in standard `.py` files.
+- **A rich algorithmic palette.** Euclidean and Bresenham rhythm generators, cellular automata (1D and 2D), L-system string rewriting, Markov chains, cognitive melody via the Narmour model, probability-weighted ghost notes, position-aware thinning, Perlin and pink noise, logistic chaos maps - plus groove templates, velocity shaping, and pitch-bend automation to shape how they sound. These aren't isolated features - they combine freely inside the stateful rebuild loop, feeding into each other, so compositions emerge that no single algorithm could produce alone.
 - **Infinite, evolving compositions.** Patterns rebuild each cycle with full context - chord, section, history, external data - so music can grow and develop indefinitely, or run to a fixed structure. Or both.
 - **Multiple APIs and notation styles.** Start with a one-line mini-notation drum pattern. Graduate to per-step control, harmonic injection, or the full Direct Pattern API - without changing tools.
 - **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition. The cognitive engine writes melodies that sound *human* because it models deep listener expectations.
@@ -58,13 +59,13 @@ Subsequence integrates the **Narmour Implication-Realization model**, a theory o
 By encoding these principles, Subsequence generates melodies that feel structured and intentional, satisfying the listener's innate expectations of musical grammar.
 
 ### The Algorithmic Composer
-Subsequence is a workbench for **Algorithmic Composition**. It uses logic, geometry, music theory, randomness, and any external data you want to pull in, to influence the composition. It is a set of tools for creating an evolving music process.
+Subsequence is a framework for **algorithmic composition** - the practice of defining musical processes and letting them run. You select from a toolkit of rhythm generators, cellular automata, Markov models, melodic algorithms, and noise functions, combine them inside patterns that rebuild with full musical context, and listen to what emerges.
 
-*   **Design the Process.** You define the rules of the composition, the computer follows them. You are the composer, not a spectator.
-*   **Code is the Interface.** Patterns are plain text files, meaning your music is versionable, shareable, and collaborative by default. There is no custom language to learn, no audio engine to configure, and no GUI to wrestle with.
-*   **Deterministic Control.** Set a seed and get the exact same "random" results every time. Tweak your code and re-run to perfect the output.
+*   **Compose the process, not just the notes.** You define the rules; the framework follows them. Every run can produce something new - or, with a seed, something exactly repeatable.
+*   **Algorithms that interact.** A Euclidean kick pattern shares its root note with a Markov bassline via `p.data`. A cellular automaton seeds its next generation from the chord change. An L-system rhythm thins itself during the bridge. The stateful rebuild loop is what makes these connections possible.
+*   **Code is the score.** Your composition is a `.py` file - versionable, shareable, diffable. No custom language, no GUI, no audio engine. Python is the interface.
 
-Subsequence connects to your existing world. Sync it to your DAW's clock, or let it drive your Eurorack system. It provides the logic; you provide the sound.
+Subsequence connects to your existing studio. Sync to your DAW's clock, or let it drive your Eurorack system. It provides the logic; you provide the sound.
 
 ## Contents
 
