@@ -571,22 +571,24 @@ Subsequence offers two complementary ways to store values: **Data** (state) and 
 | **Nature** | Static snapshots - no concept of time | Time-variant signals (LFOs, ramps) |
 | **Best for** | External inputs (sensors, API data), mode switches, inter-pattern state | Musical evolution (fades, swells, modulation) that must be smooth and continuous |
 
-Inside a pattern, `p.data` is a direct reference to `composition.data` — the same dictionary object. You can read it, write to it, and use it to pass values between patterns:
+Inside a pattern, `p.data` is a direct reference to `composition.data` — the same dictionary object. You can read it, write to it, and use it to pass values between patterns.
+
+Patterns always rebuild in **definition order** (top-to-bottom in your source file). When two patterns share the same `length`, they reschedule at the same moment and the earlier pattern rebuilds first — so the writer's value is already in `p.data` when the reader runs:
 
 ```python
-@composition.pattern(channel=1)
+@composition.pattern(channel=1, length=4)   # defined first — rebuilds first
 def bass(p):
     root = 36 + (p.cycle % 12)
-    p.data["bass_root"] = root         # write — visible to all patterns this cycle
+    p.data["bass_root"] = root         # visible to patterns that follow this cycle
     p.note(root, velocity=100)
 
-@composition.pattern(channel=2)
+@composition.pattern(channel=2, length=4)   # same length — guaranteed same-cycle read
 def pad(p):
-    root = p.data.get("bass_root", 48) # read — previous or current cycle value
+    root = p.data.get("bass_root", 48) # current-cycle value, because bass ran first
     p.chord(root=root, velocity=60)
 ```
 
-Because patterns rebuild in any order, a reader may get the current-cycle or previous-cycle value — a one-bar latency that is musically natural (patterns respond to what they heard last bar, like musicians listening to each other).
+If the two patterns have **different lengths** they reschedule at different moments, so the reader sees the writer's value from its most recent rebuild — at most one bar old. This one-bar latency is musically natural for slowly-changing state (like a 4-bar bass phrase influencing a 1-bar arp), but use matching lengths when you need immediate reaction.
 
 External data written by `composition.schedule()`, CC input, OSC, or hotkeys flows through the same dict:
 

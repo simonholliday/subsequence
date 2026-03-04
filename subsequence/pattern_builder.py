@@ -87,7 +87,10 @@ class PatternBuilder(
 			data: Shared state dict from the parent ``Composition``
 				(same object as ``composition.data``).  Read and write
 				via ``p.data`` for cross-pattern communication and
-				external data access.
+				external data access.  Patterns rebuild in definition
+				order; when two patterns share the same ``length``,
+				a writer defined earlier in source is guaranteed to
+				run before a reader defined later in the same cycle.
 		"""
 
 		self._pattern = pattern
