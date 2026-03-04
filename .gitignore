@@ -1,6 +1,7 @@
 # Project metadata and instructions
 AGENTS.md
 README-AGENTS.md
+.vscode/
 
 # Python
 __pycache__/

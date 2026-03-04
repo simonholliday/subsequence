@@ -192,7 +192,7 @@ def drums (p):
 
 	# Open hi-hat: one accent per bar, placed by the sun's longitude.
 	# A very slow signal — but it IS shifting, and it IS orbital.
-	p.hit_steps("hi_hat_open", [composition.data.get("iss_hat_accent", 6)], velocity=60)
+	p.hit_steps("hi_hat_open", [p.data.get("iss_hat_accent", 6)], velocity=60)
 
 
 # Ride cymbal (daylight only)
@@ -201,7 +201,7 @@ def ride (p):
 
 	# The ride only plays in sunlight — it brightens the texture and disappears
 	# completely during eclipse, leaving the shaker to fill the space instead.
-	if composition.data.get("iss_visibility") != 1.0:
+	if p.data.get("iss_visibility") != 1.0:
 		return
 
 	progress = (p.cycle % FETCH_BARS) / FETCH_BARS
@@ -218,7 +218,7 @@ def ride (p):
 def shaker (p):
 
 	# Shaker fills the darker eclipse texture — steady 16ths with subtle variation.
-	if composition.data.get("iss_visibility") == 1.0:
+	if p.data.get("iss_visibility") == 1.0:
 		return
 
 	p.hit_steps("shaker", range(16), velocity=45)

@@ -2032,7 +2032,8 @@ class Composition:
 					conductor = composition_ref.conductor,
 					rng = self._rng,
 					tweaks = self._tweaks,
-					default_grid = self._default_grid
+					default_grid = self._default_grid,
+					data = composition_ref.data
 				)
 
 				try:

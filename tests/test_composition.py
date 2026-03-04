@@ -372,6 +372,33 @@ def test_data_default_when_not_set (patch_midi: None) -> None:
 	assert composition.data.get("missing", 0.5) == 0.5
 
 
+def test_p_data_is_composition_data (patch_midi: None) -> None:
+
+	"""p.data inside a pattern builder should be the same object as composition.data."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+	composition.data["sentinel"] = "hello"
+	captured = []
+
+	def my_builder (p):
+		captured.append(p.data.get("sentinel"))
+		p.data["from_pattern"] = "world"
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = my_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1,
+		default_grid = 16
+	)
+
+	composition._build_pattern_from_pending(pending)
+
+	assert captured == ["hello"]
+	assert composition.data.get("from_pattern") == "world"
+
+
 # --- Seed and RNG ---
 
 

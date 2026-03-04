@@ -3956,3 +3956,81 @@ def test_program_change_clamped () -> None:
 	assert msb.value == 0
 	assert lsb.value == 127
 	assert pc.value == 127
+
+
+# --- p.data — shared inter-pattern state ---
+
+
+def test_data_read_write () -> None:
+
+	"""p.data supports standard dict read/write."""
+
+	shared = {}
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern=pattern, cycle=0, default_grid=16, data=shared
+	)
+
+	builder.data["root"] = 60
+	assert builder.data["root"] == 60
+	assert shared["root"] == 60
+
+
+def test_data_get_default_when_missing () -> None:
+
+	"""p.data.get() returns the default when the key is absent."""
+
+	shared = {}
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern=pattern, cycle=0, default_grid=16, data=shared
+	)
+
+	assert builder.data.get("missing") is None
+	assert builder.data.get("missing", 48) == 48
+
+
+def test_data_cross_pattern () -> None:
+
+	"""Two builders sharing the same dict can read each other's writes."""
+
+	shared = {}
+	pat_a = subsequence.pattern.Pattern(channel=0, length=4)
+	pat_b = subsequence.pattern.Pattern(channel=1, length=4)
+
+	builder_a = subsequence.pattern_builder.PatternBuilder(
+		pattern=pat_a, cycle=0, default_grid=16, data=shared
+	)
+	builder_b = subsequence.pattern_builder.PatternBuilder(
+		pattern=pat_b, cycle=0, default_grid=16, data=shared
+	)
+
+	builder_a.data["bass_root"] = 36
+	assert builder_b.data.get("bass_root") == 36
+
+
+def test_data_persists_across_rebuilds () -> None:
+
+	"""Values survive a rebuild (new builder instance, same dict reference)."""
+
+	shared = {}
+	pat = subsequence.pattern.Pattern(channel=0, length=4)
+
+	builder_1 = subsequence.pattern_builder.PatternBuilder(
+		pattern=pat, cycle=0, default_grid=16, data=shared
+	)
+	builder_1.data["density"] = 0.75
+
+	builder_2 = subsequence.pattern_builder.PatternBuilder(
+		pattern=pat, cycle=1, default_grid=16, data=shared
+	)
+	assert builder_2.data.get("density") == 0.75
+
+
+def test_data_without_composition_uses_isolated_dict () -> None:
+
+	"""A builder created without data= gets its own empty dict and does not crash."""
+
+	pattern, builder = _make_builder()
+	builder.data["x"] = 42
+	assert builder.data["x"] == 42

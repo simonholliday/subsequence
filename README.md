@@ -565,11 +565,43 @@ Available shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out
 
 Subsequence offers two complementary ways to store values: **Data** (state) and **Conductor** (signals). Use whichever fits:
 
-| | `composition.data` | `composition.conductor` |
+| | `composition.data` / `p.data` | `composition.conductor` |
 |---|---|---|
 | **Question it answers** | "What is the value RIGHT NOW?" | "What was the value at beat 40?" |
 | **Nature** | Static snapshots - no concept of time | Time-variant signals (LFOs, ramps) |
-| **Best for** | External inputs (sensors, API data), mode switches, irregular updates | Musical evolution (fades, swells, modulation) that must be smooth and continuous |
+| **Best for** | External inputs (sensors, API data), mode switches, inter-pattern state | Musical evolution (fades, swells, modulation) that must be smooth and continuous |
+
+Inside a pattern, `p.data` is a direct reference to `composition.data` — the same dictionary object. You can read it, write to it, and use it to pass values between patterns:
+
+```python
+@composition.pattern(channel=1)
+def bass(p):
+    root = 36 + (p.cycle % 12)
+    p.data["bass_root"] = root         # write — visible to all patterns this cycle
+    p.note(root, velocity=100)
+
+@composition.pattern(channel=2)
+def pad(p):
+    root = p.data.get("bass_root", 48) # read — previous or current cycle value
+    p.chord(root=root, velocity=60)
+```
+
+Because patterns rebuild in any order, a reader may get the current-cycle or previous-cycle value — a one-bar latency that is musically natural (patterns respond to what they heard last bar, like musicians listening to each other).
+
+External data written by `composition.schedule()`, CC input, OSC, or hotkeys flows through the same dict:
+
+```python
+@composition.schedule(cycle_beats=16, wait_for_initial=True)
+def fetch_iss():
+    data = requests.get("https://api.wheretheiss.at/v1/satellites/25544").json()
+    composition.data["iss_lat"] = data["latitude"]
+
+@composition.pattern(channel=1)
+def iss_melody(p):
+    lat = p.data.get("iss_lat", 0.0)   # same dict as composition.data
+    root = int(48 + (lat / 90) * 24)
+    p.note(root, velocity=80)
+```
 
 If you use `composition.schedule()` to poll external data and want to ease between each new reading, use **`subsequence.easing.EasedValue`**. Create one instance per field at module level, call `.update(value)` in your scheduled task, and `.get(progress)` in your pattern - no manual `prev`/`current` bookkeeping required. See [`subsequence.easing`](#extra-utilities) for details.
 
@@ -1780,8 +1812,6 @@ Planned features, roughly in order of priority.
 ### Medium priority
 
 - **Visual Dashboard / Web UI.** A lightweight local web dashboard to provide real-time visual feedback of the current Chord Graph, global Conductor signals, and active patterns, making the generative process more observable.
-
-- **Cross-track / Inter-pattern awareness.** Implementing a high-level compositional capability allowing patterns to easily listen to and react to the current musical density or activity of other patterns.
 
 - **Ableton Link support.** The de facto standard for wireless tempo sync between devices in a modern studio.
 

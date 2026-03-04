@@ -69,8 +69,10 @@ Integration:
 - **MIDI clock.** Master (``clock_output()``) or follower
   (``clock_follow=True``). Sync to a DAW or drive hardware.
 - **Hardware control.** CC input mapping from knobs/faders to
-  ``composition.data``. OSC for bidirectional communication with
-  mixers, lighting, visuals.
+  ``composition.data``; patterns read and write the same dict via
+  ``p.data`` for both external data access and cross-pattern
+  communication. OSC for bidirectional communication with mixers,
+  lighting, visuals.
 - **Live coding.** Hot-swap patterns, change tempo, mute/unmute, and
   tweak parameters during playback via a built-in TCP eval server.
 - **Hotkeys.** Single keystrokes to jump sections, toggle mutes, or
