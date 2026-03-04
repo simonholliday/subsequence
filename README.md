@@ -571,24 +571,24 @@ Subsequence offers two complementary ways to store values: **Data** (state) and 
 | **Nature** | Static snapshots - no concept of time | Time-variant signals (LFOs, ramps) |
 | **Best for** | External inputs (sensors, API data), mode switches, inter-pattern state | Musical evolution (fades, swells, modulation) that must be smooth and continuous |
 
-Inside a pattern, `p.data` is a direct reference to `composition.data` — the same dictionary object. You can read it, write to it, and use it to pass values between patterns.
+Inside a pattern, `p.data` is a direct reference to `composition.data` - the same dictionary object. You can read it, write to it, and use it to pass values between patterns.
 
-Patterns always rebuild in **definition order** (top-to-bottom in your source file). When two patterns share the same `length`, they reschedule at the same moment and the earlier pattern rebuilds first — so the writer's value is already in `p.data` when the reader runs:
+Patterns always rebuild in **definition order** (top-to-bottom in your source file). When two patterns share the same `length`, they reschedule at the same moment and the earlier pattern rebuilds first - so the writer's value is already in `p.data` when the reader runs:
 
 ```python
-@composition.pattern(channel=1, length=4)   # defined first — rebuilds first
+@composition.pattern(channel=1, length=4)   # defined first - rebuilds first
 def bass(p):
     root = 36 + (p.cycle % 12)
     p.data["bass_root"] = root         # visible to patterns that follow this cycle
     p.note(root, velocity=100)
 
-@composition.pattern(channel=2, length=4)   # same length — guaranteed same-cycle read
+@composition.pattern(channel=2, length=4)   # same length - guaranteed same-cycle read
 def pad(p):
     root = p.data.get("bass_root", 48) # current-cycle value, because bass ran first
     p.chord(root=root, velocity=60)
 ```
 
-If the two patterns have **different lengths** they reschedule at different moments, so the reader sees the writer's value from its most recent rebuild — at most one bar old. This one-bar latency is musically natural for slowly-changing state (like a 4-bar bass phrase influencing a 1-bar arp), but use matching lengths when you need immediate reaction.
+If the two patterns have **different lengths** they reschedule at different moments, so the reader sees the writer's value from its most recent rebuild - at most one bar old. This one-bar latency is musically natural for slowly-changing state (like a 4-bar bass phrase influencing a 1-bar arp), but use matching lengths when you need immediate reaction.
 
 External data written by `composition.schedule()`, CC input, OSC, or hotkeys flows through the same dict:
 
@@ -1346,7 +1346,7 @@ For multi-bank hardware synths (Roland, Yamaha, Korg, etc.), pass `bank_msb` and
 ```python
 @composition.pattern(channel=1, length=4)
 def synth (p):
-    # Roland JV-1080 — bank MSB 81, LSB 0, patch 48
+    # Roland JV-1080 - bank MSB 81, LSB 0, patch 48
     p.program_change(48, bank_msb=81, bank_lsb=0)
     p.chord(chord, root=60, velocity=70, sustain=True)
 ```
@@ -1358,7 +1358,7 @@ p.program_change(12, bank_msb=1)   # MSB only
 p.program_change(12, bank_lsb=3)   # LSB only
 ```
 
-`subsequence.bank_select(bank)` converts an integer bank number (0–16,383) to the `(msb, lsb)` pair — useful when a synth manual lists a single bank number:
+`subsequence.bank_select(bank)` converts an integer bank number (0–16,383) to the `(msb, lsb)` pair - useful when a synth manual lists a single bank number:
 
 ```python
 msb, lsb = subsequence.bank_select(128)   # → (1, 0)

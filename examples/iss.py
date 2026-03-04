@@ -116,13 +116,13 @@ def fetch_iss (p) -> None:
 		daynum  = float(body["daynum"])    # Julian Day Number — logged for context
 
 		# Normalise to 0–1 using each parameter's known physical range.
-		iss_lat.update(sc(lat,      -51.6, 51.6))   # Orbital inclination bounds
-		iss_lon.update(sc(lon,      -180,  180))
-		iss_alt.update(sc(alt,       370,  460))
-		iss_vel.update(sc(vel,     27500, 27750))    # Very stable; available for use
-		iss_footprint.update(sc(foot,   4400, 4600))
+		iss_lat.update(sc(lat, -51.6, 51.6))   # Orbital inclination bounds
+		iss_lon.update(sc(lon, -180,  180))
+		iss_alt.update(sc(alt, 370,  460))
+		iss_vel.update(sc(vel, 27500, 27750))    # Very stable; available for use
+		iss_footprint.update(sc(foot, 4400, 4600))
 		iss_sol_lat.update(sc(sol_lat, -23.44, 23.44))  # Earth's axial tilt bounds
-		iss_sol_lon.update(sc(sol_lon,  -180,  180))
+		iss_sol_lon.update(sc(sol_lon, -180,  180))
 
 		composition.data["iss_visibility"] = 1.0 if vis == "daylight" else 0.0
 
