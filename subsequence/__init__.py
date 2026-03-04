@@ -1,20 +1,30 @@
 
 """
-Subsequence - a stateful algorithmic MIDI sequencer for Python.
+Subsequence - an algorithmic composition framework for Python.
 
-Unlike stateless sequencers that loop forever, Subsequence rebuilds each
-pattern before it plays - giving it access to the current chord, section,
-cycle count, external data, and anything else in scope. This makes
-compositions that evolve over time as natural to write as static loops.
-It generates pure MIDI (no audio engine) to control hardware synths,
-modular gear, drum machines, or software VSTs/DAWs.
+Subsequence gives you a palette of mathematical building blocks -
+Euclidean rhythms, cellular automata, L-systems, Markov chains,
+cognitive melody generation - and a stateful engine that lets them
+interact and evolve over time. Unlike tools that loop a fixed pattern
+forever, Subsequence rebuilds every pattern fresh before each cycle
+with full context, so algorithms feed into each other and compositions
+emerge that no single technique could produce alone. It generates pure
+MIDI (no audio engine) to control hardware synths, modular systems,
+drum machines, or software VSTs/DAWs.
 
 What makes it different:
 
+- **A rich algorithmic palette.** Euclidean and Bresenham rhythm
+  generators, cellular automata (1D and 2D), L-system string rewriting,
+  Markov chains, cognitive melody via the Narmour model, probability-
+  weighted ghost notes, position-aware thinning, Perlin and pink noise,
+  logistic chaos maps - plus groove templates, velocity shaping, and
+  pitch-bend automation to shape how they sound.
 - **Stateful patterns that evolve.** Each pattern is a Python function
   rebuilt fresh every cycle with full context - current chord, section,
-  cycle count, external data. Patterns remember what happened last bar
-  and decide what to do next.
+  cycle count, shared data from other patterns. A Euclidean rhythm can
+  thin itself as tension builds, a cellular automaton can seed from the
+  harmony, and a Markov chain can shift behaviour between sections.
 - **Cognitive harmony engine.** Chord progressions evolve via weighted
   transition graphs with adjustable gravity and Narmour-based melodic
   inertia. Eleven built-in palettes, automatic voice leading, and frozen
@@ -32,7 +42,7 @@ Composition tools:
 
 - **Rhythm and feel.** Euclidean and Bresenham generators, multi-voice
   weighted Bresenham distribution (``bresenham_poly()``), ghost note
-  layers (``ghost_fill()``), position-aware note removal (``thin()`` —
+  layers (``ghost_fill()``), position-aware note removal (``thin()`` -
   the musical inverse of ``ghost_fill``), evolving cellular-automaton
   rhythms (``cellular_1d()``, ``cellular_2d()``), smooth Perlin noise (``perlin_1d()``,
   ``perlin_2d()``, ``perlin_1d_sequence()``, ``perlin_2d_grid()``),
