@@ -66,6 +66,42 @@ def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.
 	]
 
 
+def diatonic_chord (
+	key: str,
+	mode: str = "ionian",
+	degree: int = 0,
+) -> subsequence.chords.Chord:
+
+	"""Return a single diatonic chord by scale degree.
+
+	Convenience wrapper around :func:`diatonic_chords` for the common
+	case where only one chord is needed.
+
+	Parameters:
+		key: Root note name (e.g. ``"E"``, ``"Bb"``).
+		mode: Scale mode (default ``"ionian"``).
+		degree: Zero-indexed scale degree (0 = I/tonic, 4 = V/dominant, etc.).
+
+	Raises:
+		ValueError: If *degree* is out of range for the mode.
+
+	Example:
+		```python
+		tonic = diatonic_chord("E", "phrygian")              # I
+		dominant = diatonic_chord("E", "phrygian", degree=4)  # V
+		```
+	"""
+
+	chords = diatonic_chords(key, mode)
+
+	if degree < 0 or degree >= len(chords):
+		raise ValueError(
+			f"degree {degree} out of range for {mode} (0\u2013{len(chords) - 1})"
+		)
+
+	return chords[degree]
+
+
 def diatonic_chord_sequence (
 	key: str,
 	root_midi: int,

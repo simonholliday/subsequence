@@ -87,6 +87,39 @@ def test_diatonic_chords_invalid_key () -> None:
 
 
 # ---------------------------------------------------------------------------
+# diatonic_chord() tests
+# ---------------------------------------------------------------------------
+
+def test_diatonic_chord_default_is_tonic () -> None:
+
+	"""Default degree (0) should return the tonic chord."""
+
+	tonic = subsequence.harmony.diatonic_chord("C")
+	all_chords = subsequence.harmony.diatonic_chords("C")
+	assert tonic == all_chords[0]
+
+
+def test_diatonic_chord_degree () -> None:
+
+	"""Explicit degree should return the matching chord."""
+
+	dominant = subsequence.harmony.diatonic_chord("C", degree=4)
+	all_chords = subsequence.harmony.diatonic_chords("C")
+	assert dominant == all_chords[4]
+
+
+def test_diatonic_chord_out_of_range () -> None:
+
+	"""Degree outside the scale should raise ValueError."""
+
+	with pytest.raises(ValueError, match="degree 7 out of range"):
+		subsequence.harmony.diatonic_chord("C", degree=7)
+
+	with pytest.raises(ValueError, match="degree -1 out of range"):
+		subsequence.harmony.diatonic_chord("C", degree=-1)
+
+
+# ---------------------------------------------------------------------------
 # diatonic_chord_sequence() tests
 # ---------------------------------------------------------------------------
 
