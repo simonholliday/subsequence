@@ -60,7 +60,7 @@ Composition tools:
 - **Expression.** CC messages/ramps, pitch bend, note-correlated
   bend/portamento/slide, program changes, SysEx, and OSC output - all
   from within patterns.
-- **Form and structure.** Song form as a weighted graph, ordered list,
+- **Form and structure.** Musical form as a weighted graph, ordered list,
   or generator. Patterns read ``p.section`` to adapt. Conductor signals
   (LFOs, ramps) shape intensity over time.
 - **Mini-notation.** ``p.seq("x x [x x] x", pitch="kick")`` - concise

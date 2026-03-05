@@ -47,7 +47,7 @@ composition.play()
 ### The "Stateful" Advantage
 Most live-coding environments are **stateless**: passing time determines the event. This excels at cyclic, rhythmic music (techno, polyrhythms) but struggles with narrative. Subsequence is **stateful**: it remembers history.
 
-This means a pattern can look back at the previous cycle to decide its next move ("if I played a C last bar, play an E this bar"). It allows for **motivic development** - ideas that evolve over time rather than just repeating. It also supports traditional linear composition: because the system tracks "Song Position" and "Section", you can write a piece with a distinct Intro, Verse, and Chorus, where specific notes play at specific times, just like in a DAW.
+This means a pattern can look back at the previous cycle to decide its next move ("if I played a C last bar, play an E this bar"). It allows for **motivic development** - ideas that evolve over time rather than just repeating. It also supports traditional linear composition: because the system tracks "Global Position" and "Section", you can write a piece with a distinct Intro, Verse, and Chorus, where specific notes play at specific times, just like in a DAW.
 
 ### Cognitive Melody Generation
 Algorithms should sound like musicians, not random number generators. Standard generative tools often rely on "scale masking" (picking random notes from a scale), which ensures no "wrong" notes but often results in aimless melodies.
@@ -112,7 +112,7 @@ Subsequence connects to your existing studio. Sync to your DAW's clock, or let i
 - **Rhythm and feel.** [Euclidean and Bresenham generators](#rhythm--pattern), [groove templates](#groove) (swing, shuffle, MPC pocket, or custom - including [Ableton .agr import](#ableton-agr-import)), randomize, velocity shaping[^vdc], dropout, per-step probability, polyrhythms via independent pattern lengths, multi-voice weighted Bresenham distribution (`bresenham_poly()`) with `no_overlap` collision avoidance, `ghost_fill()` for probability-biased ghost note layers, `thin()` for position-aware per-instrument note removal (the musical inverse of `ghost_fill`), `cellular_1d()` for evolving cellular-automaton rhythms, `cellular_2d()` for polyphonic Life-like 2D CA patterns, `logistic_map()` for a deterministic chaos modulation source (dial from stable → periodic → chaos with one `r` parameter), `pink_noise()` for 1/f ("pink") noise sequences with natural multi-scale variation, `p.lsystem()` for self-similar pattern generation via L-system string rewriting (Fibonacci rhythms, fractal melodic contours), and `p.markov()` for Markov-chain melody and bassline generation.
 - **Melody generation.** `p.melody()` with `MelodicState` applies the [Narmour Implication-Realization model](#melody-generation) to single-note melodic lines: continuation after small steps, direction reversal after large leaps, chord-tone weighting, range gravity, and pitch-diversity penalty. History persists across bar rebuilds for natural phrase continuity.
 - **Expression.** CC messages and ramps, pitch bend, note-correlated [bend/portamento/slide](#pitch-bend-automation), program changes, SysEx, and [OSC output](#osc-integration) - all from within patterns.
-- **Form and structure.** Define [song form](#form-and-sections) as a weighted graph, ordered list, or generator. Patterns read `p.section` to adapt. [Conductor signals](#the-conductor) (LFOs, ramps) shape intensity over time.
+- **Form and structure.** Define [musical form](#form-and-sections) as a weighted graph, ordered list, or generator. Patterns read `p.section` to adapt. [Conductor signals](#the-conductor) (LFOs, ramps) shape intensity over time.
 - **[Mini-notation.](#mini-notation)** Write `p.seq("x x [x x] x", pitch="kick")` - subdivisions, rests, sustains, per-step probability suffixes. Quick ideas in one line.
 - **Scales and quantization.** `p.quantize("G", "dorian")` snaps notes to any named scale. Built-in western and [non-western scales](#scale-quantization) (Hirajōshi, In-Sen, Iwato, Yo, Egyptian, pentatonics), plus `register_scale()` for your own.
 - **Randomness tools.**[^stochastic] Weighted choice, no-repeat shuffle, random walk, probability gates - controlled randomness via `subsequence.sequence_utils`. Deterministic seeding (`seed=42`) makes every decision repeatable.
@@ -346,7 +346,7 @@ For a larger example with form sections and five patterns, see `examples/arpeggi
 
 **1. Composition API** (`composition.py`)
 This is the recommended starting point for most musicians. It handles the infrastructure (async loop, MIDI device discovery, clock management) so you can focus on writing patterns.
-*   **Best for:** Rapid prototyping, standard song forms, live coding.
+*   **Best for:** Rapid prototyping, standard musical forms, live coding.
 *   **Limitation:** Patterns are stateless functions that get rebuilt from scratch every cycle. To keep state (like a counter), you need global variables or closures.
 
 **2. Direct Pattern API** (`pattern.py`)
