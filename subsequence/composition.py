@@ -484,7 +484,13 @@ async def run_until_stopped (sequencer: subsequence.sequencer.Sequencer) -> None
 		stop_event.set()
 
 	for sig in (signal.SIGINT, signal.SIGTERM):
-		loop.add_signal_handler(sig, _request_stop)
+		try:
+			loop.add_signal_handler(sig, _request_stop)
+		except NotImplementedError:
+			# Windows: add_signal_handler is Unix-only.
+			# Fall back to signal.signal() for SIGINT (Ctrl+C); skip SIGTERM.
+			if sig == signal.SIGINT:
+				signal.signal(sig, lambda s, f: _request_stop())
 
 	assert sequencer.task is not None, "Sequencer task should exist after start()"
 	await asyncio.wait(
