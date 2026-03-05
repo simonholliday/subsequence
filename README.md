@@ -2,7 +2,7 @@
 
 **A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence is an algorithmic composition framework that gives you a palette of mathematical building blocks - Euclidean rhythms, cellular automata, L-systems, Markov chains, cognitive melody generation - and a stateful engine that lets them interact and evolve over time. It is designed for **the musician who wants to build compositions that surprise them** - where patterns combine, react to context, and develop in ways that reward exploration.
 
-Unlike tools that loop a fixed pattern forever, Subsequence rebuilds every pattern fresh before each cycle. Each rebuild has full context - the current chord, the song section, the cycle count, shared data from other patterns - so a Euclidean rhythm can thin itself as tension builds, a cellular automaton can seed from the harmony, and a Markov chain can shift behaviour between sections. The result is music that develops over time, not music that repeats.
+Unlike tools that loop a fixed pattern forever, Subsequence rebuilds every pattern fresh before each cycle. Each rebuild has full context - the current chord, the composition section, the cycle count, shared data from other patterns - so a Euclidean rhythm can thin itself as tension builds, a cellular automaton can seed from the harmony, and a Markov chain can shift behaviour between sections. The result is music that develops over time, not music that repeats.
 
 It is a **compositional platform** for your studio - generating pure MIDI to control hardware synths, modular systems, or software instruments, with no fixed limits on complexity or length.
 
@@ -50,7 +50,7 @@ Most live-coding environments are **stateless**: passing time determines the eve
 This means a pattern can look back at the previous cycle to decide its next move ("if I played a C last bar, play an E this bar"). It allows for **motivic development** - ideas that evolve over time rather than just repeating. It also supports traditional linear composition: because the system tracks "Song Position" and "Section", you can write a piece with a distinct Intro, Verse, and Chorus, where specific notes play at specific times, just like in a DAW.
 
 ### Cognitive Melody Generation
-We believe algorithms should sound like musicians, not random number generators. Standard generative tools often rely on "scale masking" (picking random notes from a scale), which ensures no "wrong" notes but often results in aimless melodies.
+Algorithms should sound like musicians, not random number generators. Standard generative tools often rely on "scale masking" (picking random notes from a scale), which ensures no "wrong" notes but often results in aimless melodies.
 
 Subsequence integrates the **Narmour Implication-Realization model**, a theory of music cognition that predicts what listeners *expect* to hear. It models **melodic inertia**:
 *   **Implication:** A series of small steps in one direction implies continuation.
