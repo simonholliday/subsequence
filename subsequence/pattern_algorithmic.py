@@ -862,7 +862,7 @@ class PatternAlgorithmicMixin:
 
 	def thin (
 		self,
-		pitch: typing.Union[int, str],
+		pitch: typing.Optional[typing.Union[int, str]] = None,
 		strategy: typing.Union[str, typing.List[float]] = "strength",
 		amount: float = 0.5,
 		grid: typing.Optional[int] = None,
@@ -870,7 +870,7 @@ class PatternAlgorithmicMixin:
 	) -> None:
 
 		"""
-		Remove notes from a specific instrument based on their rhythmic position.
+		Remove notes from the pattern based on their rhythmic position.
 
 		This is the musical inverse of :meth:`ghost_fill()`.  Where ``ghost_fill``
 		uses bias weights to decide where to *add* ghost notes, ``thin`` uses the
@@ -889,15 +889,19 @@ class PatternAlgorithmicMixin:
 		- ``"strength"``   — progressive thinning: weakest positions (e/a) drop first,
 		  strongest (downbeat) last. Useful for Perlin-driven density control.
 
-		Unlike :meth:`dropout()`, which is position-blind and pattern-wide, ``thin``
-		targets one instrument and respects each note's rhythmic function.
+		When ``pitch`` is given, only notes of that instrument are affected —
+		useful for drum layers.  When ``pitch`` is ``None`` (the default), all
+		notes regardless of pitch are candidates.  This makes ``thin`` a
+		rhythm-aware generalisation of :meth:`dropout()`, and is ideal for
+		tonal patterns such as arpeggios where each step carries a different pitch.
 
 		Position classification is **zone-based**: each grid step owns the pulse range
 		``[N * step_pulses, (N + 1) * step_pulses)``, so notes shifted by swing or
 		groove are still classified correctly regardless of call order.
 
 		Parameters:
-			pitch: Drum name or MIDI note number (same format as :meth:`ghost_fill`).
+			pitch: Drum name or MIDI note number to target, or ``None`` to thin
+				all notes regardless of pitch. Defaults to ``None``.
 			strategy: Named strategy string or a list of per-step drop-priority
 				floats (0.0 = never drop, 1.0 = highest drop priority). Must have
 				length equal to ``grid`` when a list is provided.
@@ -918,6 +922,9 @@ class PatternAlgorithmicMixin:
 			# Perlin-driven progressive thinning of hi-hats
 			sparseness = perlin_1d(p.cycle * 0.07, seed=42)
 			p.thin("hi_hat_closed", "strength", amount=sparseness)
+
+			# Thin an arpeggio (all pitches) — no pitch loop needed
+			p.thin(strategy="strength", amount=sparseness)
 		"""
 
 		if rng is None:
@@ -926,7 +933,7 @@ class PatternAlgorithmicMixin:
 		if grid is None:
 			grid = self._default_grid
 
-		midi_pitch = self._resolve_pitch(pitch)
+		midi_pitch = self._resolve_pitch(pitch) if pitch is not None else None
 
 		# Build the per-step drop-priority weights.
 		#
@@ -981,9 +988,13 @@ class PatternAlgorithmicMixin:
 			if priority <= 0.0:
 				continue
 
-			# Separate target pitch from other notes at this pulse.
-			remaining = [n for n in step.notes if n.pitch != midi_pitch]
-			targets   = [n for n in step.notes if n.pitch == midi_pitch]
+			# Separate target notes from protected notes at this pulse.
+			if midi_pitch is None:
+				remaining = []
+				targets   = list(step.notes)
+			else:
+				remaining = [n for n in step.notes if n.pitch != midi_pitch]
+				targets   = [n for n in step.notes if n.pitch == midi_pitch]
 
 			for note in targets:
 				if rng.random() >= priority * amount:

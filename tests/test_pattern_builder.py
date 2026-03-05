@@ -3639,6 +3639,86 @@ def test_thin_deterministic () -> None:
 	assert _run(7) != _run(8)  # different seeds → different results (overwhelmingly likely)
 
 
+def test_thin_no_pitch_thins_all () -> None:
+
+	"""pitch=None with amount=1.0 removes all notes regardless of pitch."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(0)
+
+	# Place notes at two different integer pitches
+	for step in range(16):
+		beat = step * 0.25
+		builder.note(pitch=60, beat=beat, velocity=80, duration=0.1)
+		builder.note(pitch=64, beat=beat, velocity=80, duration=0.1)
+
+	total_before = sum(len(s.notes) for s in pattern.steps.values())
+	assert total_before == 32
+
+	builder.thin(strategy="uniform", amount=1.0)
+
+	total_after = sum(len(s.notes) for s in pattern.steps.values())
+	assert total_after == 0
+
+
+def test_thin_no_pitch_amount_zero () -> None:
+
+	"""pitch=None with amount=0.0 removes nothing."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(0)
+
+	for step in range(16):
+		beat = step * 0.25
+		builder.note(pitch=60, beat=beat, velocity=80, duration=0.1)
+		builder.note(pitch=64, beat=beat, velocity=80, duration=0.1)
+
+	total_before = sum(len(s.notes) for s in pattern.steps.values())
+
+	builder.thin(strategy="strength", amount=0.0)
+
+	total_after = sum(len(s.notes) for s in pattern.steps.values())
+	assert total_after == total_before
+
+
+def test_thin_no_pitch_respects_strategy () -> None:
+
+	"""pitch=None still honours the strategy — priority-0 positions are never thinned."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# Fill all 16 steps with two pitches
+	for step in range(16):
+		builder.note(pitch=60, beat=step * 0.25, velocity=80, duration=0.1)
+		builder.note(pitch=64, beat=step * 0.25, velocity=80, duration=0.1)
+
+	# Custom strategy: first 8 steps priority=1.0 (always drop with amount=1.0),
+	# last 8 steps priority=0.0 (never drop).  This is fully deterministic.
+	custom = [1.0] * 8 + [0.0] * 8
+	builder.thin(strategy=custom, amount=1.0, grid=16)
+
+	total = sum(len(s.notes) for s in pattern.steps.values())
+	# Steps 0-7: 16 notes removed.  Steps 8-15: 16 notes protected.
+	assert total == 16
+
+
+def test_thin_no_pitch_deletes_empty_steps () -> None:
+
+	"""pitch=None should delete entire steps (not leave empty step objects)."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(0)
+
+	# Single pitch per step so each step has exactly one note
+	for step in range(16):
+		builder.note(pitch=60, beat=step * 0.25, velocity=80, duration=0.1)
+
+	builder.thin(strategy="uniform", amount=1.0)
+
+	# All steps should be fully removed from the dict
+	assert len(pattern.steps) == 0
+
+
 # --- p.lsystem() ---
 
 
