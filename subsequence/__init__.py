@@ -49,8 +49,14 @@ Composition tools:
   ``perlin_2d()``, ``perlin_1d_sequence()``, ``perlin_2d_grid()``),
   deterministic chaos sequences (``logistic_map()``), pink 1/f noise
   (``pink_noise()``), L-system string rewriting (``p.lsystem()``),
-  Markov-chain generation (``p.markov()``), drones and explicit note
-  on/off events (``p.drone()``, ``p.drone_off()``, ``p.silence()``),
+  Markov-chain generation (``p.markov()``), aperiodic binary rhythms
+  (``p.thue_morse()``), golden-ratio beat placement (``p.fibonacci()``),
+  Gray-Scott reaction-diffusion patterns (``p.reaction_diffusion()``),
+  Lorenz strange-attractor generation (``p.lorenz()``), exhaustive
+  pitch-subsequence melodies (``p.de_bruijn()``), step-wise melodies
+  with guaranteed pitch diversity (``p.self_avoiding_walk()``), drones
+  and explicit note on/off events (``p.drone()``, ``p.drone_off()``,
+  ``p.silence()``),
   groove templates (``Groove.swing()``, ``Groove.from_agr()``), swing via
   ``p.swing()`` (a shortcut for ``Groove.swing()``), randomize,
   velocity shaping, dropout, per-step probability, and polyrhythms

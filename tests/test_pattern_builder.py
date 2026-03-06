@@ -4256,3 +4256,261 @@ def test_data_without_composition_uses_isolated_dict () -> None:
 	pattern, builder = _make_builder()
 	builder.data["x"] = 42
 	assert builder.data["x"] == 42
+
+
+# --- thue_morse ---
+
+
+def test_thue_morse_places_notes () -> None:
+
+	"""thue_morse places at least one note (sequence has 1s)."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.thue_morse(60, velocity=80)
+	assert len(pattern.steps) > 0
+
+
+def test_thue_morse_single_pitch_count () -> None:
+
+	"""Note count equals number of 1s in the Thue-Morse sequence."""
+
+	import subsequence.sequence_utils
+	pattern, builder = _make_builder(length=4)
+	builder.thue_morse(60, velocity=80)
+	expected = sum(subsequence.sequence_utils.thue_morse(16))
+	assert len(pattern.steps) == expected
+
+
+def test_thue_morse_two_pitch_mode () -> None:
+
+	"""In two-pitch mode, all 16 grid steps produce a note."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.thue_morse(60, pitch_b=64, velocity=80)
+	assert len(pattern.steps) == 16
+
+
+def test_thue_morse_no_overlap () -> None:
+
+	"""no_overlap=True prevents duplicate pitches at the same pulse."""
+
+	pattern, builder = _make_builder(length=4)
+	# Place pitch 60 at every step first, then thue_morse with no_overlap
+	for i in range(16):
+		builder.note(pitch=60, beat=i * 0.25, velocity=90, duration=0.1)
+	initial_count = len(pattern.steps)
+	builder.thue_morse(60, no_overlap=True, velocity=80)
+	# no_overlap should not add any new steps (pitch 60 already present everywhere)
+	assert len(pattern.steps) == initial_count
+
+
+# --- de_bruijn ---
+
+
+def test_de_bruijn_places_notes () -> None:
+
+	"""de_bruijn places notes for each symbol in the sequence."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.de_bruijn([60, 62, 64], window=2)
+	assert len(pattern.steps) > 0
+
+
+def test_de_bruijn_autofit_note_count () -> None:
+
+	"""Auto-fit mode places exactly k**n notes."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.de_bruijn([60, 62], window=3)  # 2**3 = 8 notes
+	assert len(pattern.steps) == 8
+
+
+def test_de_bruijn_fixed_step_truncates () -> None:
+
+	"""Fixed step mode places at most int(length / step) notes."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.de_bruijn([60, 62], window=4, step=0.25)  # 2**4=16 notes, 4/0.25=16 slots
+	assert len(pattern.steps) <= 16
+
+
+def test_de_bruijn_pitches_from_list () -> None:
+
+	"""All placed pitches are from the provided list."""
+
+	pattern, builder = _make_builder(length=4)
+	pitches = [60, 62, 64]
+	builder.de_bruijn(pitches, window=2)
+	placed = {note.pitch for step in pattern.steps.values() for note in step.notes}
+	assert placed.issubset(set(pitches))
+
+
+# --- fibonacci ---
+
+
+def test_fibonacci_places_notes () -> None:
+
+	"""fibonacci places the requested number of notes."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.fibonacci(60, steps=8, velocity=80)
+	assert len(pattern.steps) == 8
+
+
+def test_fibonacci_correct_count () -> None:
+
+	"""Total placed notes equals steps parameter."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.fibonacci(60, steps=11)
+	assert len(pattern.steps) == 11
+
+
+def test_fibonacci_velocity_tuple () -> None:
+
+	"""Velocity tuple produces velocities within the given range."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rng = random.Random(1)
+	builder.fibonacci(60, steps=8, velocity=(60, 100))
+	vels = [note.velocity for step in pattern.steps.values() for note in step.notes]
+	assert all(60 <= v <= 100 for v in vels)
+
+
+# --- lorenz ---
+
+
+def test_lorenz_places_notes () -> None:
+
+	"""lorenz places notes at each step."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.lorenz([60, 62, 64, 65, 67], step=0.25)
+	assert len(pattern.steps) > 0
+
+
+def test_lorenz_correct_step_count () -> None:
+
+	"""lorenz places int(length / step) notes."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.lorenz([60, 62, 64, 65, 67], step=0.25)
+	assert len(pattern.steps) == 16
+
+
+def test_lorenz_pitches_from_list () -> None:
+
+	"""All placed pitches are from the pitches list."""
+
+	pattern, builder = _make_builder(length=4)
+	pitches = [60, 62, 64]
+	builder.lorenz(pitches, step=0.5)
+	placed = {note.pitch for step in pattern.steps.values() for note in step.notes}
+	assert placed.issubset(set(pitches))
+
+
+def test_lorenz_custom_mapping () -> None:
+
+	"""Custom mapping callable controls pitch, velocity, duration."""
+
+	pattern, builder = _make_builder(length=4)
+
+	def my_map (x, y, z):
+		return (60, 90, 0.1)
+
+	builder.lorenz([60, 62], step=0.5, mapping=my_map)
+	vels = [note.velocity for step in pattern.steps.values() for note in step.notes]
+	assert all(v == 90 for v in vels)
+
+
+# --- reaction_diffusion ---
+
+
+def test_reaction_diffusion_places_notes () -> None:
+
+	"""reaction_diffusion places at least one note at default threshold."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.reaction_diffusion(60, threshold=0.3, steps=500)
+	assert len(pattern.steps) > 0
+
+
+def test_reaction_diffusion_threshold_affects_density () -> None:
+
+	"""Lower threshold produces at least as many notes as higher threshold."""
+
+	pattern_lo, builder_lo = _make_builder(length=4)
+	builder_lo.reaction_diffusion(60, threshold=0.2, steps=500)
+
+	pattern_hi, builder_hi = _make_builder(length=4)
+	builder_hi.reaction_diffusion(60, threshold=0.8, steps=500)
+
+	assert len(pattern_lo.steps) >= len(pattern_hi.steps)
+
+
+def test_reaction_diffusion_dropout_reduces_notes () -> None:
+
+	"""dropout > 0 produces fewer notes on average."""
+
+	import random as stdlib_random
+	counts = []
+	for seed in range(10):
+		p, b = _make_builder(length=4)
+		b.rng = stdlib_random.Random(seed)
+		b.reaction_diffusion(60, threshold=0.3, dropout=0.8, steps=300)
+		counts.append(len(p.steps))
+
+	p2, b2 = _make_builder(length=4)
+	b2.reaction_diffusion(60, threshold=0.3, dropout=0.0, steps=300)
+	no_dropout_count = len(p2.steps)
+
+	assert sum(counts) / len(counts) < no_dropout_count
+
+
+# --- self_avoiding_walk ---
+
+
+def test_self_avoiding_walk_places_notes () -> None:
+
+	"""self_avoiding_walk places notes at each step."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.self_avoiding_walk([60, 62, 64, 65, 67, 69, 71, 72], step=0.25)
+	assert len(pattern.steps) > 0
+
+
+def test_self_avoiding_walk_correct_count () -> None:
+
+	"""Total notes equals int(length / step)."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.self_avoiding_walk([60, 62, 64, 65, 67, 69, 71, 72], step=0.25)
+	assert len(pattern.steps) == 16
+
+
+def test_self_avoiding_walk_pitches_from_list () -> None:
+
+	"""All placed pitches are from the provided list."""
+
+	pattern, builder = _make_builder(length=4)
+	pitches = [60, 62, 64, 65, 67]
+	builder.self_avoiding_walk(pitches, step=0.25)
+	placed = {note.pitch for step in pattern.steps.values() for note in step.notes}
+	assert placed.issubset(set(pitches))
+
+
+def test_self_avoiding_walk_deterministic () -> None:
+
+	"""Same seed produces identical pitch sequence."""
+
+	pattern1, builder1 = _make_builder(length=4)
+	builder1.rng = random.Random(42)
+	builder1.self_avoiding_walk([60, 62, 64, 65, 67], step=0.25)
+
+	pattern2, builder2 = _make_builder(length=4)
+	builder2.rng = random.Random(42)
+	builder2.self_avoiding_walk([60, 62, 64, 65, 67], step=0.25)
+
+	pitches1 = [note.pitch for step in sorted(pattern1.steps) for note in pattern1.steps[step].notes]
+	pitches2 = [note.pitch for step in sorted(pattern2.steps) for note in pattern2.steps[step].notes]
+	assert pitches1 == pitches2

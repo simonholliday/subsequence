@@ -11,7 +11,7 @@ It is a **compositional platform** for your studio - generating pure MIDI to con
 ### Why Subsequence?
 
 - **Plain Python, no custom language.** Write patterns in a standard, popular language - no domain-specific syntax to learn. Your music is versionable, shareable, and lives in standard `.py` files.
-- **A rich algorithmic palette.** Euclidean and Bresenham rhythm generators, cellular automata (1D and 2D), L-system string rewriting, Markov chains, cognitive melody via the Narmour model, probability-weighted ghost notes, position-aware thinning, drones and continuous notes, Perlin and pink noise, logistic chaos maps - plus groove templates, velocity shaping, and pitch-bend automation to shape how they sound. These aren't isolated features - they combine freely inside the stateful rebuild loop, feeding into each other, so compositions emerge that no single algorithm could produce alone.
+- **A rich algorithmic palette.** 16 generators drawn from mathematics, physics, and biology - Euclidean rhythms, cellular automata, Markov chains, Lorenz attractors, reaction-diffusion, L-systems, and more. See [Algorithmic generators](#algorithmic-generators) for the full list with origin stories. They combine freely inside the stateful rebuild loop, so compositions emerge that no single algorithm could produce alone.
 - **Infinite, evolving compositions.** Patterns rebuild each cycle with full context - chord, section, history, external data - so music can grow and develop indefinitely, or run to a fixed structure. Or both.
 - **Multiple APIs and notation styles.** Start with a one-line mini-notation drum pattern. Graduate to per-step control, harmonic injection, or the full Direct Pattern API - without changing tools.
 - **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition. The cognitive engine writes melodies that sound *human* because it models deep listener expectations.
@@ -72,6 +72,8 @@ Subsequence connects to your existing studio. Sync to your DAW's clock, or let i
 - [Introduction](#introduction)
 - [What it does](#what-it-does)
 - [Quick start](#quick-start)
+- [Algorithmic generators](#algorithmic-generators)
+- [Melody generation](#melody-generation)
 - [Composition API](#composition-api)
 - [Direct Pattern API](#direct-pattern-api)
 - [Mini-notation](#mini-notation)
@@ -109,7 +111,7 @@ Subsequence connects to your existing studio. Sync to your DAW's clock, or let i
 
 ### Composition tools
 
-- **Rhythm and feel.** [Euclidean and Bresenham generators](#rhythm--pattern), [groove templates](#groove) (swing, shuffle, MPC pocket, or custom - including [Ableton .agr import](#ableton-agr-import)), randomize, velocity shaping, dropout, per-step probability, polyrhythms via independent pattern lengths, multi-voice weighted Bresenham distribution (`bresenham_poly()`) with `no_overlap` collision avoidance, `ghost_fill()` for probability-biased ghost note layers, `thin()` for position-aware per-instrument note removal (the musical inverse of `ghost_fill`), `cellular_1d()` for evolving cellular-automaton rhythms, `cellular_2d()` for polyphonic Life-like 2D CA patterns, `logistic_map()` for a deterministic chaos modulation source (dial from stable → periodic → chaos with one `r` parameter), `pink_noise()` for 1/f ("pink") noise sequences with natural multi-scale variation, `p.lsystem()` for self-similar pattern generation via L-system string rewriting (Fibonacci rhythms, fractal melodic contours), and `p.markov()` for Markov-chain melody and bassline generation.
+- **Rhythm and feel.** [Algorithmic generators](#algorithmic-generators) (Euclidean, Bresenham, cellular automata, Markov, L-systems, Lorenz, reaction-diffusion, and more), [groove templates](#groove) (swing, shuffle, MPC pocket, or custom - including [Ableton .agr import](#ableton-agr-import)), velocity shaping, dropout, per-step probability, and polyrhythms via independent pattern lengths.
 - **Melody generation.** `p.melody()` with `MelodicState` applies the [Narmour Implication-Realization model](#melody-generation) to single-note melodic lines: continuation after small steps, direction reversal after large leaps, chord-tone weighting, range gravity, and pitch-diversity penalty. History persists across bar rebuilds for natural phrase continuity.
 - **Expression.** CC messages and ramps, pitch bend, note-correlated [bend/portamento/slide](#pitch-bend-automation), drones and continuous notes ([`p.drone()`, `p.drone_off()`, `p.silence()`](#drones-and-sustained-notes)), program changes, SysEx, and [OSC output](#osc-integration) - all from within patterns.
 - **Form and structure.** Define [musical form](#form-and-sections) as a weighted graph, ordered list, or generator. Patterns read `p.section` to adapt. [Conductor signals](#the-conductor) (LFOs, ramps) shape intensity over time.
@@ -138,7 +140,244 @@ pip install -e .
 python examples/demo.py
 ```
 
-For the complete API reference, see the **[documentation](https://simonholliday.github.io/subsequence)**. The sections below are a quick overview.
+For the complete API reference, see the **[documentation](https://simonholliday.github.io/subsequence)**. Before the API reference, the next two sections introduce the algorithmic generators and melody engine that power Subsequence's generative approach.
+
+## Algorithmic generators
+
+Before diving into the API, here's what powers it. Subsequence is built on algorithms borrowed from mathematics, physics, biology, and computer science - ideas originally developed to model weather, simulate chemical reactions, draw straight lines on plotters, and generate textures for films. Each one, when applied to rhythm and melody, produces results with a character you can't achieve by programming notes by hand.
+
+These are some of the building blocks available for composition in Subsequence. You don't need to understand the maths to use them - most take two or three parameters and produce something musically interesting immediately.
+
+The first three entries below (`perlin_1d`, `logistic_map`, `pink_noise`) are standalone functions in `subsequence.sequence_utils`, called directly inside pattern functions. The rest are `p.` methods on `PatternBuilder` - you'll see how patterns work in the [Composition API](#composition-api) section that follows.
+
+### Perlin noise
+
+Ken Perlin invented gradient noise in 1983 to generate natural-looking textures for the film *Tron* - he later won an Academy Award for the technique. His insight was that pure randomness looks artificial, but smoothly interpolated randomness looks organic. `perlin_1d(x, seed)` produces values where neighbours are correlated - it drifts like wind, not dice. Use it for velocity curves, pitch bend, density envelopes, or any parameter that should evolve continuously. `perlin_1d_sequence()` returns a list for per-step modulation; `perlin_2d()` adds a second axis (e.g. bar × step position).
+
+```python
+hat_noise = subsequence.sequence_utils.perlin_1d_sequence(
+	start=p.bar * p.grid * 0.1, step=0.1, count=p.grid, seed=10
+)
+hat_velocities = [int(subsequence.easing.map_value(v, out_min=50, out_max=100)) for v in hat_noise]
+p.hit_steps("hi_hat_closed", range(p.grid), velocity=hat_velocities)
+```
+
+### Logistic map
+
+Biologist Robert May introduced `x_{n+1} = r·x_n·(1 - x_n)` in 1976 to model how animal populations boom and crash between seasons. The equation became a landmark of chaos theory: a single parameter `r` controls a smooth transition from stability through period-doubling to full deterministic chaos. `logistic_map(r, steps)` gives you that dial. Below `r=3.0`: stable. Between `3.0` and `3.57`: period-doubling (rhythmic subdivisions). Above `3.57`: chaos. Use it to modulate density, velocity, or anything that should feel on the edge of control.
+
+```python
+chaos = subsequence.sequence_utils.logistic_map(r=3.8, steps=16)
+for i, v in enumerate(chaos):
+	if v > 0.5:
+		p.hit_steps("hi_hat_open", [i], velocity=int(v * 100))
+```
+
+### Pink noise
+
+Voss and Clarke showed in 1975 that the fluctuations in pitch and loudness of Bach, Scott Joplin, and radio broadcasts all follow a 1/f ("pink") power spectrum - variation at every timescale simultaneously, with larger changes happening more slowly. `pink_noise(steps, seed)` produces values with both slow drift and fast jitter in the same signal, sitting between white noise (flat, uncorrelated) and brown noise (random walk, overly smooth). It matches the statistical fingerprint of real musical dynamics - use it for velocity humanisation, CC modulation, or anywhere you want variation that sounds natural.
+
+```python
+pink = subsequence.sequence_utils.pink_noise(16, seed=p.cycle)
+velocities = [int(subsequence.easing.map_value(v, out_min=40, out_max=110)) for v in pink]
+p.hit_steps("snare_1", range(16), velocity=velocities)
+```
+
+### Euclidean
+
+Euclid's algorithm for computing greatest common divisors dates to 300 BC. In 2003, Bjorklund applied it to distribute neutron accelerator pulses as evenly as possible, and Toussaint (2005) showed the resulting patterns match traditional rhythms from around the world - West African bell patterns, Cuban clave, Turkish aksak. `p.euclidean(pitch, pulses, steps)` distributes `pulses` hits as evenly as possible across a `steps`-step grid. Two numbers in, a rhythm out.
+
+```python
+p.euclidean("kick_1", pulses=5, steps=16, velocity=100)        # tresillo / bossa clave
+p.euclidean("hi_hat_closed", pulses=7, steps=12, velocity=70)  # 7-against-12
+```
+
+### Bresenham
+
+Jack Bresenham developed his line-drawing algorithm at IBM in 1962 for pen plotters - distributing pixels along a line using only integer arithmetic. Where Euclidean rhythms maximise evenness, Bresenham distributes points along a slope, producing subtly different spacings. `p.bresenham(pitch, pulses, steps)` places hits with Bresenham spacing. `p.bresenham_poly(parts, steps)` goes further, distributing multiple voices simultaneously with `no_overlap` collision avoidance - interlocking patterns from a single call.
+
+```python
+p.bresenham_poly({
+	"kick_1":        0.4,
+	"snare_1":       0.25,
+	"hi_hat_closed": 0.7,
+}, steps=16, no_overlap=True)
+```
+
+### Ghost fill
+
+Ghost notes are a drumming technique - barely-audible hits between the main accents that give a groove its feel. Funk and hip-hop drummers (Bernard Purdie, Clyde Stubblefield, Questlove) elevated them to an art form, creating rhythms where what you almost *don't* hear matters as much as the backbeat. `p.ghost_fill(pitch, density, velocity, bias, no_overlap)` adds probability-weighted ghost notes around an existing rhythm. `density` (0–1) scales the fill rate; `bias` shapes which positions are preferred: `"offbeat"`, `"sixteenths"`, `"uniform"`, or a custom per-step weight list.
+
+```python
+p.hit_steps("snare_1", {4, 12}, velocity=100)
+p.ghost_fill("snare_1", density=0.4, velocity=(30, 60), bias="offbeat", no_overlap=True)
+```
+
+### Thin
+
+The musical inverse of ghost fill - a subtractive partner to an additive process. Where ghost fill asks "where should I add?", thin asks "where should I remove?". `p.thin(strategy, amount, grid, rng)` removes notes by position-aware probability. `strategy` can be `"front"`, `"back"`, `"uniform"`, or a custom bias list; `amount` (0–1) controls how aggressively notes are thinned. Pair with a conductor signal to sculpt density over time.
+
+```python
+# As swell rises, earlier arpeggio notes drop out first
+bias = [1.0 - i / 15 for i in range(16)]
+p.thin(strategy=bias, amount=swell, grid=16, rng=p.rng)
+```
+
+### Cellular automaton
+
+John von Neumann and Stanislaw Ulam conceived cellular automata in the 1940s as models of self-replicating systems. Stephen Wolfram systematically explored 1D elementary automata in the 1980s, cataloguing all 256 rules - discovering that Rule 110 is Turing-complete and Rule 30 produces output indistinguishable from randomness. `p.cellular_1d(pitch, rule, velocity)` generates rhythm from a 1D automaton where each generation evolves from the previous, so patterns self-organise, grow, glide, and die. `p.cellular_2d(parts, rule, density, velocity)` runs a 2D Life-like CA where rows map to instruments and columns to time steps.
+
+```python
+p.cellular_1d("kick_1", rule=30, velocity=90)          # Rule 30: chaotic
+p.cellular_1d("hi_hat_closed", rule=110, velocity=70)  # Rule 110: complex / structured
+```
+
+### Markov
+
+Andrey Markov introduced his probability chains in 1906 to analyse letter sequences in Pushkin's *Eugene Onegin* - proving that dependent random events could still obey the law of large numbers. The model became foundational to information theory, speech recognition, and algorithmic composition (Hiller and Isaacson's *Illiac Suite*, 1957 - one of the first computer-generated scores). `p.markov(pitches, transitions, step, velocity)` walks a weighted transition graph where each note influences only the next - local coherence without global structure. The transition weights define the style: tight weights produce stepwise motion, loose weights produce leaps.
+
+```python
+scale = [60, 62, 64, 65, 67, 69, 71]
+transitions = {i: {i: 3, i-1: 1, i+1: 1} for i in range(len(scale))}
+p.markov(scale, transitions, step=0.25, velocity=(60, 100))
+```
+
+### L-system
+
+Aristid Lindenmayer invented L-systems in 1968 to model the branching growth of algae and plants. A simple rewriting rule ("replace A with AB, replace B with A") applied repeatedly produces Fibonacci-length strings; more complex rules generate fractal trees, ferns, and Koch curves. Unlike sequential grammars, L-systems apply all rules in parallel - every cell grows simultaneously. `p.lsystem(axiom, rules, generations, step, velocity)` expands an L-system string then interprets it as rhythm or melody. The result is self-similar: successive generations produce related patterns at increasing density. Stochastic rules (weighted alternatives) add controlled variation.
+
+```python
+p.lsystem(axiom="X", rules={"X": "FX", "F": "FF"}, generations=4, step=0.25, velocity=80)
+```
+
+### Thue-Morse
+
+Axel Thue described this sequence in 1906 while studying combinatorics on words; Marston Morse rediscovered it in 1921 in differential geometry. The construction is simple - negate the sequence and append - yet the result is aperiodic (never strictly repeating), overlap-free, and perfectly balanced (equal density of 0s and 1s over any power-of-two window). `p.thue_morse()` generates rhythm with this fractal, self-similar structure - unlike Euclidean rhythms (maximally even) or cellular automata (evolving), Thue-Morse is fixed but never periodic. In two-pitch mode (`pitch_b` given), every step plays, alternating between two voices:
+
+```python
+@composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+def drums (p):
+	# Aperiodic kick rhythm - hits at 0-positions of the sequence
+	p.thue_morse("kick_1", velocity=100)
+
+	# Two-pitch mode: kick on 0s, snare on 1s - fills all 16 steps
+	p.thue_morse("kick_1", pitch_b="snare_1", velocity=90)
+```
+
+### De Bruijn
+
+Nicolaas Govert de Bruijn formalised these sequences in 1946, building on earlier work by Martin. A classic application: cracking rotary combination locks - a de Bruijn sequence of order n over k symbols contains every possible n-length combination exactly once, so you can test all combinations by sliding along a single string. `p.de_bruijn()` applies this to melody: over `k` pitches with window `n`, every possible `n`-gram appears exactly once across the bar - every pair (window=2) or triple (window=3) of consecutive pitches is covered. The output auto-fits to the bar length (like `lsystem`) or uses a fixed step.
+
+```python
+@composition.pattern(channel=1, length=4)
+def melody (p):
+	# All 9 possible 2-note transitions over a 3-note palette
+	p.de_bruijn([60, 62, 64], window=2, velocity=(60, 100))
+```
+
+### Fibonacci
+
+Fibonacci described his sequence in 1202 to model rabbit populations, but the golden ratio it converges to (φ ≈ 1.618) appears throughout nature in phyllotaxis - the spiral arrangement of seeds in sunflowers, leaves on stems, and scales on pinecones. The golden angle (≈137.5°) is the optimal rotation for packing elements with maximum separation and minimum alignment. `p.fibonacci()` places notes using this spacing: each beat position is `(i × φ) mod bar_length`, then sorted - producing an irrational distribution that never lands on a repeating grid. The result is organic, flowing, and maximally spread - like a sunflower, but in time.
+
+```python
+@composition.pattern(channel=1, length=4)
+def hi_hats (p):
+	# 11 hits with golden-ratio spacing across 4 beats
+	p.fibonacci("hi_hat_closed", steps=11, velocity=(60, 90))
+```
+
+### Lorenz attractor
+
+Meteorologist Edward Lorenz discovered his strange attractor in 1963 while simulating weather convection with three coupled differential equations. The trajectory never repeats, never settles, and diverges exponentially from nearby starting points - what he later called the "butterfly effect". `p.lorenz()` drives pitch, velocity, and duration from the three axes - correlated-but-independent modulation from a single chaotic source. Small changes to `x0` produce paths that gradually diverge, giving each cycle a different phrase that still shares a family resemblance.
+
+```python
+@composition.pattern(channel=2, length=4)
+def chaos_melody (p, chord):
+	scale = chord.tones(root=60, count=8)
+
+	# Different phrase each cycle, slowly drifting
+	p.lorenz(scale, step=0.25, velocity=(50, 110), x0=p.cycle * 0.002)
+```
+
+A custom `mapping` callable overrides the default x→pitch / y→velocity / z→duration assignment, or returns `None` for a rest:
+
+```python
+p.lorenz([60, 62, 64], step=0.5, mapping=lambda x, y, z: (60 + int(x * 12), 80, 0.2))
+```
+
+### Reaction-diffusion
+
+Alan Turing proposed reaction-diffusion in his 1952 paper *"The Chemical Basis of Morphogenesis"* - his final major work. He showed that two chemicals diffusing at different rates and reacting with each other spontaneously produce spatial patterns: spots, stripes, and travelling waves. The model now explains leopard spots, zebra stripes, and coral growth. `p.reaction_diffusion()` runs a 1D Gray-Scott simulation on a ring of cells, then thresholds the resulting concentration field to a hit grid. Unlike cellular automata (discrete binary rules), reaction-diffusion evolves a continuous field - the patterns have a biological, organic character. The `feed_rate` and `kill_rate` parameters select the pattern regime - small changes move between dramatically different pattern types.
+
+```python
+@composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+def organic_kick (p):
+	p.reaction_diffusion("kick_1", threshold=0.4, feed_rate=0.055, kill_rate=0.062)
+
+	# Velocity tuple maps concentration to velocity range for active steps
+	p.reaction_diffusion("hi_hat_closed", threshold=0.3, velocity=(50, 100))
+```
+
+### Self-avoiding walk
+
+Paul Flory pioneered self-avoiding walks in the 1940s–50s to model how polymer chains fold in solution - a molecule that cannot cross itself. The problem became central to statistical physics and remains one of the most-studied objects in combinatorics. `p.self_avoiding_walk()` walks ±1 through a pitch list, refusing to revisit any pitch until trapped (all neighbours visited) - at that point the visited set resets, creating a natural phrase boundary. Within each phrase: no pitch repeats, continuous stepwise motion, guaranteed diversity.
+
+```python
+@composition.pattern(channel=2, length=4)
+def bassline (p):
+	scale = [40, 42, 43, 45, 47, 48, 50, 52]
+	p.self_avoiding_walk(scale, step=0.25, velocity=(70, 100))
+```
+
+## Melody generation
+
+`p.melody()` generates a single-note melodic line guided by the Narmour Implication-Realization (NIR) model - the same cognitive framework used by the chord engine, now adapted for absolute pitch. It expects a `MelodicState` instance created once at module level, which persists history across bar rebuilds so melodic continuity is maintained automatically.
+
+```python
+# Create once at module level - history persists across bars.
+melody_state = subsequence.MelodicState(
+	key="A",
+	mode="aeolian",
+	low=57,     # A3
+	high=84,    # C6
+	nir_strength=0.6,    # How strongly NIR rules shape pitch choice (0–1)
+	chord_weight=0.4,    # Bonus for chord tones
+	rest_probability=0.1,  # 10% chance of silence per step
+	pitch_diversity=0.6,   # Penalise recently-repeated pitches
+)
+
+@composition.pattern(channel=3, length=4, chord=True)
+def lead (p, chord):
+	tones = chord.tones(72) if chord else None
+	p.melody(melody_state, step=0.5, velocity=(70, 100), chord_tones=tones)
+```
+
+**NIR rules in melody:**
+
+| Rule | Trigger | Effect |
+|------|---------|--------|
+| **Reversal** | Previous interval > 4 semitones (large leap) | Favours direction change (+0.5) and a smaller gap-fill interval (+0.3) |
+| **Process** | Previous interval 1–2 semitones (small step) | Favours same direction (+0.4) and similar interval size (+0.2) |
+| **Closure** | Candidate is the tonic | +0.2 boost - the tonic feels like a natural landing |
+| **Proximity** | Candidate is ≤ 3 semitones from last note | +0.3 boost - small intervals are generally preferred |
+
+Unlike chord NIR, melody NIR operates on **absolute MIDI pitch differences** (not pitch-class modular arithmetic), so it correctly distinguishes an upward leap from a downward one even across octaves.
+
+**Additional factors:**
+
+- **Chord tone boost.** If `chord_tones` is provided, pitch classes that match receive a multiplicative bonus of `1 + chord_weight`. This keeps melodies harmonically grounded without locking them to arpeggios.
+- **Range gravity.** A soft quadratic penalty pulls notes toward the centre of `[low, high]`, preventing the melody from drifting to register extremes.
+- **Pitch diversity.** Each time a pitch appears in the recent history, its score is multiplied by `pitch_diversity`. Low values (e.g. `0.3`) strongly suppress repetition; `1.0` disables the penalty entirely.
+
+`p.melody()` parameters:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `state` | - | A `MelodicState` instance (required) |
+| `step` | `0.25` | Time between note onsets in beats (0.25 = 16th note) |
+| `velocity` | `90` | Fixed int or `(low, high)` tuple for random range per step |
+| `duration` | `0.2` | Note duration in beats |
+| `chord_tones` | `None` | MIDI notes that are chord tones this bar |
 
 ## Composition API
 
@@ -970,56 +1209,6 @@ density = subsequence.sequence_utils.weighted_choice([(3, 0.5), (5, 0.3), (7, 0.
 p.euclidean("snare", pulses=density)
 ```
 
-## Melody generation
-
-`p.melody()` generates a single-note melodic line guided by the Narmour Implication-Realization (NIR) model - the same cognitive framework used by the chord engine, now adapted for absolute pitch. It expects a `MelodicState` instance created once at module level, which persists history across bar rebuilds so melodic continuity is maintained automatically.
-
-```python
-# Create once at module level - history persists across bars.
-melody_state = subsequence.MelodicState(
-    key="A",
-    mode="aeolian",
-    low=57,     # A3
-    high=84,    # C6
-    nir_strength=0.6,    # How strongly NIR rules shape pitch choice (0–1)
-    chord_weight=0.4,    # Bonus for chord tones
-    rest_probability=0.1,  # 10% chance of silence per step
-    pitch_diversity=0.6,   # Penalise recently-repeated pitches
-)
-
-@composition.pattern(channel=3, length=4, chord=True)
-def lead (p, chord):
-    tones = chord.tones(72) if chord else None
-    p.melody(melody_state, step=0.5, velocity=(70, 100), chord_tones=tones)
-```
-
-**NIR rules in melody:**
-
-| Rule | Trigger | Effect |
-|------|---------|--------|
-| **Reversal** | Previous interval > 4 semitones (large leap) | Favours direction change (+0.5) and a smaller gap-fill interval (+0.3) |
-| **Process** | Previous interval 1–2 semitones (small step) | Favours same direction (+0.4) and similar interval size (+0.2) |
-| **Closure** | Candidate is the tonic | +0.2 boost - the tonic feels like a natural landing |
-| **Proximity** | Candidate is ≤ 3 semitones from last note | +0.3 boost - small intervals are generally preferred |
-
-Unlike chord NIR, melody NIR operates on **absolute MIDI pitch differences** (not pitch-class modular arithmetic), so it correctly distinguishes an upward leap from a downward one even across octaves.
-
-**Additional factors:**
-
-- **Chord tone boost.** If `chord_tones` is provided, pitch classes that match receive a multiplicative bonus of `1 + chord_weight`. This keeps melodies harmonically grounded without locking them to arpeggios.
-- **Range gravity.** A soft quadratic penalty pulls notes toward the centre of `[low, high]`, preventing the melody from drifting to register extremes.
-- **Pitch diversity.** Each time a pitch appears in the recent history, its score is multiplied by `pitch_diversity`. Low values (e.g. `0.3`) strongly suppress repetition; `1.0` disables the penalty entirely.
-
-`p.melody()` parameters:
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `state` | - | A `MelodicState` instance (required) |
-| `step` | `0.25` | Time between note onsets in beats (0.25 = 16th note) |
-| `velocity` | `90` | Fixed int or `(low, high)` tuple for random range per step |
-| `duration` | `0.2` | Note duration in beats |
-| `chord_tones` | `None` | MIDI notes that are chord tones this bar |
-
 ## Terminal display
 
 Enable a live status line showing the current bar, section, chord, BPM, and key with a single call:
@@ -1811,7 +2000,7 @@ Turns real-time International Space Station telemetry into an evolving compositi
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
 - `subsequence.groove` provides `Groove` templates (per-step timing/velocity feel). Swing is a type of groove - `p.swing(amount)` is a shortcut for the common case. For full control: `Groove.swing(percent)` for percentage-based swing; `Groove.from_agr(path)` to import timing and velocity from an Ableton `.agr` file (note: the Groove Pool blend controls in the file are not imported - use `strength=` when applying to partially blend the effect); or construct `Groove(offsets=..., velocities=...)` directly for a custom feel. Applied via `p.groove(template, strength=1.0)` - `strength` (0.0-1.0) blends the groove's timing and velocity proportionally, equivalent to Ableton's TimingAmount and VelocityAmount dials.
-- `subsequence.sequence_utils` provides rhythm generation (Euclidean, Bresenham, weighted multi-voice Bresenham, van der Corput), probability gating, random walk, scale/clamp helpers, smooth 1D/2D Perlin noise (`perlin_1d(x, seed)`, `perlin_2d(x, y, seed)`), 1D elementary cellular automaton sequences (`generate_cellular_automaton_1d(steps, rule, generation, seed)`) and 2D Life-like CA grids (`generate_cellular_automaton_2d(rows, cols, rule, generation, seed, density)` - Birth/Survival notation, toroidal wrapping, maps rows to pitches/instruments and columns to time steps), deterministic chaos sequences (`logistic_map(r, steps, x0=0.5)` - a single `r` parameter controls behaviour from stable fixed point through period-doubling to full chaos), pink 1/f noise (`pink_noise(steps, sources=16, seed=0)` - Voss-McCartney algorithm producing natural multi-scale variation with both slow drift and fast jitter, matching the statistical character of real musical parameter fluctuations), and L-system string rewriting (`lsystem_expand(axiom, rules, generations, rng=None)` - parallel symbol rewriting producing self-similar sequences; deterministic rules use a plain string replacement, stochastic rules use weighted `[(str, float)]` lists; the expanded string is consumed by `p.lsystem()`). The weighted Bresenham function (`generate_bresenham_sequence_weighted`) underlies `p.bresenham_poly()` - pass a `parts` dict mapping pitch names to density weights (0.0–1.0) and the voices are distributed across the step grid in interlocking Bresenham patterns. Add `no_overlap=True` to any of `euclidean()`, `bresenham()`, or `bresenham_poly()` to skip placement when the same MIDI pitch already occupies that step - prevents double-triggers when layering an anchor pattern with a ghost-note layer.
+- `subsequence.sequence_utils` provides the low-level functions underlying the [Algorithmic generators](#algorithmic-generators): `perlin_1d(x, seed)`, `perlin_2d(x, y, seed)`, `perlin_1d_sequence(start, step, count, seed)`, `logistic_map(r, steps, x0=0.5)`, `pink_noise(steps, sources=16, seed=0)`, `generate_euclidean_sequence(steps, pulses)`, `generate_bresenham_sequence(steps, pulses)`, `generate_bresenham_sequence_weighted(parts, steps)` (underlies `p.bresenham_poly()` - pass a `parts` dict of pitch→weight and voices interlock with optional `no_overlap`), `generate_cellular_automaton_1d(steps, rule, generation, seed)`, `generate_cellular_automaton_2d(rows, cols, rule, generation, seed, density)`, `lsystem_expand(axiom, rules, generations, rng=None)`, `thue_morse(n)`, `de_bruijn(k, n)`, `fibonacci_rhythm(steps, length)`, `lorenz_attractor(steps, ...)`, `reaction_diffusion_1d(width, steps, feed_rate, kill_rate)`, `self_avoiding_walk(n, low, high, rng)`. Also provides probability gating (`probability_gate`), random walk (`random_walk`), weighted choice (`weighted_choice`), and scale/clamp helpers.
 - `subsequence.mini_notation` parses a compact string syntax for step-sequencer patterns.
 - `subsequence.easing` provides easing/transition curve functions used by `conductor.line()`, `target_bpm()`, `cc_ramp()`, and `pitch_bend_ramp()`. Pass `shape=` to any of these to control how a value moves over time. Built-in shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out"` (Hermite smoothstep), `"exponential"` (cubic, good for filter sweeps), `"logarithmic"` (cubic, good for volume fades), `"s_curve"` (Perlin smootherstep - smoother than `"ease_in_out"` for long transitions). Callable shapes are also accepted for custom curves. Also provides **`EasedValue`** - a lightweight stateful helper that smoothly interpolates between discrete data updates (e.g. API poll results, sensor readings) so patterns hear a continuous eased value rather than a hard jump on each fetch cycle. Create one instance per field at module level, call `.update(value)` in your scheduled task, and call `.get(progress)` in your pattern.
 

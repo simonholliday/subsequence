@@ -966,3 +966,359 @@ def generate_cellular_automaton_2d (
 		grid = new_grid
 
 	return grid
+
+
+def thue_morse (n: int) -> typing.List[int]:
+
+	"""
+	Generate the Thue-Morse sequence.
+
+	The Thue-Morse sequence is an infinite aperiodic binary sequence defined
+	by ``t(i) = popcount(i) mod 2`` — the parity of the number of 1-bits in
+	``i``.  It is perfectly balanced (equal density of 0s and 1s over any
+	power-of-two window) and overlap-free: no subsequence occurs three times
+	consecutively.  It is self-similar but never strictly periodic, making it
+	useful for rhythmic patterns that feel structured yet avoid monotony.
+
+	Parameters:
+		n: Number of values to generate.
+
+	Returns:
+		Binary list of length ``n`` (0s and 1s).
+
+	Example:
+		```python
+		# 16-step Thue-Morse rhythm — first 8 values: 0 1 1 0 1 0 0 1
+		seq = subsequence.sequence_utils.thue_morse(16)
+		```
+	"""
+
+	if n <= 0:
+		return []
+
+	return [bin(i).count("1") % 2 for i in range(n)]
+
+
+def de_bruijn (k: int, n: int) -> typing.List[int]:
+
+	"""
+	Generate a de Bruijn sequence B(k, n).
+
+	A de Bruijn sequence over an alphabet of size ``k`` with window ``n`` is a
+	cyclic sequence in which every possible subsequence of length ``n`` appears
+	exactly once.  The output length is ``k ** n``.
+
+	Uses Martin's algorithm (Lyndon word decomposition), which produces a
+	lexicographically minimal sequence with no external dependencies.
+
+	Parameters:
+		k: Alphabet size (number of distinct symbols, e.g. 2 for binary or
+		   ``len(pitches)`` for a pitch list).
+		n: Window size.  Every ``n``-gram over the ``k`` symbols appears
+		   exactly once in the cyclic output.
+
+	Returns:
+		List of integers in ``[0, k-1]`` of length ``k ** n``.
+
+	Example:
+		```python
+		# Map each integer to a pitch index
+		indices = subsequence.sequence_utils.de_bruijn(3, 2)  # length 9
+		pitches = [60, 62, 64]
+		melody = [pitches[i] for i in indices]
+		```
+	"""
+
+	if k <= 0 or n <= 0:
+		return []
+
+	sequence: typing.List[int] = []
+	a = [0] * (n + 1)
+
+	def _db (t: int, p: int) -> None:
+		if t > n:
+			if n % p == 0:
+				sequence.extend(a[1:p + 1])
+		else:
+			a[t] = a[t - p]
+			_db(t + 1, p)
+			for j in range(a[t - p] + 1, k):
+				a[t] = j
+				_db(t + 1, t)
+
+	_db(1, 1)
+	return sequence
+
+
+def fibonacci_rhythm (steps: int, length: float = 4.0) -> typing.List[float]:
+
+	"""
+	Generate beat positions spaced by the golden ratio (Fibonacci spiral).
+
+	Uses the golden angle method: ``position_i = (i * φ) mod length``, where
+	``φ = (1 + √5) / 2 ≈ 1.618``.  The result is sorted into ascending order.
+	This distributes events with the maximum possible spread — analogous to
+	how sunflower seeds are arranged — producing a quasi-random but
+	aesthetically pleasing timing distribution that is distinct from both
+	even grids (Euclidean) and pure randomness.
+
+	Parameters:
+		steps: Number of beat positions to generate.
+		length: Total span in beats to fill.  Defaults to 4.0 (one bar of 4/4).
+
+	Returns:
+		Sorted list of ``steps`` float beat positions in ``[0.0, length)``.
+
+	Example:
+		```python
+		beats = subsequence.sequence_utils.fibonacci_rhythm(8, length=4.0)
+		for beat in beats:
+		    p.note(pitch=60, beat=beat, velocity=80, duration=0.2)
+		```
+	"""
+
+	if steps <= 0:
+		return []
+
+	phi = (1.0 + math.sqrt(5.0)) / 2.0
+	positions = sorted((i * phi) % length for i in range(steps))
+	return positions
+
+
+def lorenz_attractor (
+	steps: int,
+	dt: float = 0.01,
+	sigma: float = 10.0,
+	rho: float = 28.0,
+	beta: float = 8.0 / 3.0,
+	x0: float = 0.1,
+	y0: float = 0.0,
+	z0: float = 0.0,
+) -> typing.List[typing.Tuple[float, float, float]]:
+
+	"""
+	Integrate the Lorenz attractor and return normalised (x, y, z) tuples.
+
+	The Lorenz system is a set of three coupled differential equations
+	originally derived to model atmospheric convection.  Its trajectories
+	orbit a butterfly-shaped strange attractor: deterministic yet sensitive to
+	initial conditions, never exactly repeating.  The three axes provide
+	independent but correlated modulation sources — ideal for simultaneously
+	shaping pitch, velocity, and duration from a single generative process.
+
+	Integration uses the Euler method with step ``dt``.  Each axis is
+	independently min-max normalised to ``[0.0, 1.0]`` across the full
+	trajectory so that outputs span the full musical range regardless of
+	the chosen parameters.
+
+	Parameters:
+		steps: Number of points to generate.
+		dt: Integration time step.  Smaller values produce smoother
+		    trajectories.  Default 0.01.
+		sigma: Lorenz σ parameter.  Default 10.0.
+		rho: Lorenz ρ parameter.  Default 28.0 (classic chaotic regime).
+		beta: Lorenz β parameter.  Default 8/3.
+		x0: Initial x position.  Small changes diverge over time.
+		y0: Initial y position.
+		z0: Initial z position.
+
+	Returns:
+		List of ``(x, y, z)`` tuples, each component in ``[0.0, 1.0]``.
+
+	Example:
+		```python
+		points = subsequence.sequence_utils.lorenz_attractor(16, x0=p.cycle * 0.001)
+		pitches = [60, 62, 64, 65, 67, 69, 71, 72]
+		for i, (x, y, z) in enumerate(points):
+		    pitch = pitches[int(x * len(pitches)) % len(pitches)]
+		    vel   = int(40 + y * 87)
+		    p.note(pitch=pitch, beat=i * 0.25, velocity=vel, duration=0.05 + z * 0.2)
+		```
+	"""
+
+	if steps <= 0:
+		return []
+
+	x, y, z = x0, y0, z0
+	xs: typing.List[float] = []
+	ys: typing.List[float] = []
+	zs: typing.List[float] = []
+
+	for _ in range(steps):
+		dx = sigma * (y - x) * dt
+		dy = (x * (rho - z) - y) * dt
+		dz = (x * y - beta * z) * dt
+		x += dx
+		y += dy
+		z += dz
+		xs.append(x)
+		ys.append(y)
+		zs.append(z)
+
+	def _normalise (values: typing.List[float]) -> typing.List[float]:
+		lo = min(values)
+		hi = max(values)
+		if hi == lo:
+			return [0.5] * len(values)
+		span = hi - lo
+		return [(v - lo) / span for v in values]
+
+	return list(zip(_normalise(xs), _normalise(ys), _normalise(zs)))
+
+
+def reaction_diffusion_1d (
+	width: int,
+	steps: int = 1000,
+	feed_rate: float = 0.055,
+	kill_rate: float = 0.062,
+	du: float = 0.16,
+	dv: float = 0.08,
+) -> typing.List[float]:
+
+	"""
+	Simulate a 1D Gray-Scott reaction-diffusion system.
+
+	The Gray-Scott model describes two interacting chemicals U and V
+	on a 1D ring.  V is introduced as a small seed in the centre; the
+	simulation evolves until a stable spatial pattern forms.  The resulting
+	V-concentration profile — spots, stripes, or travelling waves depending
+	on the feed/kill parameters — is returned as a normalised float sequence.
+
+	This is fundamentally different from cellular automata: the state is
+	continuous, the update rule is a PDE (not a binary function), and the
+	patterns are governed by diffusion rates rather than neighbour counts.
+	The spatial structure maps naturally to a rhythm grid.
+
+	Parameters:
+		width: Number of cells (maps to the pattern's step grid).
+		steps: Number of simulation iterations.  More steps = more developed
+		       pattern.  Default 1000.
+		feed_rate: Rate at which U is replenished.  Default 0.055.
+		kill_rate: Rate at which V is removed.  Default 0.062.
+		du: Diffusion rate for U.  Default 0.16.
+		dv: Diffusion rate for V.  Default 0.08.
+
+	Returns:
+		List of ``width`` floats in ``[0.0, 1.0]`` representing final V
+		concentration.
+
+	Example:
+		```python
+		# Use as a rhythm grid — threshold to place notes
+		conc = subsequence.sequence_utils.reaction_diffusion_1d(16, steps=2000)
+		hits = [i for i, v in enumerate(conc) if v > 0.5]
+		p.hit_steps("kick_1", hits, velocity=90)
+		```
+	"""
+
+	if width <= 0:
+		return []
+
+	u = [1.0] * width
+	v = [0.0] * width
+
+	# Seed the centre quarter with a small V concentration.
+	seed_start = width // 4
+	seed_end = 3 * width // 4
+	for i in range(seed_start, seed_end):
+		v[i] = 0.25
+
+	for _ in range(steps):
+
+		new_u = [0.0] * width
+		new_v = [0.0] * width
+
+		for i in range(width):
+			lap_u = u[(i - 1) % width] - 2.0 * u[i] + u[(i + 1) % width]
+			lap_v = v[(i - 1) % width] - 2.0 * v[i] + v[(i + 1) % width]
+			uvv = u[i] * v[i] * v[i]
+			new_u[i] = u[i] + du * lap_u - uvv + feed_rate * (1.0 - u[i])
+			new_v[i] = v[i] + dv * lap_v + uvv - (feed_rate + kill_rate) * v[i]
+
+		u = new_u
+		v = new_v
+
+	lo = min(v)
+	hi = max(v)
+
+	if hi == lo:
+		return [0.0] * width
+
+	span = hi - lo
+	return [(x - lo) / span for x in v]
+
+
+def self_avoiding_walk (
+	n: int,
+	low: int,
+	high: int,
+	rng: random.Random,
+	start: typing.Optional[int] = None,
+) -> typing.List[int]:
+
+	"""
+	Generate a self-avoiding random walk on an integer lattice.
+
+	Unlike :func:`random_walk`, which can revisit any position, this walk
+	tracks all visited positions and avoids them.  Each step moves ±1 to an
+	unvisited neighbour.  When the walk is trapped (all neighbours have been
+	visited), the visited set is reset at the current position and the walk
+	continues — this creates natural phrase boundaries with a fresh sense of
+	direction after each reset.
+
+	The constraint guarantees pitch diversity: within each "phrase" (before a
+	reset), no pitch is repeated and the melody explores the range in a
+	continuous, step-wise manner.
+
+	Parameters:
+		n: Number of values to generate.
+		low: Minimum value (inclusive).
+		high: Maximum value (inclusive).
+		rng: Random number generator instance.
+		start: Starting value.  Defaults to the midpoint of ``[low, high]``.
+
+	Returns:
+		List of ``n`` integers in ``[low, high]``.
+
+	Example:
+		```python
+		# Self-avoiding bassline across a 2-octave range (MIDI 40–64)
+		notes = subsequence.sequence_utils.self_avoiding_walk(16, low=40, high=64, rng=p.rng)
+		```
+	"""
+
+	if n <= 0:
+		return []
+
+	if low > high:
+		raise ValueError(f"low ({low}) must be <= high ({high})")
+
+	if start is not None:
+		current = max(low, min(high, start))
+	else:
+		current = (low + high) // 2
+
+	visited: typing.Set[int] = {current}
+	result: typing.List[int] = [current]
+
+	for _ in range(n - 1):
+		candidates = [
+			p for p in (current - 1, current + 1)
+			if low <= p <= high and p not in visited
+		]
+
+		if not candidates:
+			# Trapped: reset visited and pick any valid neighbour.
+			visited = {current}
+			candidates = [p for p in (current - 1, current + 1) if low <= p <= high]
+
+		if not candidates:
+			# Range is a single value; stay put.
+			result.append(current)
+			continue
+
+		current = rng.choice(candidates)
+		visited.add(current)
+		result.append(current)
+
+	return result

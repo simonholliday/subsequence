@@ -860,6 +860,405 @@ class PatternAlgorithmicMixin:
 				)
 			beat += auto_step
 
+	def thue_morse (
+		self,
+		pitch: typing.Union[int, str],
+		velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY,
+		duration: float = 0.1,
+		pitch_b: typing.Optional[typing.Union[int, str]] = None,
+		velocity_b: typing.Optional[int] = None,
+		no_overlap: bool = False,
+		dropout: float = 0.0,
+		rng: typing.Optional[random.Random] = None,
+	) -> None:
+
+		"""Place notes using the Thue-Morse aperiodic binary sequence.
+
+		The Thue-Morse sequence (0 1 1 0 1 0 0 1 1 0 0 1 0 1 1 0 …) is
+		perfectly balanced, overlap-free, and self-similar but never periodic.
+		It produces rhythmic patterns that feel structured yet never settle into
+		a simple repeating loop — a quality distinct from Euclidean rhythms
+		(evenly spaced) and cellular automata (rule-driven evolution).
+
+		In **single-pitch mode** (default), notes are placed at positions where
+		the sequence is 1.  In **two-pitch mode** (``pitch_b`` given), ``pitch``
+		is placed at 0-positions and ``pitch_b`` at 1-positions — useful for
+		alternating two drums or two chord tones.
+
+		Parameters:
+			pitch: Pitch (MIDI note number or drum name) for sequence-1 positions.
+			velocity: MIDI velocity for ``pitch``.
+			duration: Note duration in beats.
+			pitch_b: Optional second pitch placed at sequence-0 positions.
+			    When set, all steps produce a note (no rests).
+			velocity_b: Velocity for ``pitch_b``.  Defaults to ``velocity``.
+			no_overlap: Skip steps where ``pitch`` is already sounding.
+			dropout: Probability [0.0–1.0] of randomly skipping any active step.
+			rng: Random number generator.  Defaults to ``self.rng``.
+
+		Example:
+			```python
+			# Single-pitch Thue-Morse kick
+			p.thue_morse("kick_1", velocity=100)
+
+			# Two-pitch mode: alternate kick and snare
+			p.thue_morse("kick_1", pitch_b="snare_1", velocity=100)
+			```
+		"""
+
+		if rng is None:
+			rng = self.rng
+
+		sequence = subsequence.sequence_utils.thue_morse(self._default_grid)
+
+		if pitch_b is None:
+			self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng, no_overlap)
+		else:
+			if velocity_b is None:
+				velocity_b = velocity
+			step_dur = self._pattern.length / len(sequence)
+			for i, val in enumerate(sequence):
+				if dropout > 0 and rng.random() < dropout:
+					continue
+				if val == 0:
+					self.note(pitch=pitch, beat=i * step_dur, velocity=velocity, duration=duration)
+				else:
+					self.note(pitch=pitch_b, beat=i * step_dur, velocity=velocity_b, duration=duration)
+
+	def de_bruijn (
+		self,
+		pitches: typing.List[typing.Union[int, str]],
+		window: int = 2,
+		step: typing.Optional[float] = None,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		duration: float = 0.2,
+	) -> None:
+
+		"""Generate a melody that exhaustively traverses all pitch subsequences.
+
+		A de Bruijn sequence B(k, n) over an alphabet of size ``k`` with window
+		``n`` contains every possible subsequence of length ``n`` exactly once
+		(cyclically).  Mapping each symbol to a pitch produces a melody that
+		systematically explores all possible ``n``-gram transitions — every
+		permutation of ``window`` consecutive pitches appears exactly once.
+
+		With ``step=None`` (default) the full sequence is auto-fitted into the
+		bar, matching the behaviour of :meth:`lsystem`.  With a fixed ``step``
+		the sequence is truncated to fill the available beats.
+
+		Parameters:
+			pitches: List of MIDI note numbers or note strings.  The alphabet
+			    size ``k`` is ``len(pitches)``.
+			window: Subsequence length ``n``.  The output has ``len(pitches) ** window``
+			    notes.  Keep small (2–4) for practical bar lengths.
+			step: Time between notes in beats.  ``None`` auto-fits the sequence
+			    into the bar; a float uses fixed spacing and truncates.
+			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
+			duration: Note duration in beats.
+
+		Example:
+			```python
+			# All 2-note combinations of a pentatonic scale
+			p.de_bruijn([60, 62, 64, 67, 69], window=2, velocity=(60, 100))
+			```
+		"""
+
+		if not pitches:
+			raise ValueError("pitches list cannot be empty")
+
+		k = len(pitches)
+		sequence = subsequence.sequence_utils.de_bruijn(k, window)
+
+		if not sequence:
+			return
+
+		if step is None:
+			auto_step = self._pattern.length / len(sequence)
+			symbols = sequence
+		else:
+			auto_step = step
+			n_steps = int(self._pattern.length / step)
+			symbols = sequence[:n_steps]
+
+		beat = 0.0
+
+		for idx in symbols:
+			vel = (
+				self.rng.randint(velocity[0], velocity[1])
+				if isinstance(velocity, tuple)
+				else int(velocity)
+			)
+			self.note(pitch=pitches[idx], beat=beat, velocity=vel, duration=duration)
+			beat += auto_step
+
+	def fibonacci (
+		self,
+		pitch: typing.Union[int, str],
+		steps: int,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		duration: float = 0.2,
+	) -> None:
+
+		"""Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing).
+
+		Uses the golden angle method — ``position_i = (i × φ) mod bar_length`` —
+		to distribute ``steps`` events across the bar.  The result is sorted
+		into ascending time order.  Unlike a Euclidean rhythm (maximally even
+		spacing on a fixed grid), Fibonacci timing is irrational and places
+		events off-grid in a way that sounds organic and avoids metronomic
+		repetition.
+
+		Parameters:
+			pitch: MIDI note number or drum name.
+			steps: Number of notes to place.
+			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
+			duration: Note duration in beats.
+
+		Example:
+			```python
+			# 11 hi-hat hits with golden-ratio spacing
+			p.fibonacci("hi_hat_closed", steps=11, velocity=(60, 90))
+			```
+		"""
+
+		beats = subsequence.sequence_utils.fibonacci_rhythm(steps, self._pattern.length)
+
+		for beat in beats:
+			vel = (
+				self.rng.randint(velocity[0], velocity[1])
+				if isinstance(velocity, tuple)
+				else int(velocity)
+			)
+			self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
+
+	def lorenz (
+		self,
+		pitches: typing.List[typing.Union[int, str]],
+		step: float = 0.25,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		duration: float = 0.2,
+		dt: float = 0.01,
+		sigma: float = 10.0,
+		rho: float = 28.0,
+		beta: float = 8.0 / 3.0,
+		x0: float = 0.1,
+		y0: float = 0.0,
+		z0: float = 0.0,
+		mapping: typing.Optional[
+			typing.Callable[
+				[float, float, float],
+				typing.Optional[typing.Tuple[typing.Union[int, str], int, float]],
+			]
+		] = None,
+	) -> None:
+
+		"""Generate a note sequence driven by the Lorenz strange attractor.
+
+		Integrates the Lorenz system to produce a trajectory of (x, y, z) points,
+		each normalised to [0, 1].  The three axes provide correlated but
+		independent modulation sources: by default x drives pitch selection,
+		y drives velocity, and z drives duration.
+
+		The Lorenz attractor is deterministic but extremely sensitive to initial
+		conditions: changing ``x0`` by even 0.001 produces a divergent trajectory
+		over time.  This makes it ideal for cycle-by-cycle variation — pass
+		``x0=p.cycle * 0.001`` to generate a unique but slowly evolving phrase
+		each bar.
+
+		A custom ``mapping`` callable can override the default x/y/z → pitch/vel/dur
+		assignment, or return ``None`` for a rest.
+
+		Parameters:
+			pitches: Pitch pool.  The x-axis selects an index: ``int(x * len(pitches)) % len(pitches)``.
+			step: Time between notes in beats.  Default 0.25 (16th note).
+			velocity: Fixed velocity or ``(low, high)`` tuple.  Overridden by ``mapping``.
+			duration: Maximum note duration.  z is scaled to ``[0.05, duration]``.
+			    Overridden by ``mapping``.
+			dt: Integration time step.  Default 0.01.
+			sigma, rho, beta: Lorenz parameters.  Defaults produce the classic
+			    butterfly attractor (chaotic regime).
+			x0, y0, z0: Initial conditions.  Use ``x0=p.cycle * small_delta``
+			    for slowly evolving variation.
+			mapping: Optional callable ``(x, y, z) -> (pitch, velocity, duration)``
+			    or ``None`` for rest.
+
+		Example:
+			```python
+			scale = [60, 62, 64, 65, 67, 69, 71, 72]
+			p.lorenz(scale, step=0.25, velocity=(50, 110), x0=p.cycle * 0.002)
+			```
+		"""
+
+		if not pitches:
+			raise ValueError("pitches list cannot be empty")
+
+		n_steps = int(self._pattern.length / step)
+		points = subsequence.sequence_utils.lorenz_attractor(
+			n_steps, dt=dt, sigma=sigma, rho=rho, beta=beta, x0=x0, y0=y0, z0=z0
+		)
+
+		beat = 0.0
+
+		for x, y, z in points:
+
+			if mapping is not None:
+				result = mapping(x, y, z)
+				if result is not None:
+					p_pitch, p_vel, p_dur = result
+					self.note(pitch=p_pitch, beat=beat, velocity=p_vel, duration=p_dur)
+			else:
+				pitch_idx = int(x * len(pitches)) % len(pitches)
+				p_pitch = pitches[pitch_idx]
+				if isinstance(velocity, tuple):
+					p_vel = int(velocity[0] + y * (velocity[1] - velocity[0]))
+				else:
+					p_vel = int(40 + y * 87)
+				p_dur = 0.05 + z * max(0.0, duration - 0.05)
+				self.note(pitch=p_pitch, beat=beat, velocity=p_vel, duration=p_dur)
+
+			beat += step
+
+	def reaction_diffusion (
+		self,
+		pitch: typing.Union[int, str],
+		threshold: float = 0.5,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		duration: float = 0.1,
+		feed_rate: float = 0.055,
+		kill_rate: float = 0.062,
+		steps: int = 1000,
+		no_overlap: bool = False,
+		dropout: float = 0.0,
+		rng: typing.Optional[random.Random] = None,
+	) -> None:
+
+		"""Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation.
+
+		Simulates the Gray-Scott model on a ring of ``_default_grid`` cells,
+		then thresholds the final V-concentration to produce a binary hit
+		pattern.  Cells where concentration exceeds ``threshold`` become note
+		events.
+
+		Unlike cellular automata — where rules are discrete and the state is
+		binary — reaction-diffusion evolves a continuous concentration field
+		governed by diffusion rates and chemical reactions.  The resulting
+		spatial patterns (spots, stripes, travelling waves) have an organic,
+		biological character that maps naturally to rhythm.
+
+		The ``feed_rate`` and ``kill_rate`` parameters control pattern type:
+		typical values that produce spots (useful rhythms) range from 0.020–0.062
+		for feed and 0.045–0.069 for kill.  The defaults (F=0.055, k=0.062)
+		produce a stable spotted pattern.
+
+		Parameters:
+			pitch: MIDI note number or drum name.
+			threshold: V-concentration threshold for note placement (0.0–1.0).
+			    Lower values produce denser patterns.
+			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per step.
+			duration: Note duration in beats.
+			feed_rate: Rate of U replenishment.  Default 0.055.
+			kill_rate: Rate of V removal.  Default 0.062.
+			steps: Number of simulation iterations.  More = more developed
+			    pattern.  Default 1000.
+			no_overlap: Skip steps where ``pitch`` is already sounding.
+			dropout: Probability [0.0–1.0] of randomly skipping any active step.
+			rng: Random number generator.  Defaults to ``self.rng``.
+
+		Example:
+			```python
+			# Organic kick pattern from reaction-diffusion
+			p.reaction_diffusion("kick_1", threshold=0.4, feed_rate=0.037, kill_rate=0.060)
+			```
+		"""
+
+		if rng is None:
+			rng = self.rng
+
+		concentrations = subsequence.sequence_utils.reaction_diffusion_1d(
+			width=self._default_grid,
+			steps=steps,
+			feed_rate=feed_rate,
+			kill_rate=kill_rate,
+		)
+
+		sequence = [1 if c > threshold else 0 for c in concentrations]
+
+		if isinstance(velocity, tuple):
+			# Map concentration to velocity range for active steps.
+			step_dur = self._pattern.length / len(sequence)
+			midi_vel_lo, midi_vel_hi = velocity
+			for i, (hit, conc) in enumerate(zip(sequence, concentrations)):
+				if hit == 0:
+					continue
+				if dropout > 0 and rng.random() < dropout:
+					continue
+				vel = int(midi_vel_lo + conc * (midi_vel_hi - midi_vel_lo))
+				self.note(pitch=pitch, beat=i * step_dur, velocity=vel, duration=duration)
+		else:
+			self._place_rhythm_sequence(sequence, pitch, int(velocity), duration, dropout, rng, no_overlap)
+
+	def self_avoiding_walk (
+		self,
+		pitches: typing.List[typing.Union[int, str]],
+		step: float = 0.25,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		duration: float = 0.2,
+		rng: typing.Optional[random.Random] = None,
+	) -> None:
+
+		"""Generate a melody using a self-avoiding random walk.
+
+		A self-avoiding walk moves ±1 step through a pitch index space, tracking
+		visited positions and refusing to revisit them.  When the walk is trapped
+		(all neighbours visited), the visited set resets and the walk continues
+		from the current position — creating natural phrase boundaries.
+
+		Compared to :func:`random_walk`, the self-avoiding variant guarantees
+		pitch diversity within each phrase: no pitch repeats until the walk
+		resets.  The contiguous step motion (never skipping pitches) gives
+		melodies a smooth, step-wise quality with occasional direction reversals.
+
+		Parameters:
+			pitches: Ordered list of MIDI note numbers or note strings.  The walk
+			    moves through indices ``[0, len(pitches) - 1]``, mapping each to
+			    the corresponding pitch.
+			step: Time between notes in beats.  Default 0.25 (16th note).
+			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
+			duration: Note duration in beats.
+			rng: Random number generator.  Defaults to ``self.rng``.
+
+		Example:
+			```python
+			scale_notes = [60, 62, 64, 65, 67, 69, 71, 72]
+			p.self_avoiding_walk(scale_notes, step=0.25, velocity=(60, 100))
+			```
+		"""
+
+		if rng is None:
+			rng = self.rng
+
+		if not pitches:
+			raise ValueError("pitches list cannot be empty")
+
+		n_steps = int(self._pattern.length / step)
+		indices = subsequence.sequence_utils.self_avoiding_walk(
+			n=n_steps,
+			low=0,
+			high=len(pitches) - 1,
+			rng=rng,
+		)
+
+		beat = 0.0
+
+		for idx in indices:
+			vel = (
+				rng.randint(velocity[0], velocity[1])
+				if isinstance(velocity, tuple)
+				else int(velocity)
+			)
+			self.note(pitch=pitches[idx], beat=beat, velocity=vel, duration=duration)
+			beat += step
+
 	def thin (
 		self,
 		pitch: typing.Optional[typing.Union[int, str]] = None,

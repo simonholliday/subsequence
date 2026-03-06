@@ -1174,3 +1174,333 @@ def test_bank_select_roundtrip () -> None:
 	for bank in [0, 1, 127, 128, 255, 256, 1000, 16383]:
 		msb, lsb = subsequence.midi_utils.bank_select(bank)
 		assert (msb << 7) | lsb == bank
+
+
+# --- thue_morse ---
+
+
+def test_thue_morse_correct_length () -> None:
+
+	"""thue_morse(n) returns a list of exactly n values."""
+
+	assert len(subsequence.sequence_utils.thue_morse(16)) == 16
+
+
+def test_thue_morse_zero_returns_empty () -> None:
+
+	"""thue_morse(0) returns an empty list."""
+
+	assert subsequence.sequence_utils.thue_morse(0) == []
+
+
+def test_thue_morse_negative_returns_empty () -> None:
+
+	"""thue_morse with negative n returns an empty list."""
+
+	assert subsequence.sequence_utils.thue_morse(-5) == []
+
+
+def test_thue_morse_binary_values () -> None:
+
+	"""All values in thue_morse output are 0 or 1."""
+
+	result = subsequence.sequence_utils.thue_morse(32)
+	assert all(v in (0, 1) for v in result)
+
+
+def test_thue_morse_known_prefix () -> None:
+
+	"""First 8 values match the well-known sequence 0 1 1 0 1 0 0 1."""
+
+	assert subsequence.sequence_utils.thue_morse(8) == [0, 1, 1, 0, 1, 0, 0, 1]
+
+
+def test_thue_morse_deterministic () -> None:
+
+	"""Two calls with the same n produce identical results."""
+
+	assert (
+		subsequence.sequence_utils.thue_morse(24)
+		== subsequence.sequence_utils.thue_morse(24)
+	)
+
+
+# --- de_bruijn ---
+
+
+def test_de_bruijn_correct_length () -> None:
+
+	"""de_bruijn(k, n) returns a list of k**n values."""
+
+	assert len(subsequence.sequence_utils.de_bruijn(2, 3)) == 8
+
+
+def test_de_bruijn_zero_k_returns_empty () -> None:
+
+	"""de_bruijn(0, n) returns an empty list."""
+
+	assert subsequence.sequence_utils.de_bruijn(0, 3) == []
+
+
+def test_de_bruijn_zero_n_returns_empty () -> None:
+
+	"""de_bruijn(k, 0) returns an empty list."""
+
+	assert subsequence.sequence_utils.de_bruijn(3, 0) == []
+
+
+def test_de_bruijn_symbol_range () -> None:
+
+	"""All symbols in de_bruijn(k, n) are in [0, k-1]."""
+
+	result = subsequence.sequence_utils.de_bruijn(3, 2)
+	assert all(0 <= v <= 2 for v in result)
+
+
+def test_de_bruijn_all_subsequences_present () -> None:
+
+	"""Every n-gram over k symbols appears in the cyclic de Bruijn sequence."""
+
+	k, n = 2, 3
+	seq = subsequence.sequence_utils.de_bruijn(k, n)
+	cyclic = seq + seq[:n - 1]
+
+	ngrams = set()
+	for i in range(len(seq)):
+		ngram = tuple(cyclic[i:i + n])
+		ngrams.add(ngram)
+
+	expected = k ** n
+	assert len(ngrams) == expected
+
+
+def test_de_bruijn_deterministic () -> None:
+
+	"""Two calls with the same parameters produce identical results."""
+
+	assert (
+		subsequence.sequence_utils.de_bruijn(3, 2)
+		== subsequence.sequence_utils.de_bruijn(3, 2)
+	)
+
+
+# --- fibonacci_rhythm ---
+
+
+def test_fibonacci_rhythm_correct_length () -> None:
+
+	"""fibonacci_rhythm(n) returns a list of exactly n values."""
+
+	assert len(subsequence.sequence_utils.fibonacci_rhythm(8)) == 8
+
+
+def test_fibonacci_rhythm_zero_returns_empty () -> None:
+
+	"""fibonacci_rhythm(0) returns an empty list."""
+
+	assert subsequence.sequence_utils.fibonacci_rhythm(0) == []
+
+
+def test_fibonacci_rhythm_within_range () -> None:
+
+	"""All positions are within [0.0, length)."""
+
+	result = subsequence.sequence_utils.fibonacci_rhythm(20, length=4.0)
+	assert all(0.0 <= v < 4.0 for v in result)
+
+
+def test_fibonacci_rhythm_sorted () -> None:
+
+	"""Output is sorted in ascending order."""
+
+	result = subsequence.sequence_utils.fibonacci_rhythm(16)
+	assert result == sorted(result)
+
+
+def test_fibonacci_rhythm_deterministic () -> None:
+
+	"""Two calls with the same arguments produce identical results."""
+
+	assert (
+		subsequence.sequence_utils.fibonacci_rhythm(12)
+		== subsequence.sequence_utils.fibonacci_rhythm(12)
+	)
+
+
+def test_fibonacci_rhythm_no_duplicates () -> None:
+
+	"""All positions are distinct for a reasonable step count."""
+
+	result = subsequence.sequence_utils.fibonacci_rhythm(16, length=4.0)
+	assert len(result) == len(set(result))
+
+
+# --- lorenz_attractor ---
+
+
+def test_lorenz_attractor_correct_length () -> None:
+
+	"""lorenz_attractor(n) returns a list of exactly n tuples."""
+
+	assert len(subsequence.sequence_utils.lorenz_attractor(16)) == 16
+
+
+def test_lorenz_attractor_zero_returns_empty () -> None:
+
+	"""lorenz_attractor(0) returns an empty list."""
+
+	assert subsequence.sequence_utils.lorenz_attractor(0) == []
+
+
+def test_lorenz_attractor_three_components () -> None:
+
+	"""Each element is a 3-tuple."""
+
+	result = subsequence.sequence_utils.lorenz_attractor(8)
+	assert all(len(t) == 3 for t in result)
+
+
+def test_lorenz_attractor_normalised_range () -> None:
+
+	"""All x, y, z components are in [0.0, 1.0]."""
+
+	result = subsequence.sequence_utils.lorenz_attractor(100)
+	for x, y, z in result:
+		assert 0.0 <= x <= 1.0
+		assert 0.0 <= y <= 1.0
+		assert 0.0 <= z <= 1.0
+
+
+def test_lorenz_attractor_deterministic () -> None:
+
+	"""Same parameters produce identical output."""
+
+	a = subsequence.sequence_utils.lorenz_attractor(20, x0=0.1, y0=0.0, z0=0.0)
+	b = subsequence.sequence_utils.lorenz_attractor(20, x0=0.1, y0=0.0, z0=0.0)
+	assert a == b
+
+
+def test_lorenz_attractor_sensitive_to_initial_conditions () -> None:
+
+	"""Different initial conditions eventually produce different output."""
+
+	a = subsequence.sequence_utils.lorenz_attractor(100, x0=0.1)
+	b = subsequence.sequence_utils.lorenz_attractor(100, x0=0.2)
+	assert a != b
+
+
+# --- reaction_diffusion_1d ---
+
+
+def test_reaction_diffusion_1d_correct_length () -> None:
+
+	"""reaction_diffusion_1d(width) returns a list of exactly width values."""
+
+	assert len(subsequence.sequence_utils.reaction_diffusion_1d(16, steps=100)) == 16
+
+
+def test_reaction_diffusion_1d_zero_returns_empty () -> None:
+
+	"""reaction_diffusion_1d(0) returns an empty list."""
+
+	assert subsequence.sequence_utils.reaction_diffusion_1d(0) == []
+
+
+def test_reaction_diffusion_1d_normalised_range () -> None:
+
+	"""All values are in [0.0, 1.0]."""
+
+	result = subsequence.sequence_utils.reaction_diffusion_1d(16, steps=500)
+	assert all(0.0 <= v <= 1.0 for v in result)
+
+
+def test_reaction_diffusion_1d_deterministic () -> None:
+
+	"""Same parameters produce identical output."""
+
+	a = subsequence.sequence_utils.reaction_diffusion_1d(16, steps=200)
+	b = subsequence.sequence_utils.reaction_diffusion_1d(16, steps=200)
+	assert a == b
+
+
+def test_reaction_diffusion_1d_has_structure () -> None:
+
+	"""Not all values are identical for default parameters."""
+
+	result = subsequence.sequence_utils.reaction_diffusion_1d(16, steps=500)
+	assert len(set(result)) > 1
+
+
+def test_reaction_diffusion_1d_different_rates_differ () -> None:
+
+	"""Different feed/kill rates produce different patterns."""
+
+	a = subsequence.sequence_utils.reaction_diffusion_1d(16, steps=300, feed_rate=0.055, kill_rate=0.062)
+	b = subsequence.sequence_utils.reaction_diffusion_1d(16, steps=300, feed_rate=0.037, kill_rate=0.060)
+	assert a != b
+
+
+# --- self_avoiding_walk ---
+
+
+def test_self_avoiding_walk_correct_length () -> None:
+
+	"""self_avoiding_walk(n) returns a list of exactly n values."""
+
+	rng = random.Random(1)
+	assert len(subsequence.sequence_utils.self_avoiding_walk(16, 0, 7, rng)) == 16
+
+
+def test_self_avoiding_walk_zero_returns_empty () -> None:
+
+	"""self_avoiding_walk(0) returns an empty list."""
+
+	rng = random.Random(1)
+	assert subsequence.sequence_utils.self_avoiding_walk(0, 0, 7, rng) == []
+
+
+def test_self_avoiding_walk_within_range () -> None:
+
+	"""All values are within [low, high]."""
+
+	rng = random.Random(1)
+	result = subsequence.sequence_utils.self_avoiding_walk(16, 2, 8, rng)
+	assert all(2 <= v <= 8 for v in result)
+
+
+def test_self_avoiding_walk_no_immediate_repeat () -> None:
+
+	"""No two consecutive values are identical (walk always moves)."""
+
+	rng = random.Random(1)
+	result = subsequence.sequence_utils.self_avoiding_walk(20, 0, 9, rng)
+	for i in range(len(result) - 1):
+		assert result[i] != result[i + 1]
+
+
+def test_self_avoiding_walk_step_size_one () -> None:
+
+	"""Each step changes the value by exactly 1."""
+
+	rng = random.Random(1)
+	result = subsequence.sequence_utils.self_avoiding_walk(16, 0, 9, rng)
+	for i in range(len(result) - 1):
+		assert abs(result[i + 1] - result[i]) == 1
+
+
+def test_self_avoiding_walk_deterministic () -> None:
+
+	"""Same seed produces identical output."""
+
+	a = subsequence.sequence_utils.self_avoiding_walk(16, 0, 7, random.Random(99))
+	b = subsequence.sequence_utils.self_avoiding_walk(16, 0, 7, random.Random(99))
+	assert a == b
+
+
+def test_self_avoiding_walk_custom_start () -> None:
+
+	"""First value equals the start parameter."""
+
+	rng = random.Random(1)
+	result = subsequence.sequence_utils.self_avoiding_walk(8, 0, 9, rng, start=3)
+	assert result[0] == 3
