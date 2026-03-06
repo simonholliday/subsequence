@@ -216,6 +216,91 @@ class PatternBuilder(
 			duration_beats = duration
 		)
 
+	def note_on (self, pitch: typing.Union[int, str], beat: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY) -> None:
+
+		"""
+		Place an explicit Note On event without a duration.
+		Useful for drones or infinite sustains. Must be paired with
+		a `note_off()` later to silence the note.
+		
+		Parameters:
+			pitch: MIDI note number (0-127) or a drum name string.
+			beat: The beat position (0.0 is the start).
+			velocity: MIDI velocity (0-127, default 100).
+		"""
+
+		midi_pitch = self._resolve_pitch(pitch)
+		if beat < 0:
+			beat = self._pattern.length + beat
+
+		self._pattern.add_raw_note_beats(
+			message_type = 'note_on',
+			beat_position = beat,
+			pitch = midi_pitch,
+			velocity = velocity
+		)
+
+	def note_off (self, pitch: typing.Union[int, str], beat: float) -> None:
+
+		"""
+		Place an explicit Note Off event to silence a drone.
+		
+		Parameters:
+			pitch: MIDI note number (0-127) or a drum name string.
+			beat: The beat position (0.0 is the start).
+		"""
+
+		midi_pitch = self._resolve_pitch(pitch)
+		if beat < 0:
+			beat = self._pattern.length + beat
+
+		self._pattern.add_raw_note_beats(
+			message_type = 'note_off',
+			beat_position = beat,
+			pitch = midi_pitch,
+			velocity = 0
+		)
+
+	def drone (self, pitch: typing.Union[int, str], beat: float = 0.0, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY) -> None:
+
+		"""
+		A musical alias for `note_on`. Places a raw Note On event without a duration,
+		typically used for sustained notes that span multiple cycles.
+		Must be silenced later using `drone_off()`.
+		
+		Parameters:
+			pitch: MIDI note number (0-127) or a drum name string.
+			beat: The beat position (0.0 is the start).
+			velocity: MIDI velocity (0-127, default 100).
+		"""
+
+		self.note_on(pitch, beat=beat, velocity=velocity)
+
+	def drone_off (self, pitch: typing.Union[int, str]) -> None:
+
+		"""
+		A musical alias for `note_off`. Places a raw Note Off event at beat 0.0.
+		Used to stop a sequence started by `drone()`.
+		
+		Parameters:
+			pitch: MIDI note number (0-127) or a drum name string.
+		"""
+
+		self.note_off(pitch, beat=0.0)
+
+	def silence (self, beat: float = 0.0) -> None:
+
+		"""
+		Sends an 'All Notes Off' (CC 123) and 'All Sound Off' (CC 120) message
+		on the pattern's channel to immediately silence any ringing notes or drones.
+		
+		Parameters:
+			beat: The beat position (0.0 is the start).
+		"""
+
+		self.cc(control=123, value=0, beat=beat)
+		self.cc(control=120, value=0, beat=beat)
+
 	def hit (self, pitch: typing.Union[int, str], beats: typing.List[float], velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1) -> None:
 
 		"""
@@ -574,6 +659,52 @@ class PatternBuilder(
 
 		if legato is not None:
 			self.legato(legato)
+
+	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], step: float = 0.25, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0) -> None:
+
+		"""
+		Play a chord as an arpeggio in a specific or random order.
+
+		This generates the chord tones and maps them according to the provided
+		``order`` list of indices, then delegates to ``arpeggio()``. It is ideal
+		for broken chords or random chord-tone melodies.
+
+		Because the order is a list of node indices, the number of generated tones
+		is automatically set to ``max(order) + 1`` to ensure all indices are valid.
+		Higher indices will cycle into the next octave.
+
+		Parameters:
+			chord_obj: The chord to play (usually from ``p.section.chord``).
+			root: MIDI root note (e.g., 60 for Middle C).
+			order: List of indices into the chord tones array, dictating playback order.
+			step: Time between each note in beats (default 0.25 = 16th note).
+			velocity: MIDI velocity for all notes (default 85).
+			duration: Note duration in beats. Defaults to ``step``.
+			inversion: Specific chord inversion (ignored if voice leading is on).
+
+		Example::
+
+			# A 5-note broken chord using a predefined pattern
+			p.broken_chord(chord, root=60, order=[4, 0, 2, 1, 3], step=0.25)
+
+			# A fully random broken chord using the pattern's deterministic RNG
+			order = list(range(5))
+			p.rng.shuffle(order)
+			p.broken_chord(chord, root=60, order=order)
+		"""
+
+		if not order:
+			raise ValueError("order list cannot be empty")
+
+		for idx in order:
+			if not isinstance(idx, int) or idx < 0:
+				raise ValueError("order must contain only non-negative integers")
+
+		required_count = max(order) + 1
+		tones = chord_obj.tones(root=root, inversion=inversion, count=required_count)
+		pitches = [tones[i] for i in order]
+
+		self.arpeggio(pitches=pitches, step=step, velocity=velocity, duration=duration, direction="up")
 
 	def swing (self, amount: float = 57.0, grid: float = 0.25, strength: float = 1.0) -> None:
 

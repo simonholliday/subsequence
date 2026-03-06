@@ -241,6 +241,102 @@ def test_integer_pitch_bypasses_map () -> None:
 	assert pattern.steps[0].notes[0].pitch == 60
 
 
+def test_note_on_adds_raw_event () -> None:
+
+	"""
+	p.note_on() should append to pattern.raw_note_events without creating steps.
+	"""
+
+	pattern, builder = _make_builder()
+
+	builder.note_on(60, beat=1.0, velocity=95)
+
+	assert not pattern.steps
+	assert len(pattern.raw_note_events) == 1
+	event = pattern.raw_note_events[0]
+	assert event.message_type == 'note_on'
+	assert event.pulse == int(1.0 * subsequence.constants.MIDI_QUARTER_NOTE)
+	assert event.pitch == 60
+	assert event.velocity == 95
+
+
+def test_note_off_adds_raw_event () -> None:
+
+	"""
+	p.note_off() should append to pattern.raw_note_events without creating steps.
+	"""
+
+	pattern, builder = _make_builder()
+
+	builder.note_off(60, beat=2.0)
+
+	assert not pattern.steps
+	assert len(pattern.raw_note_events) == 1
+	event = pattern.raw_note_events[0]
+	assert event.message_type == 'note_off'
+	assert event.pulse == int(2.0 * subsequence.constants.MIDI_QUARTER_NOTE)
+	assert event.pitch == 60
+	assert event.velocity == 0
+
+
+def test_drone_adds_raw_event_at_zero () -> None:
+
+	"""
+	p.drone() should alias p.note_on() at beat 0.0 by default.
+	"""
+
+	pattern, builder = _make_builder()
+	builder.drone(36, velocity=85)
+
+	assert len(pattern.raw_note_events) == 1
+	event = pattern.raw_note_events[0]
+	assert event.message_type == 'note_on'
+	assert event.pulse == 0
+	assert event.pitch == 36
+	assert event.velocity == 85
+
+
+def test_drone_off_adds_raw_event_at_zero () -> None:
+
+	"""
+	p.drone_off() should alias p.note_off() at beat 0.0.
+	"""
+
+	pattern, builder = _make_builder()
+	builder.drone_off(36)
+
+	assert len(pattern.raw_note_events) == 1
+	event = pattern.raw_note_events[0]
+	assert event.message_type == 'note_off'
+	assert event.pulse == 0
+	assert event.pitch == 36
+	assert event.velocity == 0
+
+
+def test_silence_adds_all_notes_sound_off () -> None:
+
+	"""
+	p.silence() should append CC 123 and 120 messages at beat 0.0 by default.
+	"""
+
+	pattern, builder = _make_builder()
+	builder.silence(beat=1.0)
+
+	assert len(pattern.cc_events) == 2
+	
+	cc123_event = pattern.cc_events[0]
+	assert cc123_event.message_type == 'control_change'
+	assert cc123_event.control == 123
+	assert cc123_event.value == 0
+	assert cc123_event.pulse == int(1.0 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	cc120_event = pattern.cc_events[1]
+	assert cc120_event.message_type == 'control_change'
+	assert cc120_event.control == 120
+	assert cc120_event.value == 0
+	assert cc120_event.pulse == int(1.0 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+
 def test_chord_tones_method () -> None:
 
 	"""
@@ -1588,6 +1684,52 @@ def test_strum_legato_sustain_clash_raises () -> None:
 
 	with pytest.raises(ValueError, match="mutually exclusive"):
 		builder.strum(chord, root=60, sustain=True, legato=0.9)
+
+
+# --- Broken Chord ---
+
+
+def test_broken_chord_places_notes_in_order () -> None:
+
+	"""broken_chord should map order indices correctly."""
+
+	pattern, builder = _make_builder(length=4)
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	builder.broken_chord(chord, root=60, order=[2, 0, 1], step=0.25)
+
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	positions = sorted(pattern.steps.keys())
+	assert len(positions) == 16 # 4 beats / 0.25 step = 16 steps
+	assert positions[0] == 0
+	assert positions[1] == int(0.25 * ppq)
+	assert positions[2] == int(0.50 * ppq)
+
+	# Verify the cycling pitch order: 67, 60, 64
+	pitches = [pattern.steps[pos].notes[0].pitch for pos in positions]
+	assert pitches[:6] == [67, 60, 64, 67, 60, 64]
+
+
+def test_broken_chord_empty_order_raises () -> None:
+
+	"""broken_chord with empty order should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="order list cannot be empty"):
+		builder.broken_chord(chord, root=60, order=[])
+
+
+def test_broken_chord_negative_index_raises () -> None:
+
+	"""broken_chord with negative index should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="non-negative integers"):
+		builder.broken_chord(chord, root=60, order=[0, -1])
 
 
 # --- p.param() ---

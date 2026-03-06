@@ -543,6 +543,21 @@ class Sequencer:
 
 				heapq.heappush(self.event_queue, midi_event)
 
+			# Raw Note On/Off events (drones)
+			for note_ev in getattr(pattern, 'raw_note_events', []):
+				
+				abs_pulse = start_pulse + note_ev.pulse
+				
+				midi_event = MidiEvent(
+					pulse = abs_pulse,
+					message_type = note_ev.message_type,
+					channel = pattern.channel,
+					note = note_ev.pitch,
+					velocity = note_ev.velocity
+				)
+				
+				heapq.heappush(self.event_queue, midi_event)
+
 			# OSC events
 			for osc_event in getattr(pattern, 'osc_events', []):
 

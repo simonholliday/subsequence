@@ -17,9 +17,10 @@ What makes it different:
 - **A rich algorithmic palette.** Euclidean and Bresenham rhythm
   generators, cellular automata (1D and 2D), L-system string rewriting,
   Markov chains, cognitive melody via the Narmour model, probability-
-  weighted ghost notes, position-aware thinning, Perlin and pink noise,
-  logistic chaos maps - plus groove templates, velocity shaping, and
-  pitch-bend automation to shape how they sound.
+  weighted ghost notes, position-aware thinning, drones and continuous
+  notes, Perlin and pink noise, logistic chaos maps - plus groove
+  templates, velocity shaping, and pitch-bend automation to shape
+  how they sound.
 - **Stateful patterns that evolve.** Each pattern is a Python function
   rebuilt fresh every cycle with full context - current chord, section,
   cycle count, shared data from other patterns. A Euclidean rhythm can
@@ -48,10 +49,12 @@ Composition tools:
   ``perlin_2d()``, ``perlin_1d_sequence()``, ``perlin_2d_grid()``),
   deterministic chaos sequences (``logistic_map()``), pink 1/f noise
   (``pink_noise()``), L-system string rewriting (``p.lsystem()``),
-  Markov-chain generation (``p.markov()``), groove templates (``Groove.swing()``,
-  ``Groove.from_agr()``), swing via ``p.swing()`` (a shortcut for
-  ``Groove.swing()``), randomize, velocity shaping, dropout,
-  per-step probability, and polyrhythms via independent pattern lengths.
+  Markov-chain generation (``p.markov()``), drones and explicit note
+  on/off events (``p.drone()``, ``p.drone_off()``, ``p.silence()``),
+  groove templates (``Groove.swing()``, ``Groove.from_agr()``), swing via
+  ``p.swing()`` (a shortcut for ``Groove.swing()``), randomize,
+  velocity shaping, dropout, per-step probability, and polyrhythms
+  via independent pattern lengths.
 - **Melody generation.** ``p.melody()`` with ``MelodicState`` applies
   the Narmour Implication-Realization model to single-note lines:
   continuation after small steps, reversal after large leaps, chord-tone

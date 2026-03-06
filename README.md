@@ -11,7 +11,7 @@ It is a **compositional platform** for your studio - generating pure MIDI to con
 ### Why Subsequence?
 
 - **Plain Python, no custom language.** Write patterns in a standard, popular language - no domain-specific syntax to learn. Your music is versionable, shareable, and lives in standard `.py` files.
-- **A rich algorithmic palette.** Euclidean and Bresenham rhythm generators, cellular automata (1D and 2D), L-system string rewriting, Markov chains, cognitive melody via the Narmour model, probability-weighted ghost notes, position-aware thinning, Perlin and pink noise, logistic chaos maps - plus groove templates, velocity shaping, and pitch-bend automation to shape how they sound. These aren't isolated features - they combine freely inside the stateful rebuild loop, feeding into each other, so compositions emerge that no single algorithm could produce alone.
+- **A rich algorithmic palette.** Euclidean and Bresenham rhythm generators, cellular automata (1D and 2D), L-system string rewriting, Markov chains, cognitive melody via the Narmour model, probability-weighted ghost notes, position-aware thinning, drones and continuous notes, Perlin and pink noise, logistic chaos maps - plus groove templates, velocity shaping, and pitch-bend automation to shape how they sound. These aren't isolated features - they combine freely inside the stateful rebuild loop, feeding into each other, so compositions emerge that no single algorithm could produce alone.
 - **Infinite, evolving compositions.** Patterns rebuild each cycle with full context - chord, section, history, external data - so music can grow and develop indefinitely, or run to a fixed structure. Or both.
 - **Multiple APIs and notation styles.** Start with a one-line mini-notation drum pattern. Graduate to per-step control, harmonic injection, or the full Direct Pattern API - without changing tools.
 - **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition. The cognitive engine writes melodies that sound *human* because it models deep listener expectations.
@@ -111,7 +111,7 @@ Subsequence connects to your existing studio. Sync to your DAW's clock, or let i
 
 - **Rhythm and feel.** [Euclidean and Bresenham generators](#rhythm--pattern), [groove templates](#groove) (swing, shuffle, MPC pocket, or custom - including [Ableton .agr import](#ableton-agr-import)), randomize, velocity shaping[^vdc], dropout, per-step probability, polyrhythms via independent pattern lengths, multi-voice weighted Bresenham distribution (`bresenham_poly()`) with `no_overlap` collision avoidance, `ghost_fill()` for probability-biased ghost note layers, `thin()` for position-aware per-instrument note removal (the musical inverse of `ghost_fill`), `cellular_1d()` for evolving cellular-automaton rhythms, `cellular_2d()` for polyphonic Life-like 2D CA patterns, `logistic_map()` for a deterministic chaos modulation source (dial from stable → periodic → chaos with one `r` parameter), `pink_noise()` for 1/f ("pink") noise sequences with natural multi-scale variation, `p.lsystem()` for self-similar pattern generation via L-system string rewriting (Fibonacci rhythms, fractal melodic contours), and `p.markov()` for Markov-chain melody and bassline generation.
 - **Melody generation.** `p.melody()` with `MelodicState` applies the [Narmour Implication-Realization model](#melody-generation) to single-note melodic lines: continuation after small steps, direction reversal after large leaps, chord-tone weighting, range gravity, and pitch-diversity penalty. History persists across bar rebuilds for natural phrase continuity.
-- **Expression.** CC messages and ramps, pitch bend, note-correlated [bend/portamento/slide](#pitch-bend-automation), program changes, SysEx, and [OSC output](#osc-integration) - all from within patterns.
+- **Expression.** CC messages and ramps, pitch bend, note-correlated [bend/portamento/slide](#pitch-bend-automation), drones and continuous notes ([`p.drone()`, `p.drone_off()`, `p.silence()`](#drones-and-sustained-notes)), program changes, SysEx, and [OSC output](#osc-integration) - all from within patterns.
 - **Form and structure.** Define [musical form](#form-and-sections) as a weighted graph, ordered list, or generator. Patterns read `p.section` to adapt. [Conductor signals](#the-conductor) (LFOs, ramps) shape intensity over time.
 - **[Mini-notation.](#mini-notation)** Write `p.seq("x x [x x] x", pitch="kick")` - subdivisions, rests, sustains, per-step probability suffixes. Quick ideas in one line.
 - **Scales and quantization.** `p.quantize("G", "dorian")` snaps notes to any named scale. Built-in western and [non-western scales](#scale-quantization) (Hirajōshi, In-Sen, Iwato, Yo, Egyptian, pentatonics), plus `register_scale()` for your own.
@@ -640,6 +640,22 @@ def guitar (p, chord):
     p.strum(chord, root=52, direction="down", offset=0.03)
 ```
 
+### Broken chords
+
+`p.broken_chord()` generates the required chord tones and sequences them sequentially according to an `order` map. It delegates internally to `p.arpeggio()`.
+
+```python
+@composition.pattern(channel=0, length=4)
+def arp (p, chord):
+    # Fixed broken chord order
+    p.broken_chord(chord, root=60, order=[4, 0, 2, 1, 3], step=0.25)
+    
+    # Or fully randomised broken chords, using the pattern's deterministic RNG
+    order = list(range(5))
+    p.rng.shuffle(order)
+    p.broken_chord(chord, root=60, order=order, step=0.25)
+```
+
 ### Legato chords
 
 Pass `legato=` directly to `chord()` or `strum()` to collapse the two-step pattern into one call. The value is passed straight to `p.legato()`, stretching each note to fill the given fraction of the gap to the next note:
@@ -656,6 +672,27 @@ def guitar (p, chord):
 ```
 
 `sustain=True` and `legato=` are mutually exclusive - passing both raises a `ValueError`.
+
+### Drones and sustained notes
+
+Unlike `p.note()` which automatically manages duration and Note Off events, `p.drone()` and `p.note_on()` create infinite sustains. These are "raw" events that do not create `Step` entries-they are scheduled directly. This allows you to start a note in one cycle and stop it many bars later.
+
+*   `p.drone(pitch, beat=0.0, velocity=100)`: A musical alias for `p.note_on()`.
+*   `p.drone_off(pitch)`: Stops a note started by `p.drone()` (alias for `p.note_off()` at beat 0.0).
+*   `p.silence(beat=0.0)`: Sends "All Notes Off" (CC 123) and "All Sound Off" (CC 120) to the pattern's channel.
+
+```python
+@composition.pattern(channel=0, length=16)
+def drone_manager (p):
+    # Start a drone on the first bar
+    if p.bar == 0:
+        p.drone(notes.C2, velocity=80)
+    
+    # Silence it at the end of the 16th bar
+    if p.bar == 16:
+        p.drone_off(notes.C2)
+        # Or p.silence() to clean up everything
+```
 
 ### Automatic voice leading
 

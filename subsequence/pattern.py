@@ -33,6 +33,20 @@ class CcEvent:
 
 
 @dataclasses.dataclass
+class RawNoteEvent:
+
+	"""
+	An explicit Note On or Note Off event at a pulse position, ignoring durations.
+	Used for drones and infinite notes.
+	"""
+
+	pulse: int
+	message_type: str					# 'note_on' or 'note_off'
+	pitch: int
+	velocity: int = 0
+
+
+@dataclasses.dataclass
 class OscEvent:
 
 	"""
@@ -81,6 +95,7 @@ class Pattern:
 		self.steps: typing.Dict[int, Step] = {}
 		self.cc_events: typing.List[CcEvent] = []
 		self.osc_events: typing.List[OscEvent] = []
+		self.raw_note_events: typing.List[RawNoteEvent] = []
 
 
 	def add_note (self, position: int, pitch: int, velocity: int, duration: int) -> None:
@@ -221,6 +236,33 @@ class Pattern:
 			)
 			beat += step_beats
 			pitch_index += 1
+
+
+	def add_raw_note_beats (self, message_type: str, beat_position: float, pitch: int, velocity: int = 0, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+
+		"""
+		Add a raw Note On or Note Off event at a beat position (ignores duration).
+		"""
+
+		if message_type not in ('note_on', 'note_off'):
+			raise ValueError("message_type must be 'note_on' or 'note_off'")
+
+		if beat_position < 0:
+			raise ValueError("Beat position cannot be negative")
+
+		if pulses_per_beat <= 0:
+			raise ValueError("Pulses per beat must be positive")
+
+		position = int(beat_position * pulses_per_beat)
+
+		self.raw_note_events.append(
+			RawNoteEvent(
+				pulse = position,
+				message_type = message_type,
+				pitch = pitch,
+				velocity = velocity
+			)
+		)
 
 
 	def on_reschedule (self) -> None:
