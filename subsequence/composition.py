@@ -24,7 +24,7 @@ import subsequence.web_ui
 import subsequence.weighted_graph
 import subsequence.conductor
 import subsequence.form_state
-from subsequence.form_state import FormState, SectionInfo
+import subsequence.link_clock
 
 
 logger = logging.getLogger(__name__)
@@ -413,7 +413,7 @@ async def schedule_task (
 
 async def schedule_form (
 	sequencer: subsequence.sequencer.Sequencer,
-	form_state: FormState,
+	form_state: subsequence.form_state.FormState,
 	reschedule_lookahead: int = 1
 ) -> None:
 
@@ -553,7 +553,7 @@ class Composition:
 	The top-level controller for a musical piece.
 	
 	The `Composition` object manages the global clock (Sequencer), the harmonic
-	progression (HarmonicState), the song structure (FormState), and all MIDI patterns.
+	progression (HarmonicState), the song structure (subsequence.form_state.FormState), and all MIDI patterns.
 	It serves as the main entry point for defining your music.
 	
 	Typical workflow:
@@ -622,7 +622,7 @@ class Composition:
 		self._section_progressions: typing.Dict[str, Progression] = {}
 		self._pending_patterns: typing.List[_PendingPattern] = []
 		self._pending_scheduled: typing.List[_PendingScheduled] = []
-		self._form_state: typing.Optional[FormState] = None
+		self._form_state: typing.Optional[subsequence.form_state.FormState] = None
 		self._builder_bar: int = 0
 		self._display: typing.Optional[subsequence.display.Display] = None
 		self._live_server: typing.Optional[subsequence.live_server.LiveServer] = None
@@ -670,8 +670,8 @@ class Composition:
 		return self._harmonic_state
 
 	@property
-	def form_state (self) -> typing.Optional["FormState"]:
-		"""The active ``FormState``, or ``None`` if ``form()`` has not been called."""
+	def form_state (self) -> typing.Optional["subsequence.form_state.FormState"]:
+		"""The active ``subsequence.form_state.FormState``, or ``None`` if ``form()`` has not been called."""
 		return self._form_state
 
 	@property
@@ -968,7 +968,7 @@ class Composition:
 
 		"""Jump the form to a named section immediately.
 
-		Delegates to :meth:`FormState.jump_to`.  Only works when the
+		Delegates to :meth:`subsequence.form_state.FormState.jump_to`.  Only works when the
 		composition uses graph-mode form (a dict passed to :meth:`form`).
 
 		The musical effect is heard at the *next pattern rebuild cycle* — already-
@@ -1002,7 +1002,7 @@ class Composition:
 		and takes effect at the natural section boundary.  The performer can
 		change their mind by calling ``form_next`` again before the boundary.
 
-		Delegates to :meth:`FormState.queue_next`.  Only works when the
+		Delegates to :meth:`subsequence.form_state.FormState.queue_next`.  Only works when the
 		composition uses graph-mode form (a dict passed to :meth:`form`).
 
 		Args:
@@ -1252,7 +1252,6 @@ class Composition:
 		"""
 
 		# Eagerly check that aalink is installed — fail early with a clear message.
-		import subsequence.link_clock
 		subsequence.link_clock._require_aalink()
 
 		self._link_quantum = quantum
@@ -1588,7 +1587,7 @@ class Composition:
 			```
 		"""
 
-		self._form_state = FormState(sections, loop=loop, start=start)
+		self._form_state = subsequence.form_state.FormState(sections, loop=loop, start=start)
 
 	def pattern (
 		self,
@@ -1959,7 +1958,6 @@ class Composition:
 
 		# Create Ableton Link clock if comp.link() was called.
 		if self._link_quantum is not None:
-			import subsequence.link_clock
 			self._sequencer._link_clock = subsequence.link_clock.LinkClock(
 				bpm = self.bpm,
 				quantum = self._link_quantum,
@@ -2214,9 +2212,6 @@ class Composition:
 
 				if self._muted:
 					return
-
-				# Import here to avoid circular import at module level.
-				import subsequence.pattern_builder
 
 				builder = subsequence.pattern_builder.PatternBuilder(
 					pattern = self,
