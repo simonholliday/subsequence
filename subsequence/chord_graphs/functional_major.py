@@ -30,8 +30,7 @@ class DiatonicMajor (subsequence.chord_graphs.ChordGraph):
 		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
 		chords = subsequence.chord_graphs.build_diatonic_chords(
-			key_pc,
-			subsequence.intervals.get_intervals("major_ionian"),
+			subsequence.intervals.scale_pitch_classes(key_pc, "ionian"),
 			subsequence.intervals.IONIAN_QUALITIES
 		)
 

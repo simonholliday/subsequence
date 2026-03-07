@@ -84,8 +84,7 @@ class Mixolydian (subsequence.chord_graphs.ChordGraph):
 
 		diatonic: typing.Set[subsequence.chords.Chord] = set(
 			subsequence.chord_graphs.build_diatonic_chords(
-				key_pc,
-				subsequence.intervals.get_intervals("mixolydian"),
+				subsequence.intervals.scale_pitch_classes(key_pc, "mixolydian"),
 				subsequence.intervals.MIXOLYDIAN_QUALITIES
 			)
 		)

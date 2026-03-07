@@ -206,6 +206,66 @@ def scale_pitch_classes (key_pc: int, mode: str = "ionian") -> typing.List[int]:
 	return [(key_pc + i) % 12 for i in intervals]
 
 
+def scale_notes (
+	key: str,
+	mode: str = "ionian",
+	low: int = 60,
+	high: int = 72,
+	count: typing.Optional[int] = None,
+) -> typing.List[int]:
+
+	"""Return MIDI note numbers for a scale within a pitch range.
+
+	Parameters:
+		key: Root note name (``"C"``, ``"F#"``, ``"Bb"``, etc.).
+		mode: Scale mode name. Supports all keys of :data:`SCALE_MODE_MAP`
+		      (e.g. ``"ionian"``, ``"dorian"``, ``"natural_minor"``,
+		      ``"major_pentatonic"``). Use :func:`register_scale` for custom scales.
+		low: Lowest MIDI note (inclusive). When ``count`` is set, this is
+		     the starting note from which the scale ascends.
+		high: Highest MIDI note (inclusive). Ignored when ``count`` is set.
+		count: Exact number of notes to return. Notes ascend from ``low``
+		       through successive scale degrees, cycling into higher octaves
+		       as needed. When ``None`` (default), all scale tones between
+		       ``low`` and ``high`` are returned.
+
+	Returns:
+		Sorted list of MIDI note numbers.
+
+	Examples:
+		```python
+		import subsequence
+		import subsequence.constants.midi_notes as notes
+
+		# C major: all tones from middle C to C5
+		subsequence.scale_notes("C", "ionian", low=notes.C4, high=notes.C5)
+		# → [60, 62, 64, 65, 67, 69, 71, 72]
+
+		# E natural minor (aeolian) across one octave
+		subsequence.scale_notes("E", "aeolian", low=notes.E2, high=notes.E3)
+		# → [40, 42, 43, 45, 47, 48, 50, 52]
+
+		# 15 notes of A minor pentatonic ascending from A3
+		subsequence.scale_notes("A", "minor_pentatonic", low=notes.A3, count=15)
+		# → [57, 60, 62, 64, 67, 69, 72, 74, 76, 79, 81, 84, 86, 88, 91]
+		```
+	"""
+
+	key_pc = subsequence.chords.key_name_to_pc(key)
+	pcs = set(scale_pitch_classes(key_pc, mode))
+
+	if count is not None:
+		result: typing.List[int] = []
+		pitch = low
+		while len(result) < count:
+			if pitch % 12 in pcs:
+				result.append(pitch)
+			pitch += 1
+		return result
+
+	return [p for p in range(low, high + 1) if p % 12 in pcs]
+
+
 def quantize_pitch (pitch: int, scale_pcs: typing.Sequence[int]) -> int:
 
 	"""

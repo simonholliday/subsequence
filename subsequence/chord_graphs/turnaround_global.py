@@ -18,8 +18,7 @@ def _build_major_key_chords (key_pc: int) -> typing.Dict[str, subsequence.chords
 	"""Return common functional chords for a major key root."""
 
 	chords = subsequence.chord_graphs.build_diatonic_chords(
-		key_pc,
-		subsequence.intervals.get_intervals("major_ionian"),
+		subsequence.intervals.scale_pitch_classes(key_pc, "ionian"),
 		subsequence.intervals.IONIAN_QUALITIES
 	)
 
@@ -78,10 +77,10 @@ def _add_minor_turnaround (
 		# Decision path: weight of zero disables minor turnarounds entirely.
 		return
 
-	scale_intervals = [0, 2, 3, 5, 7, 8, 10]
-	supertonic_pc = (key_pc + scale_intervals[1]) % 12
-	dominant_pc = (key_pc + scale_intervals[4]) % 12
-	tonic_pc = key_pc % 12
+	scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, "aeolian")
+	supertonic_pc = scale_pcs[1]
+	dominant_pc = scale_pcs[4]
+	tonic_pc = scale_pcs[0]
 
 	supertonic = subsequence.chords.Chord(root_pc=supertonic_pc, quality="half_diminished_7th")
 	dominant_7th = subsequence.chords.Chord(root_pc=dominant_pc, quality="dominant_7th")

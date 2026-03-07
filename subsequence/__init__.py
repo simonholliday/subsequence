@@ -75,8 +75,10 @@ Composition tools:
 - **Mini-notation.** ``p.seq("x x [x x] x", pitch="kick")`` - concise
   string syntax for rhythms, subdivisions, and per-step probability.
 - **Scales and quantization.** ``p.quantize()`` snaps notes to any
-  scale. Built-in western and non-western modes, plus
-  ``register_scale()`` for your own.
+  scale. ``scale_notes()`` generates a list of MIDI note numbers from
+  a key, mode, and range or note count - useful for arpeggios, Markov
+  chains, and melodic walks. Built-in western and non-western modes,
+  plus ``register_scale()`` for your own.
 - **Randomness tools.** Weighted choice, no-repeat shuffle, random
   walk, probability gates. Deterministic seeding (``seed=42``) makes
   every decision repeatable.
@@ -131,7 +133,7 @@ Community and Feedback:
 - **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
 - **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
 
-Package-level exports: ``Composition``, ``Groove``, ``MelodicState``, ``register_scale``, ``bank_select``.
+Package-level exports: ``Composition``, ``Groove``, ``MelodicState``, ``register_scale``, ``scale_notes``, ``bank_select``.
 """
 
 import subsequence.composition
@@ -145,4 +147,5 @@ Composition = subsequence.composition.Composition
 Groove = subsequence.groove.Groove
 MelodicState = subsequence.melodic_state.MelodicState
 register_scale = subsequence.intervals.register_scale
+scale_notes = subsequence.intervals.scale_notes
 bank_select = subsequence.midi_utils.bank_select

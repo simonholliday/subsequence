@@ -139,7 +139,7 @@ Subsequence connects to your existing studio. Sync to your DAW's clock, or let i
 - **Expression.** CC messages and ramps, pitch bend, note-correlated [bend/portamento/slide](#pitch-bend-automation), drones and continuous notes ([`p.drone()`, `p.drone_off()`, `p.silence()`](#drones-and-sustained-notes)), program changes, SysEx, and [OSC output](#osc-integration) - all from within patterns.
 - **Form and structure.** Define [musical form](#form-and-sections) as a weighted graph, ordered list, or generator. Patterns read `p.section` to adapt. [Conductor signals](#the-conductor) (LFOs, ramps) shape intensity over time.
 - **[Mini-notation.](#mini-notation)** Write `p.seq("x x [x x] x", pitch="kick")` - subdivisions, rests, sustains, per-step probability suffixes. Quick ideas in one line.
-- **Scales and quantization.** `p.quantize("G", "dorian")` snaps notes to any named scale. Built-in western and [non-western scales](#scale-quantization) (Hirajōshi, In-Sen, Iwato, Yo, Egyptian, pentatonics), plus `register_scale()` for your own.
+- **Scales and quantization.** `p.quantize("G", "dorian")` snaps notes to any named scale. `scale_notes("E", "aeolian", low=notes.E2, high=notes.E3)` generates a pitch list directly. Built-in western and [non-western scales](#scale-quantization) (Hirajōshi, In-Sen, Iwato, Yo, Egyptian, pentatonics), plus `register_scale()` for your own.
 - **Randomness tools.** Weighted choice, no-repeat shuffle, random walk, probability gates - controlled randomness via `subsequence.sequence_utils`. Deterministic seeding (`seed=42`) makes every decision repeatable.
 - **Pattern transforms.** Legato, staccato, reverse, double/half-time, shift, transpose, invert, randomize, `p.every()`, and `composition.layer()`.
 - **Two API levels.** [Composition API](#composition-api) for most musicians; [Direct Pattern API](#direct-pattern-api) for power users who need persistent state or custom scheduling.
@@ -261,7 +261,11 @@ p.cellular_1d("hi_hat_closed", rule=110, velocity=70) # Rule 110: complex / stru
 Andrey Markov introduced his probability chains in 1906 to analyse letter sequences in Pushkin's *Eugene Onegin* - proving that dependent random events could still obey the law of large numbers. The model became foundational to information theory, speech recognition, and algorithmic composition (Hiller and Isaacson's *Illiac Suite*, 1957 - one of the first computer-generated scores). `p.markov(pitches, transitions, step, velocity)` walks a weighted transition graph where each note influences only the next - local coherence without global structure. The transition weights define the style: tight weights produce stepwise motion, loose weights produce leaps.
 
 ```python
-scale = [60, 62, 64, 65, 67, 69, 71]
+import subsequence
+import subsequence.constants.midi_notes as notes
+
+# C major: one octave from middle C (C4–B4)
+scale = subsequence.scale_notes("C", "ionian", low=notes.C4, high=notes.B4)
 transitions = {i: {i: 3, i-1: 1, i+1: 1} for i in range(len(scale))}
 p.markov(scale, transitions, step=0.25, velocity=(60, 100))
 ```
@@ -293,10 +297,12 @@ def drums (p):
 Nicolaas Govert de Bruijn formalised these sequences in 1946, building on earlier work by Martin. A classic application: cracking rotary combination locks - a de Bruijn sequence of order n over k symbols contains every possible n-length combination exactly once, so you can test all combinations by sliding along a single string. `p.de_bruijn()` applies this to melody: over `k` pitches with window `n`, every possible `n`-gram appears exactly once across the bar - every pair (window=2) or triple (window=3) of consecutive pitches is covered. The output auto-fits to the bar length (like `lsystem`) or uses a fixed step.
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=1, length=4)
 def melody (p):
-	# All 9 possible 2-note transitions over a 3-note palette
-	p.de_bruijn([60, 62, 64], window=2, velocity=(60, 100))
+	# All 9 possible 2-note transitions over a C-D-E palette
+	p.de_bruijn([notes.C4, notes.D4, notes.E4], window=2, velocity=(60, 100))
 ```
 
 ### Fibonacci
@@ -315,9 +321,11 @@ def hi_hats (p):
 Meteorologist Edward Lorenz discovered his strange attractor in 1963 while simulating weather convection with three coupled differential equations. The trajectory never repeats, never settles, and diverges exponentially from nearby starting points - what he later called the "butterfly effect". `p.lorenz()` drives pitch, velocity, and duration from the three axes - correlated-but-independent modulation from a single chaotic source. Small changes to `x0` produce paths that gradually diverge, giving each cycle a different phrase that still shares a family resemblance.
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=2, length=4)
 def chaos_melody (p, chord):
-	scale = chord.tones(root=60, count=8)
+	scale = chord.tones(root=notes.C4, count=8)  # 8 chord tones across octaves
 
 	# Different phrase each cycle, slowly drifting
 	p.lorenz(scale, step=0.25, velocity=(50, 110), x0=p.cycle * 0.002)
@@ -326,7 +334,11 @@ def chaos_melody (p, chord):
 A custom `mapping` callable overrides the default x→pitch / y→velocity / z→duration assignment, or returns `None` for a rest:
 
 ```python
-p.lorenz([60, 62, 64], step=0.5, mapping=lambda x, y, z: (60 + int(x * 12), 80, 0.2))
+import subsequence.constants.midi_notes as notes
+
+# Map Lorenz x-axis to a chromatic octave above middle C
+p.lorenz([notes.C4, notes.D4, notes.E4], step=0.5,
+         mapping=lambda x, y, z: (notes.C4 + int(x * 12), 80, 0.2))
 ```
 
 ### Reaction-diffusion
@@ -347,9 +359,12 @@ def organic_kick (p):
 Paul Flory pioneered self-avoiding walks in the 1940s–50s to model how polymer chains fold in solution - a molecule that cannot cross itself. The problem became central to statistical physics and remains one of the most-studied objects in combinatorics. `p.self_avoiding_walk()` walks ±1 through a pitch list, refusing to revisit any pitch until trapped (all neighbours visited) - at that point the visited set resets, creating a natural phrase boundary. Within each phrase: no pitch repeats, continuous stepwise motion, guaranteed diversity.
 
 ```python
+import subsequence
+
 @composition.pattern(channel=2, length=4)
 def bassline (p):
-	scale = [40, 42, 43, 45, 47, 48, 50, 52]
+	# E natural minor: E2 to E3, one full octave
+	scale = subsequence.scale_notes("E", "aeolian", low=40, high=52)
 	p.self_avoiding_walk(scale, step=0.25, velocity=(70, 100))
 ```
 
@@ -358,12 +373,14 @@ def bassline (p):
 `p.melody()` generates a single-note melodic line guided by the Narmour Implication-Realization (NIR) model - the same cognitive framework used by the chord engine, now adapted for absolute pitch. It expects a `MelodicState` instance created once at module level, which persists history across bar rebuilds so melodic continuity is maintained automatically.
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 # Create once at module level - history persists across bars.
 melody_state = subsequence.MelodicState(
 	key="A",
 	mode="aeolian",
-	low=57,     # A3
-	high=84,    # C6
+	low=notes.A3,   # two-octave range: A3 to C6
+	high=notes.C6,
 	nir_strength=0.6, # How strongly NIR rules shape pitch choice (0–1)
 	chord_weight=0.4, # Bonus for chord tones
 	rest_probability=0.1, # 10% chance of silence per step
@@ -372,7 +389,7 @@ melody_state = subsequence.MelodicState(
 
 @composition.pattern(channel=3, length=4, chord=True)
 def lead (p, chord):
-	tones = chord.tones(72) if chord else None
+	tones = chord.tones(notes.C5) if chord else None
 	p.melody(melody_state, step=0.5, velocity=(70, 100), chord_tones=tones)
 ```
 
@@ -410,6 +427,7 @@ The `Composition` class is the main entry point. Define your MIDI setup, create 
 ```python
 import subsequence
 import subsequence.constants.instruments.gm_drums as gm_drums
+import subsequence.constants.midi_notes as notes
 
 DRUMS_CHANNEL = 9
 BASS_CHANNEL  = 5
@@ -427,13 +445,13 @@ def drums (p):
 
 @composition.pattern(channel=BASS_CHANNEL, length=4)
 def bass (p, chord):
-    root = chord.root_note(40)
+    root = chord.root_note(notes.E2)  # root voice in bass register
     p.sequence(steps=[0, 4, 8, 12], pitches=root)
     p.legato(0.9)
 
 @composition.pattern(channel=SYNTH_CHANNEL, length=4)
 def arp (p, chord):
-    pitches = chord.tones(root=60, count=4)
+    pitches = chord.tones(root=notes.C4, count=4)  # 4 tones up from middle C
     p.arpeggio(pitches, step=0.25, velocity=90, direction="up")
 
 if __name__ == "__main__":
@@ -455,12 +473,14 @@ def drums (p):
 Patterns are plain Python functions, so anything you can express in Python is fair game. A few more features:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 # Per-step pitch, velocity, and duration control.
 @composition.pattern(channel=0, length=4)
 def melody (p):
     p.sequence(
         steps=[0, 4, 8, 12],
-        pitches=[60, 64, 67, 72],
+        pitches=[notes.C4, notes.E4, notes.G4, notes.C5],  # C major chord, open voicing
         velocities=[127, 100, 110, 100],
         durations=[0.5, 0.25, 0.25, 0.5],
     )
@@ -471,7 +491,7 @@ import subsequence.constants.durations as dur
 
 @composition.pattern(channel=0, length=6, unit=dur.SIXTEENTH)
 def riff (p, chord):
-    root = chord.root_note(64)
+    root = chord.root_note(notes.E4)  # root voice around E4
     p.sequence(steps=[0, 1, 3, 5], pitches=[root+12, root, root, root])
 
 # Per-step probability - each hi-hat has a 70% chance of playing.
@@ -504,6 +524,7 @@ import asyncio
 import subsequence.composition
 import subsequence.constants
 import subsequence.constants.instruments.gm_drums as gm_drums
+import subsequence.constants.midi_notes as notes
 import subsequence.harmonic_state
 import subsequence.pattern
 import subsequence.pattern_builder
@@ -546,7 +567,7 @@ class BassPattern (subsequence.pattern.Pattern):
     def _build (self) -> None:
         self.steps = {}
         chord = self.harmonic_state.get_current_chord()
-        root  = chord.root_note(40)
+        root  = chord.root_note(notes.E2)  # bass voice in bass register
         for beat in range(4):
             self.add_note_beats(beat, pitch=root, velocity=100, duration_beats=0.9)
 
@@ -565,7 +586,7 @@ class ArpPattern (subsequence.pattern.Pattern):
     def _build (self) -> None:
         self.steps = {}
         chord   = self.harmonic_state.get_current_chord()
-        pitches = chord.tones(root=60, count=4)
+        pitches = chord.tones(root=notes.C4, count=4)  # 4 tones up from middle C
         self.add_arpeggio_beats(pitches, step_beats=0.25, velocity=90)
 
     def on_reschedule (self) -> None:
@@ -797,11 +818,13 @@ composition.conductor.line("intensity", start_val=0.0, end_val=1.0, duration_bea
 Use `p.signal(name)` to read a conductor signal at the current bar:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=0, length=4)
 def pads(p):
     dynamics = p.signal("swell")
 
-    p.chord(chord, root=60, velocity=int(60 + 60 * dynamics))
+    p.chord(chord, root=notes.C4, velocity=int(60 + 60 * dynamics))
 ```
 
 For explicit beat control, use `p.c.get(name, beat)` directly.
@@ -840,6 +863,8 @@ Inside a pattern, `p.data` is a direct reference to `composition.data` - the sam
 Patterns always rebuild in **definition order** (top-to-bottom in your source file). When two patterns share the same `length`, they reschedule at the same moment and the earlier pattern rebuilds first - so the writer's value is already in `p.data` when the reader runs:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=1, length=4)   # defined first - rebuilds first
 def bass(p):
     root = 36 + (p.cycle % 12)
@@ -848,7 +873,7 @@ def bass(p):
 
 @composition.pattern(channel=2, length=4)   # same length - guaranteed same-cycle read
 def pad(p):
-    root = p.data.get("bass_root", 48) # current-cycle value, because bass ran first
+    root = p.data.get("bass_root", notes.C3) # current-cycle value, because bass ran first
     p.chord(root=root, velocity=60)
 ```
 
@@ -857,6 +882,8 @@ If the two patterns have **different lengths** they reschedule at different mome
 External data written by `composition.schedule()`, CC input, OSC, or hotkeys flows through the same dict:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.schedule(cycle_beats=16, wait_for_initial=True)
 def fetch_iss():
     data = requests.get("https://api.wheretheiss.at/v1/satellites/25544").json()
@@ -865,7 +892,7 @@ def fetch_iss():
 @composition.pattern(channel=1)
 def iss_melody(p):
     lat = p.data.get("iss_lat", 0.0)   # same dict as composition.data
-    root = int(48 + (lat / 90) * 24)
+    root = notes.C3 + int((lat / 90) * 24)  # map latitude to a 2-octave range from C3
     p.note(root, velocity=80)
 ```
 
@@ -882,9 +909,11 @@ By default, chords are played in root position. You can request a specific inver
 Pass `inversion` to `p.chord()`, `p.strum()`, or `chord.tones()`:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=0, length=4)
 def chords (p, chord):
-    p.chord(chord, root=52, velocity=90, sustain=True, inversion=1)  # first inversion
+    p.chord(chord, root=notes.E3, velocity=90, sustain=True, inversion=1)  # first inversion
 ```
 
 Inversion 0 is root position, 1 is first inversion, 2 is second, and so on. Values wrap around for chords with fewer notes.
@@ -897,10 +926,10 @@ Inversion 0 is root position, 1 is first inversion, 2 is second, and so on. Valu
 @composition.pattern(channel=0, length=4)
 def guitar (p, chord):
     # Gentle upward strum (low to high)
-    p.strum(chord, root=52, velocity=85, offset=0.06)
+    p.strum(chord, root=notes.E3, velocity=85, offset=0.06)
 
     # Fast downward strum (high to low)
-    p.strum(chord, root=52, direction="down", offset=0.03)
+    p.strum(chord, root=notes.E3, direction="down", offset=0.03)
 ```
 
 ### Broken chords
@@ -911,12 +940,12 @@ def guitar (p, chord):
 @composition.pattern(channel=0, length=4)
 def arp (p, chord):
     # Fixed broken chord order
-    p.broken_chord(chord, root=60, order=[4, 0, 2, 1, 3], step=0.25)
-    
+    p.broken_chord(chord, root=notes.C4, order=[4, 0, 2, 1, 3], step=0.25)
+
     # Or fully randomised broken chords, using the pattern's deterministic RNG
     order = list(range(5))
     p.rng.shuffle(order)
-    p.broken_chord(chord, root=60, order=order, step=0.25)
+    p.broken_chord(chord, root=notes.C4, order=order, step=0.25)
 ```
 
 ### Legato chords
@@ -927,11 +956,11 @@ Pass `legato=` directly to `chord()` or `strum()` to collapse the two-step patte
 @composition.pattern(channel=0, length=4)
 def pad (p, chord):
     # Equivalent to: p.chord(...) then p.legato(0.9)
-    p.chord(chord, root=52, velocity=90, legato=0.9)
+    p.chord(chord, root=notes.E3, velocity=90, legato=0.9)
 
 @composition.pattern(channel=0, length=4)
 def guitar (p, chord):
-    p.strum(chord, root=52, velocity=85, offset=0.06, legato=0.95)
+    p.strum(chord, root=notes.E3, velocity=85, offset=0.06, legato=0.95)
 ```
 
 `sustain=True` and `legato=` are mutually exclusive - passing both raises a `ValueError`.
@@ -964,7 +993,7 @@ Add `voice_leading=True` to the pattern decorator. The injected chord will autom
 ```python
 @composition.pattern(channel=0, length=4, voice_leading=True)
 def chords (p, chord):
-    p.chord(chord, root=52, velocity=90, sustain=True)
+    p.chord(chord, root=notes.E3, velocity=90, sustain=True)
 ```
 
 Each pattern tracks voice leading independently - a bass line and a pad can voice-lead at their own pace.
@@ -974,8 +1003,10 @@ Each pattern tracks voice leading independently - a bass line and a pad can voic
 `ChordPattern` accepts `voice_leading=True`:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 chords = subsequence.harmony.ChordPattern(
-    harmonic_state=harmonic_state, root_midi=52, velocity=90, channel=0, voice_leading=True
+    harmonic_state=harmonic_state, root_midi=notes.E3, velocity=90, channel=0, voice_leading=True
 )
 ```
 
@@ -986,13 +1017,15 @@ For standalone use, `subsequence.voicings` provides `invert_chord()`, `voice_lea
 By default, `chord.tones()` and `p.chord()` return one note per chord tone (3 for triads, 4 for sevenths). Pass `count` to cycle the intervals into higher octaves:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=0, length=4)
 def pad (p, chord):
-    p.chord(chord, root=52, velocity=90, sustain=True, count=4)  # always 4 notes
+    p.chord(chord, root=notes.E3, velocity=90, sustain=True, count=4)  # always 4 notes
 
 @composition.pattern(channel=0, length=4)
 def arp (p, chord):
-    tones = chord.tones(root=64, count=5)  # 5 notes cycling upward
+    tones = chord.tones(root=notes.E4, count=5)  # 5 tones cycling up from E4
     p.arpeggio(tones, step=0.25, velocity=90)
 ```
 
@@ -1112,27 +1145,30 @@ chords = diatonic_chords("A", mode="minor")
 Each entry is a `Chord` object - pass it directly to `p.chord()`, `p.strum()`, or `chord.tones()`:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=0, length=4)
 def rising (p):
     current = diatonic_chords("D", mode="dorian")[p.cycle % 7]
-    p.chord(current, root=50, sustain=True)
+    p.chord(current, root=notes.D3, sustain=True)
 ```
 
 For a **stepped sequence with explicit MIDI roots** - for example, mapping a sensor value to a chord - use `diatonic_chord_sequence()`. It returns `(Chord, midi_root)` tuples stepping diatonically upward from a starting note, wrapping into higher octaves automatically:
 
 ```python
 from subsequence.harmony import diatonic_chord_sequence
+import subsequence.constants.midi_notes as notes
 
-# 12-step D Major ladder from D3 (MIDI 50) up through D4 and beyond
-sequence = diatonic_chord_sequence("D", root_midi=50, count=12)
+# 12-step D Major ladder from D3 up through D4 and beyond
+sequence = diatonic_chord_sequence("D", root_midi=notes.D3, count=12)
 
 # Map a 0-1 value directly to a chord
 altitude_ratio = 0.7   # e.g. from ISS data
 chord, root = sequence[int(altitude_ratio * (len(sequence) - 1))]
 p.chord(chord, root=root, sustain=True)
 
-# Falling sequence
-sequence = list(reversed(diatonic_chord_sequence("A", root_midi=45, count=7, mode="minor")))
+# Falling sequence - A minor ladder descending from A2
+sequence = list(reversed(diatonic_chord_sequence("A", root_midi=notes.A2, count=7, mode="minor")))
 ```
 
 The `root_midi` must be a note that falls on a scale degree of the chosen key and mode. A `ValueError` is raised otherwise.
@@ -1170,9 +1206,11 @@ composition.play()
 Patterns receive the current chord via the normal `chord` parameter - no changes needed in pattern code:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=BASS_CHANNEL, length=4)
 def bass (p, chord):
-    root = chord.root_note(40)
+    root = chord.root_note(notes.E2)  # bass register
     p.sequence(steps=[0, 4, 8, 12], pitches=root)
     p.legato(0.9)
 ```
@@ -1460,9 +1498,11 @@ OK
 The pattern builder reads tweakable values via `p.param()`, which returns the tweaked value if set or a default otherwise:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=0, length=4)
 def bass (p):
-    pitches = p.param("pitches", [60, 64, 67, 72])
+    pitches = p.param("pitches", [notes.C4, notes.E4, notes.G4, notes.C5])  # C major chord
     vel = p.param("velocity", 100)
     p.sequence(steps=[0, 4, 8, 12], pitches=pitches, velocities=vel)
 ```
@@ -1548,6 +1588,8 @@ Without `clock_follow` (the default), `midi_input()` opens the input port but do
 Map hardware knobs, faders, and expression pedals directly to `composition.data` - no callback code required:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 composition.midi_input("Arturia KeyStep")   # open the input port
 
 composition.cc_map(74, "filter_cutoff")          # CC 74 → 0.0–1.0 in composition.data
@@ -1558,7 +1600,7 @@ composition.cc_map(1,  "density", channel=0)     # channel-filtered
 def arps (p):
     cutoff = composition.data.get("filter_cutoff", 0.5)
     velocity = int(60 + 67 * cutoff)
-    p.arpeggio([60, 64, 67], step=0.25, velocity=velocity)
+    p.arpeggio([notes.C4, notes.E4, notes.G4], step=0.25, velocity=velocity)  # C major triad
 ```
 
 CC values are scaled from 0–127 to the `min_val`/`max_val` range and written to `composition.data[key]` on every incoming message. Thread safety is provided by Python's GIL for single dict writes.
@@ -1582,10 +1624,12 @@ Subsequence sends a Start message (0xFA) at the beginning of playback, one Clock
 Switch instrument patches mid-pattern with `p.program_change()`:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=1, length=4)
 def strings (p):
     p.program_change(48)          # String Ensemble 1 (GM #49)
-    p.chord(chord, root=60, velocity=75, sustain=True)
+    p.chord(chord, root=notes.C4, velocity=75, sustain=True)
 ```
 
 Program numbers follow General MIDI (0–127). The message fires at the beat position given by the optional `beat` argument (default 0.0 - the start of the pattern).
@@ -1599,7 +1643,7 @@ For multi-bank hardware synths (Roland, Yamaha, Korg, etc.), pass `bank_msb` and
 def synth (p):
     # Roland JV-1080 - bank MSB 81, LSB 0, patch 48
     p.program_change(48, bank_msb=81, bank_lsb=0)
-    p.chord(chord, root=60, velocity=70, sustain=True)
+    p.chord(chord, root=notes.C4, velocity=70, sustain=True)
 ```
 
 Omit either parameter if your synth only uses one bank byte:
@@ -1625,7 +1669,7 @@ To send a patch change only at the start of a section (not every bar), guard wit
 def synth (p):
     if p.section.bar == 0:             # first bar of this section
         p.program_change(48, bank_msb=81, bank_lsb=0)
-    p.chord(chord, root=60, velocity=70, sustain=True)
+    p.chord(chord, root=notes.C4, velocity=70, sustain=True)
 ```
 
 Or switch patch depending on which section is playing:
@@ -1675,7 +1719,10 @@ p.bend(note=1, amount=-0.3, start=0.5, shape="ease_out")
 **`p.portamento()` - glide between all consecutive notes:**
 
 ```python
-p.sequence(steps=[0, 4, 8, 12], pitches=[40, 42, 40, 43])
+import subsequence.constants.midi_notes as notes
+
+# E natural minor bassline fragment: E2 → F#2 → E2 → G2
+p.sequence(steps=[0, 4, 8, 12], pitches=[notes.E2, notes.FS2, notes.E2, notes.G2])
 p.legato(0.95)
 
 # Gentle glide using the last 15% of each note
@@ -1693,7 +1740,9 @@ p.portamento(time=0.1, bend_range=None)
 **`p.slide()` - TB-303-style selective slide:**
 
 ```python
-p.sequence(steps=[0, 4, 8, 12], pitches=[40, 42, 40, 43])
+import subsequence.constants.midi_notes as notes
+
+p.sequence(steps=[0, 4, 8, 12], pitches=[notes.E2, notes.FS2, notes.E2, notes.G2])
 p.legato(0.95)
 
 # Slide into the 2nd and 4th notes (by note index)
@@ -1719,12 +1768,14 @@ p.slide(notes=[1, 3], extend=False)
 Snap all notes in a pattern to a named scale - essential after generative or sensor-driven pitch work:
 
 ```python
+import subsequence.constants.midi_notes as notes
+
 @composition.pattern(channel=0, length=4)
 def walk (p):
     for beat in range(16):
-        pitch = 60 + p.rng.randint(-7, 7)     # random walk around middle C
+        pitch = notes.C4 + p.rng.randint(-7, 7)  # random walk around middle C
         p.note(pitch, beat=beat * 0.25)
-    p.quantize("G", "dorian")                  # snap everything to G Dorian
+    p.quantize("G", "dorian")                     # snap everything to G Dorian
 ```
 
 `quantize(key, mode)` accepts any key name (`"C"`, `"F#"`, `"Bb"`, etc.) and any registered scale. Equidistant notes prefer the upward direction.
@@ -1738,6 +1789,36 @@ subsequence.register_scale("raga_bhairav", [0, 1, 4, 5, 7, 8, 11])
 # then in patterns:
 p.quantize("C", "raga_bhairav")
 ```
+
+### Generating scale note lists
+
+`subsequence.scale_notes(key, mode, low, high)` returns a list of MIDI note numbers for a scale within a pitch range - the musician-friendly alternative to filtering pitch classes by hand:
+
+```python
+import subsequence
+
+# C major: all notes from C4 to C5
+scale = subsequence.scale_notes("C", "ionian", low=60, high=72)
+# → [60, 62, 64, 65, 67, 69, 71, 72]
+
+# E natural minor: one octave from E2 to E3
+scale = subsequence.scale_notes("E", "aeolian", low=40, high=52)
+# → [40, 42, 43, 45, 47, 48, 50, 52]
+
+# A minor pentatonic: exactly 15 notes ascending from A3
+scale = subsequence.scale_notes("A", "minor_pentatonic", low=57, count=15)
+# → 15 notes cycling into higher octaves as needed
+```
+
+Pass the result directly to `p.markov()`, `p.self_avoiding_walk()`, `p.de_bruijn()`, or any other method that takes a pitch list. Works with all built-in modes and custom scales registered via `register_scale()`.
+
+| Parameter | Description |
+|-----------|-------------|
+| `key` | Root note name: `"C"`, `"F#"`, `"Bb"`, etc. |
+| `mode` | Scale mode: `"ionian"`, `"aeolian"`, `"dorian"`, `"major_pentatonic"`, etc. |
+| `low` | Lowest MIDI note to include (inclusive). Defaults to 60 (C4). |
+| `high` | Highest MIDI note (inclusive). Defaults to 72 (C5). Ignored when `count` is set. |
+| `count` | Return exactly this many notes, ascending from `low` through successive octaves. |
 
 ### Chord root and bass helpers
 
@@ -1756,10 +1837,13 @@ def bass (p, chord):
 `p.arpeggio()` now supports four playback directions:
 
 ```python
-p.arpeggio([60, 64, 67], step=0.25)                     # "up" (default)
-p.arpeggio([60, 64, 67], step=0.25, direction="down")    # descend
-p.arpeggio([60, 64, 67], step=0.25, direction="up_down") # ping-pong: C E G E C E ...
-p.arpeggio([60, 64, 67], step=0.25, direction="random")  # shuffled once per call
+import subsequence.constants.midi_notes as notes
+
+chord = [notes.C4, notes.E4, notes.G4]  # C major triad
+p.arpeggio(chord, step=0.25)                     # "up" (default): C E G C E G …
+p.arpeggio(chord, step=0.25, direction="down")    # descend: G E C G E C …
+p.arpeggio(chord, step=0.25, direction="up_down") # ping-pong: C E G E C E …
+p.arpeggio(chord, step=0.25, direction="random")  # shuffled once per call
 ```
 
 The `"random"` direction uses `p.rng` by default (deterministic when a seed is set). Pass a custom `rng` for independent streams.
@@ -1911,6 +1995,7 @@ Trigger one-shot patterns in response to external events - sensor readings, OSC 
 
 ```python
 import subsequence.constants.durations as dur
+import subsequence.constants.midi_notes as notes
 
 @composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums(p):
@@ -1933,7 +2018,7 @@ composition.trigger(
 
 # With chord context (if harmony is active)
 composition.trigger(
-    lambda p: p.arpeggio(p.chord.tones(root=60), step=dur.SIXTEENTH),
+    lambda p: p.arpeggio(p.chord.tones(root=notes.C4), step=dur.SIXTEENTH),
     channel=0,
     quantize=dur.WHOLE,
     chord=True  # inject current chord
@@ -1942,10 +2027,10 @@ composition.trigger(
 
 Triggered patterns use the same `PatternBuilder` API as `@composition.pattern` decorated patterns - all rhythm and melody methods work (`p.euclidean()`, `p.arpeggio()`, `p.note()`, method chaining, etc.). The builder function runs immediately; the generated MIDI is queued at the specified pulse boundary:
 
-- `quantize=0` (default) — schedule at the next available pulse
-- `quantize=dur.QUARTER` — snap to next beat
-- `quantize=dur.WHOLE` — snap to next bar
-- `quantize=dur.SIXTEENTH` — snap to next 16th note
+- `quantize=0` (default) - schedule at the next available pulse
+- `quantize=dur.QUARTER` - snap to next beat
+- `quantize=dur.WHOLE` - snap to next bar
+- `quantize=dur.SIXTEENTH` - snap to next 16th note
 - Any float in beats works directly
 
 ### `composition.trigger(fn, channel, length=1, quantize=0, drum_note_map=None, chord=False)`

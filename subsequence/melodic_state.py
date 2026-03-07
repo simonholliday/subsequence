@@ -67,12 +67,11 @@ class MelodicState:
 		self.pitch_diversity = pitch_diversity
 
 		key_pc = subsequence.chords.key_name_to_pc(key)
-		scale_pcs = set(subsequence.intervals.scale_pitch_classes(key_pc, mode))
 
 		# Pitch pool: all scale tones within [low, high].
-		self._pitch_pool: typing.List[int] = [
-			p for p in range(low, high + 1) if p % 12 in scale_pcs
-		]
+		self._pitch_pool: typing.List[int] = subsequence.intervals.scale_notes(
+			key, mode, low=low, high=high
+		)
 
 		# Tonic pitch class for Rule C (closure).
 		self._tonic_pc: int = key_pc

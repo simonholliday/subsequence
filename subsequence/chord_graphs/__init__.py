@@ -53,13 +53,12 @@ def validate_key_name (key_name: str) -> int:
 	return subsequence.chords.key_name_to_pc(key_name)
 
 
-def build_diatonic_chords (key_pc: int, scale_intervals: typing.List[int], degree_qualities: typing.List[str]) -> typing.List[subsequence.chords.Chord]:
+def build_diatonic_chords (scale_pcs: typing.List[int], degree_qualities: typing.List[str]) -> typing.List[subsequence.chords.Chord]:
 
 	"""Build chords for each scale degree.
 
 	Parameters:
-		key_pc: Root pitch class (0-11)
-		scale_intervals: Semitone offset for each degree (e.g., ``[0, 2, 4, 5, 7, 9, 11]`` for major)
+		scale_pcs: Pitch class for each degree (e.g., from ``scale_pitch_classes(key_pc, mode)``)
 		degree_qualities: Chord quality for each degree (e.g., ``["major", "minor", ...]``)
 
 	Returns:
@@ -68,8 +67,7 @@ def build_diatonic_chords (key_pc: int, scale_intervals: typing.List[int], degre
 
 	chords: typing.List[subsequence.chords.Chord] = []
 
-	for degree, quality in enumerate(degree_qualities):
-		root_pc = (key_pc + scale_intervals[degree]) % 12
+	for root_pc, quality in zip(scale_pcs, degree_qualities):
 		chords.append(subsequence.chords.Chord(root_pc=root_pc, quality=quality))
 
 	return chords
@@ -80,9 +78,9 @@ def _major_key_gravity_sets (key_name: str) -> typing.Tuple[typing.Set[subsequen
 	"""Return diatonic and functional chord sets for a major key."""
 
 	key_pc = validate_key_name(key_name)
-	scale_intervals = subsequence.intervals.get_intervals("major_ionian")
+	scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, "ionian")
 
-	chords = build_diatonic_chords(key_pc, scale_intervals, subsequence.intervals.IONIAN_QUALITIES)
+	chords = build_diatonic_chords(scale_pcs, subsequence.intervals.IONIAN_QUALITIES)
 	diatonic: typing.Set[subsequence.chords.Chord] = set(chords)
 
 	# Functional set: I, ii, V, V7.

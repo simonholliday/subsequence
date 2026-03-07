@@ -1243,8 +1243,8 @@ class PatternAlgorithmicMixin:
 
 		Example:
 			```python
-			scale_notes = [60, 62, 64, 65, 67, 69, 71, 72]
-			p.self_avoiding_walk(scale_notes, step=0.25, velocity=(60, 100))
+			scale = subsequence.scale_notes("C", "ionian", low=60, high=72)
+			p.self_avoiding_walk(scale, step=0.25, velocity=(60, 100))
 			```
 		"""
 
