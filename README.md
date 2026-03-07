@@ -41,9 +41,26 @@ def drums(p):
 
     # 4 beats × 4 sixteenth notes = 16 steps, numbered 0–15.
 
-    p.hit_steps("kick_1",        [0, 4, 8, 12], velocity=100)  # beats 1, 2, 3, 4
-    p.hit_steps("snare_1",       [4, 12],        velocity=90)   # beats 2 and 4
-    p.hit_steps("hi_hat_closed", range(16),      velocity=70)   # every sixteenth
+    p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100) # beats 1, 2, 3, 4
+    p.hit_steps("snare_1", [4, 12], velocity=90) # beats 2 and 4
+    p.hit_steps("hi_hat_closed", range(16), velocity=70) # every sixteenth
+
+composition.play()
+```
+
+All `p.` methods return the builder, so calls can be chained into a single expression:
+
+```python
+@composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+def drums(p):
+
+    # 4 beats × 4 sixteenth notes = 16 steps, numbered 0–15.
+
+    (
+        p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100) # beats 1, 2, 3, 4
+        .hit_steps("snare_1", [4, 12], velocity=90) # beats 2 and 4
+        .hit_steps("hi_hat_closed", range(16), velocity=70)
+    ) # every sixteenth
 
 composition.play()
 ```
@@ -402,10 +419,10 @@ composition.harmony(style="aeolian_minor", cycle_beats=4, gravity=0.8)
 
 @composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
-    p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
-    p.hit_steps("snare_1", [4, 12], velocity=100)
-    p.hit_steps("hi_hat_closed", range(16), velocity=80)
-    p.velocity_shape(low=60, high=100)
+    (p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+      .hit_steps("snare_1", [4, 12], velocity=100)
+      .hit_steps("hi_hat_closed", range(16), velocity=80)
+      .velocity_shape(low=60, high=100))
 
 @composition.pattern(channel=BASS_CHANNEL, length=4)
 def bass (p, chord):
@@ -508,10 +525,10 @@ class DrumPattern (subsequence.pattern.Pattern):
         p = subsequence.pattern_builder.PatternBuilder(
             self, cycle=0, drum_note_map=gm_drums.GM_DRUM_MAP
         )
-        p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
-        p.hit_steps("snare_1", [4, 12], velocity=100)
-        p.hit_steps("hi_hat_closed", range(16), velocity=80)
-        p.velocity_shape(low=60, high=100)
+        (p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+          .hit_steps("snare_1", [4, 12], velocity=100)
+          .hit_steps("hi_hat_closed", range(16), velocity=80)
+          .velocity_shape(low=60, high=100))
 
     def on_reschedule (self) -> None:
         self._build()

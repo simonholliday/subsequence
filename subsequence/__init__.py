@@ -113,13 +113,13 @@ Minimal example:
     import subsequence
     import subsequence.constants.instruments.gm_drums as gm_drums
 
-    comp = subsequence.Composition(bpm=120, key="Cm")
+    comp = subsequence.Composition(bpm=120)
 
-    @comp.pattern(channel=0, drum_note_map=gm_drums.GM_DRUM_MAP)
+    @comp.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
     def drums (p):
-        p.seq("x ~ x ~", pitch="kick_1", velocity=100)
-        p.seq("~ x ~ x", pitch="snare_1", velocity=90)
-        p.seq("[x x] [x x] [x x] [x x]", pitch="hi_hat_closed", velocity=70)
+        (p.hit_steps("kick_1",        [0, 4, 8, 12], velocity=100)
+          .hit_steps("snare_1",       [4, 12],        velocity=90)
+          .hit_steps("hi_hat_closed", range(16),      velocity=70))
 
     comp.play()
     ```

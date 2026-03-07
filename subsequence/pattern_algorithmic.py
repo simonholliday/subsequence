@@ -81,7 +81,7 @@ class PatternAlgorithmicMixin:
 
 			self.note(pitch=pitch, beat=i * step_duration, velocity=velocity, duration=duration)
 
-	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> None:
+	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> "PatternAlgorithmicMixin":
 
 		"""
 		Generate a Euclidean rhythm.
@@ -113,8 +113,9 @@ class PatternAlgorithmicMixin:
 		steps = int(self._pattern.length * 4)
 		sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=steps, pulses=pulses)
 		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap)
+		return self
 
-	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> None:
+	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> "PatternAlgorithmicMixin":
 
 		"""
 		Generate a rhythm using the Bresenham line algorithm.
@@ -139,6 +140,7 @@ class PatternAlgorithmicMixin:
 		steps = int(self._pattern.length * 4)
 		sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=steps, pulses=pulses)
 		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap)
+		return self
 
 	def bresenham_poly (
 		self,
@@ -149,7 +151,7 @@ class PatternAlgorithmicMixin:
 		dropout: float = 0.0,
 		no_overlap: bool = False,
 		rng: typing.Optional[random.Random] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""
 		Distribute multiple drum voices across the pattern using weighted Bresenham.
@@ -274,6 +276,7 @@ class PatternAlgorithmicMixin:
 				vel = velocity
 
 			self.note(pitch=pitch, beat=step_idx * step_duration, velocity=vel, duration=duration)
+		return self
 
 	@staticmethod
 	def build_ghost_bias (grid: int, bias: str) -> typing.List[float]:
@@ -384,7 +387,7 @@ class PatternAlgorithmicMixin:
 		grid: typing.Optional[int] = None,
 		duration: float = 0.1,
 		rng: typing.Optional[random.Random] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Fill the pattern with probability-biased ghost notes.
 
@@ -448,7 +451,7 @@ class PatternAlgorithmicMixin:
 		max_weight = max(weights) if weights else 1.0
 
 		if max_weight <= 0:
-			return
+			return self
 
 		midi_pitch = self._resolve_pitch(pitch)
 		step_duration = self._pattern.length / grid
@@ -475,6 +478,7 @@ class PatternAlgorithmicMixin:
 				vel = int(typing.cast(typing.Union[int, float], velocity))
 
 			self.note(pitch=pitch, beat=i * step_duration, velocity=vel, duration=duration)
+		return self
 
 	def cellular_1d (
 		self,
@@ -486,7 +490,7 @@ class PatternAlgorithmicMixin:
 		no_overlap: bool = False,
 		dropout: float = 0.0,
 		rng: typing.Optional[random.Random] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Generate an evolving rhythm using a 1D cellular automaton.
 
@@ -531,6 +535,7 @@ class PatternAlgorithmicMixin:
 		self._place_rhythm_sequence(
 			sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap
 		)
+		return self
 
 	cellular = cellular_1d
 
@@ -546,7 +551,7 @@ class PatternAlgorithmicMixin:
 		seed: typing.Union[int, typing.List[typing.List[int]]] = 1,
 		density: float = 0.5,
 		rng: typing.Optional[random.Random] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Generate polyphonic patterns using a 2D Life-like cellular automaton.
 
@@ -612,6 +617,7 @@ class PatternAlgorithmicMixin:
 			self._place_rhythm_sequence(
 				grid[row_idx], pitch, row_velocity, duration, dropout, rng, no_overlap=no_overlap
 			)
+		return self
 
 	def markov (
 		self,
@@ -621,7 +627,7 @@ class PatternAlgorithmicMixin:
 		duration: float = 0.1,
 		step: float = 0.25,
 		start: typing.Optional[str] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Generate a sequence by walking a first-order Markov chain.
 
@@ -692,6 +698,7 @@ class PatternAlgorithmicMixin:
 
 			state = graph.choose_next(state, self.rng)
 			beat += step
+		return self
 
 	def melody (
 		self,
@@ -700,7 +707,7 @@ class PatternAlgorithmicMixin:
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 90,
 		duration: float = 0.2,
 		chord_tones: typing.Optional[typing.List[int]] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Generate a melodic line by querying a persistent :class:`~subsequence.melodic_state.MelodicState`.
 
@@ -758,6 +765,7 @@ class PatternAlgorithmicMixin:
 				self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
 
 			beat += step
+		return self
 
 	def lsystem (
 		self,
@@ -768,7 +776,7 @@ class PatternAlgorithmicMixin:
 		step: typing.Optional[float] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
 		duration: float = 0.2,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Generate a note sequence using L-system string rewriting.
 
@@ -833,7 +841,7 @@ class PatternAlgorithmicMixin:
 		)
 
 		if not expanded:
-			return
+			return self
 
 		if step is None:
 			auto_step = self._pattern.length / len(expanded)
@@ -859,6 +867,7 @@ class PatternAlgorithmicMixin:
 					duration=duration,
 				)
 			beat += auto_step
+		return self
 
 	def thue_morse (
 		self,
@@ -870,7 +879,7 @@ class PatternAlgorithmicMixin:
 		no_overlap: bool = False,
 		dropout: float = 0.0,
 		rng: typing.Optional[random.Random] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Place notes using the Thue-Morse aperiodic binary sequence.
 
@@ -924,6 +933,7 @@ class PatternAlgorithmicMixin:
 					self.note(pitch=pitch, beat=i * step_dur, velocity=velocity, duration=duration)
 				else:
 					self.note(pitch=pitch_b, beat=i * step_dur, velocity=velocity_b, duration=duration)
+		return self
 
 	def de_bruijn (
 		self,
@@ -932,7 +942,7 @@ class PatternAlgorithmicMixin:
 		step: typing.Optional[float] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
 		duration: float = 0.2,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Generate a melody that exhaustively traverses all pitch subsequences.
 
@@ -970,7 +980,7 @@ class PatternAlgorithmicMixin:
 		sequence = subsequence.sequence_utils.de_bruijn(k, window)
 
 		if not sequence:
-			return
+			return self
 
 		if step is None:
 			auto_step = self._pattern.length / len(sequence)
@@ -990,6 +1000,7 @@ class PatternAlgorithmicMixin:
 			)
 			self.note(pitch=pitches[idx], beat=beat, velocity=vel, duration=duration)
 			beat += auto_step
+		return self
 
 	def fibonacci (
 		self,
@@ -997,7 +1008,7 @@ class PatternAlgorithmicMixin:
 		steps: int,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
 		duration: float = 0.2,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing).
 
@@ -1030,6 +1041,7 @@ class PatternAlgorithmicMixin:
 				else int(velocity)
 			)
 			self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
+		return self
 
 	def lorenz (
 		self,
@@ -1050,7 +1062,7 @@ class PatternAlgorithmicMixin:
 				typing.Optional[typing.Tuple[typing.Union[int, str], int, float]],
 			]
 		] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Generate a note sequence driven by the Lorenz strange attractor.
 
@@ -1117,6 +1129,7 @@ class PatternAlgorithmicMixin:
 				self.note(pitch=p_pitch, beat=beat, velocity=p_vel, duration=p_dur)
 
 			beat += step
+		return self
 
 	def reaction_diffusion (
 		self,
@@ -1130,7 +1143,7 @@ class PatternAlgorithmicMixin:
 		no_overlap: bool = False,
 		dropout: float = 0.0,
 		rng: typing.Optional[random.Random] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation.
 
@@ -1196,6 +1209,7 @@ class PatternAlgorithmicMixin:
 				self.note(pitch=pitch, beat=i * step_dur, velocity=vel, duration=duration)
 		else:
 			self._place_rhythm_sequence(sequence, pitch, int(velocity), duration, dropout, rng, no_overlap)
+		return self
 
 	def self_avoiding_walk (
 		self,
@@ -1204,7 +1218,7 @@ class PatternAlgorithmicMixin:
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
 		duration: float = 0.2,
 		rng: typing.Optional[random.Random] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""Generate a melody using a self-avoiding random walk.
 
@@ -1258,6 +1272,7 @@ class PatternAlgorithmicMixin:
 			)
 			self.note(pitch=pitches[idx], beat=beat, velocity=vel, duration=duration)
 			beat += step
+		return self
 
 	def thin (
 		self,
@@ -1266,7 +1281,7 @@ class PatternAlgorithmicMixin:
 		amount: float = 0.5,
 		grid: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
-	) -> None:
+	) -> "PatternAlgorithmicMixin":
 
 		"""
 		Remove notes from the pattern based on their rhythmic position.
@@ -1407,3 +1422,4 @@ class PatternAlgorithmicMixin:
 
 		for pulse in pulses_to_remove:
 			del self._pattern.steps[pulse]
+		return self

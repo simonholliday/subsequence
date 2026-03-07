@@ -62,7 +62,7 @@ class PatternMidiMixin:
 
 	# ── CC messages ─────────────────────────────────────────────────────────
 
-	def cc (self, control: int, value: int, beat: float = 0.0) -> None:
+	def cc (self, control: int, value: int, beat: float = 0.0) -> "PatternMidiMixin":
 
 		"""
 		Send a single CC message at a beat position.
@@ -83,6 +83,7 @@ class PatternMidiMixin:
 				value = value
 			)
 		)
+		return self
 
 	def cc_ramp (
 		self,
@@ -93,7 +94,7 @@ class PatternMidiMixin:
 		beat_end: typing.Optional[float] = None,
 		resolution: int = 1,
 		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear"
-	) -> None:
+	) -> "PatternMidiMixin":
 
 		"""
 		Interpolate a CC value over a beat range.
@@ -126,10 +127,11 @@ class PatternMidiMixin:
 			)
 
 		self._ramp_pulses(beat_start, beat_end, float(start), float(end), shape, resolution, _event)
+		return self
 
 	# ── Pitch bend ──────────────────────────────────────────────────────────
 
-	def pitch_bend (self, value: float, beat: float = 0.0) -> None:
+	def pitch_bend (self, value: float, beat: float = 0.0) -> "PatternMidiMixin":
 
 		"""
 		Send a single pitch bend message at a beat position.
@@ -149,6 +151,7 @@ class PatternMidiMixin:
 				value = midi_value
 			)
 		)
+		return self
 
 	def pitch_bend_ramp (
 		self,
@@ -158,7 +161,7 @@ class PatternMidiMixin:
 		beat_end: typing.Optional[float] = None,
 		resolution: int = 1,
 		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear"
-	) -> None:
+	) -> "PatternMidiMixin":
 
 		"""
 		Interpolate pitch bend over a beat range.
@@ -189,6 +192,7 @@ class PatternMidiMixin:
 			)
 
 		self._ramp_pulses(beat_start, beat_end, start, end, shape, resolution, _event)
+		return self
 
 	# ── Program change and SysEx ─────────────────────────────────────────────
 
@@ -198,7 +202,7 @@ class PatternMidiMixin:
 		beat: float = 0.0,
 		bank_msb: typing.Optional[int] = None,
 		bank_lsb: typing.Optional[int] = None,
-	) -> None:
+	) -> "PatternMidiMixin":
 
 		"""Send a Program Change message, optionally preceded by bank select.
 
@@ -262,8 +266,9 @@ class PatternMidiMixin:
 				value = max(0, min(127, program)),
 			)
 		)
+		return self
 
-	def sysex (self, data: typing.Union[bytes, typing.List[int]], beat: float = 0.0) -> None:
+	def sysex (self, data: typing.Union[bytes, typing.List[int]], beat: float = 0.0) -> "PatternMidiMixin":
 
 		"""
 		Send a System Exclusive (SysEx) message at a beat position.
@@ -294,10 +299,11 @@ class PatternMidiMixin:
 				data = bytes(data)
 			)
 		)
+		return self
 
 	# ── OSC messages ─────────────────────────────────────────────────────────
 
-	def osc (self, address: str, *args: typing.Any, beat: float = 0.0) -> None:
+	def osc (self, address: str, *args: typing.Any, beat: float = 0.0) -> "PatternMidiMixin":
 
 		"""
 		Send an OSC message at a beat position.
@@ -329,6 +335,7 @@ class PatternMidiMixin:
 				args = args
 			)
 		)
+		return self
 
 	def osc_ramp (
 		self,
@@ -339,7 +346,7 @@ class PatternMidiMixin:
 		beat_end: typing.Optional[float] = None,
 		resolution: int = 4,
 		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear"
-	) -> None:
+	) -> "PatternMidiMixin":
 
 		"""
 		Interpolate an OSC float value over a beat range.
@@ -389,6 +396,7 @@ class PatternMidiMixin:
 			)
 
 		self._ramp_pulses(beat_start, beat_end, start, end, shape, resolution, _event)
+		return self
 
 	# ── Note-correlated pitch bend ────────────────────────────────────────────
 
@@ -446,7 +454,7 @@ class PatternMidiMixin:
 		end: float = 1.0,
 		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
 		resolution: int = 1,
-	) -> None:
+	) -> "PatternMidiMixin":
 
 		"""Bend a specific note by index.
 
@@ -483,7 +491,7 @@ class PatternMidiMixin:
 		"""
 
 		if not self._pattern.steps:
-			return
+			return self
 
 		sorted_positions = sorted(self._pattern.steps.keys())
 		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
@@ -518,6 +526,7 @@ class PatternMidiMixin:
 				value = reset_midi,
 			)
 		)
+		return self
 
 	def portamento (
 		self,
@@ -526,7 +535,7 @@ class PatternMidiMixin:
 		resolution: int = 1,
 		bend_range: typing.Optional[float] = 2.0,
 		wrap: bool = True,
-	) -> None:
+	) -> "PatternMidiMixin":
 
 		"""Glide between all consecutive notes using pitch bend.
 
@@ -566,7 +575,7 @@ class PatternMidiMixin:
 		"""
 
 		if not self._pattern.steps:
-			return
+			return self
 
 		sorted_positions = sorted(self._pattern.steps.keys())
 		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
@@ -612,6 +621,7 @@ class PatternMidiMixin:
 					value = 0,
 				)
 			)
+		return self
 
 	def slide (
 		self,
@@ -623,7 +633,7 @@ class PatternMidiMixin:
 		bend_range: typing.Optional[float] = 2.0,
 		wrap: bool = True,
 		extend: bool = True,
-	) -> None:
+	) -> "PatternMidiMixin":
 
 		"""TB-303-style selective slide into specific notes.
 
@@ -677,7 +687,7 @@ class PatternMidiMixin:
 			raise ValueError("slide() requires either 'notes' or 'steps'")
 
 		if not self._pattern.steps:
-			return
+			return self
 
 		sorted_positions = sorted(self._pattern.steps.keys())
 		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
@@ -749,3 +759,4 @@ class PatternMidiMixin:
 					value = 0,
 				)
 			)
+		return self
