@@ -140,6 +140,10 @@ def roll (indices: typing.List[int], shift: int, length: int) -> typing.List[int
 	return [(i + shift) % length for i in indices]
 
 
+#: Alias for :func:`roll` — same operation, more intuitive name.
+rotate = roll
+
+
 def generate_legato_durations (hits: typing.List[int]) -> typing.List[int]:
 
 	"""
