@@ -24,20 +24,26 @@ It is a **compositional platform** for your studio - generating pure MIDI to con
 
 ## Minimal Example
 
-In this simplest example, using [mini-notation](#mini-notation), we create and play a drum pattern. More detail on the [Composition API](#composition-api) and [Direct Pattern API](#direct-pattern-api) further down.
+In this simplest example, we create and play a drum pattern. More detail on the [Composition API](#composition-api) and [Direct Pattern API](#direct-pattern-api) further down.
 
-```
+```python
 import subsequence
 import subsequence.constants.instruments.gm_drums as gm_drums
 
 composition = subsequence.Composition(bpm=120)
 
+# channel=9 is MIDI channel 10 (0-indexed) - the default (General MIDI) drum channel.
+# length=4 means 4 quarter-note beats (one bar of 4/4).
+# Omitting the `unit` parameter sets the grid to sixteenth-note resolution by default:
 @composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
-def drums (p):
 
-    p.seq("x ~ x ~", pitch="kick_1", velocity=100)
-    p.seq("~ x ~ x", pitch="snare_1", velocity=90)
-    p.seq("[x x] [x x] [x x] [x x]", pitch="hi_hat_closed", velocity=70)
+def drums(p):
+
+    # 4 beats × 4 sixteenth notes = 16 steps, numbered 0–15.
+
+    p.hit_steps("kick_1",        [0, 4, 8, 12], velocity=100)  # beats 1, 2, 3, 4
+    p.hit_steps("snare_1",       [4, 12],        velocity=90)   # beats 2 and 4
+    p.hit_steps("hi_hat_closed", range(16),      velocity=70)   # every sixteenth
 
 composition.play()
 ```
@@ -188,8 +194,8 @@ p.hit_steps("snare_1", range(16), velocity=velocities)
 Euclid's algorithm for computing greatest common divisors dates to 300 BC. In 2003, Bjorklund applied it to distribute neutron accelerator pulses as evenly as possible, and Toussaint (2005) showed the resulting patterns match traditional rhythms from around the world - West African bell patterns, Cuban clave, Turkish aksak. `p.euclidean(pitch, pulses, steps)` distributes `pulses` hits as evenly as possible across a `steps`-step grid. Two numbers in, a rhythm out.
 
 ```python
-p.euclidean("kick_1", pulses=5, steps=16, velocity=100)        # tresillo / bossa clave
-p.euclidean("hi_hat_closed", pulses=7, steps=12, velocity=70)  # 7-against-12
+p.euclidean("kick_1", pulses=5, steps=16, velocity=100) # tresillo / bossa clave
+p.euclidean("hi_hat_closed", pulses=7, steps=12, velocity=70) # 7-against-12
 ```
 
 ### Bresenham
@@ -228,8 +234,8 @@ p.thin(strategy=bias, amount=swell, grid=16, rng=p.rng)
 John von Neumann and Stanislaw Ulam conceived cellular automata in the 1940s as models of self-replicating systems. Stephen Wolfram systematically explored 1D elementary automata in the 1980s, cataloguing all 256 rules - discovering that Rule 110 is Turing-complete and Rule 30 produces output indistinguishable from randomness. `p.cellular_1d(pitch, rule, velocity)` generates rhythm from a 1D automaton where each generation evolves from the previous, so patterns self-organise, grow, glide, and die. `p.cellular_2d(parts, rule, density, velocity)` runs a 2D Life-like CA where rows map to instruments and columns to time steps.
 
 ```python
-p.cellular_1d("kick_1", rule=30, velocity=90)          # Rule 30: chaotic
-p.cellular_1d("hi_hat_closed", rule=110, velocity=70)  # Rule 110: complex / structured
+p.cellular_1d("kick_1", rule=30, velocity=90) # Rule 30: chaotic
+p.cellular_1d("hi_hat_closed", rule=110, velocity=70) # Rule 110: complex / structured
 ```
 
 ### Markov
@@ -340,10 +346,10 @@ melody_state = subsequence.MelodicState(
 	mode="aeolian",
 	low=57,     # A3
 	high=84,    # C6
-	nir_strength=0.6,    # How strongly NIR rules shape pitch choice (0–1)
-	chord_weight=0.4,    # Bonus for chord tones
-	rest_probability=0.1,  # 10% chance of silence per step
-	pitch_diversity=0.6,   # Penalise recently-repeated pitches
+	nir_strength=0.6, # How strongly NIR rules shape pitch choice (0–1)
+	chord_weight=0.4, # Bonus for chord tones
+	rest_probability=0.1, # 10% chance of silence per step
+	pitch_diversity=0.6, # Penalise recently-repeated pitches
 )
 
 @composition.pattern(channel=3, length=4, chord=True)
