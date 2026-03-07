@@ -112,6 +112,7 @@ Subsequence connects to your existing studio. Sync to your DAW's clock, or let i
 - [Live coding](#live-coding)
 - [Clock accuracy](#clock-accuracy)
 - [MIDI input and external clock](#midi-input-and-external-clock)
+- [Ableton Link](#ableton-link)
 - [Hotkeys](#hotkeys)
 - [Pattern tools and hardware control](#pattern-tools-and-hardware-control)
 - [OSC integration](#osc-integration)
@@ -146,6 +147,7 @@ Subsequence connects to your existing studio. Sync to your DAW's clock, or let i
 
 ### Integration
 
+- **[Ableton Link.](#ableton-link)** Industry-standard wireless tempo and phase sync. Any Link-enabled app on the same network - Ableton Live, iOS synths, other Subsequence instances - stays in time automatically.
 - **MIDI clock.** [Master](#clock-accuracy) (`clock_output()`) or [follower](#midi-input-and-external-clock) (`clock_follow=True`). Sync to a DAW, drive a Eurorack system, or both.
 - **Hardware control.** [CC input mapping](#midi-cc-input-mapping) from knobs and faders to `composition.data`. [OSC](#osc-integration) for bidirectional communication with mixers, lighting, visuals.
 - **[Live coding.](#live-coding)** Hot-swap patterns, change tempo, mute/unmute, tweak parameters - all during playback.
@@ -158,6 +160,10 @@ Subsequence connects to your existing studio. Sync to your DAW's clock, or let i
 1. Install dependencies:
 ```
 pip install -e .
+```
+To also enable Ableton Link support:
+```
+pip install -e ".[link]"
 ```
 2. Run the demo (drums, bass, and arp over evolving aeolian minor harmony in E):
 ```
@@ -1617,6 +1623,67 @@ composition.play()
 
 Subsequence sends a Start message (0xFA) at the beginning of playback, one Clock tick (0xF8) per pulse (24 PPQN, matching the MIDI standard), and a Stop message (0xFC) when playback ends. This automatically disabled when `midi_input(clock_follow=True)` is active, to prevent a feedback loop.
 
+## Ableton Link
+
+[Ableton Link](https://www.ableton.com/en/link/) is the industry standard for wireless tempo and beat-phase synchronisation - used by 200+ apps including Ableton Live, Reason, and countless iOS synths. When you enable Link in Subsequence, every app on the same LAN locks to the same tempo and phase automatically, with no configuration needed.
+
+Link synchronises three things: tempo, beat phase, and transport start/stop. It does **not** transmit notes or patterns - each participant generates its own music independently, but all pulses stay aligned.
+
+### Installation
+
+Link support is an optional extra that requires the [`aalink`](https://github.com/artfwo/aalink) package:
+
+```
+pip install subsequence[link]
+```
+
+### Basic usage
+
+```python
+import subsequence
+
+comp = subsequence.Composition(bpm=120, key="C")
+
+# Join the Link session. quantum=4.0 means one bar in 4/4 time.
+# Playback waits for the next bar boundary before the first note sounds.
+comp.link(quantum=4.0)
+
+@comp.pattern(channel=10, length=4)
+def kick(p):
+    p.hit(35, steps=[0, 2], velocity=110, duration=0.1)
+
+comp.play()
+```
+
+`comp.link()` returns `self` for method chaining. The `quantum` parameter (default 4.0) is the beat cycle length - one bar in 4/4 time. Subsequence will wait for the next quantum boundary before the first note sounds, so it always starts phase-aligned with other Link peers.
+
+### Behaviour
+
+- **Tempo is authoritative from the network.** If another peer changes the tempo, Subsequence picks it up automatically on the next pulse. Calling `set_bpm()` during Link playback proposes a new tempo to the session rather than changing it locally.
+- **Bar-aligned start.** `comp.play()` with Link active waits for the next quantum boundary (bar line) before the first note, ensuring clean entry into an existing session.
+- **Combined with clock output.** `comp.link()` and `comp.clock_output()` work together - Subsequence syncs its internal clock to the Link session and forwards MIDI clock ticks to downstream hardware at the Link-controlled tempo.
+
+### Syncing multiple Subsequence instances
+
+Run the same script on two machines connected to the same LAN:
+
+```python
+import subsequence
+
+comp = subsequence.Composition(bpm=120, key="Am")
+comp.link(quantum=4.0)
+
+@comp.pattern(channel=1, length=8)
+def bass(p):
+    p.hit(45, steps=[0, 4], velocity=90, duration=0.5)
+
+comp.play()
+```
+
+Both instances will lock to each other's tempo and phase within one bar of the first one starting. The faster you call `comp.play()` on each machine, the sooner they'll converge.
+
+See `examples/link_sync.py` for a runnable demo.
+
 ## Pattern tools and hardware control
 
 ### Program changes
@@ -2207,11 +2274,9 @@ Planned features, roughly in order of priority.
 
 - **Visual Dashboard / Web UI.** A lightweight local web dashboard to provide real-time visual feedback of the current Chord Graph, global Conductor signals, and active patterns, making the generative process more observable.
 
-- **Ableton Link support.** The de facto standard for wireless tempo sync between devices in a modern studio.
-
 - **Starter templates.** Lower the blank-page barrier with ready-made starting points for common genres. Musicians tweak from a working composition rather than building from scratch.
 
-- **Network sync.** Peer-to-peer sync with DAWs and other Link-enabled devices, covering multi-machine Subsequence setups or custom sync protocols.
+- **Network sync.** Share conductor signals, chord progressions, and composition data between multiple Subsequence instances - each generates its own patterns locally from shared musical context. (Tempo sync is already handled by [Ableton Link](#ableton-link).)
 
 ### Future ideas
 
@@ -2254,6 +2319,20 @@ All feedback and suggestions will be gratefully received! Please use these chann
 * [Discussions](https://github.com/simonholliday/subsequence/discussions): The best place to ask questions and share ideas.
 * [Issues](https://github.com/simonholliday/subsequence/issues): If you ran into a bug, or have a specific feature request for the codebase, please open an Issue here.
 
+## Dependencies and Credits
+
+Subsequence is built on these excellent open-source libraries:
+
+| Library | Purpose | License |
+|---------|---------|---------|
+| [mido](https://github.com/mido/mido) | MIDI message handling and file I/O | MIT |
+| [python-rtmidi](https://github.com/SpotlightKid/python-rtmidi) | Real-time MIDI I/O | MIT |
+| [python-osc](https://github.com/attwad/python-osc) | OSC protocol support | Unlicense |
+| [websockets](https://github.com/python-websockets/websockets) | Web UI dashboard communication | BSD-3-Clause |
+| [aalink](https://github.com/artfwo/aalink) *(optional)* | Ableton Link integration | GPL-3.0 |
+
+[Ableton Link](https://www.ableton.com/en/link/) is a technology by Ableton AG. The `aalink` Python wrapper is written by Artem Popov and is licensed under GPL-3.0, which is compatible with Subsequence's AGPL-3.0 license.
+
 ## About the Author
 
 Subsequence was created by me, Simon Holliday ([https://simonholliday.com/](https://simonholliday.com/)), a senior technologist and a junior (but trying) musician. From running an electronic music label in the 2000s to prototyping new passive SONAR techniques for defence research, my work has often explored the intersection of code and sound.
@@ -2265,6 +2344,8 @@ Subsequence was iterated over a series of separate proof-of-concept projects dur
 Subsequence is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPLv3).
 
 You are free to use, modify, and distribute this software under the terms of the AGPL. If you run a modified version of Subsequence as part of a network service, you must make the source code available to its users.
+
+Subsequence's core dependencies (mido, python-rtmidi, python-osc, websockets) are all permissively licensed (MIT, Unlicense, BSD-3-Clause). The optional Ableton Link integration uses `aalink` (GPL-3.0), which is compatible with Subsequence's AGPL-3.0 license.
 
 ### Commercial licensing
 

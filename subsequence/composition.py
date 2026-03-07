@@ -634,6 +634,7 @@ class Composition:
 		self.conductor = subsequence.conductor.Conductor()
 		self._web_ui_enabled: bool = False
 		self._web_ui_server: typing.Optional[subsequence.web_ui.WebUI] = None
+		self._link_quantum: typing.Optional[float] = None
 
 		# Hotkey state — populated by hotkeys() and hotkey().
 		self._hotkeys_enabled: bool = False
@@ -1209,6 +1210,52 @@ class Composition:
 		self._clock_output = enabled
 
 
+	def link (self, quantum: float = 4.0) -> "Composition":
+
+		"""
+		Enable Ableton Link tempo and phase synchronisation.
+
+		When enabled, Subsequence joins the local Link session and slaves its
+		clock to the shared network tempo and beat phase.  All other Link-enabled
+		apps on the same LAN — Ableton Live, iOS synths, other Subsequence
+		instances — will automatically stay in time.
+
+		Playback starts on the next bar boundary aligned to the Link quantum,
+		so downbeats stay in sync across all participants.
+
+		Requires the ``link`` optional extra::
+
+		    pip install subsequence[link]
+
+		Parameters:
+			quantum: Beat cycle length.  ``4.0`` (default) = one bar in 4/4 time.
+			         Change this if your composition uses a different meter.
+
+		Example::
+
+		    comp = subsequence.Composition(bpm=120, key="C")
+		    comp.link()          # join the Link session
+		    comp.play()
+
+		    # On another machine / instance:
+		    comp2 = subsequence.Composition(bpm=120)
+		    comp2.link()         # tempo and phase will lock to comp
+		    comp2.play()
+
+		Note:
+		    ``set_bpm()`` proposes the new tempo to the Link network when Link
+		    is active.  The network-authoritative tempo is applied on the next
+		    pulse, so there may be a brief lag before the change is visible.
+		"""
+
+		# Eagerly check that aalink is installed — fail early with a clear message.
+		import subsequence.link_clock
+		subsequence.link_clock._require_aalink()
+
+		self._link_quantum = quantum
+		return self
+
+
 	def cc_map (
 		self,
 		cc: int,
@@ -1303,11 +1350,15 @@ class Composition:
 
 		Parameters:
 			bpm: The new tempo in beats per minute.
+
+		When Ableton Link is active, this proposes the new tempo to the Link
+		network instead of applying it locally.  The network-authoritative tempo
+		is picked up on the next pulse.
 		"""
 
 		self._sequencer.set_bpm(bpm)
 
-		if not self._clock_follow:
+		if not self._clock_follow and self._link_quantum is None:
 			self.bpm = bpm
 
 	def target_bpm (self, bpm: float, bars: int, shape: str = "linear") -> None:
@@ -1902,6 +1953,15 @@ class Composition:
 
 		# Pass clock output flag (suppressed automatically when clock_follow=True).
 		self._sequencer.clock_output = self._clock_output and not self._clock_follow
+
+		# Create Ableton Link clock if comp.link() was called.
+		if self._link_quantum is not None:
+			import subsequence.link_clock
+			self._sequencer._link_clock = subsequence.link_clock.LinkClock(
+				bpm = self.bpm,
+				quantum = self._link_quantum,
+				loop = asyncio.get_running_loop(),
+			)
 
 		# Share CC input mappings and a reference to composition.data with the sequencer.
 		self._sequencer.cc_mappings = self._cc_mappings

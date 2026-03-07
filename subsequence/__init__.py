@@ -108,6 +108,10 @@ Integration:
 - **Web UI Dashboard (Beta).** Enable with ``composition.web_ui()`` to 
   broadcast live composition metadata and visualize piano-roll pattern 
   grids in a reactive HTTP/WebSocket browser dashboard.
+- **Ableton Link.** Industry-standard wireless tempo/phase sync
+  (``comp.link()``; requires ``pip install subsequence[link]``).
+  Any Link-enabled app on the same LAN — Ableton Live, iOS synths,
+  other Subsequence instances — stays in time automatically.
 - **Recording.** Record to standard MIDI file. Render to file without
   waiting for real-time playback.
 
