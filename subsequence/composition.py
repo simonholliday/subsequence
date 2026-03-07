@@ -9,6 +9,7 @@ import signal
 import typing
 
 import subsequence.chord_graphs
+import subsequence.constants
 import subsequence.constants.durations
 import subsequence.display
 import subsequence.harmonic_state
@@ -1690,6 +1691,131 @@ class Composition:
 		)
 
 		self._pending_patterns.append(pending)
+
+	def trigger (
+		self,
+		fn: typing.Callable,
+		channel: int,
+		length: float = 1,
+		quantize: float = 0,
+		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+		chord: bool = False
+	) -> None:
+
+		"""
+		Trigger a one-shot pattern immediately or on a quantized boundary.
+
+		This is useful for real-time response to sensors, OSC messages, or other
+		external events. The builder function is called immediately with a fresh
+		PatternBuilder, and the generated events are injected into the queue at
+		the specified quantize boundary.
+
+		The builder function has the same API as a ``@composition.pattern``
+		decorated function and can use all PatternBuilder methods: ``p.note()``,
+		``p.euclidean()``, ``p.arpeggio()``, and so on.
+
+		Parameters:
+			fn: The pattern builder function (same signature as ``@comp.pattern``).
+			channel: MIDI channel (1-16, or 0-15 with ``zero_indexed_channels=True``).
+			length: Duration in beats (default 1). This is the time window for the
+				one-shot pattern.
+			quantize: Snap the trigger to a beat boundary: ``0`` = immediate (default),
+				``1`` = next beat (quarter note), ``4`` = next bar. Use ``dur.*``
+				constants from ``subsequence.constants.durations``.
+			drum_note_map: Optional drum name mapping for this pattern.
+			chord: If ``True``, the builder function receives the current chord as
+				a second parameter (same as ``@composition.pattern``).
+
+		Example:
+			```python
+			# Immediate single note
+			composition.trigger(
+				lambda p: p.note(60, beat=0, velocity=100, duration=0.5),
+				channel=0
+			)
+
+			# Quantized fill (next bar)
+			import subsequence.constants.durations as dur
+			composition.trigger(
+				lambda p: p.euclidean("snare", pulses=7, velocity=90),
+				channel=9,
+				drum_note_map=gm_drums.GM_DRUM_MAP,
+				quantize=dur.WHOLE
+			)
+
+			# With chord context
+			composition.trigger(
+				lambda p: p.arpeggio(p.chord.tones(root=60), step=dur.SIXTEENTH),
+				channel=0,
+				quantize=dur.QUARTER,
+				chord=True
+			)
+			```
+		"""
+
+		# Resolve channel numbering
+		resolved_channel = self._resolve_channel(channel)
+
+		# Create a temporary Pattern
+		pattern = subsequence.pattern.Pattern(channel=resolved_channel, length=length)
+
+		# Create a PatternBuilder
+		builder = subsequence.pattern_builder.PatternBuilder(
+			pattern=pattern,
+			cycle=0,  # One-shot patterns don't rebuild, so cycle is always 0
+			drum_note_map=drum_note_map,
+			section=self._form_state.get_section_info() if self._form_state else None,
+			bar=self._builder_bar,
+			conductor=self.conductor,
+			rng=random.Random(),  # Fresh random state for each trigger
+			tweaks={},
+			default_grid=round(length / subsequence.constants.durations.SIXTEENTH),
+			data=self.data
+		)
+
+		# Call the builder function
+		try:
+
+			if chord and self._harmonic_state is not None:
+				current_chord = self._harmonic_state.get_current_chord()
+				injected = _InjectedChord(current_chord, None)  # No voice leading for one-shots
+				fn(builder, injected)
+
+			else:
+				fn(builder)
+
+		except Exception:
+			logger.exception("Error in trigger builder — pattern will be silent")
+			return
+
+		# Calculate the start pulse based on quantize
+		current_pulse = self._sequencer.pulse_count
+		pulses_per_beat = subsequence.constants.MIDI_QUARTER_NOTE
+
+		if quantize == 0:
+			# Immediate: use current pulse
+			start_pulse = current_pulse
+
+		else:
+			# Quantize to the next multiple of (quantize * pulses_per_beat)
+			quantize_pulses = int(quantize * pulses_per_beat)
+			start_pulse = ((current_pulse // quantize_pulses) + 1) * quantize_pulses
+
+		# Schedule the pattern for one-shot execution
+		try:
+			loop = asyncio.get_running_loop()
+			# Already on the event loop
+			asyncio.create_task(self._sequencer.schedule_pattern(pattern, start_pulse))
+
+		except RuntimeError:
+			# Not on the event loop — schedule via call_soon_threadsafe
+			if self._sequencer._event_loop is not None:
+				asyncio.run_coroutine_threadsafe(
+					self._sequencer.schedule_pattern(pattern, start_pulse),
+					loop=self._sequencer._event_loop
+				)
+			else:
+				logger.warning("trigger() called before playback started; pattern ignored")
 
 	def play (self) -> None:
 

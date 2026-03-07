@@ -156,7 +156,7 @@ class PatternAlgorithmicMixin:
 		"""
 		Distribute multiple drum voices across the pattern using weighted Bresenham.
 
-		Each step is assigned to exactly one voice — voices never overlap, producing
+		Each step is assigned to exactly one voice - voices never overlap, producing
 		interlocking rhythmic patterns. Density weights control how frequently each
 		voice fires. If the weights sum to less than 1.0, the remainder becomes
 		evenly-distributed rests (silent steps).
@@ -189,12 +189,12 @@ class PatternAlgorithmicMixin:
 
 		Layering with hand-placed hits:
 			```python
-			# Algorithmic base — interlocking texture, no overlaps within this layer
+			# Algorithmic base - interlocking texture, no overlaps within this layer
 			p.bresenham_poly(
 				parts={"hi_hat_closed": 0.5, "snare_2": 0.1},
 				velocity={"hi_hat_closed": 65, "snare_2": 40},
 			)
-			# Hand-placed anchors on top — these CAN overlap the algorithmic layer
+			# Hand-placed anchors on top - these CAN overlap the algorithmic layer
 			p.hit_steps("kick_1", [0, 8], velocity=110)
 			p.hit_steps("snare_1", [4, 12], velocity=100)
 			```
@@ -205,18 +205,18 @@ class PatternAlgorithmicMixin:
 			every bar. This is great for background texture (hats, shakers) but
 			can sound jarring for prominent, distinctive sounds (claps, cowbells).
 
-			**For stable patterns** — use ``bresenham()`` with integer pulses.
+			**For stable patterns** - use ``bresenham()`` with integer pulses.
 			Positions stay fixed until the pulse count steps up::
 
 				pulses = max(1, round(density * 16))
 				p.bresenham("hand_clap", pulses=pulses, velocity=95)
 
-			**For shifting texture** — use ``bresenham_poly()`` with continuous
+			**For shifting texture** - use ``bresenham_poly()`` with continuous
 			density. Positions evolve every bar::
 
 				p.bresenham_poly(parts={"hi_hat_closed": density}, velocity=70)
 
-			**To stabilise a solo voice** — pair it with a second voice. More
+			**To stabilise a solo voice** - pair it with a second voice. More
 			voices in a single call means less positional shift per voice::
 
 				p.bresenham_poly(
@@ -296,14 +296,14 @@ class PatternAlgorithmicMixin:
 		Parameters:
 			grid: The total number of steps in the sequence (usually 16 or 32).
 			bias: The probability distribution shape to generate:
-				- ``"uniform"``    — 1.0 everywhere.
-				- ``"offbeat"``    — 1.0 on 8th note off-beats (&), 0.3 on 16ths (e/a), 0.05 on downbeats.
-				- ``"sixteenths"`` — 1.0 on 16th notes (e/a), 0.3 on 8th off-beats (&), 0.05 on downbeats.
-				- ``"before"``     — 1.0 preceding a beat, 0.25 on other 16ths, 0.05 on beats.
-				- ``"after"``      — 1.0 following a beat, 0.25 on other 16ths, 0.05 on beats.
-				- ``"downbeat"``   — 1.0 on downbeats, 0.15 on 8th off-beats, 0.05 on other 16ths.
-				- ``"upbeat"``     — 1.0 on 8th note off-beats only, 0.05 everywhere else.
-				- ``"e_and_a"``    — 1.0 on all non-downbeat 16th positions, 0.05 on downbeats.
+				- ``"uniform"``    - 1.0 everywhere.
+				- ``"offbeat"``    - 1.0 on 8th note off-beats (&), 0.3 on 16ths (e/a), 0.05 on downbeats.
+				- ``"sixteenths"`` - 1.0 on 16th notes (e/a), 0.3 on 8th off-beats (&), 0.05 on downbeats.
+				- ``"before"``     - 1.0 preceding a beat, 0.25 on other 16ths, 0.05 on beats.
+				- ``"after"``      - 1.0 following a beat, 0.25 on other 16ths, 0.05 on beats.
+				- ``"downbeat"``   - 1.0 on downbeats, 0.15 on 8th off-beats, 0.05 on other 16ths.
+				- ``"upbeat"``     - 1.0 on 8th note off-beats only, 0.05 everywhere else.
+				- ``"e_and_a"``    - 1.0 on all non-downbeat 16th positions, 0.05 on downbeats.
 
 		Returns:
 			A list of floats with length equal to `grid`, where each value
@@ -406,14 +406,14 @@ class PatternAlgorithmicMixin:
 				Allows dynamic values like Perlin noise curves.
 			bias: Probability distribution shape:
 
-				- ``"uniform"``    — equal probability everywhere
-				- ``"offbeat"``    — prefer 8th-note off-beats (&)
-				- ``"sixteenths"`` — prefer 16th-note subdivisions (e/a)
-				- ``"before"``     — cluster just before beat positions
-				- ``"after"``      — cluster just after beat positions
-				- ``"downbeat"``   — reinforce the beat (inverse of offbeat)
-				- ``"upbeat"``     — strictly 8th-note off-beats only
-				- ``"e_and_a"``    — all non-downbeat 16th positions
+				- ``"uniform"``    - equal probability everywhere
+				- ``"offbeat"``    - prefer 8th-note off-beats (&)
+				- ``"sixteenths"`` - prefer 16th-note subdivisions (e/a)
+				- ``"before"``     - cluster just before beat positions
+				- ``"after"``      - cluster just after beat positions
+				- ``"downbeat"``   - reinforce the beat (inverse of offbeat)
+				- ``"upbeat"``     - strictly 8th-note off-beats only
+				- ``"e_and_a"``    - all non-downbeat 16th positions
 				- Or: a list of floats (one per grid step) for a custom field.
 
 			no_overlap: If True (default), skip where same pitch already exists.
@@ -497,7 +497,7 @@ class PatternAlgorithmicMixin:
 		Uses an elementary CA (1D binary cellular automaton) to produce
 		rhythmic patterns that change organically each bar.  The CA state
 		evolves by one generation per cycle, creating patterns that are
-		deterministic yet surprising — structured chaos.
+		deterministic yet surprising - structured chaos.
 
 		Rule 30 is the default: it produces quasi-random patterns with hidden
 		self-similarity.  Rule 90 produces fractal patterns.  Rule 110 is
@@ -633,7 +633,7 @@ class PatternAlgorithmicMixin:
 
 		Builds a :class:`~subsequence.weighted_graph.WeightedGraph` from
 		``transitions`` and walks it, placing one note per ``step`` beats.
-		The probability of each next state depends only on the current one —
+		The probability of each next state depends only on the current one -
 		use this to generate basslines, melodies, or rhythm motifs that have
 		stylistic coherence without being perfectly repetitive.
 
@@ -718,7 +718,7 @@ class PatternAlgorithmicMixin:
 		gravity, and a pitch-diversity penalty further shape the output.
 
 		Because ``state`` lives outside the pattern builder and persists
-		across bar rebuilds, melodic continuity is maintained automatically —
+		across bar rebuilds, melodic continuity is maintained automatically -
 		no manual history management is required.
 
 		Parameters:
@@ -727,7 +727,7 @@ class PatternAlgorithmicMixin:
 			step: Time between note onsets in beats (default 0.25 = 16th note).
 			velocity: MIDI velocity.  An ``int`` applies a fixed level; a
 			    ``(low, high)`` tuple draws uniformly from that range each step.
-			duration: Note duration in beats (default 0.2 — slightly shorter
+			duration: Note duration in beats (default 0.2 - slightly shorter
 			    than a 16th note, giving a crisp attack).
 			chord_tones: Optional list of MIDI note numbers that are chord
 			    tones this bar (e.g. from ``chord.tones(root)``).  Chord-tone
@@ -783,7 +783,7 @@ class PatternAlgorithmicMixin:
 		Expands ``axiom`` by applying ``rules`` for ``generations``
 		iterations, then walks the resulting string placing a note for
 		each character found in ``pitch_map``.  Unmapped characters are
-		silent rests — they advance time but produce no note.
+		silent rests - they advance time but produce no note.
 
 		The defining musical property is self-similarity: patterns repeat
 		at different time scales.  The Fibonacci rule (``A → AB``,
@@ -802,7 +802,7 @@ class PatternAlgorithmicMixin:
 			rules: Production rules.  Deterministic: ``{"A": "AB"}``.
 				Stochastic: ``{"A": [("AB", 3), ("BA", 1)]}``.
 			generations: Rewriting iterations.  String length grows
-				exponentially — keep this to 3–8 for practical use.
+				exponentially - keep this to 3–8 for practical use.
 			step: Time between symbols in beats.  ``None`` (default)
 				auto-fits the full expanded string into the bar.  A float
 				uses fixed spacing and truncates excess symbols.
@@ -812,7 +812,7 @@ class PatternAlgorithmicMixin:
 
 		Example:
 			```python
-			# Fibonacci kick rhythm — self-similar hit spacing
+			# Fibonacci kick rhythm - self-similar hit spacing
 			p.lsystem(
 			    pitch_map={"A": "kick_1"},
 			    axiom="A",
@@ -886,12 +886,12 @@ class PatternAlgorithmicMixin:
 		The Thue-Morse sequence (0 1 1 0 1 0 0 1 1 0 0 1 0 1 1 0 …) is
 		perfectly balanced, overlap-free, and self-similar but never periodic.
 		It produces rhythmic patterns that feel structured yet never settle into
-		a simple repeating loop — a quality distinct from Euclidean rhythms
+		a simple repeating loop - a quality distinct from Euclidean rhythms
 		(evenly spaced) and cellular automata (rule-driven evolution).
 
 		In **single-pitch mode** (default), notes are placed at positions where
 		the sequence is 1.  In **two-pitch mode** (``pitch_b`` given), ``pitch``
-		is placed at 0-positions and ``pitch_b`` at 1-positions — useful for
+		is placed at 0-positions and ``pitch_b`` at 1-positions - useful for
 		alternating two drums or two chord tones.
 
 		Parameters:
@@ -949,7 +949,7 @@ class PatternAlgorithmicMixin:
 		A de Bruijn sequence B(k, n) over an alphabet of size ``k`` with window
 		``n`` contains every possible subsequence of length ``n`` exactly once
 		(cyclically).  Mapping each symbol to a pitch produces a melody that
-		systematically explores all possible ``n``-gram transitions — every
+		systematically explores all possible ``n``-gram transitions - every
 		permutation of ``window`` consecutive pitches appears exactly once.
 
 		With ``step=None`` (default) the full sequence is auto-fitted into the
@@ -1012,7 +1012,7 @@ class PatternAlgorithmicMixin:
 
 		"""Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing).
 
-		Uses the golden angle method — ``position_i = (i × φ) mod bar_length`` —
+		Uses the golden angle method - ``position_i = (i × φ) mod bar_length`` -
 		to distribute ``steps`` events across the bar.  The result is sorted
 		into ascending time order.  Unlike a Euclidean rhythm (maximally even
 		spacing on a fixed grid), Fibonacci timing is irrational and places
@@ -1073,7 +1073,7 @@ class PatternAlgorithmicMixin:
 
 		The Lorenz attractor is deterministic but extremely sensitive to initial
 		conditions: changing ``x0`` by even 0.001 produces a divergent trajectory
-		over time.  This makes it ideal for cycle-by-cycle variation — pass
+		over time.  This makes it ideal for cycle-by-cycle variation - pass
 		``x0=p.cycle * 0.001`` to generate a unique but slowly evolving phrase
 		each bar.
 
@@ -1152,8 +1152,8 @@ class PatternAlgorithmicMixin:
 		pattern.  Cells where concentration exceeds ``threshold`` become note
 		events.
 
-		Unlike cellular automata — where rules are discrete and the state is
-		binary — reaction-diffusion evolves a continuous concentration field
+		Unlike cellular automata - where rules are discrete and the state is
+		binary - reaction-diffusion evolves a continuous concentration field
 		governed by diffusion rates and chemical reactions.  The resulting
 		spatial patterns (spots, stripes, travelling waves) have an organic,
 		biological character that maps naturally to rhythm.
@@ -1225,7 +1225,7 @@ class PatternAlgorithmicMixin:
 		A self-avoiding walk moves ±1 step through a pitch index space, tracking
 		visited positions and refusing to revisit them.  When the walk is trapped
 		(all neighbours visited), the visited set resets and the walk continues
-		from the current position — creating natural phrase boundaries.
+		from the current position - creating natural phrase boundaries.
 
 		Compared to :func:`random_walk`, the self-avoiding variant guarantees
 		pitch diversity within each phrase: no pitch repeats until the walk
@@ -1294,16 +1294,16 @@ class PatternAlgorithmicMixin:
 		The strategy names match those in :meth:`build_ghost_bias()` and carry the
 		same rhythmic meaning:
 
-		- ``"sixteenths"`` — removes 16th-note subdivisions (e/a), keeps beats and &.
-		- ``"offbeat"``    — removes the & position, straightens the groove.
-		- ``"e_and_a"``    — removes all non-downbeat positions, keeps only beats.
-		- ``"downbeat"``   — removes beat positions (floating/displaced effect).
-		- ``"upbeat"``     — removes only the & position.
-		- ``"uniform"``    — removes from all positions equally (per-instrument dropout).
-		- ``"strength"``   — progressive thinning: weakest positions (e/a) drop first,
+		- ``"sixteenths"`` - removes 16th-note subdivisions (e/a), keeps beats and &.
+		- ``"offbeat"``    - removes the & position, straightens the groove.
+		- ``"e_and_a"``    - removes all non-downbeat positions, keeps only beats.
+		- ``"downbeat"``   - removes beat positions (floating/displaced effect).
+		- ``"upbeat"``     - removes only the & position.
+		- ``"uniform"``    - removes from all positions equally (per-instrument dropout).
+		- ``"strength"``   - progressive thinning: weakest positions (e/a) drop first,
 		  strongest (downbeat) last. Useful for Perlin-driven density control.
 
-		When ``pitch`` is given, only notes of that instrument are affected —
+		When ``pitch`` is given, only notes of that instrument are affected -
 		useful for drum layers.  When ``pitch`` is ``None`` (the default), all
 		notes regardless of pitch are candidates.  This makes ``thin`` a
 		rhythm-aware generalisation of :meth:`dropout()`, and is ideal for
@@ -1337,7 +1337,7 @@ class PatternAlgorithmicMixin:
 			sparseness = perlin_1d(p.cycle * 0.07, seed=42)
 			p.thin("hi_hat_closed", "strength", amount=sparseness)
 
-			# Thin an arpeggio (all pitches) — no pitch loop needed
+			# Thin an arpeggio (all pitches) - no pitch loop needed
 			p.thin(strategy="strength", amount=sparseness)
 		"""
 
@@ -1356,7 +1356,7 @@ class PatternAlgorithmicMixin:
 		#   ghost_fill:  high weight → place a note here
 		#   thin:        high weight → drop a note from here
 		#
-		# "strength" is defined only for thin() — it expresses a thinning hierarchy
+		# "strength" is defined only for thin() - it expresses a thinning hierarchy
 		# (weakest positions drop first) which has no meaningful ghost_fill equivalent.
 		if strategy == "strength":
 			# Per-beat drop priorities: e/a (1.0) > & (0.6) > downbeat (0.05).

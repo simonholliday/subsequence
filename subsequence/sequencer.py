@@ -174,6 +174,7 @@ class Sequencer:
 		self.midi_in: typing.Any = None
 		self._midi_input_queue: typing.Optional[asyncio.Queue] = None
 		self._input_loop: typing.Optional[asyncio.AbstractEventLoop] = None
+		self._event_loop: typing.Optional[asyncio.AbstractEventLoop] = None
 		self._clock_tick_times: typing.List[float] = []
 		self._waiting_for_start: bool = False
 
@@ -693,6 +694,9 @@ class Sequencer:
 			self._input_loop = asyncio.get_running_loop()
 			self._midi_input_queue = asyncio.Queue()
 			self._init_midi_input()
+
+		# Store the event loop for thread-safe scheduling (e.g., trigger() from user threads)
+		self._event_loop = asyncio.get_running_loop()
 
 		self._waiting_for_start = self.clock_follow
 		self.running = True

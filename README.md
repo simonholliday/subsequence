@@ -150,6 +150,7 @@ Subsequence connects to your existing studio. Sync to your DAW's clock, or let i
 - **Hardware control.** [CC input mapping](#midi-cc-input-mapping) from knobs and faders to `composition.data`. [OSC](#osc-integration) for bidirectional communication with mixers, lighting, visuals.
 - **[Live coding.](#live-coding)** Hot-swap patterns, change tempo, mute/unmute, tweak parameters - all during playback.
 - [Hotkeys.](#hotkeys) Single keystrokes to jump sections, tweak patterns, or trigger actions - with optional bar-boundary quantization.
+- **[Real-time pattern triggering.](#real-time-pattern-triggering)** Trigger one-shot fills, stabs, or responsive patterns in response to sensor input, OSC messages, or any event.
 - **Web UI Dashboard (Beta).** Broadcast live composition state and pattern grids to your browser via standard WebSockets.
 - **Recording and rendering.** [Record](#midi-recording-and-rendering) to standard MIDI file. [Render to file](#rendering-to-file-no-real-time-wait) without waiting for real-time playback.
 
@@ -1903,6 +1904,62 @@ Queue a section to play after the current one finishes (graph mode only). Overri
 ### `composition.form_jump(section_name)`
 
 Force the form to a named section immediately (graph mode only). Resets the bar count within the section. Effect is heard at the next pattern rebuild. Use `form_next` for gentle transitions and `form_jump` for urgent ones.
+
+## Real-Time Pattern Triggering
+
+Trigger one-shot patterns in response to external events - sensor readings, OSC messages, MIDI input, or any Python callback. Triggered patterns are one-off generators built and scheduled immediately, useful for fills, stabs, or responsive accompaniment that adapts to live input.
+
+```python
+import subsequence.constants.durations as dur
+
+@composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+def drums(p):
+    p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+
+# Trigger a one-shot snare fill immediately
+composition.trigger(
+    lambda p: p.euclidean("snare_1", pulses=7, velocity=90),
+    channel=9,
+    drum_note_map=gm_drums.GM_DRUM_MAP
+)
+
+# Quantized to next bar boundary
+composition.trigger(
+    lambda p: p.euclidean("snare_1", pulses=7, velocity=90),
+    channel=9,
+    drum_note_map=gm_drums.GM_DRUM_MAP,
+    quantize=dur.WHOLE  # snap to next bar
+)
+
+# With chord context (if harmony is active)
+composition.trigger(
+    lambda p: p.arpeggio(p.chord.tones(root=60), step=dur.SIXTEENTH),
+    channel=0,
+    quantize=dur.WHOLE,
+    chord=True  # inject current chord
+)
+```
+
+Triggered patterns use the same `PatternBuilder` API as `@composition.pattern` decorated patterns - all rhythm and melody methods work (`p.euclidean()`, `p.arpeggio()`, `p.note()`, method chaining, etc.). The builder function runs immediately; the generated MIDI is queued at the specified pulse boundary:
+
+- `quantize=0` (default) — schedule at the next available pulse
+- `quantize=dur.QUARTER` — snap to next beat
+- `quantize=dur.WHOLE` — snap to next bar
+- `quantize=dur.SIXTEENTH` — snap to next 16th note
+- Any float in beats works directly
+
+### `composition.trigger(fn, channel, length=1, quantize=0, drum_note_map=None, chord=False)`
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `fn` | - | Builder function (same API as `@composition.pattern`) |
+| `channel` | - | MIDI channel (1-16, or 0-15 with `zero_indexed_channels=True`) |
+| `length` | `1` | Pattern duration in beats |
+| `quantize` | `0` | Snap to beat boundary: `0` = immediate, or a float in beats (use `dur.*` constants) |
+| `drum_note_map` | `None` | Optional drum name mapping |
+| `chord` | `False` | If `True`, the builder receives the current chord as a second parameter |
+
+Triggered patterns are thread-safe - call from OSC handlers, scheduled callbacks, or custom threads. If playback hasn't started yet (before `play()` is called), `trigger()` is a no-op and logs a warning.
 
 ## Groove
 

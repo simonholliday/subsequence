@@ -96,6 +96,8 @@ Integration:
   tweak parameters during playback via a built-in TCP eval server.
 - **Hotkeys.** Single keystrokes to jump sections, toggle mutes, or
   fire any action - with optional bar-boundary quantization.
+- **Real-time pattern triggering.** ``composition.trigger()`` generates
+  one-shot patterns in response to sensors, OSC, or any event.
 - **Terminal display.** Live status line (BPM, bar, section, chord).
   Add ``grid=True`` for an ASCII pattern grid showing velocity and
   sustain - makes legato and staccato visually distinct at a glance.
