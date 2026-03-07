@@ -24,11 +24,12 @@ class WebUI:
     blocking the audio loop, and serves the static frontend assets via HTTP.
     """
 
-    def __init__ (self, composition: typing.Any, http_port: int = 8080, ws_port: int = 8765) -> None:
+    def __init__ (self, composition: typing.Any, http_port: int = 8080, ws_port: int = 8765, ws_host: str = "0.0.0.0") -> None:
 
         self.composition_ref = weakref.ref(composition)
         self.http_port = http_port
         self.ws_port = ws_port
+        self.ws_host = ws_host
         self._http_thread: typing.Optional[threading.Thread] = None
         self._ws_server: typing.Optional[websockets.asyncio.server.Server] = None
         self._broadcast_task: typing.Optional[asyncio.Task] = None
@@ -92,7 +93,7 @@ class WebUI:
     async def _start_ws_server (self) -> None:
 
         try:
-            self._ws_server = await websockets.asyncio.server.serve(self._handle_client, "0.0.0.0", self.ws_port)
+            self._ws_server = await websockets.asyncio.server.serve(self._handle_client, self.ws_host, self.ws_port)
             self._broadcast_task = asyncio.create_task(self._broadcast_loop())
         except Exception as e:
             logger.error(f"WebSocket server error: {e}")
@@ -113,7 +114,7 @@ class WebUI:
             try:
                 state = self._get_state(comp)
                 message = json.dumps(state)
-                websockets.broadcast(self._clients, message)
+                websockets.broadcast(self._clients.copy(), message)
             except Exception as e:
                 import traceback
                 logger.error(f"Error broadcasting UI state: {e}\n{traceback.format_exc()}")
@@ -184,18 +185,18 @@ class WebUI:
             if hasattr(val, "current"): # Matches EasedValue
                 try:
                     return float(val.current)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"WebUI failed to extract float from .current on {val}: {e}")
             if callable(getattr(val, "value", None)):
                 try:
                     return float(val.value())
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"WebUI failed to extract float from .value() on {val}: {e}")
             elif hasattr(val, "value"):
                 try:
                     return float(val.value)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"WebUI failed to extract float from .value on {val}: {e}")
             elif type(val) in (int, float, bool):
                 return float(val)
             return None

@@ -43,11 +43,13 @@ class OscServer:
 		composition: "Composition",
 		receive_port: int = 9000,
 		send_port: int = 9001,
-		send_host: str = "127.0.0.1"
+		send_host: str = "127.0.0.1",
+		receive_host: str = "0.0.0.0"
 	) -> None:
 
 		self._composition = composition
 		self._receive_port = receive_port
+		self._receive_host = receive_host
 		self._send_port = send_port
 		self._send_host = send_host
 		
@@ -72,7 +74,7 @@ class OscServer:
 
 		# server for receiving
 		self._server = pythonosc.osc_server.AsyncIOOSCUDPServer(
-			("0.0.0.0", self._receive_port),
+			(self._receive_host, self._receive_port),
 			self._dispatcher,
 			asyncio.get_event_loop()  # type: ignore[arg-type]
 		)
@@ -142,4 +144,14 @@ class OscServer:
 		parts = address.split("/")
 		if len(parts) >= 3:
 			key = parts[2]
-			self._composition.data[key] = args[0]
+			val = args[0]
+			if key in self._composition.data:
+				existing = self._composition.data[key]
+				if isinstance(existing, (float, int)):
+					try:
+						val = float(val) if isinstance(existing, float) else int(val)
+					except (ValueError, TypeError):
+						logger.warning(f"OSC /data: failed to cast {val} to numeric for key {key}")
+						return
+            
+			self._composition.data[key] = val

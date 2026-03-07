@@ -255,9 +255,11 @@ def scale_notes (
 	pcs = set(scale_pitch_classes(key_pc, mode))
 
 	if count is not None:
+		if not pcs:
+			return []
 		result: typing.List[int] = []
 		pitch = low
-		while len(result) < count:
+		while len(result) < count and pitch <= 127:
 			if pitch % 12 in pcs:
 				result.append(pitch)
 			pitch += 1

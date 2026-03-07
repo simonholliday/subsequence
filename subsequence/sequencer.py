@@ -110,6 +110,7 @@ class Sequencer:
 		self,
 		output_device_name: typing.Optional[str] = None,
 		initial_bpm: float = 125,
+		time_signature: typing.Tuple[int, int] = (4, 4),
 		input_device_name: typing.Optional[str] = None,
 		clock_follow: bool = False,
 		clock_output: bool = False,
@@ -148,6 +149,7 @@ class Sequencer:
 
 		self.output_device_name = output_device_name
 		self.input_device_name = input_device_name
+		self.time_signature = time_signature
 		self.clock_follow = clock_follow
 		self.clock_output = clock_output and not clock_follow
 		self.pulses_per_beat = subsequence.constants.MIDI_QUARTER_NOTE
@@ -778,7 +780,7 @@ class Sequencer:
 		self.pulse_count = 0
 		self.current_bar = -1
 
-		pulses_per_bar = 4 * self.pulses_per_beat  # 4/4 time assumed throughout
+		pulses_per_bar = self.time_signature[0] * self.pulses_per_beat
 
 		if self.clock_follow and self._midi_input_queue is not None:
 			await self._run_loop_external_clock(pulses_per_bar)
@@ -812,7 +814,7 @@ class Sequencer:
 
 		"""Detect beat boundaries within the bar and fire beat events."""
 
-		beat_in_bar = (pulse % (4 * pulses_per_beat)) // pulses_per_beat
+		beat_in_bar = (pulse % (self.time_signature[0] * pulses_per_beat)) // pulses_per_beat
 
 		if beat_in_bar != self.current_beat:
 			self.current_beat = beat_in_bar

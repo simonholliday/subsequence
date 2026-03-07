@@ -437,8 +437,8 @@ async def schedule_form (
 			else:
 				logger.info("Form: finished")
 
-	# Form advances once per bar. A bar is always 4 beats (4/4 assumed).
-	_BEATS_PER_BAR: int = 4
+	# Form advances once per bar based on the global time signature.
+	_BEATS_PER_BAR: int = sequencer.time_signature[0]
 	first_bar_pulse = int(_BEATS_PER_BAR * sequencer.pulses_per_beat)
 
 	await sequencer.schedule_callback_repeating(
@@ -567,6 +567,7 @@ class Composition:
 		self,
 		output_device: typing.Optional[str] = None,
 		bpm: float = 120,
+		time_signature: typing.Tuple[int, int] = (4, 4),
 		key: typing.Optional[str] = None,
 		seed: typing.Optional[int] = None,
 		record: bool = False,
@@ -588,10 +589,10 @@ class Composition:
 				will be identical on every run.
 			record: When True, record all MIDI events to a file.
 			record_filename: Optional filename for the recording (defaults to timestamp).
-			zero_indexed_channels: When False (default), MIDI channels use
+			zero_indexed_channels: When False, MIDI channels use
 				1-based numbering (1-16) matching instrument labelling.
 				Channel 10 is drums, the way musicians and hardware panels
-				show it. When True, channels use 0-based numbering (0-15)
+				show it. When True (default), channels use 0-based numbering (0-15)
 				matching the raw MIDI protocol.
 
 		Example:
@@ -602,6 +603,7 @@ class Composition:
 
 		self.output_device = output_device
 		self.bpm = bpm
+		self.time_signature = time_signature
 		self.key = key
 		self._seed: typing.Optional[int] = seed
 		self._zero_indexed_channels: bool = zero_indexed_channels
@@ -609,6 +611,7 @@ class Composition:
 		self._sequencer = subsequence.sequencer.Sequencer(
 			output_device_name = output_device,
 			initial_bpm = bpm,
+			time_signature = time_signature,
 			record = record,
 			record_filename = record_filename
 		)
@@ -1281,8 +1284,8 @@ class Composition:
 			cc: MIDI Control Change number (0–127).
 			key: The ``composition.data`` key to write.
 			channel: If given, only respond to CC messages on this channel.
-				Uses the same numbering convention as ``pattern()`` (1-16
-				by default, or 0-15 with ``zero_indexed_channels=True``).
+				Uses the same numbering convention as ``pattern()`` (0-15
+				by default, or 1-16 with ``zero_indexed_channels=False``).
 				``None`` matches any channel (default).
 			min_val: Scaled minimum — written when CC value is 0 (default 0.0).
 			max_val: Scaled maximum — written when CC value is 127 (default 1.0).
@@ -1611,10 +1614,10 @@ class Composition:
 		the grid defaults to sixteenth-note resolution.
 
 		Parameters:
-			channel: MIDI channel. By default uses 1-based numbering (1-16)
-				matching instrument labelling — channel 10 is drums. Set
-				``zero_indexed_channels=True`` on the ``Composition`` to use
-				0-based numbering (0-15) instead.
+			channel: MIDI channel. By default uses 0-based numbering (0-15)
+				matching the raw MIDI protocol. Set
+				``zero_indexed_channels=False`` on the ``Composition`` to use
+				1-based numbering (1-16) instead.
 			length: Note count when ``unit`` is given, otherwise duration
 				in beats (default 4).
 			unit: Duration of one note in beats (e.g. ``dur.SIXTEENTH``).
@@ -1692,7 +1695,7 @@ class Composition:
 
 		Parameters:
 			builder_fns: One or more pattern builder functions.
-			channel: MIDI channel (1-16, or 0-15 with ``zero_indexed_channels=True``).
+			channel: MIDI channel (0-15, or 1-16 with ``zero_indexed_channels=False``).
 			length: Note count when ``unit`` is given, otherwise duration
 				in beats (default 4).
 			unit: Duration of one note in beats (e.g. ``dur.SIXTEENTH``).
@@ -1767,7 +1770,7 @@ class Composition:
 
 		Parameters:
 			fn: The pattern builder function (same signature as ``@comp.pattern``).
-			channel: MIDI channel (1-16, or 0-15 with ``zero_indexed_channels=True``).
+			channel: MIDI channel (0-15, or 1-16 with ``zero_indexed_channels=False``).
 			length: Duration in beats (default 1). This is the time window for the
 				one-shot pattern.
 			quantize: Snap the trigger to a beat boundary: ``0`` = immediate (default),
@@ -2016,11 +2019,11 @@ class Composition:
 		def _advance_builder_bar (pulse: int) -> None:
 			self._builder_bar += 1
 
-		first_bar_pulse = int(4 * self._sequencer.pulses_per_beat)
+		first_bar_pulse = int(self.time_signature[0] * self._sequencer.pulses_per_beat)
 
 		await self._sequencer.schedule_callback_repeating(
 			callback = _advance_builder_bar,
-			interval_beats = 4,
+			interval_beats = self.time_signature[0],
 			start_pulse = first_bar_pulse,
 			reschedule_lookahead = 1
 		)
