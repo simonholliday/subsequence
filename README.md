@@ -1898,7 +1898,14 @@ The server listens for incoming UDP messages (default port 9000) and maps them t
 | `/unmute/<name>` | (none) | Unmute a pattern |
 | `/data/<key>` | `any` | Update a value in `composition.data` |
 
-Custom handlers can be registered via `composition._osc_server.map(address, handler)`.
+Custom handlers can be registered via `composition.osc_map(address, handler)`:
+
+```python
+def on_intensity (address, value):
+    composition.data["intensity"] = float(value)
+
+composition.osc_map("/intensity", on_intensity)
+```
 
 ### Sending (Status)
 

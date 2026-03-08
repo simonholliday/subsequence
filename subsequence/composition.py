@@ -1345,6 +1345,33 @@ class Composition:
 			send_host = send_host
 		)
 
+	def osc_map (self, address: str, handler: typing.Callable) -> None:
+
+		"""
+		Register a custom OSC handler.
+
+		Must be called after :meth:`osc` has been configured.
+
+		Parameters:
+			address: OSC address pattern to match (e.g. ``"/my/param"``).
+			handler: Callable invoked with ``(address, *args)`` when a
+				matching message arrives.
+
+		Example::
+
+			composition.osc("/control")
+
+			def on_intensity(address, value):
+				composition.data["intensity"] = float(value)
+
+			composition.osc_map("/intensity", on_intensity)
+		"""
+
+		if self._osc_server is None:
+			raise RuntimeError("Call composition.osc() before composition.osc_map()")
+
+		self._osc_server.map(address, handler)
+
 	def set_bpm (self, bpm: float) -> None:
 
 		"""
