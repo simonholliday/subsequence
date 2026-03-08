@@ -1,6 +1,6 @@
 # Subsequence
 
-**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence is a generative engine for your studio. Engineered for rock-solid timing and efficiency, it uses cognitive harmony and stateful patterns to drive your hardware synths and VSTs. It gives you a palette of algorithmic building blocks - Euclidean rhythms, cellular automata, L-systems, Markov chains-and a stateful engine that lets them interact and evolve over time. It is designed for **the musician who wants to build compositions that surprise them** - where patterns combine, react to context, and develop in ways that reward exploration.
+**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence is a generative engine for your studio. Engineered for rock-solid timing and efficiency, it uses cognitive harmony (chord progressions that follow how listeners expect music to move) and stateful patterns to drive your hardware synths and VSTs. It gives you a palette of algorithmic building blocks - Euclidean rhythms, cellular automata, L-systems, Markov chains-and a stateful engine that lets them interact and evolve over time. It is designed for **the musician who wants to build compositions that surprise them** - where patterns combine, react to context, and develop in ways that reward exploration.
 
 Unlike tools that loop a fixed pattern forever, Subsequence rebuilds every pattern fresh before each cycle, granting macro-level structural control and narrative evolution. Each rebuild has full context - the current chord, the composition section, the cycle count, shared data from other patterns. A Euclidean rhythm can thin itself as tension builds; a cellular automaton can seed from the harmony.
 
@@ -58,7 +58,7 @@ Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes
 
 ### Introduction
 
-Subsequence is a generative engine for your studio. Engineered for rock-solid timing and efficiency, it uses cognitive harmony and stateful patterns to drive your hardware synths and VSTs. It gives you a palette of algorithmic building blocks - Euclidean rhythms, cellular automata, L-systems, Markov chains - and a stateful engine that lets them interact and evolve over time.
+Subsequence is a generative engine for your studio. Engineered for rock-solid timing and efficiency, it uses cognitive harmony (chord progressions that follow how listeners expect music to move) and stateful patterns to drive your hardware synths and VSTs. It gives you a palette of algorithmic building blocks - Euclidean rhythms, cellular automata, L-systems, Markov chains - and a stateful engine that lets them interact and evolve over time.
 
 It is designed for **the musician who wants to build compositions that surprise them** - where patterns combine, react to context, and develop in ways that reward exploration.
 
@@ -68,7 +68,7 @@ It is designed for **the musician who wants to build compositions that surprise 
 - **Accessible Python, no CS degree required.** If you can configure a synth, you can write generative music here. Simple building blocks mean you can get started with tiny scripts and learn as you go.
 - **Not just for algorithms.** You can program traditional basslines or fixed drum grooves without any generative variation. Use Subsequence as a highly precise, Python-driven standard MIDI sequencer alongside your evolving patterns.
 - **Implicit Compositional Structure.** Subsequence understands predefined sections, bringing overarching musical form to a piece without getting stuck in infinite loops. Patterns rebuild each cycle with full context - chord, section, history - so music can grow and develop across defined movement.
-- **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition. The engine writes melodies that sound *human* because it models deep listener expectations.
+- **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition (big leaps tend to reverse, small steps tend to continue). The engine writes melodies that sound *human* because it models deep listener expectations.
 - **From sketch to studio.** Subsequence is a fast way to explore ideas. When something clicks, [record the session](#midi-recording-and-rendering) as a standard multi-channel MIDI file and bring it straight into your DAW to arrange, edit, and polish.
 
 ### What it does
@@ -129,7 +129,7 @@ The first three entries below (`perlin_1d`, `logistic_map`, `pink_noise`) are st
 
 Ken Perlin invented gradient noise in 1983 to generate natural-looking textures for the film *Tron* - he later won an Academy Award for the technique. His insight was that pure randomness looks artificial, but smoothly interpolated randomness looks organic. `perlin_1d(x, seed)` produces values where neighbours are correlated - it drifts like wind, not dice. Use it for velocity curves, pitch bend, density envelopes, or any parameter that should evolve continuously. `perlin_1d_sequence()` returns a list for per-step modulation; `perlin_2d()` adds a second axis (e.g. bar × step position).
 
-`p.grid` is the number of 16th-note steps in this pattern — `16` for a 4-beat bar (`length=4`), `32` for two bars. When you pass `unit=dur.SIXTEENTH` to the decorator, `p.grid` equals `length` directly.
+`p.grid` is the number of 16th-note steps in this pattern - `16` for a 4-beat bar (`length=4`), `32` for two bars. When you pass `unit=dur.SIXTEENTH` to the decorator, `p.grid` equals `length` directly.
 
 ```python
 import subsequence.sequence_utils
@@ -1011,7 +1011,7 @@ composition.harmony(
 | `style` | str or ChordGraph | `"functional_major"` | Built-in name or custom ChordGraph instance |
 | `cycle_beats` | int | `4` | Beats per chord change |
 | `dominant_7th` | bool | `True` | Include dominant 7th chords |
-| `gravity` | float | `1.0` | Key gravity blend (0.0 = functional chords only, 1.0 = full diatonic set) |
+| `gravity` | float | `1.0` | Key gravity blend - how broadly the harmony can roam. `0.0` = stick to functional chords (tonic, dominant, subdominant). `1.0` = any diatonic chord is equally welcome. |
 | `nir_strength` | float | `0.5` | Melodic inertia (0.0 = off, 1.0 = full). Controls how strongly transitions follow Narmour's Implication-Realization model |
 | `minor_turnaround_weight` | float | `0.0` | Minor turnaround weight (turnaround graph only) |
 | `root_diversity` | float | `0.4` | Root-repetition damping (0.0 = maximum, 1.0 = off). Each recent same-root chord multiplies the weight by this factor |
