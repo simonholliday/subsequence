@@ -90,8 +90,9 @@ composition = subsequence.Composition(bpm=120)
 
 @composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums(p):
+
     p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100) # beats 1, 2, 3, 4
-    p.hit_steps("snare_1", [4, 12], velocity=90)      # beats 2 and 4
+    p.hit_steps("snare_1", [4, 12], velocity=90) # beats 2 and 4
     p.hit_steps("hi_hat_closed", range(16), velocity=70) # every sixteenth
 
 composition.play()
