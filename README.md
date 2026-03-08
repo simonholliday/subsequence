@@ -132,6 +132,9 @@ Ken Perlin invented gradient noise in 1983 to generate natural-looking textures 
 `p.grid` is the number of 16th-note steps in this pattern — `16` for a 4-beat bar (`length=4`), `32` for two bars. When you pass `unit=dur.SIXTEENTH` to the decorator, `p.grid` equals `length` directly.
 
 ```python
+import subsequence.sequence_utils
+import subsequence.easing
+
 hat_noise = subsequence.sequence_utils.perlin_1d_sequence(
 	start=p.bar * p.grid * 0.1, spacing=0.1, count=p.grid, seed=10
 )
@@ -1086,13 +1089,13 @@ Higher edge weights mean a transition is more likely. Use the constants `WEIGHT_
 Use `diatonic_chords()` to get the 7 diatonic triads for any key and mode - plain `Chord` objects with no probabilistic machinery:
 
 ```python
-from subsequence.harmony import diatonic_chords
+import subsequence.harmony
 
 # Seven triads of Eb Major: Eb, Fm, Gm, Ab, Bb, Cm, Ddim
-chords = diatonic_chords("Eb")
+chords = subsequence.harmony.diatonic_chords("Eb")
 
 # Natural minor
-chords = diatonic_chords("A", mode="minor")
+chords = subsequence.harmony.diatonic_chords("A", mode="minor")
 
 # Supported modes: "ionian" ("major"), "dorian", "phrygian", "lydian",
 #   "mixolydian", "aeolian" ("minor"), "locrian",
@@ -1102,22 +1105,23 @@ chords = diatonic_chords("A", mode="minor")
 Each entry is a `Chord` object - pass it directly to `p.chord()`, `p.strum()`, or `chord.tones()`:
 
 ```python
+import subsequence.harmony
 import subsequence.constants.midi_notes as notes
 
 @composition.pattern(channel=1, length=4)
 def rising (p):
-    current = diatonic_chords("D", mode="dorian")[p.cycle % 7]
+    current = subsequence.harmony.diatonic_chords("D", mode="dorian")[p.cycle % 7]
     p.chord(current, root=notes.D3, sustain=True)
 ```
 
 For a **stepped sequence with explicit MIDI roots** - for example, mapping a sensor value to a chord - use `diatonic_chord_sequence()`. It returns `(Chord, midi_root)` tuples stepping diatonically upward from a starting note, wrapping into higher octaves automatically:
 
 ```python
-from subsequence.harmony import diatonic_chord_sequence
+import subsequence.harmony
 import subsequence.constants.midi_notes as notes
 
 # 12-step D Major ladder from D3 up through D4 and beyond
-sequence = diatonic_chord_sequence("D", root_midi=notes.D3, count=12)
+sequence = subsequence.harmony.diatonic_chord_sequence("D", root_midi=notes.D3, count=12)
 
 # Map a 0-1 value directly to a chord
 altitude_ratio = 0.7   # e.g. from ISS data
@@ -1125,7 +1129,7 @@ chord, root = sequence[int(altitude_ratio * (len(sequence) - 1))]
 p.chord(chord, root=root, sustain=True)
 
 # Falling sequence - A minor ladder descending from A2
-sequence = list(reversed(diatonic_chord_sequence("A", root_midi=notes.A2, count=7, mode="minor")))
+sequence = list(reversed(subsequence.harmony.diatonic_chord_sequence("A", root_midi=notes.A2, count=7, mode="minor")))
 ```
 
 The `root_midi` must be a note that falls on a scale degree of the chosen key and mode. A `ValueError` is raised otherwise.
