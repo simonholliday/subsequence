@@ -129,6 +129,8 @@ The first three entries below (`perlin_1d`, `logistic_map`, `pink_noise`) are st
 
 Ken Perlin invented gradient noise in 1983 to generate natural-looking textures for the film *Tron* - he later won an Academy Award for the technique. His insight was that pure randomness looks artificial, but smoothly interpolated randomness looks organic. `perlin_1d(x, seed)` produces values where neighbours are correlated - it drifts like wind, not dice. Use it for velocity curves, pitch bend, density envelopes, or any parameter that should evolve continuously. `perlin_1d_sequence()` returns a list for per-step modulation; `perlin_2d()` adds a second axis (e.g. bar × step position).
 
+`p.grid` is the number of 16th-note steps in this pattern — `16` for a 4-beat bar (`length=4`), `32` for two bars. When you pass `unit=dur.SIXTEENTH` to the decorator, `p.grid` equals `length` directly.
+
 ```python
 hat_noise = subsequence.sequence_utils.perlin_1d_sequence(
 	start=p.bar * p.grid * 0.1, spacing=0.1, count=p.grid, seed=10
