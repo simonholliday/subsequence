@@ -64,7 +64,7 @@ It is designed for **the musician who wants to build compositions that surprise 
 
 ### Why Subsequence?
 
-- **Precision and efficiency.** Built for live performance and serious studio use. A highly-optimized hybrid timing strategy ensures sub-microsecond clock accuracy, while a comprehensively tested codebase provides rock-solid stability.
+- **Precision and efficiency.** Built for live performance and serious studio use. A highly-optimized hybrid timing strategy achieves typical pulse jitter of **< 5 μs** on Linux, while a comprehensively tested codebase provides rock-solid stability.
 - **Accessible Python, no CS degree required.** If you can configure a synth, you can write generative music here. Simple building blocks mean you can get started with tiny scripts and learn as you go.
 - **Not just for algorithms.** You can program traditional basslines or fixed drum grooves without any generative variation. Use Subsequence as a highly precise, Python-driven standard MIDI sequencer alongside your evolving patterns.
 - **Implicit Compositional Structure.** Subsequence understands predefined sections, bringing overarching musical form to a piece without getting stuck in infinite loops. Patterns rebuild each cycle with full context - chord, section, history - so music can grow and develop across defined movement.
@@ -75,7 +75,7 @@ It is designed for **the musician who wants to build compositions that surprise 
 
 - **Stateful patterns that evolve.** Each pattern is a Python function rebuilt fresh every cycle with full context. Patterns can remember history and decide their next move.
 - **Cognitive harmony engine.** Chord progressions evolve via [weighted transition graphs](#harmony-and-chord-graphs) with adjustable gravity and [Narmour-based melodic inertia](#harmonic-gravity-and-melodic-inertia). Automatic [voice leading](#automatic-voice-leading).
-- **Sub-microsecond clock.** A hybrid sleep+spin timing strategy achieves typical pulse jitter of **< 5 μs** on Linux ([measured](#clock-accuracy)), with zero long-term drift.
+- **Single-digit-microsecond clock.** A hybrid sleep+spin timing strategy achieves typical pulse jitter of **< 5 μs** on Linux ([measured](#clock-accuracy)), with zero long-term drift.
 - **Pure MIDI, zero sound engine.** Route to hardware synths, drum machines, Eurorack, or VSTs. You provide the sound; Subsequence provides the logic.
 
 ### Minimal Example
