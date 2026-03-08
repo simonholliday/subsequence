@@ -1601,12 +1601,14 @@ comp.link(quantum=4.0)
 
 @comp.pattern(channel=10, length=4)
 def kick(p):
-    p.hit(35, steps=[0, 2], velocity=110, duration=0.1)
+    p.hit(35, beats=[0, 2], velocity=110, duration=0.1)
 
 comp.play()
 ```
 
 `comp.link()` returns `self` for method chaining. The `quantum` parameter (default 4.0) is the beat cycle length - one bar in 4/4 time. Subsequence will wait for the next quantum boundary before the first note sounds, so it always starts phase-aligned with other Link peers.
+
+`p.hit(pitch, beats, velocity, duration)` places hits at absolute beat positions within the pattern (where `0` is the downbeat, `1` is the second beat, `2` is the third beat, and so on). It is the beat-position counterpart to `p.hit_steps()`, which works in grid step indices (0–15 for a 16-step bar).
 
 ### Behaviour
 
@@ -1626,7 +1628,7 @@ comp.link(quantum=4.0)
 
 @comp.pattern(channel=1, length=8)
 def bass(p):
-    p.hit(45, steps=[0, 4], velocity=90, duration=0.5)
+    p.hit(45, beats=[0, 4], velocity=90, duration=0.5)
 
 comp.play()
 ```
