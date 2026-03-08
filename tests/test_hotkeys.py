@@ -2,10 +2,10 @@
 
 Covers:
 - HotkeyBinding dataclass construction
-- _derive_label() for named functions, lambdas, and fallbacks
+- comp_mod._derive_label() for named functions, lambdas, and fallbacks
 - Composition.hotkey() registration and validation
 - Composition.form_jump() delegation
-- FormState.jump_to() section transitions
+- subsequence.form_state.FormState.jump_to() section transitions
 - Composition._process_hotkeys() immediate and quantized execution
 - Global enable/disable (hotkeys())
 - Reserved '?' key protection
@@ -18,16 +18,8 @@ import pytest
 import unittest.mock
 
 import subsequence.composition as comp_mod
+import subsequence.form_state
 import subsequence.keystroke as keystroke_mod
-from subsequence.composition import (
-	HotkeyBinding,
-	_PendingHotkeyAction,
-	_derive_label,
-	_HOTKEY_RESERVED,
-	FormState,
-	Composition,
-)
-from subsequence.keystroke import KeystrokeListener
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +42,7 @@ class TestKeystrokeListenerPlatform:
 
 	def test_start_on_unsupported_platform_logs_warning_and_does_not_raise (self):
 		"""Simulate an unsupported platform by patching HOTKEYS_SUPPORTED to False."""
-		listener = KeystrokeListener()
+		listener = keystroke_mod.KeystrokeListener()
 		with unittest.mock.patch.object(keystroke_mod, "HOTKEYS_SUPPORTED", False):
 			with unittest.mock.patch.object(
 				keystroke_mod, "HOTKEYS_UNAVAILABLE_REASON", "Test: platform not supported"
@@ -62,11 +54,11 @@ class TestKeystrokeListenerPlatform:
 		assert listener._thread is None
 
 	def test_drain_returns_empty_when_never_started (self):
-		listener = KeystrokeListener()
+		listener = keystroke_mod.KeystrokeListener()
 		assert listener.drain() == []
 
 	def test_stop_safe_when_never_started (self):
-		listener = KeystrokeListener()
+		listener = keystroke_mod.KeystrokeListener()
 		listener.stop()   # Should be a no-op.
 
 
@@ -79,18 +71,18 @@ class TestDeriveLabel:
 	def test_named_function (self):
 		def jump_to_chorus ():
 			pass
-		assert _derive_label(jump_to_chorus) == "jump_to_chorus"
+		assert comp_mod._derive_label(jump_to_chorus) == "jump_to_chorus"
 
 	def test_named_method (self):
 		class Foo:
 			def my_action (self):
 				pass
-		assert _derive_label(Foo().my_action) == "my_action"
+		assert comp_mod._derive_label(Foo().my_action) == "my_action"
 
 	def test_lambda_fallback_no_source (self):
 		"""Lambdas defined inline in test code cannot be inspected — fallback applies."""
 		lam = lambda: None  # noqa: E731
-		result = _derive_label(lam)
+		result = comp_mod._derive_label(lam)
 		# Either extracted body or fallback — must be a non-empty string.
 		assert isinstance(result, str)
 		assert len(result) > 0
@@ -99,7 +91,7 @@ class TestDeriveLabel:
 		"""A callable with no __name__ and no source returns '<action>'."""
 		class CallableObj:
 			pass
-		result = _derive_label(CallableObj())
+		result = comp_mod._derive_label(CallableObj())
 		assert result == "<action>"
 
 
@@ -111,7 +103,7 @@ class TestHotkeyBinding:
 
 	def test_fields (self):
 		action = lambda: None  # noqa: E731
-		binding = HotkeyBinding(key="a", action=action, quantize=0, label="do something")
+		binding = comp_mod.HotkeyBinding(key="a", action=action, quantize=0, label="do something")
 		assert binding.key == "a"
 		assert binding.action is action
 		assert binding.quantize == 0
@@ -124,9 +116,9 @@ class TestHotkeyBinding:
 
 class TestHotkeyRegistration:
 
-	def _make_composition (self) -> Composition:
+	def _make_composition (self) -> comp_mod.Composition:
 		# Avoid MIDI hardware init — we only test the hotkey logic.
-		return Composition.__new__(Composition)
+		return comp_mod.Composition.__new__(comp_mod.Composition)
 
 	def setup_method (self):
 
@@ -172,7 +164,7 @@ class TestHotkeyRegistration:
 
 	def test_hotkey_rejects_reserved_key (self):
 		with pytest.raises(ValueError, match="reserved"):
-			self.comp.hotkey(_HOTKEY_RESERVED, lambda: None)  # noqa: E731
+			self.comp.hotkey(comp_mod._HOTKEY_RESERVED, lambda: None)  # noqa: E731
 
 	def test_hotkey_rejects_multi_char_key (self):
 		with pytest.raises(ValueError, match="single character"):
@@ -180,13 +172,13 @@ class TestHotkeyRegistration:
 
 
 # ---------------------------------------------------------------------------
-# FormState.jump_to()
+# subsequence.form_state.FormState.jump_to()
 # ---------------------------------------------------------------------------
 
 class TestFormStateJumpTo:
 
-	def _make_graph_form (self) -> FormState:
-		return FormState(
+	def _make_graph_form (self) -> subsequence.form_state.FormState:
+		return subsequence.form_state.FormState(
 			sections = {
 				"intro":   (4, [("verse", 1)]),
 				"verse":   (8, [("chorus", 1), ("verse", 2)]),
@@ -232,7 +224,7 @@ class TestFormStateJumpTo:
 			state.jump_to("unknown_section")
 
 	def test_jump_non_graph_mode_raises (self):
-		state = FormState(sections=[("verse", 4), ("chorus", 4)])
+		state = subsequence.form_state.FormState(sections=[("verse", 4), ("chorus", 4)])
 		with pytest.raises(ValueError, match="graph mode"):
 			state.jump_to("chorus")
 
@@ -244,7 +236,7 @@ class TestFormStateJumpTo:
 class TestFormJump:
 
 	def setup_method (self):
-		self.comp = Composition.__new__(Composition)
+		self.comp = comp_mod.Composition.__new__(comp_mod.Composition)
 		self.comp._form_state = None
 		self.comp._hotkey_bindings = {}
 		self.comp._pending_hotkey_actions = []
@@ -256,7 +248,7 @@ class TestFormJump:
 			self.comp.form_jump("chorus")
 
 	def test_form_jump_delegates_to_form_state (self):
-		mock_state = unittest.mock.MagicMock(spec=FormState)
+		mock_state = unittest.mock.MagicMock(spec=subsequence.form_state.FormState)
 		self.comp._form_state = mock_state
 		self.comp.form_jump("chorus")
 		mock_state.jump_to.assert_called_once_with("chorus")
@@ -269,7 +261,7 @@ class TestFormJump:
 class TestProcessHotkeys:
 
 	def setup_method (self):
-		self.comp = Composition.__new__(Composition)
+		self.comp = comp_mod.Composition.__new__(comp_mod.Composition)
 		self.comp._hotkeys_enabled = True
 		self.comp._hotkey_bindings = {}
 		self.comp._pending_hotkey_actions = []
@@ -281,7 +273,7 @@ class TestProcessHotkeys:
 		self.comp._keystroke_listener = self.mock_listener
 
 	def _register (self, key: str, fn: typing.Callable, quantize: int = 0) -> None:
-		self.comp._hotkey_bindings[key] = HotkeyBinding(
+		self.comp._hotkey_bindings[key] = comp_mod.HotkeyBinding(
 			key=key, action=fn, quantize=quantize, label=key
 		)
 
@@ -324,7 +316,7 @@ class TestProcessHotkeys:
 
 		# Enqueue manually at bar 1.
 		self.comp._pending_hotkey_actions.append(
-			_PendingHotkeyAction(
+			comp_mod._PendingHotkeyAction(
 				binding=self.comp._hotkey_bindings["a"],
 				requested_bar=1,
 			)
@@ -339,7 +331,7 @@ class TestProcessHotkeys:
 		called = []
 		self._register("a", lambda: called.append(True), quantize=4)
 		self.comp._pending_hotkey_actions.append(
-			_PendingHotkeyAction(
+			comp_mod._PendingHotkeyAction(
 				binding=self.comp._hotkey_bindings["a"],
 				requested_bar=1,
 			)
@@ -352,7 +344,7 @@ class TestProcessHotkeys:
 	# --- ? key --------------------------------------------------------------
 
 	def test_question_mark_calls_list_hotkeys (self):
-		self.mock_listener.drain.return_value = [_HOTKEY_RESERVED]
+		self.mock_listener.drain.return_value = [comp_mod._HOTKEY_RESERVED]
 		self.comp._list_hotkeys = unittest.mock.MagicMock()
 		self.comp._process_hotkeys(bar=1)
 		self.comp._list_hotkeys.assert_called_once()

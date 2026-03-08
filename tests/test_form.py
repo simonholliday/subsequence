@@ -4,6 +4,7 @@ import pytest
 
 import subsequence
 import subsequence.composition
+import subsequence.form_state
 import subsequence.pattern
 import subsequence.sequencer
 
@@ -15,7 +16,7 @@ def test_form_state_initial_section () -> None:
 
 	"""FormState should expose the first section immediately after creation."""
 
-	form = subsequence.composition.FormState([("intro", 4), ("verse", 8)])
+	form = subsequence.form_state.FormState([("intro", 4), ("verse", 8)])
 	section = form.get_section_info()
 
 	assert section is not None
@@ -29,7 +30,7 @@ def test_form_state_advance_within_section () -> None:
 
 	"""Advancing within a section should increment bar but keep the same name."""
 
-	form = subsequence.composition.FormState([("intro", 4), ("verse", 8)])
+	form = subsequence.form_state.FormState([("intro", 4), ("verse", 8)])
 
 	form.advance()
 	section = form.get_section_info()
@@ -50,7 +51,7 @@ def test_form_state_advance_to_next_section () -> None:
 
 	"""Advancing past a section boundary should transition to the next section."""
 
-	form = subsequence.composition.FormState([("intro", 2), ("verse", 4)])
+	form = subsequence.form_state.FormState([("intro", 2), ("verse", 4)])
 
 	# Bar 0 → 1
 	form.advance()
@@ -70,7 +71,7 @@ def test_form_state_loop () -> None:
 
 	"""A looping form should cycle back to the first section."""
 
-	form = subsequence.composition.FormState([("A", 2), ("B", 2)], loop=True)
+	form = subsequence.form_state.FormState([("A", 2), ("B", 2)], loop=True)
 
 	# Advance through A (2 bars) + B (2 bars) = 4 advances
 	for _ in range(4):
@@ -89,7 +90,7 @@ def test_form_state_finite_exhausts () -> None:
 
 	"""A non-looping form should return None after all sections are complete."""
 
-	form = subsequence.composition.FormState([("only", 2)])
+	form = subsequence.form_state.FormState([("only", 2)])
 
 	form.advance()
 	form.advance()
@@ -105,7 +106,7 @@ def test_form_state_generator () -> None:
 		yield ("intro", 2)
 		yield ("verse", 4)
 
-	form = subsequence.composition.FormState(my_form())
+	form = subsequence.form_state.FormState(my_form())
 
 	section = form.get_section_info()
 	assert section.name == "intro"
@@ -129,7 +130,7 @@ def test_form_state_total_bars () -> None:
 
 	"""The total_bars counter should track the global bar count across sections."""
 
-	form = subsequence.composition.FormState([("A", 2), ("B", 3)])
+	form = subsequence.form_state.FormState([("A", 2), ("B", 3)])
 
 	assert form.total_bars == 0
 
@@ -150,13 +151,13 @@ def test_section_info_progress () -> None:
 
 	"""Progress should reflect position within the section as 0.0 to ~1.0."""
 
-	info = subsequence.composition.SectionInfo(name="verse", bar=0, bars=8, index=0)
+	info = subsequence.form_state.SectionInfo(name="verse", bar=0, bars=8, index=0)
 	assert info.progress == 0.0
 
-	info = subsequence.composition.SectionInfo(name="verse", bar=4, bars=8, index=0)
+	info = subsequence.form_state.SectionInfo(name="verse", bar=4, bars=8, index=0)
 	assert info.progress == 0.5
 
-	info = subsequence.composition.SectionInfo(name="verse", bar=7, bars=8, index=0)
+	info = subsequence.form_state.SectionInfo(name="verse", bar=7, bars=8, index=0)
 	assert info.progress == 7 / 8
 
 
@@ -164,15 +165,15 @@ def test_section_info_first_last_bar () -> None:
 
 	"""first_bar and last_bar should be correct at section boundaries."""
 
-	first = subsequence.composition.SectionInfo(name="A", bar=0, bars=4, index=0)
+	first = subsequence.form_state.SectionInfo(name="A", bar=0, bars=4, index=0)
 	assert first.first_bar is True
 	assert first.last_bar is False
 
-	last = subsequence.composition.SectionInfo(name="A", bar=3, bars=4, index=0)
+	last = subsequence.form_state.SectionInfo(name="A", bar=3, bars=4, index=0)
 	assert last.first_bar is False
 	assert last.last_bar is True
 
-	mid = subsequence.composition.SectionInfo(name="A", bar=2, bars=4, index=0)
+	mid = subsequence.form_state.SectionInfo(name="A", bar=2, bars=4, index=0)
 	assert mid.first_bar is False
 	assert mid.last_bar is False
 
@@ -276,7 +277,7 @@ def test_form_state_empty_list () -> None:
 
 	"""An empty section list should immediately exhaust."""
 
-	form = subsequence.composition.FormState([])
+	form = subsequence.form_state.FormState([])
 
 	assert form.get_section_info() is None
 
@@ -285,7 +286,7 @@ def test_form_state_advance_returns_section_changed () -> None:
 
 	"""advance() should return True when transitioning to a new section."""
 
-	form = subsequence.composition.FormState([("A", 2), ("B", 2)])
+	form = subsequence.form_state.FormState([("A", 2), ("B", 2)])
 
 	# Bar 0 → 1 within section A.
 	changed = form.advance()
@@ -315,7 +316,7 @@ def test_form_state_graph_initial_section () -> None:
 
 	"""Graph-based FormState should expose the start section immediately after creation."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"intro": (4, [("verse", 1)]),
 		"verse": (8, [("chorus", 1)]),
 		"chorus": (8, []),
@@ -334,7 +335,7 @@ def test_form_state_graph_advance_within_section () -> None:
 
 	"""Advancing within a graph section should increment bar but keep the same name."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"intro": (4, [("verse", 1)]),
 		"verse": (8, []),
 	}, start="intro")
@@ -350,7 +351,7 @@ def test_form_state_graph_transition () -> None:
 
 	"""Graph-based form should transition to the next section when bars are exhausted."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"intro": (2, [("verse", 1)]),
 		"verse": (4, []),
 	}, start="intro")
@@ -377,7 +378,7 @@ def test_form_state_graph_weighted_transition () -> None:
 
 		rng = random.Random(seed)
 
-		form = subsequence.composition.FormState({
+		form = subsequence.form_state.FormState({
 			"verse": (1, [("chorus", 3), ("bridge", 1)]),
 			"chorus": (1, [("verse", 1)]),
 			"bridge": (1, [("verse", 1)]),
@@ -396,7 +397,7 @@ def test_form_state_graph_dead_end_self_loops () -> None:
 
 	"""A section with no outgoing edges should loop itself."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"intro": (2, [("end", 1)]),
 		"end":   (2, []),
 	}, start="intro")
@@ -422,7 +423,7 @@ def test_form_state_graph_never_finishes () -> None:
 
 	"""Graph-based form should never exhaust - it always has a next section."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"A": (1, [("B", 1)]),
 		"B": (1, [("A", 1)]),
 	}, start="A")
@@ -436,7 +437,7 @@ def test_form_state_graph_default_start () -> None:
 
 	"""Omitting start= should default to the first key in the dict."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"alpha": (2, [("beta", 1)]),
 		"beta":  (2, [("alpha", 1)]),
 	})
@@ -450,7 +451,7 @@ def test_form_state_graph_invalid_start_raises () -> None:
 
 	with pytest.raises(ValueError):
 
-		subsequence.composition.FormState({
+		subsequence.form_state.FormState({
 			"A": (2, [("B", 1)]),
 			"B": (2, []),
 		}, start="Z")
@@ -460,7 +461,7 @@ def test_form_state_graph_total_bars () -> None:
 
 	"""The total_bars counter should track across graph transitions."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"A": (2, [("B", 1)]),
 		"B": (2, [("A", 1)]),
 	}, start="A")
@@ -481,7 +482,7 @@ def test_form_state_graph_section_progress () -> None:
 
 	"""Section progress should reflect position within graph-mode sections."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"verse": (4, [("verse", 1)]),
 	}, start="verse")
 
@@ -516,7 +517,7 @@ def test_form_state_graph_terminal_section () -> None:
 
 	"""A section with None transitions should end the form after completing."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"intro": (2, [("outro", 1)]),
 		"outro": (2, None),
 	}, start="intro")
@@ -539,7 +540,7 @@ def test_form_state_graph_terminal_vs_dead_end () -> None:
 	"""None transitions end the form; empty list transitions self-loop."""
 
 	# Terminal: None → form ends.
-	terminal = subsequence.composition.FormState({
+	terminal = subsequence.form_state.FormState({
 		"end": (1, None),
 	}, start="end")
 
@@ -547,7 +548,7 @@ def test_form_state_graph_terminal_vs_dead_end () -> None:
 	assert terminal.get_section_info() is None
 
 	# Dead end: [] → self-loops.
-	dead_end = subsequence.composition.FormState({
+	dead_end = subsequence.form_state.FormState({
 		"end": (1, []),
 	}, start="end")
 
@@ -560,7 +561,7 @@ def test_form_state_graph_terminal_advance_returns_changed () -> None:
 
 	"""advance() should return True when the form ends at a terminal section."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"only": (2, None),
 	}, start="only")
 
@@ -579,7 +580,7 @@ def test_next_section_graph_mode () -> None:
 
 	"""Graph mode should pre-decide the next section from bar 0."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"intro": (2, [("verse", 1)]),
 		"verse": (4, [("chorus", 1)]),
 		"chorus": (4, [("verse", 1)]),
@@ -594,7 +595,7 @@ def test_next_section_list_mode () -> None:
 
 	"""List mode should peek the next section from the iterator."""
 
-	form = subsequence.composition.FormState([("intro", 2), ("verse", 4), ("chorus", 4)])
+	form = subsequence.form_state.FormState([("intro", 2), ("verse", 4), ("chorus", 4)])
 
 	section = form.get_section_info()
 	assert section.name == "intro"
@@ -613,7 +614,7 @@ def test_next_section_list_mode_last () -> None:
 
 	"""Last section in a non-looping list should have next_section=None."""
 
-	form = subsequence.composition.FormState([("intro", 1), ("verse", 1)])
+	form = subsequence.form_state.FormState([("intro", 1), ("verse", 1)])
 
 	# Advance into verse (the last section).
 	form.advance()
@@ -627,7 +628,7 @@ def test_next_section_list_mode_looping () -> None:
 
 	"""Looping list should always have a next_section."""
 
-	form = subsequence.composition.FormState([("a", 1), ("b", 1)], loop=True)
+	form = subsequence.form_state.FormState([("a", 1), ("b", 1)], loop=True)
 
 	section = form.get_section_info()
 	assert section.name == "a"
@@ -644,7 +645,7 @@ def test_next_section_terminal () -> None:
 
 	"""Terminal graph section should have next_section=None."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"intro": (1, [("outro", 1)]),
 		"outro": (2, None),
 	}, start="intro")
@@ -661,7 +662,7 @@ def test_next_section_advance_consumes () -> None:
 
 	"""advance() should consume the pre-decided next and pick a new one."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"a": (1, [("b", 1)]),
 		"b": (1, [("c", 1)]),
 		"c": (1, [("a", 1)]),
@@ -680,7 +681,7 @@ def test_queue_next_overrides () -> None:
 
 	"""queue_next() should override the auto-decided next section."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"a": (2, [("b", 1)]),
 		"b": (2, [("a", 1)]),
 		"c": (2, [("a", 1)]),
@@ -703,7 +704,7 @@ def test_queue_next_last_call_wins () -> None:
 
 	"""Multiple queue_next() calls: the last one takes effect."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"a": (2, [("b", 1)]),
 		"b": (2, [("a", 1)]),
 		"c": (2, [("a", 1)]),
@@ -718,7 +719,7 @@ def test_queue_next_invalid_section () -> None:
 
 	"""queue_next() should raise ValueError for unknown section names."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"a": (2, [("b", 1)]),
 		"b": (2, [("a", 1)]),
 	}, start="a")
@@ -731,7 +732,7 @@ def test_jump_to_re_picks_next () -> None:
 
 	"""jump_to() should re-pick next_section after the jump."""
 
-	form = subsequence.composition.FormState({
+	form = subsequence.form_state.FormState({
 		"a": (4, [("b", 1)]),
 		"b": (4, [("c", 1)]),
 		"c": (4, [("a", 1)]),
