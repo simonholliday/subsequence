@@ -787,7 +787,7 @@ def pads(p):
     p.chord(chord, root=notes.C4, velocity=int(60 + 60 * dynamics))
 ```
 
-For explicit beat control, use `p.c.get(name, beat)` directly.
+For explicit beat control, use `p.conductor.get(name, beat)` directly.
 
 ### Shaping transitions
 
