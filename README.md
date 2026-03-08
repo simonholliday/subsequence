@@ -753,7 +753,12 @@ if p.section and p.section.last_bar and p.section.next_section == "chorus":
 
 A performer or code can override the pre-decided next section with `composition.form_next("chorus")` - see [Hotkeys](#hotkeys).
 
-`p.bar` is always available (regardless of form) and tracks the global bar count since playback started.
+`p.bar` and `p.cycle` are always available (regardless of form) and track two different counters:
+
+- **`p.bar`** - global bar count since playback started. Increments once per time-signature period (every 4 beats in 4/4), regardless of individual pattern lengths.
+- **`p.cycle`** - how many times *this pattern* has rebuilt. Increments every time the pattern function runs.
+
+For a `length=4` pattern in 4/4, they're always equal. For a `length=8` pattern, `p.cycle` is half `p.bar` (the pattern runs once every two bars). For a `length=2` pattern, `p.cycle` is double `p.bar`. Use `p.bar` for composition-wide synchronisation (e.g. "fire on bar 8") and `p.cycle` for pattern-local variation (e.g. "every 4th rebuild of this pattern").
 
 To replay the same chords every time a section recurs, see [Frozen progressions](#frozen-progressions).
 
