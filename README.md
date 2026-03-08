@@ -131,7 +131,7 @@ Ken Perlin invented gradient noise in 1983 to generate natural-looking textures 
 
 ```python
 hat_noise = subsequence.sequence_utils.perlin_1d_sequence(
-	start=p.bar * p.grid * 0.1, step=0.1, count=p.grid, seed=10
+	start=p.bar * p.grid * 0.1, spacing=0.1, count=p.grid, seed=10
 )
 hat_velocities = [int(subsequence.easing.map_value(v, out_min=50, out_max=100)) for v in hat_noise]
 p.hit_steps("hi_hat_closed", range(p.grid), velocity=hat_velocities)
@@ -218,7 +218,7 @@ import subsequence.constants.midi_notes as notes
 # C major: one octave from middle C (C4–B4)
 scale = subsequence.scale_notes("C", "ionian", low=notes.C4, high=notes.B4)
 transitions = {i: {i: 3, i-1: 1, i+1: 1} for i in range(len(scale))}
-p.markov(scale, transitions, step=0.25, velocity=(60, 100))
+p.markov(scale, transitions, spacing=0.25, velocity=(60, 100))
 ```
 
 ### L-system
@@ -226,7 +226,7 @@ p.markov(scale, transitions, step=0.25, velocity=(60, 100))
 Aristid Lindenmayer invented L-systems in 1968 to model the branching growth of algae and plants. A simple rewriting rule ("replace A with AB, replace B with A") applied repeatedly produces Fibonacci-length strings; more complex rules generate fractal trees, ferns, and Koch curves. Unlike sequential grammars, L-systems apply all rules in parallel - every cell grows simultaneously. `p.lsystem(axiom, rules, generations, step, velocity)` expands an L-system string then interprets it as rhythm or melody. The result is self-similar: successive generations produce related patterns at increasing density. Stochastic rules (weighted alternatives) add controlled variation.
 
 ```python
-p.lsystem(axiom="X", rules={"X": "FX", "F": "FF"}, generations=4, step=0.25, velocity=80)
+p.lsystem(axiom="X", rules={"X": "FX", "F": "FF"}, generations=4, spacing=0.25, velocity=80)
 ```
 
 ### Thue-Morse
@@ -279,7 +279,7 @@ def chaos_melody (p, chord):
 	scale = chord.tones(root=notes.C4, count=8)  # 8 chord tones across octaves
 
 	# Different phrase each cycle, slowly drifting
-	p.lorenz(scale, step=0.25, velocity=(50, 110), x0=p.cycle * 0.002)
+	p.lorenz(scale, spacing=0.25, velocity=(50, 110), x0=p.cycle * 0.002)
 ```
 
 A custom `mapping` callable overrides the default x→pitch / y→velocity / z→duration assignment, or returns `None` for a rest:
@@ -288,7 +288,7 @@ A custom `mapping` callable overrides the default x→pitch / y→velocity / z�
 import subsequence.constants.midi_notes as notes
 
 # Map Lorenz x-axis to a chromatic octave above middle C
-p.lorenz([notes.C4, notes.D4, notes.E4], step=0.5,
+p.lorenz([notes.C4, notes.D4, notes.E4], spacing=0.5,
          mapping=lambda x, y, z: (notes.C4 + int(x * 12), 80, 0.2))
 ```
 
@@ -316,7 +316,7 @@ import subsequence
 def bassline (p):
 	# E natural minor: E2 to E3, one full octave
 	scale = subsequence.scale_notes("E", "aeolian", low=40, high=52)
-	p.self_avoiding_walk(scale, step=0.25, velocity=(70, 100))
+	p.self_avoiding_walk(scale, spacing=0.25, velocity=(70, 100))
 ```
 
 ### Melody generation
@@ -341,7 +341,7 @@ melody_state = subsequence.MelodicState(
 @composition.pattern(channel=4, length=4, chord=True)
 def lead (p, chord):
 	tones = chord.tones(notes.C5) if chord else None
-	p.melody(melody_state, step=0.5, velocity=(70, 100), chord_tones=tones)
+	p.melody(melody_state, spacing=0.5, velocity=(70, 100), chord_tones=tones)
 ```
 
 **NIR rules in melody:**
@@ -405,7 +405,7 @@ def bass (p, chord):
 @composition.pattern(channel=SYNTH_CHANNEL, length=4)
 def arp (p, chord):
     pitches = chord.tones(root=notes.C4, count=4)  # 4 tones up from middle C
-    p.arpeggio(pitches, step=0.25, velocity=90, direction="up")
+    p.arpeggio(pitches, spacing=0.25, velocity=90, direction="up")
 
 if __name__ == "__main__":
     composition.play()
@@ -895,12 +895,12 @@ def guitar (p, chord):
 @composition.pattern(channel=1, length=4)
 def arp (p, chord):
     # Fixed broken chord order
-    p.broken_chord(chord, root=notes.C4, order=[4, 0, 2, 1, 3], step=0.25)
+    p.broken_chord(chord, root=notes.C4, order=[4, 0, 2, 1, 3], spacing=0.25)
 
     # Or fully randomised broken chords, using the pattern's deterministic RNG
     order = list(range(5))
     p.rng.shuffle(order)
-    p.broken_chord(chord, root=notes.C4, order=order, step=0.25)
+    p.broken_chord(chord, root=notes.C4, order=order, spacing=0.25)
 ```
 
 ### Legato chords
@@ -981,7 +981,7 @@ def pad (p, chord):
 @composition.pattern(channel=1, length=4)
 def arp (p, chord):
     tones = chord.tones(root=notes.E4, count=5)  # 5 tones cycling up from E4
-    p.arpeggio(tones, step=0.25, velocity=90)
+    p.arpeggio(tones, spacing=0.25, velocity=90)
 ```
 
 `count` works with `inversion` - the extended notes continue upward from the inverted voicing.
@@ -1219,7 +1219,7 @@ All require an explicit `rng` parameter - use `p.rng` in pattern builders:
 
 ```python
 # Wandering hi-hat velocity
-walk = subsequence.sequence_utils.random_walk(16, low=50, high=110, step=15, rng=p.rng)
+walk = subsequence.sequence_utils.random_walk(16, low=50, high=110, spacing=15, rng=p.rng)
 for i, vel in enumerate(walk):
     p.hit_steps("hh_closed", [i], velocity=vel)
 
@@ -1557,7 +1557,7 @@ composition.cc_map(1,  "density", channel=1)     # channel-filtered
 def arps (p):
     cutoff = composition.data.get("filter_cutoff", 0.5)
     velocity = int(60 + 67 * cutoff)
-    p.arpeggio([notes.C4, notes.E4, notes.G4], step=0.25, velocity=velocity)  # C major triad
+    p.arpeggio([notes.C4, notes.E4, notes.G4], spacing=0.25, velocity=velocity)  # C major triad
 ```
 
 CC values are scaled from 0–127 to the `min_val`/`max_val` range and written to `composition.data[key]` on every incoming message. Thread safety is provided by Python's GIL for single dict writes.
@@ -1860,10 +1860,10 @@ def bass (p, chord):
 import subsequence.constants.midi_notes as notes
 
 chord = [notes.C4, notes.E4, notes.G4]  # C major triad
-p.arpeggio(chord, step=0.25)                     # "up" (default): C E G C E G …
-p.arpeggio(chord, step=0.25, direction="down")    # descend: G E C G E C …
-p.arpeggio(chord, step=0.25, direction="up_down") # ping-pong: C E G E C E …
-p.arpeggio(chord, step=0.25, direction="random")  # shuffled once per call
+p.arpeggio(chord, spacing=0.25)                     # "up" (default): C E G C E G …
+p.arpeggio(chord, spacing=0.25, direction="down")    # descend: G E C G E C …
+p.arpeggio(chord, spacing=0.25, direction="up_down") # ping-pong: C E G E C E …
+p.arpeggio(chord, spacing=0.25, direction="random")  # shuffled once per call
 ```
 
 The `"random"` direction uses `p.rng` by default (deterministic when a seed is set). Pass a custom `rng` for independent streams.
@@ -2038,7 +2038,7 @@ composition.trigger(
 
 # With chord context (if harmony is active)
 composition.trigger(
-    lambda p: p.arpeggio(p.chord.tones(root=notes.C4), step=dur.SIXTEENTH),
+    lambda p: p.arpeggio(p.chord.tones(root=notes.C4), spacing=dur.SIXTEENTH),
     channel=1,
     quantize=dur.WHOLE,
     chord=True  # inject current chord

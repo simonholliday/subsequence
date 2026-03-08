@@ -33,7 +33,7 @@ def bass (p, chord):
 @composition.pattern(channel=SYNTH_CHANNEL, length=4)
 def arp (p, chord):
 	pitches = chord.tones(root=60, count=4)
-	p.arpeggio(pitches, step=0.25, velocity=90, direction="up")
+	p.arpeggio(pitches, spacing=0.25, velocity=90, direction="up")
 
 if __name__ == "__main__":
 	composition.play()

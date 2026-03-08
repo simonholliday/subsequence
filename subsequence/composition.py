@@ -1798,7 +1798,7 @@ class Composition:
 
 			# With chord context
 			composition.trigger(
-				lambda p: p.arpeggio(p.chord.tones(root=60), step=dur.SIXTEENTH),
+				lambda p: p.arpeggio(p.chord.tones(root=60), spacing=dur.SIXTEENTH),
 				channel=0,
 				quantize=dur.QUARTER,
 				chord=True

@@ -78,7 +78,7 @@ def bass (p, chord):
 def arp (p, chord):
 
 	pitches = chord.tones(root=60, count=5)
-	p.arpeggio(pitches, step=dur.SIXTEENTH, direction="up")
+	p.arpeggio(pitches, spacing=dur.SIXTEENTH, direction="up")
 
 @composition.pattern(channel=LEAD_CHANNEL, length=6, unit=dur.SIXTEENTH)
 def lead (p, chord):

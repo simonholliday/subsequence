@@ -625,7 +625,7 @@ class PatternAlgorithmicMixin:
 		pitch_map: typing.Dict[str, int],
 		velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		duration: float = 0.1,
-		step: float = 0.25,
+		spacing: float = 0.25,
 		start: typing.Optional[str] = None,
 	) -> "PatternAlgorithmicMixin":
 
@@ -648,7 +648,7 @@ class PatternAlgorithmicMixin:
 				States absent from this dict are walked but produce no note.
 			velocity: MIDI velocity for all placed notes (default 100).
 			duration: Note duration in beats (default 0.1).
-			step: Time between note onsets in beats (default 0.25 = 16th note).
+			spacing: Time between note onsets in beats (default 0.25 = 16th note).
 			start: Name of the starting state.  Defaults to the first key
 				in ``transitions`` when not provided.
 
@@ -666,7 +666,7 @@ class PatternAlgorithmicMixin:
 			    },
 			    pitch_map={"root": 52, "3rd": 56, "5th": 59},
 			    velocity=80,
-			    step=0.5,
+			    spacing=0.5,
 			)
 			```
 		"""
@@ -686,7 +686,7 @@ class PatternAlgorithmicMixin:
 		if start is None:
 			start = next(iter(transitions))
 
-		n_steps = int(self._pattern.length / step)
+		n_steps = int(self._pattern.length / spacing)
 
 		state = start
 		beat = 0.0
@@ -697,13 +697,13 @@ class PatternAlgorithmicMixin:
 				self.note(pitch=pitch_map[state], beat=beat, velocity=velocity, duration=duration)
 
 			state = graph.choose_next(state, self.rng)
-			beat += step
+			beat += spacing
 		return self
 
 	def melody (
 		self,
 		state: subsequence.melodic_state.MelodicState,
-		step: float = 0.25,
+		spacing: float = 0.25,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 90,
 		duration: float = 0.2,
 		chord_tones: typing.Optional[typing.List[int]] = None,
@@ -711,7 +711,7 @@ class PatternAlgorithmicMixin:
 
 		"""Generate a melodic line by querying a persistent :class:`~subsequence.melodic_state.MelodicState`.
 
-		Places one note (or rest) per ``step`` beats for the full pattern
+		Places one note (or rest) per ``spacing`` beats for the full pattern
 		length.  Pitch selection is guided by the NIR cognitive model inside
 		``state``: after a large leap the model expects a direction reversal;
 		after a small step it expects continuation.  Chord tones, range
@@ -724,9 +724,9 @@ class PatternAlgorithmicMixin:
 		Parameters:
 			state: Persistent :class:`~subsequence.melodic_state.MelodicState`
 			    instance created once at module level.
-			step: Time between note onsets in beats (default 0.25 = 16th note).
+			spacing: Time between note onsets in beats (default 0.25 = 16th note).
 			velocity: MIDI velocity.  An ``int`` applies a fixed level; a
-			    ``(low, high)`` tuple draws uniformly from that range each step.
+			    ``(low, high)`` tuple draws uniformly from that range each spacing.
 			duration: Note duration in beats (default 0.2 - slightly shorter
 			    than a 16th note, giving a crisp attack).
 			chord_tones: Optional list of MIDI note numbers that are chord
@@ -742,14 +742,14 @@ class PatternAlgorithmicMixin:
 			    chord_weight=0.4,
 			)
 
-			@composition.pattern(channel=3, length=4, chord=True)
+			@composition.pattern(channel=4, length=4, chord=True)
 			def lead (p, chord):
 			    tones = chord.tones(72) if chord else None
-			    p.melody(melody_state, step=0.5, velocity=(70, 100), chord_tones=tones)
+			    p.melody(melody_state, spacing=0.5, velocity=(70, 100), chord_tones=tones)
 			```
 		"""
 
-		n_steps = int(self._pattern.length / step)
+		n_steps = int(self._pattern.length / spacing)
 		beat = 0.0
 
 		for _ in range(n_steps):
@@ -764,7 +764,7 @@ class PatternAlgorithmicMixin:
 				)
 				self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
 
-			beat += step
+			beat += spacing
 		return self
 
 	def lsystem (
@@ -773,7 +773,7 @@ class PatternAlgorithmicMixin:
 		axiom: str,
 		rules: typing.Dict[str, typing.Union[str, typing.List[typing.Tuple[str, float]]]],
 		generations: int = 3,
-		step: typing.Optional[float] = None,
+		spacing: typing.Optional[float] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
 		duration: float = 0.2,
 	) -> "PatternAlgorithmicMixin":
@@ -790,9 +790,9 @@ class PatternAlgorithmicMixin:
 		``B → A``) places hits at golden-ratio spacings.  Koch and dragon
 		curve rules produce fractal melodic contours.
 
-		With ``step=None`` (default) the entire expanded string is fitted
+		With ``spacing=None`` (default) the entire expanded string is fitted
 		into the bar: each generation makes notes twice as dense while
-		preserving the overall shape.  With a fixed ``step`` the string is
+		preserving the overall shape.  With a fixed ``spacing`` the string is
 		truncated to fit and the density stays constant.
 
 		Parameters:
@@ -803,7 +803,7 @@ class PatternAlgorithmicMixin:
 				Stochastic: ``{"A": [("AB", 3), ("BA", 1)]}``.
 			generations: Rewriting iterations.  String length grows
 				exponentially - keep this to 3–8 for practical use.
-			step: Time between symbols in beats.  ``None`` (default)
+			spacing: Time between symbols in beats.  ``None`` (default)
 				auto-fits the full expanded string into the bar.  A float
 				uses fixed spacing and truncates excess symbols.
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises
@@ -827,7 +827,7 @@ class PatternAlgorithmicMixin:
 			    axiom="F",
 			    rules={"F": "F+G", "G": "-F"},
 			    generations=4,
-			    step=0.25,
+			    spacing=0.25,
 			    velocity=(70, 100),
 			)
 			```
@@ -843,12 +843,12 @@ class PatternAlgorithmicMixin:
 		if not expanded:
 			return self
 
-		if step is None:
+		if spacing is None:
 			auto_step = self._pattern.length / len(expanded)
 			symbols = expanded
 		else:
-			auto_step = step
-			n_steps = int(self._pattern.length / step)
+			auto_step = spacing
+			n_steps = int(self._pattern.length / spacing)
 			symbols = expanded[:n_steps]
 
 		beat = 0.0
@@ -939,7 +939,7 @@ class PatternAlgorithmicMixin:
 		self,
 		pitches: typing.List[typing.Union[int, str]],
 		window: int = 2,
-		step: typing.Optional[float] = None,
+		spacing: typing.Optional[float] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
 		duration: float = 0.2,
 	) -> "PatternAlgorithmicMixin":
@@ -952,8 +952,8 @@ class PatternAlgorithmicMixin:
 		systematically explores all possible ``n``-gram transitions - every
 		permutation of ``window`` consecutive pitches appears exactly once.
 
-		With ``step=None`` (default) the full sequence is auto-fitted into the
-		bar, matching the behaviour of :meth:`lsystem`.  With a fixed ``step``
+		With ``spacing=None`` (default) the full sequence is auto-fitted into the
+		bar, matching the behaviour of :meth:`lsystem`.  With a fixed ``spacing``
 		the sequence is truncated to fill the available beats.
 
 		Parameters:
@@ -961,7 +961,7 @@ class PatternAlgorithmicMixin:
 			    size ``k`` is ``len(pitches)``.
 			window: Subsequence length ``n``.  The output has ``len(pitches) ** window``
 			    notes.  Keep small (2–4) for practical bar lengths.
-			step: Time between notes in beats.  ``None`` auto-fits the sequence
+			spacing: Time between notes in beats.  ``None`` auto-fits the sequence
 			    into the bar; a float uses fixed spacing and truncates.
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
 			duration: Note duration in beats.
@@ -982,12 +982,12 @@ class PatternAlgorithmicMixin:
 		if not sequence:
 			return self
 
-		if step is None:
+		if spacing is None:
 			auto_step = self._pattern.length / len(sequence)
 			symbols = sequence
 		else:
-			auto_step = step
-			n_steps = int(self._pattern.length / step)
+			auto_step = spacing
+			n_steps = int(self._pattern.length / spacing)
 			symbols = sequence[:n_steps]
 
 		beat = 0.0
@@ -1046,7 +1046,7 @@ class PatternAlgorithmicMixin:
 	def lorenz (
 		self,
 		pitches: typing.List[typing.Union[int, str]],
-		step: float = 0.25,
+		spacing: float = 0.25,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
 		duration: float = 0.2,
 		dt: float = 0.01,
@@ -1082,7 +1082,7 @@ class PatternAlgorithmicMixin:
 
 		Parameters:
 			pitches: Pitch pool.  The x-axis selects an index: ``int(x * len(pitches)) % len(pitches)``.
-			step: Time between notes in beats.  Default 0.25 (16th note).
+			spacing: Time between notes in beats.  Default 0.25 (16th note).
 			velocity: Fixed velocity or ``(low, high)`` tuple.  Overridden by ``mapping``.
 			duration: Maximum note duration.  z is scaled to ``[0.05, duration]``.
 			    Overridden by ``mapping``.
@@ -1097,14 +1097,14 @@ class PatternAlgorithmicMixin:
 		Example:
 			```python
 			scale = [60, 62, 64, 65, 67, 69, 71, 72]
-			p.lorenz(scale, step=0.25, velocity=(50, 110), x0=p.cycle * 0.002)
+			p.lorenz(scale, spacing=0.25, velocity=(50, 110), x0=p.cycle * 0.002)
 			```
 		"""
 
 		if not pitches:
 			raise ValueError("pitches list cannot be empty")
 
-		n_steps = int(self._pattern.length / step)
+		n_steps = int(self._pattern.length / spacing)
 		points = subsequence.sequence_utils.lorenz_attractor(
 			n_steps, dt=dt, sigma=sigma, rho=rho, beta=beta, x0=x0, y0=y0, z0=z0
 		)
@@ -1128,7 +1128,7 @@ class PatternAlgorithmicMixin:
 				p_dur = 0.05 + z * max(0.0, duration - 0.05)
 				self.note(pitch=p_pitch, beat=beat, velocity=p_vel, duration=p_dur)
 
-			beat += step
+			beat += spacing
 		return self
 
 	def reaction_diffusion (
@@ -1214,7 +1214,7 @@ class PatternAlgorithmicMixin:
 	def self_avoiding_walk (
 		self,
 		pitches: typing.List[typing.Union[int, str]],
-		step: float = 0.25,
+		spacing: float = 0.25,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
 		duration: float = 0.2,
 		rng: typing.Optional[random.Random] = None,
@@ -1236,7 +1236,7 @@ class PatternAlgorithmicMixin:
 			pitches: Ordered list of MIDI note numbers or note strings.  The walk
 			    moves through indices ``[0, len(pitches) - 1]``, mapping each to
 			    the corresponding pitch.
-			step: Time between notes in beats.  Default 0.25 (16th note).
+			spacing: Time between notes in beats.  Default 0.25 (16th note).
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
 			duration: Note duration in beats.
 			rng: Random number generator.  Defaults to ``self.rng``.
@@ -1244,7 +1244,7 @@ class PatternAlgorithmicMixin:
 		Example:
 			```python
 			scale = subsequence.scale_notes("C", "ionian", low=60, high=72)
-			p.self_avoiding_walk(scale, step=0.25, velocity=(60, 100))
+			p.self_avoiding_walk(scale, spacing=0.25, velocity=(60, 100))
 			```
 		"""
 
@@ -1254,7 +1254,7 @@ class PatternAlgorithmicMixin:
 		if not pitches:
 			raise ValueError("pitches list cannot be empty")
 
-		n_steps = int(self._pattern.length / step)
+		n_steps = int(self._pattern.length / spacing)
 		indices = subsequence.sequence_utils.self_avoiding_walk(
 			n=n_steps,
 			low=0,
@@ -1271,7 +1271,7 @@ class PatternAlgorithmicMixin:
 				else int(velocity)
 			)
 			self.note(pitch=pitches[idx], beat=beat, velocity=vel, duration=duration)
-			beat += step
+			beat += spacing
 		return self
 
 	def thin (

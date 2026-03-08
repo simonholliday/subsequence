@@ -92,12 +92,12 @@ def test_hit_places_multiple_beats () -> None:
 def test_fill_covers_pattern () -> None:
 
 	"""
-	Fill with step=0.25 over a 4-beat pattern should place 16 notes.
+	Fill with spacing=0.25 over a 4-beat pattern should place 16 notes.
 	"""
 
 	pattern, builder = _make_builder(length=4)
 
-	builder.fill(60, step=0.25, velocity=90, duration=0.2)
+	builder.fill(60, spacing=0.25, velocity=90, duration=0.2)
 
 	# 4 beats / 0.25 step = 16 notes
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
@@ -114,10 +114,10 @@ def test_fill_invalid_step_raises () -> None:
 	pattern, builder = _make_builder()
 
 	with pytest.raises(ValueError):
-		builder.fill(60, step=0)
+		builder.fill(60, spacing=0)
 
 	with pytest.raises(ValueError):
-		builder.fill(60, step=-1)
+		builder.fill(60, spacing=-1)
 
 
 def test_chord_places_all_tones () -> None:
@@ -408,7 +408,7 @@ def test_dropout_removes_some_hits () -> None:
 
 	pattern, builder = _make_builder(length=4)
 
-	builder.fill(60, step=0.25, velocity=100)
+	builder.fill(60, spacing=0.25, velocity=100)
 
 	total_before = sum(len(step.notes) for step in pattern.steps.values())
 
@@ -431,7 +431,7 @@ def test_velocity_shape_applies () -> None:
 
 	pattern, builder = _make_builder(length=2)
 
-	builder.fill(60, step=0.5, velocity=100)
+	builder.fill(60, spacing=0.5, velocity=100)
 
 	builder.velocity_shape(low=40, high=120)
 
@@ -451,12 +451,12 @@ def test_velocity_shape_applies () -> None:
 def test_arpeggio_cycles_pitches () -> None:
 
 	"""
-	Arpeggio with 3 pitches over 4 beats at step=0.5 should produce 8 notes cycling through the pitches.
+	Arpeggio with 3 pitches over 4 beats at spacing=0.5 should produce 8 notes cycling through the pitches.
 	"""
 
 	pattern, builder = _make_builder(length=4)
 
-	builder.arpeggio([60, 64, 67], step=0.5, velocity=90)
+	builder.arpeggio([60, 64, 67], spacing=0.5, velocity=90)
 
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
 
@@ -474,12 +474,12 @@ def test_arpeggio_cycles_pitches () -> None:
 def test_arpeggio_fills_pattern () -> None:
 
 	"""
-	Arpeggio with step=0.25 over 4 beats should produce 16 notes.
+	Arpeggio with spacing=0.25 over 4 beats should produce 16 notes.
 	"""
 
 	pattern, builder = _make_builder(length=4)
 
-	builder.arpeggio([60, 64, 67], step=0.25, velocity=90)
+	builder.arpeggio([60, 64, 67], spacing=0.25, velocity=90)
 
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
 
@@ -495,7 +495,7 @@ def test_arpeggio_empty_pitches_raises () -> None:
 	pattern, builder = _make_builder()
 
 	with pytest.raises(ValueError, match="Pitches list cannot be empty"):
-		builder.arpeggio([], step=0.25)
+		builder.arpeggio([], spacing=0.25)
 
 
 def test_arpeggio_invalid_step_raises () -> None:
@@ -506,11 +506,11 @@ def test_arpeggio_invalid_step_raises () -> None:
 
 	pattern, builder = _make_builder()
 
-	with pytest.raises(ValueError, match="Step must be positive"):
-		builder.arpeggio([60, 64, 67], step=0)
+	with pytest.raises(ValueError, match="Spacing must be positive"):
+		builder.arpeggio([60, 64, 67], spacing=0)
 
-	with pytest.raises(ValueError, match="Step must be positive"):
-		builder.arpeggio([60, 64, 67], step=-1)
+	with pytest.raises(ValueError, match="Spacing must be positive"):
+		builder.arpeggio([60, 64, 67], spacing=-1)
 
 
 # --- Phase 4: Step-Based Hits ---
@@ -786,7 +786,7 @@ def test_dropout_uses_builder_rng () -> None:
 			rng = random.Random(seed)
 		)
 
-		builder.fill(60, step=0.25, velocity=100)
+		builder.fill(60, spacing=0.25, velocity=100)
 		builder.dropout(probability=0.5)
 
 		return sum(len(step.notes) for step in pattern.steps.values())
@@ -859,8 +859,8 @@ def test_float_length_fill () -> None:
 		cycle = 0
 	)
 
-	# step=0.5 over 3.5 beats = 7 notes (0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
-	builder.fill(60, step=0.5, velocity=100)
+	# spacing=0.5 over 3.5 beats = 7 notes (0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
+	builder.fill(60, spacing=0.5, velocity=100)
 
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
 
@@ -935,7 +935,7 @@ def test_set_length_affects_fill () -> None:
 	)
 
 	builder.set_length(2)
-	builder.fill(60, step=0.5, velocity=100)
+	builder.fill(60, spacing=0.5, velocity=100)
 
 	# 2 beats / 0.5 step = 4 notes
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
@@ -1696,7 +1696,7 @@ def test_broken_chord_places_notes_in_order () -> None:
 	pattern, builder = _make_builder(length=4)
 	chord = subsequence.chords.Chord(root_pc=0, quality="major")
 
-	builder.broken_chord(chord, root=60, order=[2, 0, 1], step=0.25)
+	builder.broken_chord(chord, root=60, order=[2, 0, 1], spacing=0.25)
 
 	ppq = subsequence.constants.MIDI_QUARTER_NOTE
 	positions = sorted(pattern.steps.keys())
@@ -3296,7 +3296,7 @@ def test_markov_correct_step_count () -> None:
 
 	"""markov() should place int(length / step) notes (one per grid position)."""
 
-	# length=4, step=0.25 → 16 notes
+	# length=4, spacing=0.25 → 16 notes
 	pattern, builder = _make_builder(length=4)
 	builder.rng = random.Random(42)
 
@@ -3304,7 +3304,7 @@ def test_markov_correct_step_count () -> None:
 		transitions={"root": [("root", 1)]},
 		pitch_map={"root": 52},
 		velocity=80,
-		step=0.25,
+		spacing=0.25,
 	)
 
 	total = sum(len(s.notes) for s in pattern.steps.values())
@@ -3362,7 +3362,7 @@ def test_markov_custom_start_state () -> None:
 		transitions={"root": [("3rd", 1)], "3rd": [("root", 1)], "5th": [("root", 1)]},
 		pitch_map={"root": 52, "3rd": 56, "5th": 59},
 		start="5th",
-		step=0.25,
+		spacing=0.25,
 	)
 
 	# The first note placed (beat 0) should be pitch 59 (5th).
@@ -3419,11 +3419,11 @@ def test_markov_step_size_controls_density () -> None:
 		builder.markov(
 			transitions={"root": [("root", 1)]},
 			pitch_map={"root": 52},
-			step=step,
+			spacing=step,
 		)
 		return sum(len(s.notes) for s in pattern.steps.values())
 
-	# step=0.25 → 16 notes; step=0.5 → 8 notes
+	# spacing=0.25 → 16 notes; spacing=0.5 → 8 notes
 	assert _count(0.25) == 16
 	assert _count(0.5) == 8
 
@@ -3470,12 +3470,12 @@ def test_melody_correct_step_count () -> None:
 
 	"""melody() should place int(length / step) notes when rest_probability is 0."""
 
-	# length=4, step=0.25 → 16 steps, all filled (no rests)
+	# length=4, spacing=0.25 → 16 steps, all filled (no rests)
 	pattern, builder = _make_builder(length=4)
 	builder.rng = random.Random(0)
 
 	ms = _melody_state(rest_probability=0.0)
-	builder.melody(state=ms, step=0.25)
+	builder.melody(state=ms, spacing=0.25)
 
 	total = sum(len(s.notes) for s in pattern.steps.values())
 
@@ -3490,7 +3490,7 @@ def test_melody_step_size_controls_density () -> None:
 		pattern, builder = _make_builder(length=4)
 		builder.rng = random.Random(0)
 		ms = _melody_state(rest_probability=0.0)
-		builder.melody(state=ms, step=step)
+		builder.melody(state=ms, spacing=step)
 		return sum(len(s.notes) for s in pattern.steps.values())
 
 	assert _count(0.25) == 16
@@ -3505,7 +3505,7 @@ def test_melody_pitches_in_scale (self=None) -> None:
 	builder.rng = random.Random(42)
 
 	ms = _melody_state(key="C", mode="ionian", low=60, high=72)
-	builder.melody(state=ms, step=0.25)
+	builder.melody(state=ms, spacing=0.25)
 
 	allowed = set(ms._pitch_pool)
 
@@ -3553,7 +3553,7 @@ def test_melody_deterministic () -> None:
 		pattern, builder = _make_builder(length=4)
 		builder.rng = random.Random(seed)
 		ms = _melody_state()
-		builder.melody(state=ms, step=0.25, velocity=80)
+		builder.melody(state=ms, spacing=0.25, velocity=80)
 		return sorted(
 			(beat, n.pitch, n.velocity)
 			for beat, step in pattern.steps.items()
@@ -3572,7 +3572,7 @@ def test_melody_rest_probability_produces_gaps () -> None:
 	builder.rng = random.Random(7)
 
 	ms = _melody_state(rest_probability=0.5)
-	builder.melody(state=ms, step=0.25)
+	builder.melody(state=ms, spacing=0.25)
 
 	total = sum(len(s.notes) for s in pattern.steps.values())
 
@@ -3590,7 +3590,7 @@ def test_melody_chord_tones_passed_through () -> None:
 	chord_tones = [60, 64, 67]
 
 	# Should not raise; notes should be placed
-	builder.melody(state=ms, step=0.5, chord_tones=chord_tones)
+	builder.melody(state=ms, spacing=0.5, chord_tones=chord_tones)
 
 	total = sum(len(s.notes) for s in pattern.steps.values())
 
@@ -3885,7 +3885,7 @@ def test_lsystem_places_notes () -> None:
 
 def test_lsystem_autofit_places_all_mapped_symbols () -> None:
 
-	"""With step=None, every mapped symbol in the expanded string gets a note."""
+	"""With spacing=None, every mapped symbol in the expanded string gets a note."""
 
 	# "A" maps to a pitch; "B" is a rest.
 	# Fibonacci gen=4: "ABAABABA" — 5 A's, 3 B's → 5 notes expected.
@@ -3907,7 +3907,7 @@ def test_lsystem_fixed_step_truncates () -> None:
 
 	"""With a fixed step, symbols past the bar end are ignored."""
 
-	# step=0.5 in a 4-beat bar fits exactly 8 symbols.
+	# spacing=0.5 in a 4-beat bar fits exactly 8 symbols.
 	# generations=6 produces 13 Fibonacci symbols — only first 8 used.
 	pattern, builder = _make_builder(length=4)
 	builder.rng = random.Random(42)
@@ -3918,7 +3918,7 @@ def test_lsystem_fixed_step_truncates () -> None:
 		axiom="A",
 		rules={"A": "AB", "B": "A"},
 		generations=6,
-		step=0.5,
+		spacing=0.5,
 	)
 
 	total = sum(len(s.notes) for s in pattern.steps.values())
@@ -4330,7 +4330,7 @@ def test_de_bruijn_fixed_step_truncates () -> None:
 	"""Fixed step mode places at most int(length / step) notes."""
 
 	pattern, builder = _make_builder(length=4)
-	builder.de_bruijn([60, 62], window=4, step=0.25)  # 2**4=16 notes, 4/0.25=16 slots
+	builder.de_bruijn([60, 62], window=4, spacing=0.25)  # 2**4=16 notes, 4/0.25=16 slots
 	assert len(pattern.steps) <= 16
 
 
@@ -4385,7 +4385,7 @@ def test_lorenz_places_notes () -> None:
 	"""lorenz places notes at each step."""
 
 	pattern, builder = _make_builder(length=4)
-	builder.lorenz([60, 62, 64, 65, 67], step=0.25)
+	builder.lorenz([60, 62, 64, 65, 67], spacing=0.25)
 	assert len(pattern.steps) > 0
 
 
@@ -4394,7 +4394,7 @@ def test_lorenz_correct_step_count () -> None:
 	"""lorenz places int(length / step) notes."""
 
 	pattern, builder = _make_builder(length=4)
-	builder.lorenz([60, 62, 64, 65, 67], step=0.25)
+	builder.lorenz([60, 62, 64, 65, 67], spacing=0.25)
 	assert len(pattern.steps) == 16
 
 
@@ -4404,7 +4404,7 @@ def test_lorenz_pitches_from_list () -> None:
 
 	pattern, builder = _make_builder(length=4)
 	pitches = [60, 62, 64]
-	builder.lorenz(pitches, step=0.5)
+	builder.lorenz(pitches, spacing=0.5)
 	placed = {note.pitch for step in pattern.steps.values() for note in step.notes}
 	assert placed.issubset(set(pitches))
 
@@ -4418,7 +4418,7 @@ def test_lorenz_custom_mapping () -> None:
 	def my_map (x, y, z):
 		return (60, 90, 0.1)
 
-	builder.lorenz([60, 62], step=0.5, mapping=my_map)
+	builder.lorenz([60, 62], spacing=0.5, mapping=my_map)
 	vels = [note.velocity for step in pattern.steps.values() for note in step.notes]
 	assert all(v == 90 for v in vels)
 
@@ -4475,7 +4475,7 @@ def test_self_avoiding_walk_places_notes () -> None:
 	"""self_avoiding_walk places notes at each step."""
 
 	pattern, builder = _make_builder(length=4)
-	builder.self_avoiding_walk([60, 62, 64, 65, 67, 69, 71, 72], step=0.25)
+	builder.self_avoiding_walk([60, 62, 64, 65, 67, 69, 71, 72], spacing=0.25)
 	assert len(pattern.steps) > 0
 
 
@@ -4484,7 +4484,7 @@ def test_self_avoiding_walk_correct_count () -> None:
 	"""Total notes equals int(length / step)."""
 
 	pattern, builder = _make_builder(length=4)
-	builder.self_avoiding_walk([60, 62, 64, 65, 67, 69, 71, 72], step=0.25)
+	builder.self_avoiding_walk([60, 62, 64, 65, 67, 69, 71, 72], spacing=0.25)
 	assert len(pattern.steps) == 16
 
 
@@ -4494,7 +4494,7 @@ def test_self_avoiding_walk_pitches_from_list () -> None:
 
 	pattern, builder = _make_builder(length=4)
 	pitches = [60, 62, 64, 65, 67]
-	builder.self_avoiding_walk(pitches, step=0.25)
+	builder.self_avoiding_walk(pitches, spacing=0.25)
 	placed = {note.pitch for step in pattern.steps.values() for note in step.notes}
 	assert placed.issubset(set(pitches))
 
@@ -4505,11 +4505,11 @@ def test_self_avoiding_walk_deterministic () -> None:
 
 	pattern1, builder1 = _make_builder(length=4)
 	builder1.rng = random.Random(42)
-	builder1.self_avoiding_walk([60, 62, 64, 65, 67], step=0.25)
+	builder1.self_avoiding_walk([60, 62, 64, 65, 67], spacing=0.25)
 
 	pattern2, builder2 = _make_builder(length=4)
 	builder2.rng = random.Random(42)
-	builder2.self_avoiding_walk([60, 62, 64, 65, 67], step=0.25)
+	builder2.self_avoiding_walk([60, 62, 64, 65, 67], spacing=0.25)
 
 	pitches1 = [note.pitch for step in sorted(pattern1.steps) for note in pattern1.steps[step].notes]
 	pitches2 = [note.pitch for step in sorted(pattern2.steps) for note in pattern2.steps[step].notes]

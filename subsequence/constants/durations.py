@@ -18,9 +18,9 @@ Multiply by a count for multi-note durations::
 
 Use directly for step sizes and note durations::
 
-    p.arpeggio(tones, step=dur.SIXTEENTH, velocity=90)
-    p.arpeggio(tones, step=dur.DOTTED_SIXTEENTH, velocity=80)
-    p.fill(60, step=dur.EIGHTH)
+    p.arpeggio(tones, spacing=dur.SIXTEENTH, velocity=90)
+    p.arpeggio(tones, spacing=dur.DOTTED_SIXTEENTH, velocity=80)
+    p.fill(60, spacing=dur.EIGHTH)
 """
 
 THIRTYSECOND = 0.125

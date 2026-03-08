@@ -467,31 +467,31 @@ class PatternBuilder(
 			)
 		return self
 
-	def fill (self, pitch: typing.Union[int, str], step: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
+	def fill (self, pitch: typing.Union[int, str], spacing: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
 
 		"""
 		Fill the pattern with a note repeating at a fixed beat interval.
 
 		Example:
 			```python
-			p.fill("hh", step=0.25)  # sixteenth notes
+			p.fill("hh", spacing=0.25)  # sixteenth notes
 			```
 		"""
 
-		if step <= 0:
-			raise ValueError("Step must be positive")
+		if spacing <= 0:
+			raise ValueError("Spacing must be positive")
 
 		beat = 0.0
 
 		while beat < self._pattern.length:
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
-			beat += step
+			beat += spacing
 		return self
 
 	def arpeggio (
 		self,
 		pitches: typing.Union[typing.List[int], typing.List[str]],
-		step: float = 0.25,
+		spacing: float = 0.25,
 		velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		duration: typing.Optional[float] = None,
 		direction: str = "up",
@@ -503,9 +503,9 @@ class PatternBuilder(
 
 		Parameters:
 			pitches: List of MIDI note numbers or note name strings (e.g. ``"C4"``).
-			step: Time between each note in beats (default 0.25 = 16th note).
+			spacing: Time between each note in beats (default 0.25 = 16th note).
 			velocity: MIDI velocity for all notes (default 85).
-			duration: Note duration in beats. Defaults to ``step`` (each note
+			duration: Note duration in beats. Defaults to ``spacing`` (each note
 			          fills its slot exactly).
 			direction: Order in which pitches are cycled:
 
@@ -520,21 +520,21 @@ class PatternBuilder(
 		Example:
 			```python
 			# Ascending arpeggio (default)
-			p.arpeggio(chord.tones(60), step=0.25)
+			p.arpeggio(chord.tones(60), spacing=0.25)
 
 			# Ping-pong: C E G E C E G E ...
-			p.arpeggio([60, 64, 67], step=0.25, direction="up_down")
+			p.arpeggio([60, 64, 67], spacing=0.25, direction="up_down")
 
 			# Descending
-			p.arpeggio([60, 64, 67], step=0.25, direction="down")
+			p.arpeggio([60, 64, 67], spacing=0.25, direction="down")
 			```
 		"""
 
 		if not pitches:
 			raise ValueError("Pitches list cannot be empty")
 
-		if step <= 0:
-			raise ValueError("Step must be positive")
+		if spacing <= 0:
+			raise ValueError("Spacing must be positive")
 
 		resolved = [self._resolve_pitch(p) for p in pitches]
 
@@ -554,11 +554,11 @@ class PatternBuilder(
 			raise ValueError(f"direction must be 'up', 'down', 'up_down', or 'random', got '{direction}'")
 
 		if duration is None:
-			duration = step
+			duration = spacing
 
 		self._pattern.add_arpeggio_beats(
 			pitches = resolved,
-			step_beats = step,
+			spacing_beats = spacing,
 			velocity = velocity,
 			duration_beats = duration
 		)
@@ -674,7 +674,7 @@ class PatternBuilder(
 			self.legato(legato)
 		return self
 
-	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], step: float = 0.25, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0) -> "PatternBuilder":
+	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0) -> "PatternBuilder":
 
 		"""
 		Play a chord as an arpeggio in a specific or random order.
@@ -691,15 +691,15 @@ class PatternBuilder(
 			chord_obj: The chord to play (usually from ``p.section.chord``).
 			root: MIDI root note (e.g., 60 for Middle C).
 			order: List of indices into the chord tones array, dictating playback order.
-			step: Time between each note in beats (default 0.25 = 16th note).
+			spacing: Time between each note in beats (default 0.25 = 16th note).
 			velocity: MIDI velocity for all notes (default 85).
-			duration: Note duration in beats. Defaults to ``step``.
+			duration: Note duration in beats. Defaults to ``spacing``.
 			inversion: Specific chord inversion (ignored if voice leading is on).
 
 		Example::
 
 			# A 5-note broken chord using a predefined pattern
-			p.broken_chord(chord, root=60, order=[4, 0, 2, 1, 3], step=0.25)
+			p.broken_chord(chord, root=60, order=[4, 0, 2, 1, 3], spacing=0.25)
 
 			# A fully random broken chord using the pattern's deterministic RNG
 			order = list(range(5))
@@ -718,7 +718,7 @@ class PatternBuilder(
 		tones = chord_obj.tones(root=root, inversion=inversion, count=required_count)
 		pitches = [tones[i] for i in order]
 
-		self.arpeggio(pitches=pitches, step=step, velocity=velocity, duration=duration, direction="up")
+		self.arpeggio(pitches=pitches, spacing=spacing, velocity=velocity, duration=duration, direction="up")
 		return self
 
 	def swing (self, amount: float = 57.0, grid: float = 0.25, strength: float = 1.0) -> "PatternBuilder":

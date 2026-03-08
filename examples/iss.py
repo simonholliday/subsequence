@@ -239,7 +239,7 @@ def arp (p, chord):
 	direction = "up" if iss_lat.delta >= 0 else "down"
 
 	pitches = chord.tones(root=60, count=4)   # Four chord tones from C4 upward
-	p.arpeggio(pitches, step=0.25, velocity=arp_velocity, duration=0.05, direction=direction)
+	p.arpeggio(pitches, spacing=0.25, velocity=arp_velocity, duration=0.05, direction=direction)
 
 
 # Bass

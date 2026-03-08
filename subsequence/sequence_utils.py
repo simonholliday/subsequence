@@ -495,7 +495,7 @@ def perlin_2d (x: float, y: float, seed: int = 0) -> float:
 	return max(0.0, min(1.0, (value + 1.0) / 2.0))
 
 
-def perlin_1d_sequence (start: float, step: float, count: int, seed: int = 0) -> typing.List[float]:
+def perlin_1d_sequence (start: float, spacing: float, count: int, seed: int = 0) -> typing.List[float]:
 
 	"""Generate a sequence of smooth 1D noise values.
 
@@ -506,9 +506,9 @@ def perlin_1d_sequence (start: float, step: float, count: int, seed: int = 0) ->
 		start: Position of the first sample in the noise field.
 			Typically ``p.bar * p.grid * scale`` to anchor the sequence
 			to an absolute position in the piece.
-		step: Distance between consecutive samples.  Matches the
+		spacing: Distance between consecutive samples.  Matches the
 			``scale`` factor used in single calls — e.g. ``0.1`` gives
-			the same per-step change as ``perlin_1d(i * 0.1, seed)``.
+			the same per-sample change as ``perlin_1d(i * 0.1, seed)``.
 		count: Number of values to return.
 		seed: Noise field seed.  Same seed as a matching :func:`perlin_1d`
 			call produces identical values at the same positions.
@@ -517,10 +517,10 @@ def perlin_1d_sequence (start: float, step: float, count: int, seed: int = 0) ->
 		```python
 		# 16 smoothly-varying velocities for hi-hat ghost notes
 		noise = subsequence.sequence_utils.perlin_1d_sequence(
-		    start = p.bar * p.grid * 0.1,
-		    step  = 0.1,
-		    count = p.grid,
-		    seed  = 10
+		    start   = p.bar * p.grid * 0.1,
+		    spacing = 0.1,
+		    count   = p.grid,
+		    seed    = 10
 		)
 		hat_velocities = [
 		    int(subsequence.easing.map_value(n, out_min=50, out_max=75, shape="ease_in"))
@@ -529,7 +529,7 @@ def perlin_1d_sequence (start: float, step: float, count: int, seed: int = 0) ->
 		```
 	"""
 
-	return [perlin_1d(start + i * step, seed) for i in range(count)]
+	return [perlin_1d(start + i * spacing, seed) for i in range(count)]
 
 
 def perlin_2d_grid (

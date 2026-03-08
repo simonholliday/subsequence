@@ -1043,7 +1043,7 @@ def test_perlin_1d_sequence_length () -> None:
 
 	"""Should return exactly count values."""
 
-	result = subsequence.sequence_utils.perlin_1d_sequence(start=0.0, step=0.1, count=16, seed=0)
+	result = subsequence.sequence_utils.perlin_1d_sequence(start=0.0, spacing=0.1, count=16, seed=0)
 
 	assert len(result) == 16
 
@@ -1052,7 +1052,7 @@ def test_perlin_1d_sequence_values_in_range () -> None:
 
 	"""All values should be in [0.0, 1.0]."""
 
-	result = subsequence.sequence_utils.perlin_1d_sequence(start=0.0, step=0.1, count=32, seed=42)
+	result = subsequence.sequence_utils.perlin_1d_sequence(start=0.0, spacing=0.1, count=32, seed=42)
 
 	assert all(0.0 <= v <= 1.0 for v in result)
 

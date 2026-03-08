@@ -465,7 +465,7 @@ def test_seed_produces_deterministic_patterns (patch_midi: None) -> None:
 
 		def my_builder (p):
 			# Use p.rng to make a stochastic pattern.
-			p.fill(60, step=0.25, velocity=100)
+			p.fill(60, spacing=0.25, velocity=100)
 			p.dropout(probability=0.4)
 
 		pending = subsequence.composition._PendingPattern(

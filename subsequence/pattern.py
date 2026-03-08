@@ -117,7 +117,7 @@ class Pattern:
 		self.steps[position].notes.append(note)
 
 
-	def add_sequence (self, sequence: typing.List[int], step_duration: int, pitch: int, velocity: typing.Union[int, typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, note_duration: int = 6) -> None:
+	def add_sequence (self, sequence: typing.List[int], spacing_pulses: int, pitch: int, velocity: typing.Union[int, typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, note_duration: int = 6) -> None:
 
 		"""
 		Add a sequence of notes to the pattern.
@@ -127,14 +127,14 @@ class Pattern:
 			velocity = [velocity] * len(sequence)
 
 		for i, hit in enumerate(sequence):
-			
+
 			if hit:
-				
+
 				# Handle case where velocity list might be shorter than sequence
 				vel = velocity[i % len(velocity)]
-				
+
 				self.add_note(
-					position = i * step_duration,
+					position = i * spacing_pulses,
 					pitch = pitch,
 					velocity = int(vel),
 					duration = note_duration
@@ -169,14 +169,14 @@ class Pattern:
 		)
 
 
-	def add_sequence_beats (self, sequence: typing.List[int], step_beats: float, pitch: int, velocity: typing.Union[int, typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, note_duration_beats: float = 0.25, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+	def add_sequence_beats (self, sequence: typing.List[int], spacing_beats: float, pitch: int, velocity: typing.Union[int, typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, note_duration_beats: float = 0.25, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
 
 		"""
 		Add a sequence of notes using beat durations.
 		"""
 
-		if step_beats <= 0:
-			raise ValueError("Step duration must be positive")
+		if spacing_beats <= 0:
+			raise ValueError("Spacing must be positive")
 
 		if note_duration_beats <= 0:
 			raise ValueError("Note duration must be positive")
@@ -184,24 +184,24 @@ class Pattern:
 		if pulses_per_beat <= 0:
 			raise ValueError("Pulses per beat must be positive")
 
-		step_duration = int(step_beats * pulses_per_beat)
+		spacing_pulses = int(spacing_beats * pulses_per_beat)
 		note_duration = int(note_duration_beats * pulses_per_beat)
 
-		if step_duration <= 0:
-			raise ValueError("Step duration must be at least one pulse")
+		if spacing_pulses <= 0:
+			raise ValueError("Spacing must be at least one pulse")
 
 		if note_duration <= 0:
 			raise ValueError("Note duration must be at least one pulse")
 
 		self.add_sequence(
 			sequence = sequence,
-			step_duration = step_duration,
+			spacing_pulses = spacing_pulses,
 			pitch = pitch,
 			velocity = velocity,
 			note_duration = note_duration
 		)
 
-	def add_arpeggio_beats (self, pitches: typing.List[int], step_beats: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration_beats: typing.Optional[float] = None, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+	def add_arpeggio_beats (self, pitches: typing.List[int], spacing_beats: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration_beats: typing.Optional[float] = None, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
 
 		"""
 		Add an arpeggio that cycles through pitches at regular intervals.
@@ -210,14 +210,14 @@ class Pattern:
 		if not pitches:
 			raise ValueError("Pitches list cannot be empty")
 
-		if step_beats <= 0:
-			raise ValueError("Step duration must be positive")
+		if spacing_beats <= 0:
+			raise ValueError("Spacing must be positive")
 
 		if pulses_per_beat <= 0:
 			raise ValueError("Pulses per beat must be positive")
 
 		if duration_beats is None:
-			duration_beats = step_beats
+			duration_beats = spacing_beats
 
 		if duration_beats <= 0:
 			raise ValueError("Note duration must be positive")
@@ -234,7 +234,7 @@ class Pattern:
 				duration_beats = duration_beats,
 				pulses_per_beat = pulses_per_beat
 			)
-			beat += step_beats
+			beat += spacing_beats
 			pitch_index += 1
 
 

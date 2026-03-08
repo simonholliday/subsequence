@@ -122,12 +122,12 @@ def arp (p, chord):
 	if not p.section or p.section.name == "verse":
 		# Verse: simple root-chord arpeggio.
 		pitches = chord.tones(root=60, count=4)
-		p.arpeggio(pitches, step=0.5, velocity=75)
+		p.arpeggio(pitches, spacing=0.5, velocity=75)
 
 	elif p.section.name == "chorus":
 		# Chorus: faster sixteenth-note arpeggio across a wider range.
 		pitches = chord.tones(root=60, count=8)
-		p.arpeggio(pitches, step=0.25, velocity=80)
+		p.arpeggio(pitches, spacing=0.25, velocity=80)
 
 	# Bridge: silence — let the live harmony breathe on its own.
 

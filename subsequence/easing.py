@@ -295,7 +295,7 @@ class EasedValue:
 
             # Choose arpeggio direction based on which way the value is moving.
             direction = "up" if iss_lat.delta >= 0 else "down"
-            p.arpeggio(pitches, step=0.25, direction=direction)
+            p.arpeggio(pitches, spacing=0.25, direction=direction)
 
             # Scale an effect by how large the change was.
             urgency = abs(iss_lat.delta)   # 0.0 = stable, larger = big jump
