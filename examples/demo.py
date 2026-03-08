@@ -10,9 +10,9 @@ For the same music built with the Direct Pattern API, see demo_advanced.py.
 import subsequence
 import subsequence.constants.instruments.gm_drums as gm_drums
 
-DRUMS_CHANNEL = 9
-BASS_CHANNEL  = 5
-SYNTH_CHANNEL = 0
+DRUMS_CHANNEL = 10
+BASS_CHANNEL  = 6
+SYNTH_CHANNEL = 1
 
 composition = subsequence.Composition(bpm=120, key="E")
 composition.harmony(style="aeolian_minor", cycle_beats=4, gravity=0.8)

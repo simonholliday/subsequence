@@ -22,7 +22,7 @@ Sections:
   fracture   4 bars   Musical chaos.  The beat mutates.  Rare.
   dissolve  12 bars   The exhale.  Layers fall away.
 
-Channel 10 (zero-indexed) = MIDI channel 11.
+MIDI channel 10 (GM drums).
 """
 
 import subsequence
@@ -30,7 +30,7 @@ import subsequence.easing
 import subsequence.sequence_utils
 import subsequence.constants.instruments.gm_drums as gm_drums
 
-DRUM_CHANNEL = 9
+DRUM_CHANNEL = 10
 composition = subsequence.Composition(bpm=132)
 groove = subsequence.Groove.from_agr("Swing 16ths 57.agr")
 

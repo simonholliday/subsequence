@@ -8,10 +8,10 @@ import subsequence.sequence_utils
 
 logging.basicConfig(level=logging.INFO)
 
-DRUM_CHANNEL = 9
-BASS_CHANNEL = 5
-ARP_CHANNEL = 0
-LEAD_CHANNEL = 3
+DRUM_CHANNEL = 10
+BASS_CHANNEL = 6
+ARP_CHANNEL = 1
+LEAD_CHANNEL = 4
 
 composition = subsequence.Composition(
 	bpm=120,

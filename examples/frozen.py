@@ -25,9 +25,9 @@ import subsequence.constants.midi_notes as midi_notes
 
 logging.basicConfig(level=logging.INFO)
 
-DRUM_CHANNEL = 9
-BASS_CHANNEL  = 5
-ARP_CHANNEL   = 0
+DRUM_CHANNEL = 10
+BASS_CHANNEL  = 6
+ARP_CHANNEL   = 1
 
 # ---------------------------------------------------------------------------
 # Composition

@@ -13,7 +13,7 @@ Form sections (16 bars each, graph transitions):
   C  "peak"      Full density, all voices, maximum ghost fill
   D  "dissolve"  Strip back, echoes of the peak
 
-Channel 10 (zero-indexed) = MIDI channel 11.
+MIDI channel 10 (GM drums).
 """
 
 import subsequence
@@ -21,7 +21,7 @@ import subsequence.easing
 import subsequence.sequence_utils
 import subsequence.constants.instruments.gm_drums as gm_drums
 
-DRUM_CHANNEL = 9
+DRUM_CHANNEL = 10
 
 composition = subsequence.Composition(bpm=120)
 

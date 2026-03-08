@@ -30,7 +30,7 @@ async def test_trigger_immediate_creates_pattern (patch_midi: None) -> None:
 	await composition._sequencer.start()
 
 	# Call trigger
-	composition.trigger(builder, channel=0, quantize=0)
+	composition.trigger(builder, channel=1, quantize=0)
 
 	# Wait a moment for the async scheduling to complete
 	await asyncio.sleep(0.01)
@@ -65,7 +65,7 @@ async def test_trigger_with_quantize_beat_boundary (patch_midi: None) -> None:
 	def builder (p):
 		p.note(62, beat=0, velocity=90, duration=0.5)
 
-	composition.trigger(builder, channel=0, quantize=dur.QUARTER)
+	composition.trigger(builder, channel=1, quantize=dur.QUARTER)
 
 	await asyncio.sleep(0.01)
 
@@ -96,7 +96,7 @@ async def test_trigger_with_quantize_bar_boundary (patch_midi: None) -> None:
 	def builder (p):
 		p.note(64, beat=0, velocity=85, duration=0.5)
 
-	composition.trigger(builder, channel=0, quantize=dur.WHOLE)
+	composition.trigger(builder, channel=1, quantize=dur.WHOLE)
 
 	await asyncio.sleep(0.01)
 
@@ -130,7 +130,7 @@ async def test_trigger_with_chord_context (patch_midi: None) -> None:
 		captured_chord = chord
 		p.note(60, beat=0, velocity=100, duration=0.5)
 
-	composition.trigger(builder, channel=0, chord=True, quantize=0)
+	composition.trigger(builder, channel=1, chord=True, quantize=0)
 
 	await asyncio.sleep(0.01)
 
@@ -189,7 +189,7 @@ async def test_trigger_builder_exception_is_logged (patch_midi: None) -> None:
 		raise ValueError("Test error")
 
 	# Should not raise
-	composition.trigger(broken_builder, channel=0)
+	composition.trigger(broken_builder, channel=1)
 
 	await asyncio.sleep(0.01)
 
@@ -213,7 +213,7 @@ async def test_trigger_before_playback_is_safe (patch_midi: None) -> None:
 		p.note(60, beat=0, velocity=100, duration=0.5)
 
 	# Trigger without calling play() - should not crash
-	composition.trigger(builder, channel=0)
+	composition.trigger(builder, channel=1)
 
 
 @pytest.mark.asyncio
@@ -232,7 +232,7 @@ async def test_trigger_uses_builder_chaining (patch_midi: None) -> None:
 		# Use method chaining
 		p.note(60, beat=0, velocity=100, duration=0.5).note(62, beat=0.5, velocity=90, duration=0.5)
 
-	composition.trigger(builder, channel=0)
+	composition.trigger(builder, channel=1)
 
 	await asyncio.sleep(0.01)
 

@@ -572,27 +572,27 @@ class Composition:
 		seed: typing.Optional[int] = None,
 		record: bool = False,
 		record_filename: typing.Optional[str] = None,
-		zero_indexed_channels: bool = True
+		zero_indexed_channels: bool = False
 	) -> None:
 
 		"""
 		Initialize a new composition.
 
 		Parameters:
-			output_device: The name of the MIDI output port to use. If `None`, 
+			output_device: The name of the MIDI output port to use. If `None`,
 				Subsequence will attempt to find a device, prompting if necessary.
 			bpm: Initial tempo in beats per minute (default 120).
 			key: The root key of the piece (e.g., "C", "F#", "Bb").
 				Required if you plan to use `harmony()`.
-			seed: An optional integer for deterministic randomness. When set, 
-				every random decision (chord choices, drum probability, etc.) 
+			seed: An optional integer for deterministic randomness. When set,
+				every random decision (chord choices, drum probability, etc.)
 				will be identical on every run.
 			record: When True, record all MIDI events to a file.
 			record_filename: Optional filename for the recording (defaults to timestamp).
-			zero_indexed_channels: When False, MIDI channels use
+			zero_indexed_channels: When False (default), MIDI channels use
 				1-based numbering (1-16) matching instrument labelling.
 				Channel 10 is drums, the way musicians and hardware panels
-				show it. When True (default), channels use 0-based numbering (0-15)
+				show it. When True, channels use 0-based numbering (0-15)
 				matching the raw MIDI protocol.
 
 		Example:
@@ -650,9 +650,9 @@ class Composition:
 		"""
 		Convert a user-supplied MIDI channel to the 0-indexed value used internally.
 
-		When ``zero_indexed_channels`` is True, the channel is validated as
-		0-15 and returned unchanged. When False (1-indexed), the channel is
-		validated as 1-16 and decremented by one.
+		When ``zero_indexed_channels`` is False (default), the channel is
+		validated as 1-16 and decremented by one. When True (0-indexed), the
+		channel is validated as 0-15 and returned unchanged.
 		"""
 
 		if self._zero_indexed_channels:

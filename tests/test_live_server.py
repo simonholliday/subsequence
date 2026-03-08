@@ -447,7 +447,7 @@ def test_live_info_includes_patterns (patch_midi: None) -> None:
 
 	assert len(info["patterns"]) == 1
 	assert info["patterns"][0]["name"] == "drums"
-	assert info["patterns"][0]["channel"] == 9
+	assert info["patterns"][0]["channel"] == 10  # 9 + 1, 1-indexed display
 	assert info["patterns"][0]["length"] == 4
 	assert info["patterns"][0]["muted"] is False
 
