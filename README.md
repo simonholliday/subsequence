@@ -2,30 +2,85 @@
 
 **A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence is a generative engine for your studio. Engineered for rock-solid timing and efficiency, it uses cognitive harmony and stateful patterns to drive your hardware synths and VSTs. It gives you a palette of algorithmic building blocks - Euclidean rhythms, cellular automata, L-systems, Markov chains-and a stateful engine that lets them interact and evolve over time. It is designed for **the musician who wants to build compositions that surprise them** - where patterns combine, react to context, and develop in ways that reward exploration.
 
-Unlike tools that loop a fixed pattern forever, Subsequence rebuilding every pattern fresh before each cycle grants macro-level structural control and narrative evolution. Each rebuild has full context - the current chord, the composition section, the cycle count, shared data from other patterns. A Euclidean rhythm can thin itself as tension builds; a cellular automaton can seed from the harmony. 
+Unlike tools that loop a fixed pattern forever, Subsequence rebuilds every pattern fresh before each cycle, granting macro-level structural control and narrative evolution. Each rebuild has full context - the current chord, the composition section, the cycle count, shared data from other patterns. A Euclidean rhythm can thin itself as tension builds; a cellular automaton can seed from the harmony.
 
 Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes, or DAW provide the sound. There are no fixed limits on complexity or length.
 
 > **What you need:** Basic Python knowledge and any MIDI-controllable instrument. Subsequence generates pure MIDI data; it does not produce sound itself.
 
+
+## Contents
+
+- **1. Getting Started**
+  - [Introduction](#introduction)
+  - [Why Subsequence?](#why-subsequence)
+  - [What it does](#what-it-does)
+  - [Minimal Example](#minimal-example)
+  - [Quick start](#quick-start)
+- **2. Generating Music**
+  - [Algorithmic generators](#algorithmic-generators)
+  - [Melody generation](#melody-generation)
+- **3. The Core APIs**
+  - [Composition API](#composition-api)
+  - [Direct Pattern API](#direct-pattern-api)
+  - [Mini-notation](#mini-notation)
+- **4. Harmony & Structure**
+  - [Form and sections](#form-and-sections)
+  - [The Conductor](#the-conductor)
+  - [Chord inversions and voice leading](#chord-inversions-and-voice-leading)
+  - [Harmony and chord graphs](#harmony-and-chord-graphs)
+  - [Frozen progressions](#frozen-progressions)
+- **5. Live Performance & Tools**
+  - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
+  - [Terminal display](#terminal-display)
+  - [Web UI Dashboard (Beta)](#web-ui-dashboard-beta)
+  - [MIDI recording and rendering](#midi-recording-and-rendering)
+  - [Live coding](#live-coding)
+  - [Clock accuracy](#clock-accuracy)
+  - [MIDI input and external clock](#midi-input-and-external-clock)
+  - [Ableton Link](#ableton-link)
+  - [Pattern tools and hardware control](#pattern-tools-and-hardware-control)
+  - [OSC integration](#osc-integration)
+  - [Hotkeys](#hotkeys)
+  - [Groove](#groove)
+- **6. Workflow & Utilities**
+  - [Examples](#examples)
+  - [Extra utilities](#extra-utilities)
+- **7. Project Info**
+  - [Feature Roadmap](#feature-roadmap)
+  - [Tests](#tests)
+  - [Community and Feedback](#community-and-feedback)
+  - [Dependencies and Credits](#dependencies-and-credits)
+  - [About the Author](#about-the-author)
+  - [License](#license)
+
+## 1. Getting Started
+
+### Introduction
+
+Subsequence is a generative engine for your studio. Engineered for rock-solid timing and efficiency, it uses cognitive harmony and stateful patterns to drive your hardware synths and VSTs. It gives you a palette of algorithmic building blocks - Euclidean rhythms, cellular automata, L-systems, Markov chains - and a stateful engine that lets them interact and evolve over time.
+
+It is designed for **the musician who wants to build compositions that surprise them** - where patterns combine, react to context, and develop in ways that reward exploration.
+
 ### Why Subsequence?
 
-- **Precision and efficiency.** Built for live performance and serious studio use. A highly-optimized hybrid timing strategy ensures sub-microsecond clock accuracy, while a comprehensively tested codebase provides rock-solid stability even under complex generative workloads.
-- **Accessible Python, no CS degree required.** If you can configure a synth, you can write generative music here. Simple building blocks mean you can get started with tiny scripts and learn as you go. Your music is versionable, shareable, and lives in standard `.py` files.
-- **Not just for algorithms.** Want to program a traditional bassline or a fixed drum groove without any generative variation? No problem. Use Subsequence to orchestrate exact sequences alongside your evolving patterns, or simply use it as a highly precise, Python-driven standard MIDI sequencer.
-- **A rich algorithmic palette.** 16 generators drawn from mathematics, physics, and biology - Euclidean rhythms, cellular automata, Markov chains, Lorenz attractors, reaction-diffusion, L-systems, and more. See [Algorithmic generators](#algorithmic-generators) for the full list. They combine freely inside the stateful rebuild loop.
-- **Implicit Compositional Structure.** Subsequence understands predefined evolving sections, bringing overarching musical form to a piece without getting stuck in infinite loops. Patterns rebuild each cycle with full context - chord, section, history, external data - so music can grow and develop across defined movement.
-- **Multiple APIs and notation styles.** Start with a one-line mini-notation drum pattern. Graduate to per-step control, harmonic injection, or the full Direct Pattern API - without changing tools.
-- **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition. The cognitive engine writes melodies that sound *human* because it models deep listener expectations.
-- **Turn data into music.** Schedule any Python function on a beat cycle. Feed in APIs, sensors, files, weather, ISS telemetry - anything Python can reach becomes a musical parameter.
-- **Controlled randomness, not chaos.** Every generative decision can be bounded by musical theory and constraints. Set a seed and every "random" decision - chords, form, note choices - becomes repeatable, intentional, and tweakable.
-- **From sketch to studio.** Subsequence is a fast way to explore ideas - try rhythms, test harmonies, let the algorithms surprise you. When something clicks, [record the session](#midi-recording-and-rendering) as a standard multi-channel MIDI file and bring it straight into your DAW to arrange, edit, and polish.
+- **Precision and efficiency.** Built for live performance and serious studio use. A highly-optimized hybrid timing strategy ensures sub-microsecond clock accuracy, while a comprehensively tested codebase provides rock-solid stability.
+- **Accessible Python, no CS degree required.** If you can configure a synth, you can write generative music here. Simple building blocks mean you can get started with tiny scripts and learn as you go.
+- **Not just for algorithms.** You can program traditional basslines or fixed drum grooves without any generative variation. Use Subsequence as a highly precise, Python-driven standard MIDI sequencer alongside your evolving patterns.
+- **Implicit Compositional Structure.** Subsequence understands predefined sections, bringing overarching musical form to a piece without getting stuck in infinite loops. Patterns rebuild each cycle with full context - chord, section, history - so music can grow and develop across defined movement.
+- **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition. The engine writes melodies that sound *human* because it models deep listener expectations.
+- **From sketch to studio.** Subsequence is a fast way to explore ideas. When something clicks, [record the session](#midi-recording-and-rendering) as a standard multi-channel MIDI file and bring it straight into your DAW to arrange, edit, and polish.
 
-**[Full API documentation →](https://simonholliday.github.io/subsequence)**
+### What it does
 
-## Minimal Example
+- **Stateful patterns that evolve.** Each pattern is a Python function rebuilt fresh every cycle with full context. Patterns can remember history and decide their next move.
+- **Cognitive harmony engine.** Chord progressions evolve via [weighted transition graphs](#harmony-and-chord-graphs) with adjustable gravity and [Narmour-based melodic inertia](#harmonic-gravity-and-melodic-inertia). Automatic [voice leading](#automatic-voice-leading).
+- **Sub-microsecond clock.** A hybrid sleep+spin timing strategy achieves typical pulse jitter of **< 5 μs** on Linux ([measured](#clock-accuracy)), with zero long-term drift.
+- **Pure MIDI, zero sound engine.** Route to hardware synths, drum machines, Eurorack, or VSTs. You provide the sound; Subsequence provides the logic.
 
-This is all the code you need to build a generative drum pattern. It's designed to be readable. More detail on the [Composition API](#composition-api) and [Direct Pattern API](#direct-pattern-api) further down.
+### Minimal Example
+
+This is all the code you need to build a generative drum pattern:
 
 ```python
 import subsequence
@@ -33,145 +88,35 @@ import subsequence.constants.instruments.gm_drums as gm_drums
 
 composition = subsequence.Composition(bpm=120)
 
-# channel=9 is MIDI channel 10 (0-indexed) - the default (General MIDI) drum channel.
-# length=4 means 4 quarter-note beats (one bar of 4/4).
-# Omitting the `unit` parameter sets the grid to sixteenth-note resolution by default:
 @composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
-
 def drums(p):
-
-    # 4 beats × 4 sixteenth notes = 16 steps, numbered 0–15.
-
     p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100) # beats 1, 2, 3, 4
-    p.hit_steps("snare_1", [4, 12], velocity=90) # beats 2 and 4
+    p.hit_steps("snare_1", [4, 12], velocity=90)      # beats 2 and 4
     p.hit_steps("hi_hat_closed", range(16), velocity=70) # every sixteenth
 
 composition.play()
 ```
 
-All `p.` methods return the builder, so calls can be chained into a single expression:
+### Quick start
 
-```python
-@composition.pattern(channel=9, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
-def drums(p):
-
-    (
-        p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
-        .hit_steps("snare_1", [4, 12], velocity=90)
-        .hit_steps("hi_hat_closed", range(16), velocity=70)
-    )
-
-composition.play()
-```
-
-## Introduction
-
-### The "Stateful" Advantage
-Most live-coding environments are **stateless**: passing time determines the event. This excels at cyclic, rhythmic music (techno, polyrhythms) but struggles with narrative. Subsequence is **stateful**: it remembers history.
-
-This means a pattern can look back at the previous cycle to decide its next move ("if I played a C last bar, play an E this bar"). It allows for **motivic development** - ideas that evolve over time rather than just repeating. It also supports traditional linear composition: because the system tracks "Global Position" and "Section", you can write a piece with a distinct Intro, Verse, and Chorus, where specific notes play at specific times, just like in a DAW.
-
-### Cognitive Melody Generation
-Algorithms should sound like musicians, not random number generators. Standard generative tools often rely on "scale masking" (picking random notes from a scale), which ensures no "wrong" notes but often results in aimless melodies.
-
-Subsequence integrates the **Narmour Implication-Realization model**, a theory of music cognition that predicts what listeners *expect* to hear. It models **melodic inertia**:
-*   **Implication:** A series of small steps in one direction implies continuation.
-*   **Gap-Fill:** A large leap implies a reversal to fill the gap.
-
-By encoding these principles, Subsequence generates melodies that feel structured and intentional, satisfying the listener's innate expectations of musical grammar.
-
-### The Algorithmic Composer
-Subsequence is a framework for **algorithmic composition** - the practice of defining musical processes and letting them run. You select from a toolkit of rhythm generators, cellular automata, Markov models, melodic algorithms, and noise functions, combine them inside patterns that rebuild with full musical context, and listen to what emerges.
-
-*   **Compose the process, not just the notes.** You define the rules; the framework follows them. Every run can produce something new - or, with a seed, something exactly repeatable.
-*   **Algorithms that interact.** A Euclidean kick pattern shares its root note with a Markov bassline via `p.data`. A cellular automaton seeds its next generation from the chord change. An L-system rhythm thins itself during the bridge. The stateful rebuild loop is what makes these connections possible.
-*   **Code is the score.** Your composition is a `.py` file - versionable, shareable, diffable. No custom language, no GUI, no audio engine. Python is the interface.
-
-Subsequence connects to your existing studio. Sync to your DAW's clock, or let it drive your Eurorack system. It provides the logic; you provide the sound.
-
-## Contents
-
-- [Introduction](#introduction)
-- [What it does](#what-it-does)
-- [Quick start](#quick-start)
-- [Algorithmic generators](#algorithmic-generators)
-- [Melody generation](#melody-generation)
-- [Composition API](#composition-api)
-- [Direct Pattern API](#direct-pattern-api)
-- [Mini-notation](#mini-notation)
-- [Form and sections](#form-and-sections)
-- [The Conductor](#the-conductor)
-- [Chord inversions and voice leading](#chord-inversions-and-voice-leading)
-- [Harmony and chord graphs](#harmony-and-chord-graphs)
-- [Frozen progressions](#frozen-progressions)
-- [Seed and deterministic randomness](#seed-and-deterministic-randomness)
-- [Terminal display](#terminal-display)
-- [Web UI Dashboard (Beta)](#web-ui-dashboard-beta)
-- [MIDI recording and rendering](#midi-recording-and-rendering)
-- [Live coding](#live-coding)
-- [Clock accuracy](#clock-accuracy)
-- [MIDI input and external clock](#midi-input-and-external-clock)
-- [Ableton Link](#ableton-link)
-- [Hotkeys](#hotkeys)
-- [Pattern tools and hardware control](#pattern-tools-and-hardware-control)
-- [OSC integration](#osc-integration)
-- [Examples](#examples)
-- [Extra utilities](#extra-utilities)
-- [Feature Roadmap](#feature-roadmap)
-- [Tests](#tests)
-- [About the Author](#about-the-author)
-- [License](#license)
-
-## What it does
-
-### What makes it different
-
-- **Stateful patterns that evolve.** Each pattern is a Python function rebuilt fresh every cycle with full context - current chord, section, cycle count, external data. Patterns can remember what happened last bar and decide what to do next. This is not a loop; it's a composition that develops.
-- **Cognitive harmony engine.** Chord progressions evolve via [weighted transition graphs](#harmony-and-chord-graphs) with adjustable gravity and [Narmour-based melodic inertia](#harmonic-gravity-and-melodic-inertia) - a model of how listeners *expect* music to move. [Eleven built-in palettes](#built-in-chord-graphs). Automatic [voice leading](#automatic-voice-leading). [Freeze progressions](#frozen-progressions) to lock some sections while others evolve freely.
-- **Sub-microsecond clock.** A hybrid sleep+spin timing strategy achieves typical pulse jitter of **< 5 μs** on Linux ([measured](#clock-accuracy)), with zero long-term drift. Pattern logic runs ahead of time and never blocks MIDI output.
-- **Turn anything into music.** `composition.schedule()` runs any Python function on a beat cycle - APIs, sensors, files, [ISS telemetry](#iss-telemetry-examplesisspy). Anything Python can reach becomes a musical parameter, smoothed over time with built-in `EasedValue` interpolation.
-- **Pure MIDI, zero sound engine.** No audio synthesis, no heavyweight dependencies. Route to your existing hardware synths, drum machines, Eurorack, or software instruments. You provide the sound; Subsequence provides the logic.
-
-### Composition tools
-
-- **Rhythm and feel.** [Algorithmic generators](#algorithmic-generators) (Euclidean, Bresenham, cellular automata, Markov, L-systems, Lorenz, reaction-diffusion, and more), [groove templates](#groove) (swing, shuffle, MPC pocket, or custom - including [Ableton .agr import](#ableton-agr-import)), velocity shaping, dropout, per-step probability, and polyrhythms via independent pattern lengths.
-- **Melody generation.** `p.melody()` with `MelodicState` applies the [Narmour Implication-Realization model](#melody-generation) to single-note melodic lines: continuation after small steps, direction reversal after large leaps, chord-tone weighting, range gravity, and pitch-diversity penalty. History persists across bar rebuilds for natural phrase continuity.
-- **Expression.** CC messages and ramps, pitch bend, note-correlated [bend/portamento/slide](#pitch-bend-automation), drones and continuous notes ([`p.drone()`, `p.drone_off()`, `p.silence()`](#drones-and-sustained-notes)), program changes, SysEx, and [OSC output](#osc-integration) - all from within patterns.
-- **Form and structure.** Define [musical form](#form-and-sections) as a weighted graph, ordered list, or generator. Patterns read `p.section` to adapt. [Conductor signals](#the-conductor) (LFOs, ramps) shape intensity over time.
-- **[Mini-notation.](#mini-notation)** Write `p.seq("x x [x x] x", pitch="kick")` - subdivisions, rests, sustains, per-step probability suffixes. Quick ideas in one line.
-- **Scales and quantization.** `p.quantize("G", "dorian")` snaps notes to any named scale. `scale_notes("E", "aeolian", low=notes.E2, high=notes.E3)` generates a pitch list directly. Built-in western and [non-western scales](#scale-quantization) (Hirajōshi, In-Sen, Iwato, Yo, Egyptian, pentatonics), plus `register_scale()` for your own.
-- **Randomness tools.** Weighted choice, no-repeat shuffle, random walk, probability gates - controlled randomness via `subsequence.sequence_utils`. Deterministic seeding (`seed=42`) makes every decision repeatable.
-- **Pattern transforms.** Legato, staccato, reverse, double/half-time, shift, transpose, invert, randomize, `p.every()`, and `composition.layer()`.
-- **Two API levels.** [Composition API](#composition-api) for most musicians; [Direct Pattern API](#direct-pattern-api) for power users who need persistent state or custom scheduling.
-
-### Integration
-
-- **[Ableton Link.](#ableton-link)** Industry-standard wireless tempo and phase sync. Any Link-enabled app on the same network - Ableton Live, iOS synths, other Subsequence instances - stays in time automatically.
-- **MIDI clock.** [Master](#clock-accuracy) (`clock_output()`) or [follower](#midi-input-and-external-clock) (`clock_follow=True`). Sync to a DAW, drive a Eurorack system, or both.
-- **Hardware control.** [CC input mapping](#midi-cc-input-mapping) from knobs and faders to `composition.data`. [OSC](#osc-integration) for bidirectional communication with mixers, lighting, visuals.
-- **[Live coding.](#live-coding)** Hot-swap patterns, change tempo, mute/unmute, tweak parameters - all during playback.
-- [Hotkeys.](#hotkeys) Single keystrokes to jump sections, tweak patterns, or trigger actions - with optional bar-boundary quantization.
-- **[Real-time pattern triggering.](#real-time-pattern-triggering)** Trigger one-shot fills, stabs, or responsive patterns in response to sensor input, OSC messages, or any event.
-- **Web UI Dashboard (Beta).** Broadcast live composition state and pattern grids to your browser via standard WebSockets.
-- **Recording and rendering.** [Record](#midi-recording-and-rendering) to standard MIDI file. [Render to file](#rendering-to-file-no-real-time-wait) without waiting for real-time playback.
-
-## Quick start
 1. Install dependencies:
-```
+```bash
 pip install -e .
 ```
-To also enable Ableton Link support:
-```
+2. Enable Ableton Link support (optional):
+```bash
 pip install -e ".[link]"
 ```
-2. Run the demo (drums, bass, and arp over evolving aeolian minor harmony in E):
-```
+3. Run the demo:
+```bash
 python examples/demo.py
 ```
 
-For the complete API reference, see the **[documentation](https://simonholliday.github.io/subsequence)**. Before the API reference, the next two sections introduce the algorithmic generators and melody engine that power Subsequence's generative approach.
+For the complete API reference, see the **[documentation](https://simonholliday.github.io/subsequence)**.
 
-## Algorithmic generators
+## 2. Generating Music
+
+### Algorithmic generators
 
 Before diving into the API, here's what powers it. Subsequence is built on algorithms borrowed from mathematics, physics, biology, and computer science - ideas originally developed to model weather, simulate chemical reactions, draw straight lines on plotters, and generate textures for films. Each one, when applied to rhythm and melody, produces results with a character you can't achieve by programming notes by hand.
 
@@ -373,7 +318,7 @@ def bassline (p):
 	p.self_avoiding_walk(scale, step=0.25, velocity=(70, 100))
 ```
 
-## Melody generation
+### Melody generation
 
 `p.melody()` generates a single-note melodic line guided by the Narmour Implication-Realization (NIR) model - the same cognitive framework used by the chord engine, now adapted for absolute pitch. It expects a `MelodicState` instance created once at module level, which persists history across bar rebuilds so melodic continuity is maintained automatically.
 
@@ -425,7 +370,9 @@ Unlike chord NIR, melody NIR operates on **absolute MIDI pitch differences** (no
 | `duration` | `0.2` | Note duration in beats |
 | `chord_tones` | `None` | MIDI notes that are chord tones this bar |
 
-## Composition API
+## 3. The Core APIs
+
+### Composition API
 
 The `Composition` class is the main entry point. Define your MIDI setup, create a composition, add patterns, and play:
 
@@ -516,7 +463,7 @@ def fetch_data (p):
 composition.schedule(fetch_data, cycle_beats=32, wait_for_initial=True)
 ```
 
-## Direct Pattern API
+### Direct Pattern API
 
 The Direct Pattern API gives you full control over the sequencer, harmony, and scheduling. Patterns are classes instead of decorated functions - you manage the event loop yourself.
 
@@ -669,7 +616,7 @@ The `Composition` object stores its harmonic and form state internally. After ca
 
 If you need `Pattern` subclasses alongside decorated patterns, the simplest approach is to use the Direct Pattern API for the entire composition - create a `HarmonicState` and `FormState` manually, then pass them to both simple helper patterns and complex Pattern subclasses. `examples/demo.py` and `examples/demo_advanced.py` produce the same music using each API.
 
-## Mini-notation
+### Mini-notation
 
 For quick rhythmic or melodic entry, Subsequence offers a concise string syntax inspired by live-coding environments. This allows you to express complex rhythms and subdivisions without verbose list definitions.
 
@@ -721,7 +668,9 @@ def _build_pattern(self):
     p.seq("x . x [x x]", pitch=36)
 ```
 
-## Form and sections
+## 4. Harmony & Structure
+
+### Form and sections
 
 Define the large-scale structure of your composition with `composition.form()`. Patterns read `p.section` to decide what to play.
 
@@ -802,7 +751,7 @@ A performer or code can override the pre-decided next section with `composition.
 
 To replay the same chords every time a section recurs, see [Frozen progressions](#frozen-progressions).
 
-## The Conductor
+### The Conductor
 
 Patterns often feel static when they just loop. **The Conductor** provides global signals (LFOs and automation lines) that patterns can read to modulate parameters over time.
 
@@ -903,7 +852,7 @@ def iss_melody(p):
 
 If you use `composition.schedule()` to poll external data and want to ease between each new reading, use **`subsequence.easing.EasedValue`**. Create one instance per field at module level, call `.update(value)` in your scheduled task, and `.get(progress)` in your pattern - no manual `prev`/`current` bookkeeping required. See [`subsequence.easing`](#extra-utilities) for details.
 
-## Chord inversions and voice leading
+### Chord inversions and voice leading
 
 Most generative tools leave voicing to the user. Subsequence provides automatic voice leading - each chord picks the inversion with the smallest total pitch movement from the previous one, keeping parts smooth without manual effort.
 
@@ -1036,7 +985,7 @@ def arp (p, chord):
 
 `count` works with `inversion` - the extended notes continue upward from the inverted voicing.
 
-## Harmony and chord graphs
+### Harmony and chord graphs
 
 Subsequence generates chord progressions using **weighted transition graphs**. Each chord has weighted edges to its possible successors, so the progression is probabilistic but musically constrained. On top of the base graph weights, two gravity systems shape which chord is chosen next.
 
@@ -1178,7 +1127,7 @@ sequence = list(reversed(diatonic_chord_sequence("A", root_midi=notes.A2, count=
 
 The `root_midi` must be a note that falls on a scale degree of the chosen key and mode. A `ValueError` is raised otherwise.
 
-## Frozen progressions
+### Frozen progressions
 
 The harmony engine generates chords live via the weighted graph - great for evolving, exploratory compositions. But sometimes you want **structural repetition**: the verse should always feel like the verse, with the same harmonic journey each time it plays.
 
@@ -1227,7 +1176,9 @@ def bass (p, chord):
 - NIR history is restored at the start of each frozen replay so every re-entry begins with the same harmonic context as when the progression was originally generated.
 - `freeze()` can be called before or after `form()`.
 
-## Seed and deterministic randomness
+## 5. Live Performance & Tools
+
+### Seed and deterministic randomness
 
 Set a seed to make all random behavior repeatable:
 
@@ -1276,7 +1227,7 @@ density = subsequence.sequence_utils.weighted_choice([(3, 0.5), (5, 0.3), (7, 0.
 p.euclidean("snare", pulses=density)
 ```
 
-## Terminal display
+### Terminal display
 
 Enable a live status line showing the current bar, section, chord, BPM, and key with a single call:
 
@@ -1353,7 +1304,7 @@ To disable:
 composition.display(enabled=False)
 ```
 
-## Web UI Dashboard (Beta)
+### Web UI Dashboard (Beta)
 
 For an improved visual experience without relying on the terminal, you can enable the experimental Web UI Dashboard. This spins up an HTTP server and a WebSocket connection in the background to serve a reactive web interface that mirrors your composition state:
 
@@ -1369,7 +1320,7 @@ Opening `http://localhost:8080/` in your browser will display:
 
 *Note: The Web UI is an optional beta feature. When you don't call `web_ui()`, it consumes zero threads and zero CPU overhead. It currently relies on an active internet connection to load the Preact frontend dependencies from a CDN.*
 
-## MIDI recording and rendering
+### MIDI recording and rendering
 
 Capture a session to a standard MIDI file. Pass `record=True` to `Composition` and Subsequence saves everything it plays to disk when you stop:
 
@@ -1414,7 +1365,7 @@ composition.render(bars=128, max_minutes=None, filename="long.mid")
 
 If the time cap fires, a warning is logged explaining how to remove it. All patterns, scheduled callbacks, probabilistic gates, and BPM transitions work identically in render mode. The only difference is that simulated time replaces wall-clock time.
 
-## Live coding
+### Live coding
 
 Modify a running composition without stopping playback. Subsequence includes a TCP eval server that accepts Python code from any source - the bundled REPL client, an editor plugin, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state - all while the music plays.
 
@@ -1530,7 +1481,7 @@ python -c "import socket; s=socket.socket(); s.connect(('127.0.0.1',5555)); s.se
 
 All code is validated as syntactically correct Python before execution. If you send a typo or malformed code, the server returns a `SyntaxError` traceback - nothing is executed, and the running composition is never affected.
 
-## Clock accuracy
+### Clock accuracy
 
 Subsequence uses a hybrid sleep+spin timing strategy for its internal master clock. Rather than relying on `asyncio.sleep()` alone (which is subject to OS scheduler granularity), the loop sleeps to within ~1 ms of the target pulse time, then busy-waits on `time.perf_counter()` for the remaining sub-millisecond interval. Pulse times are calculated as absolute offsets from the session start time, so timing errors never accumulate.
 
@@ -1560,7 +1511,7 @@ composition.sequencer.disable_spin_wait()
 
 Or at construction time: `Sequencer(spin_wait=False)`.
 
-## MIDI input and external clock
+### MIDI input and external clock
 
 Subsequence can follow an external MIDI clock instead of running its own. This lets you sync with a DAW, drum machine, or any device that sends MIDI clock. Transport messages (start, stop, continue) are respected automatically.
 
@@ -1622,7 +1573,7 @@ composition.play()
 
 Subsequence sends a Start message (0xFA) at the beginning of playback, one Clock tick (0xF8) per pulse (24 PPQN, matching the MIDI standard), and a Stop message (0xFC) when playback ends. This automatically disabled when `midi_input(clock_follow=True)` is active, to prevent a feedback loop.
 
-## Ableton Link
+### Ableton Link
 
 [Ableton Link](https://www.ableton.com/en/link/) is the industry standard for wireless tempo and beat-phase synchronisation - used by 200+ apps including Ableton Live, Reason, and countless iOS synths. When you enable Link in Subsequence, every app on the same LAN locks to the same tempo and phase automatically, with no configuration needed.
 
@@ -1683,7 +1634,7 @@ Both instances will lock to each other's tempo and phase within one bar of the f
 
 See `examples/link_sync.py` for a runnable demo.
 
-## Pattern tools and hardware control
+### Pattern tools and hardware control
 
 ### Program changes
 
@@ -1914,7 +1865,7 @@ p.arpeggio(chord, step=0.25, direction="random")  # shuffled once per call
 
 The `"random"` direction uses `p.rng` by default (deterministic when a seed is set). Pass a custom `rng` for independent streams.
 
-## OSC integration
+### OSC integration
 
 Subsequence includes Open Sound Control (OSC) support for remote control and state broadcasting. This is useful for connecting to modular synth environments, custom touch interfaces, or other creative coding tools.
 
@@ -1999,7 +1950,7 @@ seq = subsequence.sequencer.Sequencer(
 )
 ```
 
-## Hotkeys
+### Hotkeys
 
 Assign single keystrokes to trigger actions during live playback - section jumps, tweaks, data updates, mutes, or any zero-argument callable. Linux / macOS only (raw single-character terminal input relies on the POSIX `tty` and `termios` modules, which Windows does not provide).
 
@@ -2055,7 +2006,7 @@ Queue a section to play after the current one finishes (graph mode only). Overri
 
 Force the form to a named section immediately (graph mode only). Resets the bar count within the section. Effect is heard at the next pattern rebuild. Use `form_next` for gentle transitions and `form_jump` for urgent ones.
 
-## Real-Time Pattern Triggering
+### Real-Time Pattern Triggering
 
 Trigger one-shot patterns in response to external events - sensor readings, OSC messages, MIDI input, or any Python callback. Triggered patterns are one-off generators built and scheduled immediately, useful for fills, stabs, or responsive accompaniment that adapts to live input.
 
@@ -2112,7 +2063,7 @@ Triggered patterns use the same `PatternBuilder` API as `@composition.pattern` d
 
 Triggered patterns are thread-safe - call from OSC handlers, scheduled callbacks, or custom threads. If playback hasn't started yet (before `play()` is called), `trigger()` is a no-op and logs a warning.
 
-## Groove
+### Groove
 
 A groove is a repeating pattern of per-step timing offsets and optional velocity adjustments that gives a pattern its characteristic rhythmic feel. **Swing is a type of groove** - the simplest one, where every other grid note is delayed. More complex grooves shift and accent every step independently, giving you MPC-style pocket, jazz brush feel, or any custom texture.
 
@@ -2183,7 +2134,9 @@ p.swing(57, strength=0.7)      # 70% of 57% swing
 
 For a simple swing file like Ableton's built-in "Swing 16ths 57", `from_agr()` and `Groove.swing(57)` produce equivalent results. Use `strength=` when applying to further dial back the effect.
 
-## Examples
+## 6. Workflow & Utilities
+
+### Examples
 
 The `examples/` directory contains self-documenting compositions, each demonstrating a different style and set of features. Because Subsequence generates pure MIDI, what you hear depends on your choice of instruments - the same code can drive a hardware monosynth, a VST orchestra, or anything in between.
 
@@ -2225,7 +2178,7 @@ Turns real-time International Space Station telemetry into an evolving compositi
 2. Connect your MIDI port to a multitimbral synth or DAW (channels: 10=Drums, 6=Bass, 1=Chords, 4=Arp). [Note: MIDI channels are zero-indexed in the code, i.e. 9, 5, 0, 3].
 3. Run: `python examples/iss.py`.
 
-## Extra utilities
+### Extra utilities
 
 ### Rhythm & Pattern
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
@@ -2259,25 +2212,27 @@ Turns real-time International Space Station telemetry into an evolving compositi
 - `subsequence.live_server` provides the TCP eval server for live coding. Started internally by `composition.live()`.
 - `subsequence.live_client` provides the interactive REPL client. Run with `python -m subsequence.live_client`.
 
-## Feature Roadmap
+## 7. Project Info
+
+### Feature Roadmap
 
 Planned features, roughly in order of priority.
 
 ### High priority
 
-- **Comprehensive Cookbook and Tutorials.** A guided, progressive walkthrough that takes a new user from zero to an evolving composition in 15 minutes, alongside bite-sized, copy-paste recipes for common musical requests (e.g., "generative techno kick", "functional bassline"). The README is a reference; the tutorial and cookbook are the on-ramp.
+- **Comprehensive Cookbook and Tutorials.** A guided, progressive walkthrough that takes a new user from zero to an evolving composition in 15 minutes, alongside bite-sized, copy-paste recipes for common musical requests (e.g., "generative techno kick", "functional bassline").
 
-- **Example library.** More short, self-contained compositions in different styles - minimal techno, ambient generative, polyrhythmic exploration, data-driven - so musicians can hear what the tool does before investing time. Each example should demonstrate 2-3 features and fit on one screen.
+- **Example library.** More short, self-contained compositions in different styles - minimal techno, ambient generative, polyrhythmic exploration, data-driven. Each example should demonstrate 2-3 features and fit on one screen.
 
 ### Medium priority
 
 - **MIDI File Import & Analysis.** Allow users to load existing `.mid` files and extract their rhythmic or harmonic content to feed into Subsequence algorithms (e.g., generating Markov chains trained on a Bach invention MIDI file).
 
-- **Algorithmic Microtonality.** While 12-TET is standard, adding native support for Scala (`.scl`) tuning files by automatically computing and injecting per-note pitch bend values would attract the experimental and modular communities.
+- **Algorithmic Microtonality.** Native support for Scala (`.scl`) tuning files by automatically computing and injecting per-note pitch bend values, expanding beyond standard 12-TET.
 
-- **Visual Dashboard / Web UI.** A lightweight local web dashboard to provide real-time visual feedback of the current Chord Graph, global Conductor signals, and active patterns, making the generative process more observable.
+- **Visual Dashboard / Web UI.** A lightweight local web dashboard to provide real-time visual feedback of the current Chord Graph, global Conductor signals, and active patterns.
 
-- **Starter templates.** Lower the blank-page barrier with ready-made starting points for common genres. Musicians tweak from a working composition rather than building from scratch.
+- **Starter templates.** Ready-made starting points for common genres to provide a foundation for new compositions.
 
 - **Network sync.** Share conductor signals, chord progressions, and composition data between multiple Subsequence instances - each generates its own patterns locally from shared musical context. (Tempo sync is already handled by [Ableton Link](#ableton-link).)
 
@@ -2289,9 +2244,9 @@ Planned features, roughly in order of priority.
 
 - **Live coding UX improvements.** Richer feedback in the live client - syntax highlighting, error display, undo/history for hot-swapped patterns. Explore integration with editors (VS Code extension, Jupyter notebooks).
 
-- **CV/Gate output.** Direct control voltage output for modular synthesisers via supported hardware interfaces, bridging the gap between code and analogue.
+- **CV/Gate output.** Direct control voltage output for modular synthesisers via supported hardware interfaces.
 
-## Tests
+### Tests
 This project uses `pytest`.
 
 ```
@@ -2315,16 +2270,16 @@ mypy subsequence/
 
 Type checking runs automatically in CI on all pull requests.
 
-## Community and Feedback
+### Community and Feedback
 
 All feedback and suggestions will be gratefully received! Please use these channels:
 
 * [Discussions](https://github.com/simonholliday/subsequence/discussions): The best place to ask questions and share ideas.
 * [Issues](https://github.com/simonholliday/subsequence/issues): If you ran into a bug, or have a specific feature request for the codebase, please open an Issue here.
 
-## Dependencies and Credits
+### Dependencies and Credits
 
-Subsequence is built on these excellent open-source libraries:
+Subsequence makes use of these excellent open-source libraries:
 
 | Library | Purpose | License |
 |---------|---------|---------|
@@ -2336,13 +2291,13 @@ Subsequence is built on these excellent open-source libraries:
 
 [Ableton Link](https://www.ableton.com/en/link/) is a technology by Ableton AG. The `aalink` Python wrapper is written by Artem Popov and is licensed under GPL-3.0, which is compatible with Subsequence's AGPL-3.0 license.
 
-## About the Author
+### About the Author
 
 Subsequence was created by me, Simon Holliday ([https://simonholliday.com/](https://simonholliday.com/)), a senior technologist and a junior (but trying) musician. From running an electronic music label in the 2000s to prototyping new passive SONAR techniques for defence research, my work has often explored the intersection of code and sound.
 
 Subsequence was iterated over a series of separate proof-of-concept projects during 2025, and pulled together into this new codebase in Spring 2026.
 
-## License
+### License
 
 Subsequence is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPLv3).
 
