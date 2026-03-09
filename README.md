@@ -416,7 +416,7 @@ if __name__ == "__main__":
     composition.play()
 ```
 
-Pattern length can be specified two ways — use whichever is clearest:
+Pattern length can be specified two ways - use whichever is clearest:
 
 ```python
 @composition.pattern(channel=1, beats=4)   # 4 quarter notes (1 bar in 4/4)
@@ -1606,13 +1606,13 @@ Subsequence sends a Start message (0xFA) at the beginning of playback, one Clock
 
 ### Ableton Link
 
-[Ableton Link](https://www.ableton.com/en/link/) is the industry standard for wireless tempo and beat-phase synchronisation - used by 200+ apps including Ableton Live, Reason, and countless iOS synths. When you enable Link in Subsequence, every app on the same LAN locks to the same tempo and phase automatically, with no configuration needed.
+[Ableton Link ↗](https://www.ableton.com/en/link/) is the industry standard for wireless tempo and beat-phase synchronisation - used by 200+ apps including Ableton Live, Reason, and countless iOS synths. When you enable Link in Subsequence, every app on the same LAN locks to the same tempo and phase automatically, with no configuration needed.
 
 Link synchronises three things: tempo, beat phase, and transport start/stop. It does **not** transmit notes or patterns - each participant generates its own music independently, but all pulses stay aligned.
 
 ### Installation
 
-Link support is an optional extra that requires the [`aalink`](https://github.com/artfwo/aalink) package:
+Link support is an optional extra that requires the [`aalink` ↗](https://github.com/artfwo/aalink) package:
 
 ```
 pip install subsequence[link]
@@ -2106,6 +2106,46 @@ Triggered patterns use the same `PatternBuilder` API as `@composition.pattern` d
 
 Triggered patterns are thread-safe - call from OSC handlers, scheduled callbacks, or custom threads. If playback hasn't started yet (before `play()` is called), `trigger()` is a no-op and logs a warning.
 
+### `composition.layer(*builder_fns, channel, beats=4, bars=None, steps=None, unit=None, drum_note_map=None, reschedule_lookahead=1, voice_leading=False)`
+
+Merge multiple builder functions into a single pattern. Each function receives its own `PatternBuilder` and their notes are combined into one MIDI stream. Use this to decompose a complex pattern into reusable parts:
+
+```python
+def kick(p):
+    p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+
+def snare(p):
+    p.hit_steps("snare_1", [4, 12], velocity=90)
+
+def hats(p):
+    p.euclidean("hi_hat_closed", pulses=9, velocity=70)
+
+composition.layer(kick, snare, hats, channel=10, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+```
+
+All three functions run on the same cycle length and MIDI channel - equivalent to putting everything in one function, but easier to swap pieces in and out. The `beats=`, `bars=`, `steps=`, and `unit=` parameters work identically to `@composition.pattern`.
+
+### Polyrhythms
+
+To run patterns at different cycle lengths on the same channel, register them as separate top-level patterns. They will run independently and overlap naturally:
+
+```python
+# 4-beat kick/snare
+@composition.pattern(channel=10, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+def drums(p):
+    p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+    p.hit_steps("snare_1", [4, 12], velocity=90)
+
+# 3-beat hat cycle - creates a 12-beat polyrhythm against the 4-beat drums
+@composition.pattern(channel=10, beats=3, drum_note_map=gm_drums.GM_DRUM_MAP)
+def hats(p):
+    p.euclidean("hi_hat_closed", pulses=5, velocity=70)
+```
+
+The patterns share the same MIDI channel and their note events are merged by the sequencer. The combined cycle repeats every LCM(4, 3) = 12 beats.
+
+> **Note on nesting decorators**: It is syntactically possible to place a `@composition.pattern()` decorator inside another pattern's builder function. This works on startup (the nested pattern is registered during the first build), but is not recommended - the nested pattern accumulates duplicate registrations on each rebuild, and its `p.rng` will be `None`, causing crashes in any method that uses randomness. Use separate top-level patterns instead.
+
 ### Groove
 
 A groove is a repeating pattern of per-step timing offsets and optional velocity adjustments that gives a pattern its characteristic rhythmic feel. **Swing is a type of groove** - the simplest one, where every other grid note is delayed. More complex grooves shift and accent every step independently, giving you MPC-style pocket, jazz brush feel, or any custom texture.
@@ -2183,9 +2223,21 @@ For a simple swing file like Ableton's built-in "Swing 16ths 57", `from_agr()` a
 
 The `examples/` directory contains self-documenting compositions, each demonstrating a different style and set of features. Because Subsequence generates pure MIDI, what you hear depends on your choice of instruments - the same code can drive a hardware monosynth, a VST orchestra, or anything in between.
 
+If you want to dive in with two fully documented compositions, start with the instrument emulations below - they exercise most of the API in a real-world context. The simpler examples that follow build up the concepts one at a time.
+
 ```
 python examples/demo.py
 ```
+
+### Instrument emulations (`examples/labyrinth.py` and `examples/subharmonicon.py`)
+
+Recreations of the compositional architecture of two Moog semi-modular synthesizers (which the author of this package owns and loves!) - every panel control is exposed as a named Python variable you can tweak. These are best-effort emulations of each instrument's *sequencing and composition* behaviour; the tonal character of the output depends entirely on the instruments you route MIDI to.
+
+**[Moog Labyrinth ↗](https://www.moogmusic.com/synthesizers/labyrinth/)** - dual 8-step generative sequencers with per-step random pitch (quantized to a chosen scale), a CORRUPT knob that mutates patterns from subtle pitch drift to full rhythmic chaos, and an EG TRIG MIX crossfader that balances the two sequences. Independent cycle lengths create evolving polymetric interplay.
+
+**[Moog Subharmonicon ↗](https://www.moogmusic.com/synthesizers/subharmonicon/)** - dual 4-step deterministic sequencers with subharmonic oscillators (integer pitch division ÷1–÷16) and four polyrhythmic clock dividers routed freely between the two sequencers. Complex rhythmic patterns emerge from simple integer arithmetic - no randomness involved.
+
+Both examples include optional physical controller mapping via `cc_map()` - connect a MIDI controller and map its knobs to the same parameters you see on screen.
 
 ### Demo (`examples/demo.py` and `examples/demo_advanced.py`)
 
@@ -2326,17 +2378,17 @@ Subsequence makes use of these excellent open-source libraries:
 
 | Library | Purpose | License |
 |---------|---------|---------|
-| [mido](https://github.com/mido/mido) | MIDI message handling and file I/O | MIT |
-| [python-rtmidi](https://github.com/SpotlightKid/python-rtmidi) | Real-time MIDI I/O | MIT |
-| [python-osc](https://github.com/attwad/python-osc) | OSC protocol support | Unlicense |
-| [websockets](https://github.com/python-websockets/websockets) | Web UI dashboard communication | BSD-3-Clause |
-| [aalink](https://github.com/artfwo/aalink) *(optional)* | Ableton Link integration | GPL-3.0 |
+| [mido ↗](https://github.com/mido/mido) | MIDI message handling and file I/O | MIT |
+| [python-rtmidi ↗](https://github.com/SpotlightKid/python-rtmidi) | Real-time MIDI I/O | MIT |
+| [python-osc ↗](https://github.com/attwad/python-osc) | OSC protocol support | Unlicense |
+| [websockets ↗](https://github.com/python-websockets/websockets) | Web UI dashboard communication | BSD-3-Clause |
+| [aalink ↗](https://github.com/artfwo/aalink) *(optional)* | Ableton Link integration | GPL-3.0 |
 
-[Ableton Link](https://www.ableton.com/en/link/) is a technology by Ableton AG. The `aalink` Python wrapper is written by Artem Popov and is licensed under GPL-3.0, which is compatible with Subsequence's AGPL-3.0 license.
+[Ableton Link ↗](https://www.ableton.com/en/link/) is a technology by Ableton AG. The `aalink` Python wrapper is written by Artem Popov and is licensed under GPL-3.0, which is compatible with Subsequence's AGPL-3.0 license.
 
 ### About the Author
 
-Subsequence was created by me, Simon Holliday ([https://simonholliday.com/](https://simonholliday.com/)), a senior technologist and a junior (but trying) musician. From running an electronic music label in the 2000s to prototyping new passive SONAR techniques for defence research, my work has often explored the intersection of code and sound.
+Subsequence was created by me, Simon Holliday ([simonholliday.com ↗](https://simonholliday.com/)), a senior technologist and a junior (but trying) musician. From running an electronic music label in the 2000s to prototyping new passive SONAR techniques for defence research, my work has often explored the intersection of code and sound.
 
 Subsequence was iterated over a series of separate proof-of-concept projects during 2025, and pulled together into this new codebase in Spring 2026.
 
