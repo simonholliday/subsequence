@@ -1616,10 +1616,63 @@ class Composition:
 
 		self._form_state = subsequence.form_state.FormState(sections, loop=loop, start=start)
 
+	@staticmethod
+	def _resolve_length (
+		beats: typing.Optional[float],
+		bars: typing.Optional[float],
+		steps: typing.Optional[float],
+		unit: typing.Optional[float],
+		default: float = 4.0
+	) -> typing.Tuple[float, int]:
+
+		"""
+		Resolve the beat_length and default_grid from the duration parameters.
+
+		Two modes:
+		- **Duration mode** (no ``unit``): specify ``beats=`` or ``bars=``.
+		  ``beats=4`` = 4 quarter notes; ``bars=2`` = 8 beats.
+		- **Step mode** (with ``unit``): specify ``steps=`` and ``unit=``.
+		  ``steps=6, unit=dur.SIXTEENTH`` = 6 sixteenth notes = 1.5 beats.
+
+		Constraints:
+		- ``beats`` and ``bars`` are mutually exclusive.
+		- ``steps`` requires ``unit``; ``unit`` requires ``steps``.
+		- ``steps`` cannot be combined with ``beats`` or ``bars``.
+
+		Returns:
+			(beat_length, default_grid) — beat_length in beats (quarter notes),
+			default_grid in 16th-note steps.
+		"""
+
+		if beats is not None and bars is not None:
+			raise ValueError("Specify only one of beats= or bars=")
+
+		if steps is not None and (beats is not None or bars is not None):
+			raise ValueError("steps= cannot be combined with beats= or bars=")
+
+		if unit is not None and steps is None:
+			raise ValueError("unit= requires steps= (e.g. steps=6, unit=dur.SIXTEENTH)")
+
+		if steps is not None:
+			if unit is None:
+				raise ValueError("steps= requires unit= (e.g. unit=dur.SIXTEENTH)")
+			return steps * unit, int(steps)
+
+		if bars is not None:
+			raw = bars * 4
+		elif beats is not None:
+			raw = beats
+		else:
+			raw = default
+
+		return raw, round(raw / subsequence.constants.durations.SIXTEENTH)
+
 	def pattern (
 		self,
 		channel: int,
-		length: float = 4,
+		beats: typing.Optional[float] = None,
+		bars: typing.Optional[float] = None,
+		steps: typing.Optional[float] = None,
 		unit: typing.Optional[float] = None,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
@@ -1632,23 +1685,24 @@ class Composition:
 		The decorated function will be called once per cycle to 'rebuild' its
 		content. This allows for generative logic that evolves over time.
 
-		When ``unit`` is provided, ``length`` is a note count and the actual
-		duration in beats is ``length * unit``.  The note count also becomes
-		the default grid size for ``hit_steps()`` and ``sequence()``.
+		Two ways to specify pattern length:
 
-		When ``unit`` is omitted, ``length`` is in beats (quarter notes) and
-		the grid defaults to sixteenth-note resolution.
+		- **Duration mode** (default): use ``beats=`` or ``bars=``.
+		  The grid defaults to sixteenth-note resolution.
+		- **Step mode**: use ``steps=`` paired with ``unit=``.
+		  The grid equals the step count, so ``p.hit_steps()`` indices map
+		  directly to steps.
 
 		Parameters:
 			channel: MIDI channel. By default uses 0-based numbering (0-15)
 				matching the raw MIDI protocol. Set
 				``zero_indexed_channels=False`` on the ``Composition`` to use
 				1-based numbering (1-16) instead.
-			length: Note count when ``unit`` is given, otherwise duration
-				in beats (default 4).
-			unit: Duration of one note in beats (e.g. ``dur.SIXTEENTH``).
-				When set, ``length`` is treated as a count and the grid
-				defaults to ``length``.
+			beats: Duration in beats (quarter notes). ``beats=4`` = 1 bar.
+			bars: Duration in bars (4 beats each, assumes 4/4). ``bars=2`` = 8 beats.
+			steps: Step count for step mode. Requires ``unit=``.
+			unit: Duration of one step in beats (e.g. ``dur.SIXTEENTH``).
+				Requires ``steps=``.
 			drum_note_map: Optional mapping for drum instruments.
 			reschedule_lookahead: Beats in advance to compute the next cycle.
 			voice_leading: If True, chords in this pattern will automatically
@@ -1656,7 +1710,15 @@ class Composition:
 
 		Example:
 			```python
-			@comp.pattern(channel=1, length=6, unit=dur.SIXTEENTH)
+			@comp.pattern(channel=1, beats=4)
+			def chords(p):
+				p.chord([60, 64, 67], beat=0, velocity=80, duration=3.9)
+
+			@comp.pattern(channel=1, bars=2)
+			def long_phrase(p):
+				...
+
+			@comp.pattern(channel=1, steps=6, unit=dur.SIXTEENTH)
 			def riff(p):
 				p.sequence(steps=[0, 1, 3, 5], pitches=60)
 			```
@@ -1664,12 +1726,7 @@ class Composition:
 
 		channel = self._resolve_channel(channel)
 
-		if unit is not None:
-			beat_length = length * unit
-			default_grid = int(length)
-		else:
-			beat_length = length
-			default_grid = round(beat_length / subsequence.constants.durations.SIXTEENTH)
+		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit)
 
 		def decorator (fn: typing.Callable) -> typing.Callable:
 
@@ -1706,7 +1763,9 @@ class Composition:
 		self,
 		*builder_fns: typing.Callable,
 		channel: int,
-		length: float = 4,
+		beats: typing.Optional[float] = None,
+		bars: typing.Optional[float] = None,
+		steps: typing.Optional[float] = None,
 		unit: typing.Optional[float] = None,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
@@ -1719,25 +1778,22 @@ class Composition:
 		This is useful for composing complex patterns out of reusable
 		building blocks (e.g., a 'kick' function and a 'snare' function).
 
+		See ``pattern()`` for the full description of ``beats``, ``bars``,
+		``steps``, and ``unit``.
+
 		Parameters:
 			builder_fns: One or more pattern builder functions.
 			channel: MIDI channel (0-15, or 1-16 with ``zero_indexed_channels=False``).
-			length: Note count when ``unit`` is given, otherwise duration
-				in beats (default 4).
-			unit: Duration of one note in beats (e.g. ``dur.SIXTEENTH``).
-				When set, ``length`` is treated as a count and the grid
-				defaults to ``length``.
+			beats: Duration in beats (quarter notes).
+			bars: Duration in bars (4 beats each, assumes 4/4).
+			steps: Step count for step mode. Requires ``unit=``.
+			unit: Duration of one step in beats. Requires ``steps=``.
 			drum_note_map: Optional mapping for drum instruments.
 			reschedule_lookahead: Beats in advance to compute the next cycle.
 			voice_leading: If True, chords use smooth voice leading.
 		"""
 
-		if unit is not None:
-			beat_length = length * unit
-			default_grid = int(length)
-		else:
-			beat_length = length
-			default_grid = round(beat_length / subsequence.constants.durations.SIXTEENTH)
+		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit)
 
 		wants_chord = any(_fn_has_parameter(fn, "chord") for fn in builder_fns)
 
@@ -1776,7 +1832,10 @@ class Composition:
 		self,
 		fn: typing.Callable,
 		channel: int,
-		length: float = 1,
+		beats: typing.Optional[float] = None,
+		bars: typing.Optional[float] = None,
+		steps: typing.Optional[float] = None,
+		unit: typing.Optional[float] = None,
 		quantize: float = 0,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		chord: bool = False
@@ -1794,11 +1853,16 @@ class Composition:
 		decorated function and can use all PatternBuilder methods: ``p.note()``,
 		``p.euclidean()``, ``p.arpeggio()``, and so on.
 
+		See ``pattern()`` for the full description of ``beats``, ``bars``,
+		``steps``, and ``unit``. Default is 1 beat.
+
 		Parameters:
 			fn: The pattern builder function (same signature as ``@comp.pattern``).
 			channel: MIDI channel (0-15, or 1-16 with ``zero_indexed_channels=False``).
-			length: Duration in beats (default 1). This is the time window for the
-				one-shot pattern.
+			beats: Duration in beats (quarter notes, default 1).
+			bars: Duration in bars (4 beats each, assumes 4/4).
+			steps: Step count for step mode. Requires ``unit=``.
+			unit: Duration of one step in beats. Requires ``steps=``.
 			quantize: Snap the trigger to a beat boundary: ``0`` = immediate (default),
 				``1`` = next beat (quarter note), ``4`` = next bar. Use ``dur.*``
 				constants from ``subsequence.constants.durations``.
@@ -1836,8 +1900,10 @@ class Composition:
 		# Resolve channel numbering
 		resolved_channel = self._resolve_channel(channel)
 
+		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, default=1.0)
+
 		# Create a temporary Pattern
-		pattern = subsequence.pattern.Pattern(channel=resolved_channel, length=length)
+		pattern = subsequence.pattern.Pattern(channel=resolved_channel, length=beat_length)
 
 		# Create a PatternBuilder
 		builder = subsequence.pattern_builder.PatternBuilder(
@@ -1849,7 +1915,7 @@ class Composition:
 			conductor=self.conductor,
 			rng=random.Random(),  # Fresh random state for each trigger
 			tweaks={},
-			default_grid=round(length / subsequence.constants.durations.SIXTEENTH),
+			default_grid=default_grid,
 			data=self.data
 		)
 

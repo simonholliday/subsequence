@@ -89,7 +89,7 @@ composition.section_chords("chorus", chorus)
 # Patterns
 # ---------------------------------------------------------------------------
 
-@composition.pattern(channel=DRUM_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+@composition.pattern(channel=DRUM_CHANNEL, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
 
 	p.hit_steps("kick_2",       {0, 8, 12},  velocity=100)
@@ -101,7 +101,7 @@ def drums (p):
 		p.hit_steps("hi_hat_open", {6, 14}, velocity=75)
 
 
-@composition.pattern(channel=BASS_CHANNEL, length=4)
+@composition.pattern(channel=BASS_CHANNEL, beats=4)
 def bass (p, chord):
 
 	# Root note of the current chord, one octave below middle C.
@@ -116,7 +116,7 @@ def bass (p, chord):
 		p.sequence(steps={10}, pitches=fifth, velocities=80)
 
 
-@composition.pattern(channel=ARP_CHANNEL, length=4)
+@composition.pattern(channel=ARP_CHANNEL, beats=4)
 def arp (p, chord):
 
 	if not p.section or p.section.name == "verse":

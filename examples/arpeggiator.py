@@ -26,7 +26,7 @@ composition.form({
 
 composition.harmony(style="phrygian_minor", cycle_beats=16, gravity=0.75)
 
-@composition.pattern(channel=DRUM_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+@composition.pattern(channel=DRUM_CHANNEL, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
 
 	if p.section and p.section.name == "intro":
@@ -54,7 +54,7 @@ def drums (p):
 
 	p.hit_steps("kick_1", {0, 4, 8, 12}, velocity=100)
 
-@composition.pattern(channel=BASS_CHANNEL, length=4)
+@composition.pattern(channel=BASS_CHANNEL, beats=4)
 def bass (p, chord):
 
 	if p.section and p.section.name == "intro":

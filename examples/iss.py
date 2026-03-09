@@ -168,7 +168,7 @@ composition.schedule(fetch_iss, cycle_beats=FETCH_BARS * 4, wait_for_initial=Tru
 
 
 # Core drums
-@composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+@composition.pattern(channel=DRUMS_CHANNEL, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
 
 	progress       = (p.cycle % FETCH_BARS) / FETCH_BARS
@@ -196,7 +196,7 @@ def drums (p):
 
 
 # Ride cymbal (daylight only)
-@composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+@composition.pattern(channel=DRUMS_CHANNEL, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def ride (p):
 
 	# The ride only plays in sunlight — it brightens the texture and disappears
@@ -214,7 +214,7 @@ def ride (p):
 
 
 # Shaker (eclipse only)
-@composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+@composition.pattern(channel=DRUMS_CHANNEL, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def shaker (p):
 
 	# Shaker fills the darker eclipse texture — steady 16ths with subtle variation.
@@ -226,7 +226,7 @@ def shaker (p):
 
 
 # Arpeggio
-@composition.pattern(channel=ARP_CHANNEL, length=4)
+@composition.pattern(channel=ARP_CHANNEL, beats=4)
 def arp (p, chord):
 
 	# `chord` is injected by the harmony engine and changes every 8 bars automatically.
@@ -243,7 +243,7 @@ def arp (p, chord):
 
 
 # Bass
-@composition.pattern(channel=BASS_CHANNEL, length=4)
+@composition.pattern(channel=BASS_CHANNEL, beats=4)
 def bass (p, chord):
 
 	# `chord` is injected by the harmony engine — new chord each 8 bars, same rhythm.
@@ -256,7 +256,7 @@ def bass (p, chord):
 
 
 # Chord pad
-@composition.pattern(channel=CHORD_CHANNEL, length=4)
+@composition.pattern(channel=CHORD_CHANNEL, beats=4)
 def chords (p, chord):
 
 	# `chord` is injected by the harmony engine and advances every 8 bars.

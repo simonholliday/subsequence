@@ -109,7 +109,7 @@ def test_pattern_decorator_registers_pending (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
 
-	@composition.pattern(channel=10, length=4)
+	@composition.pattern(channel=10, beats=4)
 	def my_pattern (p):
 		pass
 
@@ -127,7 +127,7 @@ def test_pattern_decorator_returns_original_function (patch_midi: None) -> None:
 	def my_fn (p):
 		pass
 
-	decorated = composition.pattern(channel=1, length=4)(my_fn)
+	decorated = composition.pattern(channel=1, beats=4)(my_fn)
 
 	assert decorated is my_fn
 
@@ -516,7 +516,7 @@ def test_pattern_decorator_float_length (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=1, length=10.5)
+	@composition.pattern(channel=1, beats=10.5)
 	def my_pattern (p):
 		pass
 
@@ -554,15 +554,15 @@ def test_different_pattern_lengths_coexist (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=1, length=4)
+	@composition.pattern(channel=1, beats=4)
 	def short (p):
 		pass
 
-	@composition.pattern(channel=1, length=9)
+	@composition.pattern(channel=1, beats=9)
 	def medium (p):
 		pass
 
-	@composition.pattern(channel=2, length=10.5)
+	@composition.pattern(channel=2, beats=10.5)
 	def long (p):
 		pass
 
@@ -587,7 +587,7 @@ def test_layer_registers_pending (patch_midi: None) -> None:
 	def hats (p):
 		pass
 
-	composition.layer(kick, hats, channel=10, length=4)
+	composition.layer(kick, hats, channel=10, beats=4)
 
 	assert len(composition._pending_patterns) == 1
 	assert composition._pending_patterns[0].channel == 9  # 10 - 1, 1-indexed default
@@ -606,7 +606,7 @@ def test_layer_merges_notes (patch_midi: None) -> None:
 	def snare (p):
 		p.note(38, beat=1, velocity=100)
 
-	composition.layer(kick, snare, channel=10, length=4)
+	composition.layer(kick, snare, channel=10, beats=4)
 
 	pattern = composition._build_pattern_from_pending(composition._pending_patterns[0])
 
@@ -635,7 +635,7 @@ def test_layer_with_chord_injection (patch_midi: None) -> None:
 	def rhythm (p):
 		p.note(60, beat=1, velocity=80)
 
-	composition.layer(bass, rhythm, channel=1, length=4)
+	composition.layer(bass, rhythm, channel=1, beats=4)
 
 	# Build with a harmony state active - chord injection should work.
 	pattern = composition._build_pattern_from_pending(composition._pending_patterns[0])
@@ -830,13 +830,13 @@ def test_param_reads_tweak_on_rebuild (patch_midi: None) -> None:
 
 def test_pattern_unit_sets_beat_length (patch_midi: None) -> None:
 
-	"""length=6, unit=SIXTEENTH should produce a pattern with 1.5 beats."""
+	"""beats=6, unit=SIXTEENTH should produce a pattern with 1.5 beats."""
 
 	import subsequence.constants.durations as dur
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=1, length=6, unit=dur.SIXTEENTH)
+	@composition.pattern(channel=1, steps=6, unit=dur.SIXTEENTH)
 	def my_pattern (p):
 		pass
 
@@ -847,13 +847,13 @@ def test_pattern_unit_sets_beat_length (patch_midi: None) -> None:
 
 def test_pattern_unit_sets_default_grid (patch_midi: None) -> None:
 
-	"""length=6, unit=SIXTEENTH should set default_grid to 6."""
+	"""beats=6, unit=SIXTEENTH should set default_grid to 6."""
 
 	import subsequence.constants.durations as dur
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=1, length=6, unit=dur.SIXTEENTH)
+	@composition.pattern(channel=1, steps=6, unit=dur.SIXTEENTH)
 	def my_pattern (p):
 		pass
 
@@ -864,11 +864,11 @@ def test_pattern_unit_sets_default_grid (patch_midi: None) -> None:
 
 def test_pattern_no_unit_defaults_to_sixteenth_grid (patch_midi: None) -> None:
 
-	"""length=4 without unit should produce default_grid=16 (4 / SIXTEENTH)."""
+	"""beats=4 without unit should produce default_grid=16 (4 / SIXTEENTH)."""
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=1, length=4)
+	@composition.pattern(channel=1, beats=4)
 	def my_pattern (p):
 		pass
 
@@ -879,13 +879,13 @@ def test_pattern_no_unit_defaults_to_sixteenth_grid (patch_midi: None) -> None:
 
 def test_pattern_unit_triplet_grid (patch_midi: None) -> None:
 
-	"""length=4, unit=TRIPLET_EIGHTH should produce default_grid=4."""
+	"""beats=4, unit=TRIPLET_EIGHTH should produce default_grid=4."""
 
 	import subsequence.constants.durations as dur
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=1, length=4, unit=dur.TRIPLET_EIGHTH)
+	@composition.pattern(channel=1, steps=4, unit=dur.TRIPLET_EIGHTH)
 	def my_pattern (p):
 		pass
 
@@ -906,7 +906,7 @@ def test_layer_unit_sets_beat_length (patch_midi: None) -> None:
 	def kick (p):
 		pass
 
-	composition.layer(kick, channel=10, length=8, unit=dur.SIXTEENTH)
+	composition.layer(kick, channel=10, steps=8, unit=dur.SIXTEENTH)
 
 	pending = composition._pending_patterns[0]
 
@@ -966,7 +966,7 @@ def test_pattern_lookahead_capped_to_harmony_lookahead (patch_midi: None) -> Non
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 	composition.harmony(style="diatonic_major", cycle_beats=4, reschedule_lookahead=0.25)
 
-	@composition.pattern(channel=1, length=4)
+	@composition.pattern(channel=1, beats=4)
 	def pad (p, chord):
 		pass
 
@@ -986,7 +986,7 @@ def test_pattern_lookahead_not_capped_when_smaller (patch_midi: None) -> None:
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 	composition.harmony(style="diatonic_major", cycle_beats=4, reschedule_lookahead=0.5)
 
-	@composition.pattern(channel=1, length=2, reschedule_lookahead=0.25)
+	@composition.pattern(channel=1, beats=2, reschedule_lookahead=0.25)
 	def pad (p, chord):
 		pass
 
@@ -1443,7 +1443,7 @@ def test_zero_indexed_channels_default_is_false (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=10, length=4)
+	@composition.pattern(channel=10, beats=4)
 	def drums (p):
 		pass
 
@@ -1457,7 +1457,7 @@ def test_one_indexed_channels_subtracts_one (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=False)
 
-	@composition.pattern(channel=10, length=4)
+	@composition.pattern(channel=10, beats=4)
 	def drums (p):
 		pass
 
@@ -1470,7 +1470,7 @@ def test_one_indexed_channels_channel_1 (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=False)
 
-	@composition.pattern(channel=1, length=4)
+	@composition.pattern(channel=1, beats=4)
 	def bass (p):
 		pass
 
@@ -1484,7 +1484,7 @@ def test_one_indexed_channels_rejects_zero (patch_midi: None) -> None:
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=False)
 
 	with pytest.raises(ValueError, match="1-16"):
-		@composition.pattern(channel=0, length=4)
+		@composition.pattern(channel=0, beats=4)
 		def bad (p):
 			pass
 
@@ -1496,7 +1496,7 @@ def test_one_indexed_channels_rejects_17 (patch_midi: None) -> None:
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=False)
 
 	with pytest.raises(ValueError, match="1-16"):
-		@composition.pattern(channel=17, length=4)
+		@composition.pattern(channel=17, beats=4)
 		def bad (p):
 			pass
 
@@ -1508,7 +1508,7 @@ def test_zero_indexed_channels_rejects_16 (patch_midi: None) -> None:
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, zero_indexed_channels=True)
 
 	with pytest.raises(ValueError, match="0-15"):
-		@composition.pattern(channel=16, length=4)
+		@composition.pattern(channel=16, beats=4)
 		def bad (p):
 			pass
 
@@ -1522,7 +1522,7 @@ def test_one_indexed_layer (patch_midi: None) -> None:
 	def kick (p):
 		pass
 
-	composition.layer(kick, channel=10, length=4)
+	composition.layer(kick, channel=10, beats=4)
 
 	assert composition._pending_patterns[0].channel == 9
 
@@ -1552,3 +1552,164 @@ def test_live_info_reports_user_convention (patch_midi: None) -> None:
 
 	# Should report channel 10 (9 + 1) to the user
 	assert info["patterns"][0]["channel"] == 10
+
+
+# --- beats= / bars= / length= aliases ---
+
+
+def test_pattern_beats_alias (patch_midi: None) -> None:
+
+	"""beats= should produce the same beat_length as length=."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=1, beats=8)
+	def my_pattern (p):
+		pass
+
+	assert composition._pending_patterns[0].length == 8
+
+
+def test_pattern_bars_alias (patch_midi: None) -> None:
+
+	"""bars=2 should produce beat_length=8 (2 bars × 4 beats)."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=1, bars=2)
+	def my_pattern (p):
+		pass
+
+	assert composition._pending_patterns[0].length == 8
+
+
+def test_pattern_default_is_four_beats (patch_midi: None) -> None:
+
+	"""Omitting beats/bars should default to 4 beats."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=1)
+	def my_pattern (p):
+		pass
+
+	assert composition._pending_patterns[0].length == 4
+
+
+def test_pattern_multiple_length_params_raises (patch_midi: None) -> None:
+
+	"""Specifying both beats= and bars= should raise ValueError."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	with pytest.raises(ValueError, match="Specify only one"):
+
+		@composition.pattern(channel=1, beats=4, bars=1)
+		def my_pattern (p):
+			pass
+
+
+def test_resolve_length_bars_one (patch_midi: None) -> None:
+
+	"""bars=1 should give beat_length=4 and default_grid=16."""
+
+	beat_length, default_grid = subsequence.Composition._resolve_length(None, 1, None, None)
+	assert beat_length == 4
+	assert default_grid == 16
+
+
+def test_resolve_length_beats_eight (patch_midi: None) -> None:
+
+	"""beats=8 should give beat_length=8 and default_grid=32."""
+
+	beat_length, default_grid = subsequence.Composition._resolve_length(8, None, None, None)
+	assert beat_length == 8
+	assert default_grid == 32
+
+
+def test_pattern_steps_unit (patch_midi: None) -> None:
+
+	"""steps=6, unit=SIXTEENTH should give beat_length=1.5 and default_grid=6."""
+
+	import subsequence.constants.durations as dur
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=1, steps=6, unit=dur.SIXTEENTH)
+	def my_pattern (p):
+		pass
+
+	pending = composition._pending_patterns[0]
+	assert pending.length == pytest.approx(1.5)
+	assert pending.default_grid == 6
+
+
+def test_steps_without_unit_raises (patch_midi: None) -> None:
+
+	"""steps= without unit= should raise ValueError."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	with pytest.raises(ValueError, match="steps= requires unit="):
+
+		@composition.pattern(channel=1, steps=6)
+		def my_pattern (p):
+			pass
+
+
+def test_unit_without_steps_raises (patch_midi: None) -> None:
+
+	"""unit= without steps= should raise ValueError."""
+
+	import subsequence.constants.durations as dur
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	with pytest.raises(ValueError, match="unit= requires steps="):
+
+		@composition.pattern(channel=1, beats=4, unit=dur.SIXTEENTH)
+		def my_pattern (p):
+			pass
+
+
+def test_steps_with_beats_raises (patch_midi: None) -> None:
+
+	"""steps= combined with beats= should raise ValueError."""
+
+	import subsequence.constants.durations as dur
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	with pytest.raises(ValueError, match="steps= cannot be combined"):
+
+		@composition.pattern(channel=1, steps=6, beats=4, unit=dur.SIXTEENTH)
+		def my_pattern (p):
+			pass
+
+
+def test_layer_beats_alias (patch_midi: None) -> None:
+
+	"""layer() should accept beats= and produce correct beat_length."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	def kick (p):
+		pass
+
+	composition.layer(kick, channel=1, beats=8)
+
+	assert composition._pending_patterns[0].length == 8
+
+
+def test_layer_bars_alias (patch_midi: None) -> None:
+
+	"""layer() should accept bars= and convert to beat_length."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	def kick (p):
+		pass
+
+	composition.layer(kick, channel=1, bars=2)
+
+	assert composition._pending_patterns[0].length == 8

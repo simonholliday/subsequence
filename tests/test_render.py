@@ -16,7 +16,7 @@ def test_render_raises_when_both_limits_are_none (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(bpm=120)
 
-	@composition.pattern(channel=1, length=4)
+	@composition.pattern(channel=1, beats=4)
 	def p (p) -> None:
 		pass
 
@@ -31,7 +31,7 @@ def test_render_accepts_bars_only (tmp_path: pathlib.Path, patch_midi: None) -> 
 	filename = str(tmp_path / "out.mid")
 	composition = subsequence.Composition(bpm=480)
 
-	@composition.pattern(channel=1, length=4)
+	@composition.pattern(channel=1, beats=4)
 	def p (p) -> None:
 		pass
 
@@ -48,7 +48,7 @@ def test_render_accepts_max_minutes_only (tmp_path: pathlib.Path, patch_midi: No
 	filename = str(tmp_path / "out.mid")
 	composition = subsequence.Composition(bpm=120)
 
-	@composition.pattern(channel=1, length=4)
+	@composition.pattern(channel=1, beats=4)
 	def p (p) -> None:
 		pass
 
@@ -71,7 +71,7 @@ def test_render_default_max_minutes_is_60 (patch_midi: None) -> None:
 	# Peek at what render() would pass: call the sequencer setup path without
 	# actually running the async loop by inspecting the attribute assignment.
 	# We trigger the ValueError path to confirm the default is NOT None.
-	@composition.pattern(channel=1, length=4)
+	@composition.pattern(channel=1, beats=4)
 	def p (p) -> None:
 		pass
 
@@ -91,7 +91,7 @@ def test_render_default_bars_is_none (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(bpm=120)
 
-	@composition.pattern(channel=1, length=4)
+	@composition.pattern(channel=1, beats=4)
 	def p (p) -> None:
 		pass
 
@@ -117,7 +117,7 @@ def test_render_stops_at_time_cap (tmp_path: pathlib.Path, patch_midi: None) -> 
 	# the render well before bar 100.
 	composition = subsequence.Composition(bpm=120)
 
-	@composition.pattern(channel=1, length=4)
+	@composition.pattern(channel=1, beats=4)
 	def p (p) -> None:
 		pass
 

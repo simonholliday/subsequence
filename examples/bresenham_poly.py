@@ -39,7 +39,7 @@ composition.form({
 }, start="pulse")
 
 
-@composition.pattern(channel=DRUM_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+@composition.pattern(channel=DRUM_CHANNEL, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
 
 	if not p.section:

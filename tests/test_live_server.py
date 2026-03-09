@@ -373,7 +373,7 @@ def test_pattern_hot_swap (patch_midi: None) -> None:
 	assert 0 in pattern.steps
 
 	# Hot-swap with a new builder that places a note at beat 2.
-	@comp.pattern(channel=1, length=4)
+	@comp.pattern(channel=1, beats=4)
 	def my_pattern (p):
 		p.note(72, beat=2, velocity=80)
 
@@ -412,7 +412,7 @@ def test_hot_swap_updates_wants_chord (patch_midi: None) -> None:
 	assert pattern._wants_chord is False
 
 	# Hot-swap with a builder that wants chord.
-	@comp.pattern(channel=1, length=4)
+	@comp.pattern(channel=1, beats=4)
 	def my_pattern (p, chord):
 		pass
 

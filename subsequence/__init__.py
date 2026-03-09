@@ -123,7 +123,7 @@ Minimal example:
 
     comp = subsequence.Composition(bpm=120)
 
-    @comp.pattern(channel=10, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+    @comp.pattern(channel=10, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
     def drums (p):
         (p.hit_steps("kick_1",        [0, 4, 8, 12], velocity=100)
           .hit_steps("snare_1",       [4, 12],        velocity=90)

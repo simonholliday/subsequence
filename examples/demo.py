@@ -17,20 +17,20 @@ SYNTH_CHANNEL = 1
 composition = subsequence.Composition(bpm=120, key="E")
 composition.harmony(style="aeolian_minor", cycle_beats=4, gravity=0.8)
 
-@composition.pattern(channel=DRUMS_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+@composition.pattern(channel=DRUMS_CHANNEL, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
 	p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
 	p.hit_steps("snare_1", [4, 12], velocity=100)
 	p.hit_steps("hi_hat_closed", range(16), velocity=80)
 	p.velocity_shape(low=60, high=100)
 
-@composition.pattern(channel=BASS_CHANNEL, length=4)
+@composition.pattern(channel=BASS_CHANNEL, beats=4)
 def bass (p, chord):
 	root = chord.root_note(40)
 	p.sequence(steps=[0, 4, 8, 12], pitches=root)
 	p.legato(0.9)
 
-@composition.pattern(channel=SYNTH_CHANNEL, length=4)
+@composition.pattern(channel=SYNTH_CHANNEL, beats=4)
 def arp (p, chord):
 	pitches = chord.tones(root=60, count=4)
 	p.arpeggio(pitches, spacing=0.25, velocity=90, direction="up")

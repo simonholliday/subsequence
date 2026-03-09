@@ -55,7 +55,7 @@ composition.form({
 	"dissolve":  (12, [("void", 3), ("pulse", 1)]),
 }, start="pulse")
 
-@composition.pattern(channel=DRUM_CHANNEL, length=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+@composition.pattern(channel=DRUM_CHANNEL, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def drums (p):
 
 	"""Build one bar of drums for the current form section."""

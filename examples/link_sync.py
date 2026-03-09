@@ -32,18 +32,18 @@ comp = subsequence.Composition(bpm=120, key="C")
 comp.link(quantum=4.0)
 
 
-@comp.pattern(channel=10, length=4)
+@comp.pattern(channel=10, beats=4)
 def kick(p):
     p.hit(35, beats=[0, 2], velocity=110, duration=0.1)
 
 
-@comp.pattern(channel=10, length=4)
+@comp.pattern(channel=10, beats=4)
 def hat(p):
     density = p.data.get("density", 0.7)
     p.hit(42, beats=[1, 3], velocity=int(80 * density), duration=0.05)
 
 
-@comp.pattern(channel=10, length=8)
+@comp.pattern(channel=10, beats=8)
 def snare(p):
     p.hit(38, beats=[2, 6], velocity=100, duration=0.15)
 
