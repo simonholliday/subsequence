@@ -24,7 +24,7 @@ The top-level controller for a musical piece.
 | `harmony(style, cycle_beats, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity, reschedule_lookahead) -> None` | Configure the harmonic logic and chord change intervals. |
 | `hotkey(key, action, quantize, label) -> None` | Register a single-key shortcut that fires during playback. |
 | `hotkeys(enabled) -> None` | Enable or disable the global hotkey listener. |
-| `layer(*builder_fns, channel, beats, bars, unit, drum_note_map, reschedule_lookahead, voice_leading) -> None` | Combine multiple functions into a single MIDI pattern. |
+| `layer(*builder_fns, channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading) -> None` | Combine multiple functions into a single MIDI pattern. |
 | `link(quantum) -> 'Composition'` | Enable Ableton Link tempo and phase synchronisation. |
 | `live(port) -> None` | Enable the live coding eval server. |
 | `live_info() -> Dict[str, Any]` | Return a dictionary containing the current state of the composition. |
@@ -33,7 +33,7 @@ The top-level controller for a musical piece.
 | `on_event(event_name, callback) -> None` | Register a callback for a sequencer event (e.g., "bar", "start", "stop"). |
 | `osc(receive_port, send_port, send_host) -> None` | Enable bi-directional Open Sound Control (OSC). |
 | `osc_map(address, handler) -> None` | Register a custom OSC handler. |
-| `pattern(channel, beats, bars, unit, drum_note_map, reschedule_lookahead, voice_leading) -> Callable` | Register a function as a repeating MIDI pattern. |
+| `pattern(channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading) -> Callable` | Register a function as a repeating MIDI pattern. |
 | `play() -> None` | Start the composition. |
 | `render(bars, filename, max_minutes) -> None` | Render the composition to a MIDI file without real-time playback. |
 | `running_patterns *(property)*` | The currently active patterns, keyed by name. |
@@ -43,7 +43,7 @@ The top-level controller for a musical piece.
 | `sequencer *(property)*` | The underlying ``Sequencer`` instance. |
 | `set_bpm(bpm) -> None` | Instantly change the tempo. |
 | `target_bpm(bpm, bars, shape) -> None` | Smoothly ramp the tempo to a target value over a number of bars. |
-| `trigger(fn, channel, beats, bars, quantize, drum_note_map, chord) -> None` | Trigger a one-shot pattern immediately or on a quantized boundary. |
+| `trigger(fn, channel, beats, bars, steps, unit, quantize, drum_note_map, chord) -> None` | Trigger a one-shot pattern immediately or on a quantized boundary. |
 | `tweak(name, **kwargs) -> None` | Override parameters for a running pattern. |
 | `unmute(name) -> None` | Unmute a previously muted pattern. |
 | `web_ui() -> None` | Enable the realtime Web UI Dashboard. |
