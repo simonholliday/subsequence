@@ -1828,7 +1828,7 @@ def walk (p):
     p.quantize("G", "dorian")                     # snap everything to G Dorian
 ```
 
-`quantize(key, mode)` accepts any key name (`"C"`, `"F#"`, `"Bb"`, etc.) and any registered scale. Equidistant notes prefer the upward direction.
+`quantize(key, mode, strength=1.0)` accepts any key name (`"C"`, `"F#"`, `"Bb"`, etc.) and any registered scale. Equidistant notes prefer the upward direction. The optional `strength` parameter (0.0–1.0) controls how many notes are snapped: `1.0` quantizes everything (default, fully backward compatible), `0.0` leaves all notes untouched, and values in between apply quantization probabilistically — useful for keeping occasional chromatic passing tones.
 
 Built-in modes include western diatonic (`"ionian"`, `"dorian"`, `"minor"`, `"harmonic_minor"`, etc.) and non-western scales (`"hirajoshi"`, `"in_sen"`, `"iwato"`, `"yo"`, `"egyptian"`, `"major_pentatonic"`, `"minor_pentatonic"`).
 
@@ -1869,6 +1869,65 @@ Pass the result directly to `p.markov()`, `p.self_avoiding_walk()`, `p.de_bruijn
 | `low` | Lowest MIDI note to include (inclusive). Defaults to 60 (C4). |
 | `high` | Highest MIDI note (inclusive). Defaults to 72 (C5). Ignored when `count` is set. |
 | `count` | Return exactly this many notes, ascending from `low` through successive octaves. |
+
+### Evolving loops — `p.evolve()`
+
+`p.evolve()` loops a pitch sequence that gradually mutates each cycle. On cycle 0 the buffer is locked to the seed. Each subsequent cycle, every step has a `drift` probability of being replaced by a value drawn from the pool. At `drift=0.0` the loop never changes; at `drift=1.0` every step is redrawn on every cycle.
+
+State is stored in `p.data` and resets when `cycle == 0`, so restarts are always deterministic. Combine with `p.quantize()` to keep drifted pitches in key.
+
+```python
+@composition.pattern(channel=1, beats=4)
+def melody (p):
+    p.evolve(
+        pitches=[60, 62, 64, 67],   # seed sequence and mutation pool
+        steps=8,                     # loop length (cycles the seed if shorter)
+        drift=0.08,                  # 8% chance each step mutates per cycle
+        velocity=(70, 100),
+        duration=0.3,
+        spacing=0.5,
+    )
+    p.quantize("C", "minor")        # keep mutations in key
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `pitches` | — | Seed sequence. Initial buffer and mutation pool. |
+| `steps` | `len(pitches)` | Loop length. Cycles the seed if `steps > len(pitches)`. |
+| `drift` | `0.0` | Per-step mutation probability per cycle (0.0 = locked, 1.0 = fully random). |
+| `velocity` | `80` | MIDI velocity, or `(low, high)` tuple for per-step random range. |
+| `duration` | `0.2` | Note duration in beats. |
+| `spacing` | `0.25` | Beat interval between steps. |
+
+### Fractal sequence variation — `p.branch()`
+
+`p.branch()` generates a melodic variation by navigating a binary tree of deterministic transforms applied to a seed sequence. The tree structure is seeded by the sequence content itself, so the same seed always produces the same tree. `path=p.cycle` steps through all `2 ** depth` unique variations in order, wrapping automatically.
+
+**Transforms** (assigned deterministically per level): retrograde, invert (mirror around root), transpose (by seed interval), rotate (shift start point), compress intervals (×0.5), expand intervals (×2.0).
+
+```python
+@composition.pattern(channel=1, beats=4)
+def melody (p):
+    p.branch(
+        seed=[60, 64, 67, 72],   # the trunk — original motif
+        depth=3,                  # 2^3 = 8 unique variations
+        path=p.cycle,             # advance through the tree each bar
+        mutation=0.05,            # small random substitution on top
+        velocity=85,
+        spacing=0.5,
+    )
+    p.quantize("C", "minor")
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `seed` | — | Original pitch sequence. All variations are derived from this. |
+| `depth` | `2` | Branching levels. `2 ** depth` unique variations available. |
+| `path` | `0` | Which variation to play. `path=p.cycle` auto-advances. Wraps modulo `2 ** depth`. |
+| `mutation` | `0.0` | Probability of random substitution from `seed` pool after branching. |
+| `velocity` | `80` | MIDI velocity, or `(low, high)` tuple. |
+| `duration` | `0.2` | Note duration in beats. |
+| `spacing` | `0.25` | Beat interval between steps. |
 
 ### Chord root and bass helpers
 

@@ -988,7 +988,7 @@ class PatternBuilder(
 				note.duration = duration_pulses
 		return self
 
-	def quantize (self, key: str, mode: str = "ionian") -> "PatternBuilder":
+	def quantize (self, key: str, mode: str = "ionian", strength: float = 1.0) -> "PatternBuilder":
 
 		"""
 		Snap all notes in the pattern to the nearest pitch in a scale.
@@ -1006,15 +1006,21 @@ class PatternBuilder(
 			mode: Scale mode.  Any key in :data:`subsequence.intervals.DIATONIC_MODE_MAP`
 			      is accepted: ``"ionian"`` (default), ``"dorian"``, ``"minor"``,
 			      ``"harmonic_minor"``, etc.
+			strength: Probability that each note is quantized (0.0–1.0).
+			      At 1.0 (default), every note snaps to the scale — identical
+			      to the previous behaviour.  At 0.0, no notes are affected.
+			      Values in between create melodies that are mostly in key
+			      with occasional chromatic passing tones.  Uses the
+			      pattern's seeded RNG for reproducibility.
 
 		Example:
 			```python
-			@composition.pattern(channel=1, length=4)
+			@composition.pattern(channel=1, beats=4)
 			def melody (p):
 			    for beat in range(16):
 			        pitch = 60 + random.randint(-5, 5)
 			        p.note(pitch, beat=beat * 0.25)
-			    p.quantize("G", "dorian")
+			    p.quantize("G", "dorian", strength=0.8)
 			```
 		"""
 
@@ -1023,7 +1029,8 @@ class PatternBuilder(
 
 		for step in self._pattern.steps.values():
 			for note in step.notes:
-				note.pitch = subsequence.intervals.quantize_pitch(note.pitch, scale_pcs)
+				if strength >= 1.0 or self.rng.random() < strength:
+					note.pitch = subsequence.intervals.quantize_pitch(note.pitch, scale_pcs)
 		return self
 
 

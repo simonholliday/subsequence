@@ -31,6 +31,7 @@ class PatternAlgorithmicMixin:
 	_default_grid: int
 	rng: random.Random
 	cycle: int
+	data: typing.Dict[str, typing.Any]
 
 	if typing.TYPE_CHECKING:
 		# Cross-mixin method stubs: implemented by PatternBuilder,
@@ -1422,4 +1423,202 @@ class PatternAlgorithmicMixin:
 
 		for pulse in pulses_to_remove:
 			del self._pattern.steps[pulse]
+		return self
+
+	def evolve (
+		self,
+		pitches: typing.List[typing.Union[int, str]],
+		steps: typing.Optional[int] = None,
+		drift: float = 0.0,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		duration: float = 0.2,
+		spacing: float = 0.25,
+	) -> "PatternAlgorithmicMixin":
+
+		"""Loop a pitch sequence that gradually mutates each cycle.
+
+		On cycle 0, the sequence is locked to the seed ``pitches`` (truncated to
+		``steps`` if provided).  Each subsequent cycle, every step has a ``drift``
+		probability of being replaced by a randomly-chosen value from the pool.
+		When ``drift=0.0`` the loop never changes; when ``drift=1.0`` every step
+		is redrawn every cycle.
+
+		State is stored in ``p.data`` under a key derived from the seed, so the
+		buffer persists across pattern rebuilds.  The buffer is reset whenever
+		``cycle == 0`` so restarts produce deterministic output.
+
+		Combine with ``p.quantize()`` to keep drifted pitches in key:
+
+		```python
+		p.evolve([60, 64, 67, 72], steps=8, drift=0.12)
+		p.quantize("C", "minor")
+		```
+
+		Parameters:
+			pitches: Seed pitch pool.  The initial buffer is built from the first
+			    ``steps`` values (cycling if shorter than ``steps``).  Mutation
+			    also draws replacements from this pool.
+			steps: Number of steps in the loop.  Defaults to ``len(pitches)``.
+			drift: Per-step mutation probability each cycle (0.0–1.0).
+			    ``0.0`` = locked loop, ``1.0`` = fully random each cycle.
+			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per step.
+			duration: Note duration in beats.
+			spacing: Beat interval between steps.
+
+		Example:
+			```python
+			# 8-step loop that slowly diverges from its seed
+			p.evolve([60, 62, 64, 65, 67, 69], steps=8, drift=0.1,
+			         velocity=(70, 100), spacing=0.5)
+			p.quantize("C", "dorian")
+			```
+		"""
+
+		if not pitches:
+			raise ValueError("pitches list cannot be empty")
+
+		resolved = [self._resolve_pitch(p) if isinstance(p, str) else p for p in pitches]
+		n = steps if steps is not None else len(resolved)
+
+		# Stable key derived from the seed identity.
+		data_key = "_evolve_" + str(id(pitches))
+
+		# Initialise or reset buffer on cycle 0.
+		if data_key not in self.data or self.cycle == 0:
+			self.data[data_key] = [resolved[i % len(resolved)] for i in range(n)]
+
+		buffer = self.data[data_key]
+
+		# Mutate the buffer in place for this cycle (skipped on cycle 0 — seed plays first).
+		if self.cycle > 0 and drift > 0.0:
+			for i in range(n):
+				if self.rng.random() < drift:
+					buffer[i] = self.rng.choice(resolved)
+
+		# Place notes.
+		for i, pitch in enumerate(buffer):
+			vel = (
+				self.rng.randint(velocity[0], velocity[1])
+				if isinstance(velocity, tuple)
+				else int(velocity)
+			)
+			self.note(pitch=pitch, beat=i * spacing, velocity=vel, duration=duration)
+
+		return self
+
+	def branch (
+		self,
+		seed: typing.List[typing.Union[int, str]],
+		depth: int = 2,
+		path: int = 0,
+		mutation: float = 0.0,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		duration: float = 0.2,
+		spacing: float = 0.25,
+	) -> "PatternAlgorithmicMixin":
+
+		"""Generate a melodic variation by navigating a fractal tree of transforms.
+
+		The seed sequence is the "trunk".  At each branch level, two musical
+		transforms are assigned deterministically (seeded by the original
+		sequence), and the ``path`` index selects left or right at each level.
+		After ``depth`` levels the result is a variation that is always
+		structurally related to the seed.
+
+		Use ``path=p.cycle`` to step through all ``2 ** depth`` variations in
+		order; the index wraps automatically.
+
+		**Transforms** (assigned deterministically per level):
+
+		- *Retrograde* — reverse the sequence.
+		- *Invert* — mirror each pitch around the seed's first note.
+		- *Transpose* — shift all pitches by the interval between the first
+		  two seed notes.
+		- *Rotate* — shift the starting position by one step.
+		- *Scale intervals* — multiply intervals from the first note by 0.5
+		  (compress) or 2.0 (expand), rounded to the nearest semitone.
+
+		An optional ``mutation`` layer randomly substitutes individual notes
+		with other seed pitches on top of the deterministic branching.
+
+		Parameters:
+			seed: Original pitch sequence.  All variations are derived from this.
+			depth: Branching levels.  ``2 ** depth`` unique variations are
+			    available before the path wraps.
+			path: Which variation to play (0-based).  ``path=p.cycle`` advances
+			    automatically.  Values wrap modulo ``2 ** depth``.
+			mutation: Probability that any step is replaced by a random seed
+			    pitch after branching (0.0 = none, 1.0 = fully random).
+			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per step.
+			duration: Note duration in beats.
+			spacing: Beat interval between steps.
+
+		Example:
+			```python
+			# Cycle through 8 variations (depth=3) of a 4-note motif
+			p.branch([60, 64, 67, 72], depth=3, path=p.cycle,
+			         velocity=85, spacing=0.5)
+			p.quantize("C", "minor")
+			```
+		"""
+
+		if not seed:
+			raise ValueError("seed list cannot be empty")
+
+		resolved = [self._resolve_pitch(p) if isinstance(p, str) else p for p in seed]
+
+		# Seeded RNG derived from the seed content (not from self.rng) so the
+		# tree structure is always the same regardless of the pattern's own seed.
+		branch_rng = random.Random(hash(tuple(resolved)))
+
+		num_variations = 2 ** depth
+		path_index = path % num_variations if num_variations > 0 else 0
+
+		sequence = list(resolved)
+		root = resolved[0]
+		interval = (resolved[1] - resolved[0]) if len(resolved) >= 2 else 0
+
+		def _retrograde(seq: typing.List[int]) -> typing.List[int]:
+			return list(reversed(seq))
+
+		def _invert(seq: typing.List[int]) -> typing.List[int]:
+			return [root + (root - p) for p in seq]
+
+		def _transpose(seq: typing.List[int]) -> typing.List[int]:
+			return [p + interval for p in seq]
+
+		def _rotate(seq: typing.List[int]) -> typing.List[int]:
+			if not seq:
+				return seq
+			return seq[1:] + seq[:1]
+
+		def _compress(seq: typing.List[int]) -> typing.List[int]:
+			return [root + round((p - root) * 0.5) for p in seq]
+
+		def _expand(seq: typing.List[int]) -> typing.List[int]:
+			return [root + round((p - root) * 2.0) for p in seq]
+
+		transforms = [_retrograde, _invert, _transpose, _rotate, _compress, _expand]
+
+		for level in range(depth):
+			left_fn  = transforms[branch_rng.randint(0, len(transforms) - 1)]
+			right_fn = transforms[branch_rng.randint(0, len(transforms) - 1)]
+			direction = (path_index >> level) & 1
+			sequence = left_fn(sequence) if direction == 0 else right_fn(sequence)
+
+		# Optional random mutation on top of deterministic branching.
+		if mutation > 0.0:
+			for i in range(len(sequence)):
+				if self.rng.random() < mutation:
+					sequence[i] = self.rng.choice(resolved)
+
+		# Place notes.
+		for i, pitch in enumerate(sequence):
+			vel = (
+				self.rng.randint(velocity[0], velocity[1])
+				if isinstance(velocity, tuple)
+				else int(velocity)
+			)
+			self.note(pitch=pitch, beat=i * spacing, velocity=vel, duration=duration)
+
 		return self

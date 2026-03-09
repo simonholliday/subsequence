@@ -4514,3 +4514,105 @@ def test_self_avoiding_walk_deterministic () -> None:
 	pitches1 = [note.pitch for step in sorted(pattern1.steps) for note in pattern1.steps[step].notes]
 	pitches2 = [note.pitch for step in sorted(pattern2.steps) for note in pattern2.steps[step].notes]
 	assert pitches1 == pitches2
+
+
+# ── quantize(strength=) ──────────────────────────────────────────────────────
+
+
+def _pitches_in_pattern (pattern) -> list:
+	return [note.pitch for step in sorted(pattern.steps) for note in pattern.steps[step].notes]
+
+
+def _place_chromatic_notes (builder, pitches: list, length: float = 4) -> None:
+	"""Place a list of pitches at evenly spaced beats."""
+	spacing = length / len(pitches)
+	for i, p in enumerate(pitches):
+		builder.note(p, beat=i * spacing, duration=spacing * 0.9)
+
+
+def test_quantize_strength_one_snaps_all () -> None:
+
+	"""strength=1.0 (default) must quantize every note — identical to old behaviour."""
+
+	# C major pitch classes: [0, 2, 4, 5, 7, 9, 11]
+	# Place C# (61), D# (63), F# (66) — all outside C major
+	pattern, builder = _make_builder(length=4)
+	_place_chromatic_notes(builder, [61, 63, 66])
+	builder.quantize("C", "ionian", strength=1.0)
+
+	pitches = _pitches_in_pattern(pattern)
+	# C# → C (60), D# → E (64), F# → G (67)
+	assert 61 not in pitches
+	assert 63 not in pitches
+	assert 66 not in pitches
+
+
+def test_quantize_strength_zero_leaves_all_unchanged () -> None:
+
+	"""strength=0.0 must leave every note pitch untouched."""
+
+	pattern, builder = _make_builder(length=4)
+	_place_chromatic_notes(builder, [61, 63, 66])
+	builder.quantize("C", "ionian", strength=0.0)
+
+	pitches = _pitches_in_pattern(pattern)
+	assert pitches == [61, 63, 66]
+
+
+def test_quantize_default_strength_unchanged () -> None:
+
+	"""Omitting strength= must behave identically to strength=1.0."""
+
+	pattern1, builder1 = _make_builder(length=4)
+	_place_chromatic_notes(builder1, [61, 63, 66])
+	builder1.quantize("C", "ionian")
+
+	pattern2, builder2 = _make_builder(length=4)
+	_place_chromatic_notes(builder2, [61, 63, 66])
+	builder2.quantize("C", "ionian", strength=1.0)
+
+	assert _pitches_in_pattern(pattern1) == _pitches_in_pattern(pattern2)
+
+
+def test_quantize_strength_partial_is_reproducible () -> None:
+
+	"""Same RNG seed + same strength must produce the same set of quantized notes."""
+
+	pitches_in = [61, 63, 66, 58, 70, 73, 56, 69]
+
+	pattern1, builder1 = _make_builder(length=4)
+	builder1.rng = random.Random(99)
+	_place_chromatic_notes(builder1, pitches_in)
+	builder1.quantize("C", "ionian", strength=0.5)
+
+	pattern2, builder2 = _make_builder(length=4)
+	builder2.rng = random.Random(99)
+	_place_chromatic_notes(builder2, pitches_in)
+	builder2.quantize("C", "ionian", strength=0.5)
+
+	assert _pitches_in_pattern(pattern1) == _pitches_in_pattern(pattern2)
+
+
+def test_quantize_strength_partial_quantizes_some_notes () -> None:
+
+	"""strength=0.5 should quantize roughly half the notes (statistical check over many notes)."""
+
+	# Place 200 notes all on C# (61), which is outside C major.
+	# quantize_pitch prefers upward, so C# (61) → D (62).
+	# With strength=0.5, ~50% should be snapped to D (62), rest stay at C# (61).
+	n = 200
+	pattern, builder = _make_builder(length=n * 0.25)
+	builder.rng = random.Random(7)
+	for i in range(n):
+		builder.note(61, beat=i * 0.25, duration=0.2)
+	builder.quantize("C", "ionian", strength=0.5)
+
+	pitches = _pitches_in_pattern(pattern)
+	quantized_count = sum(1 for p in pitches if p == 62)   # snapped up to D
+	unquantized_count = sum(1 for p in pitches if p == 61)  # left as C#
+
+	# Allow ±15% tolerance
+	assert 0.35 * n <= quantized_count <= 0.65 * n, (
+		f"Expected ~{n // 2} quantized, got {quantized_count}/{n}"
+	)
+	assert quantized_count + unquantized_count == n
