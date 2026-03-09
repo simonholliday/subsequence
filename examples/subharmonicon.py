@@ -68,14 +68,14 @@ VCO2_SUB2_CHANNEL = 2   # VCO2 second subharmonic oscillator
 # derive their rates by dividing this value by an integer.  The sequencers
 # advance on each pulse from their assigned rhythm generators.
 # Subharmonicon range: 20–3000 BPM (internal clock, 1 pulse per quarter note).
-TEMPO = 120
+TEMPO = 125
 
 # VCO1_FREQ / VCO2_FREQ: Base pitch of each oscillator as a MIDI note number.
 # All subharmonic oscillators derive their pitch from this value.  On the
 # hardware, this is the VCO FREQ knob.  Sequencer steps are offsets from here.
 # Range: 0–127 (MIDI note number).  Middle C = 60.
-VCO1_FREQ = midi_notes.C4
-VCO2_FREQ = midi_notes.G3
+VCO1_FREQ = midi_notes.C5
+VCO2_FREQ = midi_notes.G4
 
 # VCO1_SUB1_FREQ / VCO1_SUB2_FREQ / VCO2_SUB1_FREQ / VCO2_SUB2_FREQ:
 # Integer divisor for each subharmonic oscillator.
@@ -103,17 +103,17 @@ VCO2_SUB2_FREQ = 4   # Two octaves below VCO2
 # Stay within ±SEQ_OCT octaves of VCO_FREQ for authentic behaviour.
 # List of exactly 4 MIDI note numbers.
 SEQ1_STEPS = [
-	midi_notes.C4,
-	midi_notes.E4,
-	midi_notes.G4,
 	midi_notes.C5,
+	midi_notes.E5,
+	midi_notes.G5,
+	midi_notes.C6,
 ]
 
 SEQ2_STEPS = [
-	midi_notes.G3,
-	midi_notes.C4,
-	midi_notes.D4,
 	midi_notes.G4,
+	midi_notes.C5,
+	midi_notes.D5,
+	midi_notes.G5,
 ]
 
 # SEQ_OCT: Octave range available to the STEP knobs, shared by both sequencers.
