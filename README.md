@@ -768,6 +768,39 @@ A performer or code can override the pre-decided next section with `composition.
 
 For a `beats=4` pattern in 4/4, they're always equal. For a `beats=8` pattern, `p.cycle` is half `p.bar` (the pattern runs once every two bars). For a `beats=2` pattern, `p.cycle` is double `p.bar`. Use `p.bar` for composition-wide synchronisation (e.g. "fire on bar 8") and `p.cycle` for pattern-local variation (e.g. "every 4th rebuild of this pattern").
 
+#### Musical phrase position - `p.phrase(length)`
+
+For bar-position logic, `p.phrase(length)` replaces raw modulo arithmetic with readable musical vocabulary:
+
+| Intent | Raw modulo | `p.phrase()` |
+|---|---|---|
+| Every 4 bars | `if p.bar % 4 == 0:` | `if p.phrase(4).first:` |
+| Bar 3 of every 8 | `if p.bar % 8 == 2:` | `if p.phrase(8).bar == 2:` |
+| Last bar of every 16 | `if p.bar % 16 == 15:` | `if p.phrase(16).last:` |
+| Progress through phrase | `(p.bar % 8) / 8` | `p.phrase(8).progress` |
+
+`p.phrase(length)` returns a `Phrase` object with four properties:
+
+- **`.first`** - `True` on the first bar of the phrase
+- **`.last`** - `True` on the last bar of the phrase
+- **`.bar`** - zero-indexed position within the phrase (0 … length−1)
+- **`.progress`** - fractional progress: 0.0 on bar 0, rising each bar (0.25, 0.5, 0.75 for a 4-bar phrase)
+
+```python
+@composition.pattern(channel=1, length=4)
+def drums(p):
+
+    p.euclidean("kick_1", 4)
+
+    # Add an open hi-hat fill on the last bar of every 8-bar phrase
+    if p.phrase(8).last:
+        p.euclidean("hi_hat_open", 3)
+
+    # Build velocity over a 16-bar arc
+    intensity = p.phrase(16).progress   # 0.0 → 0.9375
+    p.velocity_shape(low=int(50 + 40 * intensity), high=110)
+```
+
 To replay the same chords every time a section recurs, see [Frozen progressions](#frozen-progressions).
 
 ### The Conductor

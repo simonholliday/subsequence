@@ -51,6 +51,44 @@ def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 	return result
 
 
+class Phrase:
+
+	"""Position of the current bar within a repeating musical phrase.
+
+	Returned by :meth:`PatternBuilder.phrase`. Provides readable, musician-friendly
+	properties for bar-position logic without raw modulo arithmetic.
+
+	Attributes:
+		bar: Zero-indexed bar within the phrase (0 … length−1).
+		length: The phrase length passed to :meth:`PatternBuilder.phrase`.
+	"""
+
+	__slots__ = ("bar", "length")
+
+	def __init__ (self, bar: int, length: int) -> None:
+		self.bar = bar
+		self.length = length
+
+	@property
+	def first (self) -> bool:
+		"""True on the first bar of the phrase (``bar == 0``)."""
+		return self.bar == 0
+
+	@property
+	def last (self) -> bool:
+		"""True on the last bar of the phrase (``bar == length − 1``)."""
+		return self.bar == self.length - 1
+
+	@property
+	def progress (self) -> float:
+		"""Fractional progress through the phrase: 0.0 on bar 0, rising each bar.
+
+		For a 4-bar phrase: 0.0, 0.25, 0.5, 0.75.
+		Useful for gradual intensity curves or as a noise/LFO seed.
+		"""
+		return self.bar / self.length
+
+
 class PatternBuilder(
 	subsequence.pattern_algorithmic.PatternAlgorithmicMixin,
 	subsequence.pattern_midi.PatternMidiMixin,
@@ -1252,3 +1290,35 @@ class PatternBuilder(
 		if self.cycle % n == 0:
 			fn(self)
 		return self
+
+	def phrase (self, length: int) -> Phrase:
+
+		"""Return the current bar's position within a repeating musical phrase.
+
+		A thin wrapper around ``p.bar % length`` that replaces opaque modulo
+		arithmetic with readable, musician-friendly properties.
+
+		Parameters:
+			length: The phrase length in bars (e.g., 4, 8, 16).
+
+		Returns:
+			A :class:`Phrase` with ``.bar``, ``.first``, ``.last``,
+			and ``.progress`` properties.
+
+		Example:
+			```python
+			# Every 4 bars (replaces: if p.bar % 4 == 0)
+			if p.phrase(4).first:
+			    p.hit_steps("snare_1", [0, 8], velocity=110)
+
+			# Last bar of every 16-bar section (replaces: if p.bar % 16 == 15)
+			if p.phrase(16).last:
+			    p.euclidean("hi_hat_open", 3)
+
+			# Build intensity over an 8-bar phrase
+			intensity = p.phrase(8).progress   # 0.0 → 0.875
+			p.velocity_shape(low=int(40 + 40 * intensity), high=100)
+			```
+		"""
+
+		return Phrase(bar=self.bar % length, length=length)

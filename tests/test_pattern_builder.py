@@ -4616,3 +4616,68 @@ def test_quantize_strength_partial_quantizes_some_notes () -> None:
 		f"Expected ~{n // 2} quantized, got {quantized_count}/{n}"
 	)
 	assert quantized_count + unquantized_count == n
+
+
+# ---------------------------------------------------------------------------
+# p.phrase()
+# ---------------------------------------------------------------------------
+
+def _make_builder_at_bar (bar: int) -> "subsequence.pattern_builder.PatternBuilder":
+	_, builder = _make_builder()
+	builder.bar = bar
+	return builder
+
+def test_phrase_first ():
+	builder = _make_builder_at_bar(0)
+	ph = builder.phrase(4)
+	assert ph.bar == 0
+	assert ph.first is True
+	assert ph.last is False
+
+def test_phrase_last ():
+	builder = _make_builder_at_bar(3)
+	ph = builder.phrase(4)
+	assert ph.bar == 3
+	assert ph.first is False
+	assert ph.last is True
+
+def test_phrase_middle ():
+	builder = _make_builder_at_bar(2)
+	ph = builder.phrase(4)
+	assert ph.bar == 2
+	assert ph.first is False
+	assert ph.last is False
+
+def test_phrase_progress ():
+	assert _make_builder_at_bar(0).phrase(4).progress == pytest.approx(0.0)
+	assert _make_builder_at_bar(2).phrase(4).progress == pytest.approx(0.5)
+	assert _make_builder_at_bar(3).phrase(4).progress == pytest.approx(0.75)
+
+def test_phrase_wraps_correctly ():
+	# bar=5 with phrase(4) → position 1 (5 % 4 == 1)
+	ph = _make_builder_at_bar(5).phrase(4)
+	assert ph.bar == 1
+	assert ph.first is False
+	assert ph.last is False
+
+def test_phrase_single_bar ():
+	ph = _make_builder_at_bar(0).phrase(1)
+	assert ph.bar == 0
+	assert ph.first is True
+	assert ph.last is True
+	assert ph.progress == pytest.approx(0.0)
+
+def test_phrase_length_8 ():
+	# bar=2 with phrase(8) → "bar 3 of every 8" in user's example
+	ph = _make_builder_at_bar(2).phrase(8)
+	assert ph.bar == 2
+	assert ph.first is False
+	assert ph.last is False
+
+def test_phrase_last_of_16 ():
+	# bar=15 with phrase(16) → last bar before every 16th
+	assert _make_builder_at_bar(15).phrase(16).last is True
+
+def test_phrase_cycle_through_4_bars ():
+	positions = [_make_builder_at_bar(bar).phrase(4).bar for bar in range(8)]
+	assert positions == [0, 1, 2, 3, 0, 1, 2, 3]
