@@ -1521,7 +1521,7 @@ Subsequence uses a hybrid sleep+spin timing strategy for its internal master clo
 
 | Mode | Mean | P99 | Max | Long-term drift |
 |------|------|-----|-----|-----------------|
-| Spin-wait ON (default) | **3 μs** | 4 μs | ~150 μs* | 0 |
+| Spin-wait ON (default) | **3 μs** | 4 μs | ~100 μs* | 0 |
 | `asyncio.sleep` only | 853 μs | 1.37 ms | 1.72 ms | negligible |
 
 \* Occasional spikes are GC pauses in the Python runtime, not clock instability.
