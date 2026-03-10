@@ -2467,6 +2467,8 @@ Planned features, roughly in order of priority.
 
 ### Medium priority
 
+- **Ratcheting & Subdivisions.** A unified `p.ratchet()` transform to take existing notes and subdivide them into rolls or ratchets based on probability or secondary patterns, allowing dynamic micro-timing and subdivision of primary algorithmic rhythms without manual coding.
+
 - **MIDI File Import & Analysis.** Allow users to load existing `.mid` files and extract their rhythmic or harmonic content to feed into Subsequence algorithms (e.g., generating Markov chains trained on a Bach invention MIDI file).
 
 - **Visual Dashboard / Web UI.** A lightweight local web dashboard to provide real-time visual feedback of the current Chord Graph, global Conductor signals, and active patterns.
