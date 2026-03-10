@@ -1615,6 +1615,8 @@ import subsequence.constants.midi_notes as notes
 
 composition.midi_input("Arturia KeyStep")   # open the input port
 
+If `channel` is omitted, the mapping listens on **all** incoming channels; if provided, only that channel is accepted (using the same numbering convention as `@composition.pattern(channel=...)`).
+
 composition.cc_map(74, "filter_cutoff")          # CC 74 → 0.0–1.0 in composition.data
 composition.cc_map(7,  "volume", min_val=0, max_val=127)   # custom range
 composition.cc_map(1,  "density", channel=1)     # channel-filtered
