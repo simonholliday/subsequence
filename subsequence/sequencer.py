@@ -549,7 +549,7 @@ class Sequencer:
 				midi_event = MidiEvent(
 					pulse = abs_pulse,
 					message_type = cc_event.message_type,
-					channel = pattern.channel,
+					channel = cc_event.channel if cc_event.channel is not None else pattern.channel,
 					control = cc_event.control,
 					value = cc_event.value,
 					data = cc_event.data

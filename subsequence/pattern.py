@@ -30,6 +30,7 @@ class CcEvent:
 	control: int = 0					# CC number (0–127), ignored for other types
 	value: int = 0						# 0–127 for CC/program_change, -8192..8191 for pitchwheel
 	data: typing.Optional[bytes] = None	# Raw bytes payload for SysEx messages
+	channel: typing.Optional[int] = None	# If set, overrides pattern.channel for this event
 
 
 @dataclasses.dataclass

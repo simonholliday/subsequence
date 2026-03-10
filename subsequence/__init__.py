@@ -79,6 +79,12 @@ Composition tools:
   a key, mode, and range or note count - useful for arpeggios, Markov
   chains, and melodic walks. Built-in western and non-western modes,
   plus ``register_scale()`` for your own.
+- **Microtonal tuning.** ``composition.tuning()`` applies a tuning
+  system globally; ``p.apply_tuning()`` overrides per-pattern.
+  Supports Scala ``.scl`` files, explicit cent lists, frequency ratios,
+  and N-TET equal temperaments. Polyphonic parts use explicit channel
+  rotation so simultaneous notes can carry independent pitch bends
+  without MPE. Compatible with any standard MIDI synthesiser.
 - **Randomness tools.** Weighted choice, no-repeat shuffle, random
   walk, probability gates. Deterministic seeding (``seed=42``) makes
   every decision repeatable.
@@ -137,7 +143,7 @@ Community and Feedback:
 - **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
 - **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
 
-Package-level exports: ``Composition``, ``Groove``, ``MelodicState``, ``register_scale``, ``scale_notes``, ``bank_select``.
+Package-level exports: ``Composition``, ``Groove``, ``MelodicState``, ``Tuning``, ``register_scale``, ``scale_notes``, ``bank_select``.
 """
 
 import subsequence.composition
@@ -145,11 +151,13 @@ import subsequence.groove
 import subsequence.intervals
 import subsequence.melodic_state
 import subsequence.midi_utils
+import subsequence.tuning
 
 
 Composition = subsequence.composition.Composition
 Groove = subsequence.groove.Groove
 MelodicState = subsequence.melodic_state.MelodicState
+Tuning = subsequence.tuning.Tuning
 register_scale = subsequence.intervals.register_scale
 scale_notes = subsequence.intervals.scale_notes
 bank_select = subsequence.midi_utils.bank_select

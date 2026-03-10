@@ -70,6 +70,7 @@ It is designed for **the musician who wants to build compositions that surprise 
 - **Implicit Compositional Structure.** Subsequence understands predefined sections, bringing overarching musical form to a piece without getting stuck in infinite loops. Patterns rebuild each cycle with full context - chord, section, history - so music can grow and develop across defined movement.
 - **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition (big leaps tend to reverse, small steps tend to continue). The engine writes melodies that sound *human* because it models deep listener expectations.
 - **From sketch to studio.** Subsequence is a fast way to explore ideas. When something clicks, [record the session](#midi-recording-and-rendering) as a standard multi-channel MIDI file and bring it straight into your DAW to arrange, edit, and polish.
+- **Microtonal-ready.** Scala `.scl` file support and N-TET equal temperaments out of the box. Per-note pitch bend is injected automatically - no MPE, no special hardware. Works with any standard MIDI synth.
 
 ### What it does
 
@@ -1828,7 +1829,7 @@ def walk (p):
     p.quantize("G", "dorian")                     # snap everything to G Dorian
 ```
 
-`quantize(key, mode, strength=1.0)` accepts any key name (`"C"`, `"F#"`, `"Bb"`, etc.) and any registered scale. Equidistant notes prefer the upward direction. The optional `strength` parameter (0.0–1.0) controls how many notes are snapped: `1.0` quantizes everything (default, fully backward compatible), `0.0` leaves all notes untouched, and values in between apply quantization probabilistically — useful for keeping occasional chromatic passing tones.
+`quantize(key, mode, strength=1.0)` accepts any key name (`"C"`, `"F#"`, `"Bb"`, etc.) and any registered scale. Equidistant notes prefer the upward direction. The optional `strength` parameter (0.0–1.0) controls how many notes are snapped: `1.0` quantizes everything (default, fully backward compatible), `0.0` leaves all notes untouched, and values in between apply quantization probabilistically - useful for keeping occasional chromatic passing tones.
 
 Built-in modes include western diatonic (`"ionian"`, `"dorian"`, `"minor"`, `"harmonic_minor"`, etc.) and non-western scales (`"hirajoshi"`, `"in_sen"`, `"iwato"`, `"yo"`, `"egyptian"`, `"major_pentatonic"`, `"minor_pentatonic"`).
 
@@ -1870,7 +1871,7 @@ Pass the result directly to `p.markov()`, `p.self_avoiding_walk()`, `p.de_bruijn
 | `high` | Highest MIDI note (inclusive). Defaults to 72 (C5). Ignored when `count` is set. |
 | `count` | Return exactly this many notes, ascending from `low` through successive octaves. |
 
-### Evolving loops — `p.evolve()`
+### Evolving loops - `p.evolve()`
 
 `p.evolve()` loops a pitch sequence that gradually mutates each cycle. On cycle 0 the buffer is locked to the seed. Each subsequent cycle, every step has a `drift` probability of being replaced by a value drawn from the pool. At `drift=0.0` the loop never changes; at `drift=1.0` every step is redrawn on every cycle.
 
@@ -1892,14 +1893,14 @@ def melody (p):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `pitches` | — | Seed sequence. Initial buffer and mutation pool. |
+| `pitches` | - | Seed sequence. Initial buffer and mutation pool. |
 | `steps` | `len(pitches)` | Loop length. Cycles the seed if `steps > len(pitches)`. |
 | `drift` | `0.0` | Per-step mutation probability per cycle (0.0 = locked, 1.0 = fully random). |
 | `velocity` | `80` | MIDI velocity, or `(low, high)` tuple for per-step random range. |
 | `duration` | `0.2` | Note duration in beats. |
 | `spacing` | `0.25` | Beat interval between steps. |
 
-### Fractal sequence variation — `p.branch()`
+### Fractal sequence variation - `p.branch()`
 
 `p.branch()` generates a melodic variation by navigating a binary tree of deterministic transforms applied to a seed sequence. The tree structure is seeded by the sequence content itself, so the same seed always produces the same tree. `path=p.cycle` steps through all `2 ** depth` unique variations in order, wrapping automatically.
 
@@ -1909,7 +1910,7 @@ def melody (p):
 @composition.pattern(channel=1, beats=4)
 def melody (p):
     p.branch(
-        seed=[60, 64, 67, 72],   # the trunk — original motif
+        seed=[60, 64, 67, 72],   # the trunk - original motif
         depth=3,                  # 2^3 = 8 unique variations
         path=p.cycle,             # advance through the tree each bar
         mutation=0.05,            # small random substitution on top
@@ -1921,13 +1922,99 @@ def melody (p):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `seed` | — | Original pitch sequence. All variations are derived from this. |
+| `seed` | - | Original pitch sequence. All variations are derived from this. |
 | `depth` | `2` | Branching levels. `2 ** depth` unique variations available. |
 | `path` | `0` | Which variation to play. `path=p.cycle` auto-advances. Wraps modulo `2 ** depth`. |
 | `mutation` | `0.0` | Probability of random substitution from `seed` pool after branching. |
 | `velocity` | `80` | MIDI velocity, or `(low, high)` tuple. |
 | `duration` | `0.2` | Note duration in beats. |
 | `spacing` | `0.25` | Beat interval between steps. |
+
+### Microtonal tuning - `composition.tuning()` and `p.apply_tuning()`
+
+Subsequence supports alternative tuning systems beyond standard 12-TET by injecting per-note pitch bend events automatically. Any MIDI-compatible synthesiser can play microtonal music without MPE or special hardware: one pitch bend per note, inserted just before each note-on.
+
+#### Setting a global tuning
+
+```python
+import subsequence
+from subsequence.tuning import Tuning
+
+# From a Scala .scl file
+comp.tuning("meanquar.scl", bend_range=2.0)
+
+# From a list of cent values
+comp.tuning(cents=[76.05, 193.16, 310.26, 386.31, 503.42, 579.47,
+                    696.58, 813.69, 889.74, 1006.84, 1082.89, 1200.0])
+
+# From frequency ratios
+comp.tuning(ratios=[9/8, 5/4, 4/3, 3/2, 5/3, 15/8, 2.0])
+
+# N-tone equal temperament
+comp.tuning(equal=19)              # 19-TET
+comp.tuning(equal=31, bend_range=4.0)
+```
+
+`composition.tuning()` applies the tuning to every pattern automatically on each rebuild. Drum patterns (with `drum_note_map=`) are excluded by default.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `source` | `None` | Path to a Scala `.scl` file. |
+| `cents` | `None` | List of cent values for degrees 1…N (degree 0 = unison implicit). |
+| `ratios` | `None` | List of frequency ratios; each converted via `1200 × log₂(ratio)`. |
+| `equal` | `None` | Integer N for N-tone equal temperament. |
+| `bend_range` | `2.0` | Synth pitch-bend range in semitones - must match your synthesiser setting. |
+| `channels` | `None` | Channel pool for polyphonic parts (see below). |
+| `reference_note` | `60` | MIDI note mapped to scale degree 0 (C4 by default). |
+| `exclude_drums` | `True` | Skip patterns with a `drum_note_map`. |
+
+#### Per-pattern override
+
+```python
+@comp.pattern(channel=1, beats=4)
+def lead (p):
+    t = Tuning.equal(19)           # 19-TET just for this voice
+    p.apply_tuning(t, bend_range=2.0)
+    p.hit_steps([60, 62, 64, 67], range(4))
+```
+
+`p.apply_tuning()` marks the pattern so the global tuning is not double-applied.
+
+#### Polyphonic parts and channel rotation
+
+MIDI pitch bend is channel-wide: a single bend event affects every sounding note on that channel. For polyphonic parts with simultaneous notes you need a separate channel per voice. Pass a `channels` pool and Subsequence allocates channels automatically:
+
+```python
+comp.tuning("meanquar.scl", bend_range=2.0, channels=[1, 2, 3, 4])
+
+@comp.pattern(channel=1, beats=4)
+def chords (p, chord):
+    # Four simultaneous notes → each gets its own channel from [1, 2, 3, 4]
+    p.chord(chord.tones(60, count=4), beat=0, velocity=80)
+```
+
+For monophonic lines no `channels` pool is needed - all notes stay on the pattern's channel.
+
+#### Pitch-bend range
+
+The default `bend_range=2.0` (±2 semitones) matches most synthesiser factory presets. For tunings with large deviations from 12-TET (e.g., Bohlen–Pierce) set `bend_range` to `12` or `24` and configure your synth to match. The bend_range on the call to `composition.tuning()` and the synth's setting must always agree.
+
+#### The `Tuning` class
+
+```python
+from subsequence.tuning import Tuning
+
+t = Tuning.from_scl("meanquar.scl")     # Scala .scl file
+t = Tuning.from_scl_string(scl_text)    # .scl content as a string
+t = Tuning.from_cents([100, 200, ..., 1200])
+t = Tuning.from_ratios([9/8, 5/4, 4/3, 3/2, 5/3, 15/8, 2.0])
+t = Tuning.equal(19)                     # 19-TET
+
+nearest, bend = t.pitch_bend_for_note(64, reference_note=60, bend_range=2.0)
+# Returns (nearest_12tet_midi_note, bend_normalized_-1_to_+1)
+```
+
+`Tuning` is also exported as `subsequence.Tuning`.
 
 ### Chord root and bass helpers
 
@@ -2381,8 +2468,6 @@ Planned features, roughly in order of priority.
 ### Medium priority
 
 - **MIDI File Import & Analysis.** Allow users to load existing `.mid` files and extract their rhythmic or harmonic content to feed into Subsequence algorithms (e.g., generating Markov chains trained on a Bach invention MIDI file).
-
-- **Algorithmic Microtonality.** Native support for Scala (`.scl`) tuning files by automatically computing and injecting per-note pitch bend values, expanding beyond standard 12-TET.
 
 - **Visual Dashboard / Web UI.** A lightweight local web dashboard to provide real-time visual feedback of the current Chord Graph, global Conductor signals, and active patterns.
 

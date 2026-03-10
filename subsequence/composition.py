@@ -2,6 +2,7 @@ import asyncio
 import dataclasses
 import inspect
 import logging
+import os
 import queue
 import random
 import re
@@ -645,6 +646,13 @@ class Composition:
 		self._pending_hotkey_actions: typing.List[_PendingHotkeyAction] = []
 		self._keystroke_listener: typing.Optional[subsequence.keystroke.KeystrokeListener] = None
 
+		# Tuning state — populated by tuning().
+		self._tuning: typing.Optional[typing.Any] = None       # subsequence.tuning.Tuning
+		self._tuning_bend_range: float = 2.0
+		self._tuning_channels: typing.Optional[typing.List[int]] = None
+		self._tuning_reference_note: int = 60
+		self._tuning_exclude_drums: bool = True
+
 	def _resolve_channel (self, channel: int) -> int:
 
 		"""
@@ -1123,6 +1131,86 @@ class Composition:
 		"""
 
 		self._seed = value
+
+	def tuning (
+		self,
+		source: typing.Optional[typing.Union[str, "os.PathLike"]] = None,
+		*,
+		cents: typing.Optional[typing.List[float]] = None,
+		ratios: typing.Optional[typing.List[float]] = None,
+		equal: typing.Optional[int] = None,
+		bend_range: float = 2.0,
+		channels: typing.Optional[typing.List[int]] = None,
+		reference_note: int = 60,
+		exclude_drums: bool = True,
+	) -> None:
+
+		"""Set a global microtonal tuning for the composition.
+
+		The tuning is applied automatically after each pattern rebuild (before
+		the pattern is scheduled).  Drum patterns (those registered with a
+		``drum_note_map``) are excluded by default.
+
+		Supply exactly one of the source parameters:
+
+		- ``source``: path to a Scala ``.scl`` file.
+		- ``cents``: list of cent offsets for degrees 1..N (degree 0 = 0.0 is implicit).
+		- ``ratios``: list of frequency ratios (e.g., ``[9/8, 5/4, 4/3, 3/2, 2]``).
+		- ``equal``: integer for N-tone equal temperament (e.g., ``equal=19``).
+
+		For polyphonic parts, supply a ``channels`` pool.  Notes are spread
+		across those MIDI channels so each can carry an independent pitch bend.
+		The synth must be configured to match ``bend_range`` (its pitch-bend range
+		setting in semitones).
+
+		Parameters:
+			source: Path to a ``.scl`` file.
+			cents: Cent offsets for scale degrees 1..N.
+			ratios: Frequency ratios for scale degrees 1..N.
+			equal: Number of equal divisions of the period.
+			bend_range: Synth pitch-bend range in semitones (default ±2).
+			channels: Channel pool for polyphonic rotation.
+			reference_note: MIDI note mapped to scale degree 0 (default 60 = C4).
+			exclude_drums: When True (default), skip patterns that have a
+			    ``drum_note_map`` (they use fixed GM pitches, not tuned ones).
+
+		Example:
+			```python
+			# Quarter-comma meantone from a Scala file
+			comp.tuning("meanquar.scl")
+
+			# Just intonation from ratios
+			comp.tuning(ratios=[9/8, 5/4, 4/3, 3/2, 5/3, 15/8, 2])
+
+			# 19-TET, monophonic
+			comp.tuning(equal=19, bend_range=2.0)
+
+			# 31-TET with channel rotation for polyphony (channels 1-6)
+			comp.tuning("31tet.scl", channels=[0, 1, 2, 3, 4, 5])
+			```
+		"""
+		import subsequence.tuning as _tuning_mod
+
+		given = sum(x is not None for x in [source, cents, ratios, equal])
+		if given == 0:
+			raise ValueError("composition.tuning() requires one of: source, cents, ratios, or equal")
+		if given > 1:
+			raise ValueError("composition.tuning() accepts only one source parameter")
+
+		if source is not None:
+			t = _tuning_mod.Tuning.from_scl(source)
+		elif cents is not None:
+			t = _tuning_mod.Tuning.from_cents(cents)
+		elif ratios is not None:
+			t = _tuning_mod.Tuning.from_ratios(ratios)
+		else:
+			t = _tuning_mod.Tuning.equal(equal)  # type: ignore[arg-type]
+
+		self._tuning = t
+		self._tuning_bend_range = bend_range
+		self._tuning_channels = channels
+		self._tuning_reference_note = reference_note
+		self._tuning_exclude_drums = exclude_drums
 
 	def display (self, enabled: bool = True, grid: bool = False, grid_scale: float = 1.0) -> None:
 
@@ -2331,6 +2419,21 @@ class Composition:
 
 				except Exception:
 					logger.exception("Error in pattern builder '%s' (cycle %d) - pattern will be silent this cycle", self._builder_fn.__name__, current_cycle)
+
+				# Auto-apply global tuning if set and not already applied by the builder.
+				if (
+					composition_ref._tuning is not None
+					and not builder._tuning_applied
+					and not (composition_ref._tuning_exclude_drums and self._drum_note_map)
+				):
+					import subsequence.tuning as _tuning_mod
+					_tuning_mod.apply_tuning_to_pattern(
+						self,
+						composition_ref._tuning,
+						bend_range=composition_ref._tuning_bend_range,
+						channels=composition_ref._tuning_channels,
+						reference_note=composition_ref._tuning_reference_note,
+					)
 
 			def on_reschedule (self) -> None:
 

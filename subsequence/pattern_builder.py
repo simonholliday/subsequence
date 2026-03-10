@@ -103,6 +103,7 @@ class PatternBuilder(
 		self._tweaks: typing.Dict[str, typing.Any] = tweaks or {}
 		self._default_grid: int = default_grid
 		self.data: typing.Dict[str, typing.Any] = data if data is not None else {}
+		self._tuning_applied: bool = False  # set by apply_tuning() to prevent double-apply
 
 	@property
 	def grid (self) -> int:
@@ -1033,6 +1034,61 @@ class PatternBuilder(
 					note.pitch = subsequence.intervals.quantize_pitch(note.pitch, scale_pcs)
 		return self
 
+	def apply_tuning (
+		self,
+		tuning: "subsequence.tuning.Tuning",
+		bend_range: float = 2.0,
+		channels: typing.Optional[typing.List[int]] = None,
+		reference_note: int = 60,
+	) -> "PatternBuilder":
+
+		"""Apply a microtonal tuning to this pattern via pitch bend injection.
+
+		For each note in the pattern, the nearest 12-TET MIDI pitch is
+		computed and a pitchwheel ``CcEvent`` is injected at the note's onset
+		to shift the synthesiser to the exact tuned frequency.  Existing pitch
+		bend events (from ``p.portamento()``, ``p.slide()``, etc.) are shifted
+		additively so they still work correctly within the tuned pitch space.
+
+		For polyphonic patterns, supply a ``channels`` pool.  Notes will be
+		spread across those channels so each can carry an independent pitch
+		bend.  For monophonic patterns, leave ``channels=None``.
+
+		The synthesiser's pitch-bend range must match ``bend_range``.  Most
+		synths default to ±2 semitones.  For tunings that deviate more than
+		one semitone from 12-TET, increase ``bend_range`` (e.g., 12 or 24)
+		and configure the synth to match.
+
+		Parameters:
+			tuning: The :class:`~subsequence.tuning.Tuning` to apply.
+			bend_range: Synth pitch-bend range in semitones (default ±2).
+			channels: Channel pool for polyphonic rotation.  ``None`` keeps
+			    all notes on the pattern's own channel.
+			reference_note: MIDI note number that maps to scale degree 0.
+			    Default 60 (middle C).
+
+		Example:
+			```python
+			from subsequence import Tuning
+
+			meantone = Tuning.from_scl("meanquar.scl")
+
+			@composition.pattern(channel=1, beats=4)
+			def melody (p):
+			    p.seq("x x x x", pitch=60)
+			    p.apply_tuning(meantone, bend_range=2.0)
+			```
+		"""
+		import subsequence.tuning
+		subsequence.tuning.apply_tuning_to_pattern(
+			self._pattern,
+			tuning,
+			bend_range=bend_range,
+			channels=channels,
+			reference_note=reference_note,
+		)
+		self._tuning_applied = True
+		return self
 
 	def reverse (self) -> "PatternBuilder":
 
