@@ -1604,6 +1604,8 @@ When `clock_follow=True`:
 
 Without `clock_follow` (the default), `midi_input()` opens the input port but does not act on clock or transport messages - it can still receive CC input for mapping (see below).
 
+If you're not sure what your controller or clock source is sending, run `scripts/midi_in_observer.py`. It prompts you to pick a MIDI input device, then prints every incoming message (note/CC/transport) and shows a MIDI clock summary updated every 5 seconds, which is useful for identifying channels and CC numbers before wiring anything into a composition.
+
 ### MIDI CC input mapping
 
 Map hardware knobs, faders, and expression pedals directly to `composition.data` - no callback code required:
