@@ -9,6 +9,7 @@ import typing
 
 import subsequence.constants
 import subsequence.constants.velocity
+import subsequence.easing
 import subsequence.melodic_state
 import subsequence.pattern
 import subsequence.sequence_utils
@@ -1423,6 +1424,176 @@ class PatternAlgorithmicMixin:
 
 		for pulse in pulses_to_remove:
 			del self._pattern.steps[pulse]
+		return self
+
+	def ratchet (
+		self,
+		subdivisions: int = 2,
+		pitch: typing.Optional[typing.Union[int, str]] = None,
+		probability: float = 1.0,
+		velocity_start: float = 1.0,
+		velocity_end: float = 1.0,
+		shape: typing.Union[str, typing.Callable[[float], float]] = "linear",
+		gate: float = 0.5,
+		steps: typing.Optional[typing.List[int]] = None,
+		grid: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
+	) -> "PatternAlgorithmicMixin":
+
+		"""Subdivide existing notes into rapid repeated hits (rolls/ratchets).
+
+		A post-placement transform: takes notes already in the pattern and
+		replaces each one with ``subdivisions`` evenly-spaced sub-hits within
+		the original note's duration window.  The velocity of each sub-hit is
+		interpolated from ``velocity_start`` to ``velocity_end`` (as multipliers
+		on the original velocity) using the ``shape`` easing curve, so crescendo
+		rolls, decrescendo buzzes, and flat repeats are all one parameter apart.
+
+		Call ``ratchet()`` after note-placement methods (``euclidean``,
+		``hit_steps``, ``arpeggio``, etc.) and before ``swing`` or ``groove``
+		so that the subdivisions sit inside the original note slot and swing
+		displacement still affects the parent position.
+
+		Parameters:
+			subdivisions: Number of sub-hits replacing each note (default 2).
+				If the note's duration is shorter than ``subdivisions`` pulses,
+				subdivisions are clamped to ``note.duration`` so they never
+				stack on the same pulse.
+			pitch: Only ratchet notes matching this pitch (MIDI number or drum
+				name).  ``None`` (default) ratchets all notes regardless of
+				pitch — useful for melodic patterns such as arpeggios.
+			probability: Chance (0.0–1.0) that each note gets ratcheted.  Notes
+				that fail the check are left completely unchanged.  Default 1.0
+				(every note is ratcheted).
+			velocity_start: Velocity multiplier for the first sub-hit (0.0–2.0).
+				Default 1.0 (same as the original).
+			velocity_end: Velocity multiplier for the last sub-hit (0.0–2.0).
+				Default 1.0.  Set ``velocity_start=0.3, velocity_end=1.0`` for
+				a crescendo roll; ``1.0, 0.2`` for a decrescendo buzz.
+			shape: Easing curve applied to the velocity interpolation across
+				sub-hits.  Accepts any name from ``subsequence.easing`` (e.g.
+				``"ease_in"``, ``"ease_out"``, ``"s_curve"``) or a custom
+				callable ``f(t) → t`` for t ∈ [0, 1].  Default ``"linear"``.
+			gate: Sub-note duration as a fraction of each subdivision slot
+				(0.0–1.0).  ``1.0`` = legato (sub-hits touch), ``0.5`` =
+				staccato (half the slot).  Default 0.5.
+			steps: Grid positions to ratchet (e.g. ``[0, 4, 12]``).  Notes are
+				classified to grid zones the same way ``thin()`` works — swing-
+				shifted notes remain in their original zone.  ``None`` (default)
+				applies ratchet to all eligible notes.
+			grid: Grid resolution used for ``steps`` zone classification.
+				Defaults to the pattern's ``default_grid``.
+			rng: Random number generator.  Defaults to ``self.rng``.
+
+		Examples:
+			```python
+			# Subdivide every hi-hat into a triplet roll
+			p.euclidean("hh_closed", 8).ratchet(3, pitch="hh_closed")
+
+			# Crescendo roll into a snare
+			p.hit_steps("snare", [12]).ratchet(4, velocity_start=0.3,
+			                                      velocity_end=1.0,
+			                                      shape="ease_in")
+
+			# Probabilistic 2× ratchet on hi-hats only
+			p.euclidean("hh_closed", 12).ratchet(2, pitch="hh_closed",
+			                                        probability=0.4, gate=0.3)
+
+			# Ratchet only steps 0 and 8 (downbeats)
+			p.euclidean("kick_1", 6).ratchet(2, pitch="kick_1", steps=[0, 8])
+			```
+		"""
+
+		if rng is None:
+			rng = self.rng
+
+		if grid is None:
+			grid = self._default_grid
+
+		midi_pitch = self._resolve_pitch(pitch) if pitch is not None else None
+		ease_fn = subsequence.easing.get_easing(shape)
+
+		# Build zone set for steps mask (zone-based, matching thin()'s approach).
+		target_zones: typing.Optional[typing.Set[int]] = None
+		if steps is not None:
+			target_zones = set(steps)
+
+		total_pulses = self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE
+		step_pulses = total_pulses / grid
+
+		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
+
+		for pulse, step in self._pattern.steps.items():
+
+			# Zone classification for steps mask.
+			if target_zones is not None:
+				zone = int(pulse / step_pulses)
+				if zone >= grid:
+					zone = grid - 1
+				in_zone = zone in target_zones
+			else:
+				in_zone = True
+
+			# Separate targeted notes from passthrough notes.
+			if midi_pitch is None:
+				targets = list(step.notes) if in_zone else []
+				passthrough = [] if in_zone else list(step.notes)
+			else:
+				if in_zone:
+					targets = [n for n in step.notes if n.pitch == midi_pitch]
+					passthrough = [n for n in step.notes if n.pitch != midi_pitch]
+				else:
+					targets = []
+					passthrough = list(step.notes)
+
+			# Passthrough notes keep their original pulse position.
+			if passthrough:
+				if pulse not in new_steps:
+					new_steps[pulse] = subsequence.pattern.Step()
+				new_steps[pulse].notes.extend(passthrough)
+
+			for note in targets:
+
+				# Probability gate — failed notes are kept unchanged.
+				if probability < 1.0 and rng.random() >= probability:
+					if pulse not in new_steps:
+						new_steps[pulse] = subsequence.pattern.Step()
+					new_steps[pulse].notes.append(note)
+					continue
+
+				# Clamp subdivisions so sub-hits never stack on the same pulse.
+				effective_subdivs = min(subdivisions, note.duration)
+				if effective_subdivs < 1:
+					effective_subdivs = 1
+
+				slot_pulses = note.duration / effective_subdivs
+
+				for i in range(effective_subdivs):
+					sub_pulse = pulse + int(round(i * slot_pulses))
+
+					# Velocity interpolation via easing.
+					if effective_subdivs == 1:
+						t = 0.0
+					else:
+						t = i / (effective_subdivs - 1)
+					eased_t = ease_fn(t)
+					vel_mul = velocity_start + (velocity_end - velocity_start) * eased_t
+					sub_velocity = max(1, min(127, int(round(note.velocity * vel_mul))))
+
+					sub_duration = max(1, int(round(slot_pulses * gate)))
+
+					sub_note = subsequence.pattern.Note(
+						pitch=note.pitch,
+						velocity=sub_velocity,
+						duration=sub_duration,
+						channel=note.channel,
+					)
+
+					if sub_pulse not in new_steps:
+						new_steps[sub_pulse] = subsequence.pattern.Step()
+					new_steps[sub_pulse].notes.append(sub_note)
+
+		self._pattern.steps = new_steps
 		return self
 
 	def evolve (

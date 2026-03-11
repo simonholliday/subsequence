@@ -204,6 +204,26 @@ bias = [1.0 - i / 15 for i in range(16)]
 p.thin(strategy=bias, amount=swell, grid=16, rng=p.rng)
 ```
 
+### Ratchet
+
+Ratcheting is a hardware sequencer technique heard on some hardware sequencers - where a single step fires as a rapid burst of repeated hits rather than one note. `p.ratchet(subdivisions, pitch, probability, velocity_start, velocity_end, shape, gate, steps)` is a post-placement transform: it takes notes already in the pattern and replaces each one with `subdivisions` evenly-spaced sub-hits within the original note's duration window. Call it after note-placement methods and before swing or groove.
+
+Velocity across sub-hits is shaped by multipliers (`velocity_start` → `velocity_end`) interpolated via an easing curve - the same easing vocabulary used by `cc_ramp()`. `gate` (0–1) sets sub-note duration as a fraction of each slot: `0.5` is staccato, `1.0` is legato. Use `pitch` to target a single instrument; use `steps` (a list of grid indices) to only ratchet specific positions; use `probability` for chance-based subdivision.
+
+```python
+# Triplet roll on every hi-hat
+p.euclidean("hh_closed", 8).ratchet(3, pitch="hh_closed")
+
+# Crescendo snare roll: quiet → loud over 4 sub-hits
+p.hit_steps("snare", [12]).ratchet(4, velocity_start=0.3, velocity_end=1.0, shape="ease_in")
+
+# Probabilistic 2× ratchet with tight gate
+p.euclidean("hh_closed", 12).ratchet(2, probability=0.4, gate=0.25)
+
+# Ratchet only the downbeat and midpoint (steps 0 and 8 of 16)
+p.euclidean("kick_1", 6).ratchet(2, pitch="kick_1", steps=[0, 8])
+```
+
 ### Cellular automaton
 
 John von Neumann and Stanislaw Ulam conceived cellular automata in the 1940s as models of self-replicating systems. Stephen Wolfram systematically explored 1D elementary automata in the 1980s, cataloguing all 256 rules - discovering that Rule 110 is Turing-complete and Rule 30 produces output indistinguishable from randomness. `p.cellular_1d(pitch, rule, velocity)` generates rhythm from a 1D automaton where each generation evolves from the previous, so patterns self-organise, grow, glide, and die. `p.cellular_2d(parts, rule, density, velocity)` runs a 2D Life-like CA where rows map to instruments and columns to time steps.
@@ -2503,8 +2523,6 @@ Planned features, roughly in order of priority.
 - **Example library.** More short, self-contained compositions in different styles - minimal techno, ambient generative, polyrhythmic exploration, data-driven. Each example should demonstrate 2-3 features and fit on one screen.
 
 ### Medium priority
-
-- **Ratcheting & Subdivisions.** A unified `p.ratchet()` transform to take existing notes and subdivide them into rolls or ratchets based on probability or secondary patterns, allowing dynamic micro-timing and subdivision of primary algorithmic rhythms without manual coding.
 
 - **MIDI File Import & Analysis.** Allow users to load existing `.mid` files and extract their rhythmic or harmonic content to feed into Subsequence algorithms (e.g., generating Markov chains trained on a Bach invention MIDI file).
 

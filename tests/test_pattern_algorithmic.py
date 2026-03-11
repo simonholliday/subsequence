@@ -240,3 +240,174 @@ def test_branch_cycle_path_advances() -> None:
 
 	# Each path should produce a unique sequence.
 	assert len(variations) == 2 ** depth, f"Expected {2**depth} unique variations, got {len(variations)}"
+
+
+# ---------------------------------------------------------------------------
+# ratchet()
+# ---------------------------------------------------------------------------
+
+PPQN = subsequence.constants.MIDI_QUARTER_NOTE  # 24
+
+
+def test_ratchet_basic_subdivision() -> None:
+	"""A single note with subdivisions=3 becomes exactly 3 evenly-spaced notes."""
+	pattern, builder = _make_builder(length=4)
+	# Place one note at beat 0 with duration 1 beat (24 pulses).
+	builder.note(60, beat=0, velocity=100, duration=1.0)
+	builder.ratchet(3)
+
+	notes = [(pulse, n) for pulse, step in sorted(pattern.steps.items()) for n in step.notes]
+	assert len(notes) == 3
+
+	pulses = [p for p, _ in notes]
+	slot = PPQN / 3  # 8 pulses per slot
+	assert pulses[0] == 0
+	assert pulses[1] == round(slot)
+	assert pulses[2] == round(2 * slot)
+
+
+def test_ratchet_velocity_linear_shaping() -> None:
+	"""velocity_start/end with linear shape interpolates evenly across sub-hits."""
+	pattern, builder = _make_builder(length=4)
+	builder.note(60, beat=0, velocity=100, duration=1.0)
+	builder.ratchet(4, velocity_start=0.5, velocity_end=1.0, shape="linear")
+
+	notes = [n for pulse, step in sorted(pattern.steps.items()) for n in step.notes]
+	assert len(notes) == 4
+
+	velocities = [n.velocity for n in notes]
+	# t values: 0/3, 1/3, 2/3, 3/3 → multipliers: 0.5, 0.667, 0.833, 1.0
+	assert velocities[0] == round(100 * 0.5)
+	assert velocities[3] == 100
+
+
+def test_ratchet_pitch_filter_leaves_other_notes_unchanged() -> None:
+	"""With pitch filter, non-matching notes are untouched."""
+	drum_map = {"kick": 36, "hh": 42}
+	pattern, builder = _make_builder(length=4)
+	builder._drum_note_map = drum_map
+
+	# Place kick at beat 0, hh at beat 1 — both 1-beat duration.
+	builder.note(36, beat=0, velocity=100, duration=1.0)
+	builder.note(42, beat=1, velocity=80, duration=1.0)
+
+	builder.ratchet(3, pitch=42)
+
+	all_notes = [(pulse, n) for pulse, step in sorted(pattern.steps.items()) for n in step.notes]
+	kick_notes = [(p, n) for p, n in all_notes if n.pitch == 36]
+	hh_notes = [(p, n) for p, n in all_notes if n.pitch == 42]
+
+	# Kick: unchanged — still 1 note at pulse 0.
+	assert len(kick_notes) == 1
+	assert kick_notes[0][0] == 0
+	assert kick_notes[0][1].velocity == 100
+
+	# HH: subdivided into 3.
+	assert len(hh_notes) == 3
+
+
+def test_ratchet_probability_zero_leaves_all_unchanged() -> None:
+	"""probability=0.0 — no note is ratcheted."""
+	pattern, builder = _make_builder(length=4)
+	builder.note(60, beat=0, velocity=100, duration=1.0)
+	builder.note(60, beat=1, velocity=100, duration=1.0)
+	builder.ratchet(4, probability=0.0)
+
+	notes = [n for pulse, step in pattern.steps.items() for n in step.notes]
+	assert len(notes) == 2
+
+
+def test_ratchet_probability_one_ratchets_all() -> None:
+	"""probability=1.0 — every note is ratcheted."""
+	pattern, builder = _make_builder(length=4)
+	builder.note(60, beat=0, velocity=100, duration=1.0)
+	builder.note(60, beat=1, velocity=100, duration=1.0)
+	builder.ratchet(2, probability=1.0)
+
+	notes = [n for pulse, step in pattern.steps.items() for n in step.notes]
+	assert len(notes) == 4
+
+
+def test_ratchet_gate_controls_duration() -> None:
+	"""gate parameter sets sub-note duration as fraction of subdivision slot."""
+	pattern, builder = _make_builder(length=4)
+	# 1-beat note = 24 pulses, ratchet(2) → slot = 12 pulses
+	builder.note(60, beat=0, velocity=100, duration=1.0)
+	builder.ratchet(2, gate=1.0)
+
+	notes = [n for pulse, step in sorted(pattern.steps.items()) for n in step.notes]
+	# gate=1.0 → duration = max(1, round(12 * 1.0)) = 12
+	assert all(n.duration == 12 for n in notes)
+
+	# Reset and test gate=0.5
+	pattern2, builder2 = _make_builder(length=4)
+	builder2.note(60, beat=0, velocity=100, duration=1.0)
+	builder2.ratchet(2, gate=0.5)
+
+	notes2 = [n for pulse, step in sorted(pattern2.steps.items()) for n in step.notes]
+	assert all(n.duration == 6 for n in notes2)
+
+
+def test_ratchet_short_note_clamping() -> None:
+	"""Subdivisions are clamped to note.duration so sub-hits never stack."""
+	pattern, builder = _make_builder(length=4)
+	# Place a note with duration=2 pulses (very short) — use pattern.add_note directly.
+	pattern.add_note(0, pitch=60, velocity=100, duration=2)
+	builder.ratchet(8)
+
+	notes = [n for pulse, step in pattern.steps.items() for n in step.notes]
+	# Clamped to 2 subdivisions (= note.duration).
+	assert len(notes) == 2
+
+
+def test_ratchet_steps_mask_targets_correct_positions() -> None:
+	"""steps mask only ratchets notes at specified grid zones."""
+	pattern, builder = _make_builder(length=4)  # default_grid=16
+	# Three notes at beat 0, 1, 2 (grid steps 0, 4, 8 in a 16-step bar).
+	builder.note(60, beat=0, velocity=100, duration=1.0)
+	builder.note(60, beat=1, velocity=100, duration=1.0)
+	builder.note(60, beat=2, velocity=100, duration=1.0)
+
+	# Only ratchet grid step 0 (beat 0) and step 8 (beat 2).
+	builder.ratchet(2, steps=[0, 8])
+
+	notes = [(pulse, n) for pulse, step in sorted(pattern.steps.items()) for n in step.notes]
+	# Beat 0 → 2 subdivisions; beat 1 → 1 note unchanged; beat 2 → 2 subdivisions = 5 total.
+	assert len(notes) == 5
+
+
+def test_ratchet_chainable() -> None:
+	"""ratchet() returns self so it can be chained."""
+	pattern, builder = _make_builder(length=4)
+	builder.note(60, beat=0, velocity=100, duration=1.0)
+	result = builder.ratchet(2).ratchet(1)
+	assert result is builder
+
+
+def test_ratchet_deterministic_with_seed() -> None:
+	"""Same RNG seed + probability < 1.0 produces identical output across calls."""
+	import random
+
+	def run():
+		pattern, builder = _make_builder(length=4)
+		builder.note(60, beat=0, velocity=100, duration=1.0)
+		builder.note(60, beat=1, velocity=100, duration=1.0)
+		builder.note(60, beat=2, velocity=100, duration=1.0)
+		builder.ratchet(3, probability=0.5, rng=random.Random(42))
+		return tuple(
+			(pulse, n.velocity, n.duration)
+			for pulse, step in sorted(pattern.steps.items())
+			for n in step.notes
+		)
+
+	assert run() == run()
+
+
+def test_ratchet_velocity_preserved_without_shaping() -> None:
+	"""Default velocity_start=1.0, velocity_end=1.0 keeps original velocity."""
+	pattern, builder = _make_builder(length=4)
+	builder.note(60, beat=0, velocity=80, duration=1.0)
+	builder.ratchet(4)
+
+	notes = [n for pulse, step in pattern.steps.items() for n in step.notes]
+	assert all(n.velocity == 80 for n in notes)
