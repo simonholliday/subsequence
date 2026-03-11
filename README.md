@@ -1,12 +1,12 @@
 # Subsequence
 
-**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence is a generative engine for your studio. Engineered for rock-solid timing and efficiency, it uses cognitive harmony (chord progressions that follow how listeners expect music to move) and stateful patterns to drive your hardware synths and VSTs. It gives you a palette of algorithmic building blocks - Euclidean rhythms, cellular automata, L-systems, Markov chains-and a stateful engine that lets them interact and evolve over time. It is designed for **the musician who wants to build compositions that surprise them** - where patterns combine, react to context, and develop in ways that reward exploration.
+**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence is a professional-grade generative MIDI sequencer and algorithmic composition engine for your studio. Engineered for rock-solid timing and efficiency, it uses cognitive harmony (chord progressions that follow how listeners expect music to move) and stateful patterns to drive your hardware synths and VSTs. It gives you a palette of advanced algorithmic building blocks - Euclidean rhythm generators, cellular automata, L-systems, Markov chains-and a stateful engine that lets them interact and evolve over time. It is designed for **the professional musician who wants to build generative music that surprises them** - where patterns combine, react to context, and develop in ways that reward exploration.
 
 Unlike tools that loop a fixed pattern forever, Subsequence rebuilds every pattern fresh before each cycle, granting macro-level structural control and narrative evolution. Each rebuild has full context - the current chord, the composition section, the cycle count, shared data from other patterns. A Euclidean rhythm can thin itself as tension builds; a cellular automaton can seed from the harmony.
 
-Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes, or DAW provide the sound. There are no fixed limits on complexity or length.
+Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes, or DAW provide the sound. Serving as a boundless software alternative to hardware sequencers, there are no fixed limits on tracks, polyphony, complexity, or pattern length.
 
-> **What you need:** Basic Python knowledge and any MIDI-controllable instrument. Subsequence generates pure MIDI data; it does not produce sound itself.
+> **What you need:** Basic Python knowledge and any MIDI-controllable instrument. Whether you are an experienced coder or a musician tempted to learn Python for the first time, the API is intuitive and accessible. Subsequence generates pure MIDI data; it does not produce sound itself.
 
 
 ## Contents
@@ -58,14 +58,14 @@ Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes
 
 ### Introduction
 
-Subsequence is a generative engine for your studio. Engineered for rock-solid timing and efficiency, it uses cognitive harmony (chord progressions that follow how listeners expect music to move) and stateful patterns to drive your hardware synths and VSTs. It gives you a palette of algorithmic building blocks - Euclidean rhythms, cellular automata, L-systems, Markov chains - and a stateful engine that lets them interact and evolve over time.
+Subsequence is a professional-grade generative MIDI sequencer and algorithmic composition engine for your studio. Engineered for rock-solid timing and efficiency, it uses cognitive harmony (chord progressions that follow how listeners expect music to move) and stateful patterns to drive your hardware synths and VSTs. It gives you a palette of advanced algorithmic building blocks - Euclidean rhythm generators, cellular automata, L-systems, Markov chains - and a stateful engine that lets them interact and evolve over time.
 
-It is designed for **the musician who wants to build compositions that surprise them** - where patterns combine, react to context, and develop in ways that reward exploration.
+It is designed for **the professional musician who wants to build generative music that surprises them** - where patterns combine, react to context, and develop in ways that reward exploration.
 
 ### Why Subsequence?
 
 - **Precision and efficiency.** Built for live performance and serious studio use. A highly-optimized hybrid timing strategy achieves typical pulse jitter of **< 5 μs** on Linux, while a comprehensively tested codebase provides rock-solid stability.
-- **Accessible Python, no CS degree required.** If you can configure a synth, you can write generative music here. Simple building blocks mean you can get started with tiny scripts and learn as you go.
+- **Accessible Python, no CS degree required.** If you can configure a synth, you can write generative music here. It is the perfect project to tempt a musician into learning basic Python. Simple algorithmic building blocks mean you can get started with tiny scripts and learn as you go.
 - **Not just for algorithms.** You can program traditional basslines or fixed drum grooves without any generative variation. Use Subsequence as a highly precise, Python-driven standard MIDI sequencer alongside your evolving patterns.
 - **Implicit Compositional Structure.** Subsequence understands predefined sections, bringing overarching musical form to a piece without getting stuck in infinite loops. Patterns rebuild each cycle with full context - chord, section, history - so music can grow and develop across defined movement.
 - **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition (big leaps tend to reverse, small steps tend to continue). The engine writes melodies that sound *human* because it models deep listener expectations.
