@@ -26,10 +26,11 @@ What makes it different:
   cycle count, shared data from other patterns. A Euclidean rhythm can
   thin itself as tension builds, a cellular automaton can seed from the
   harmony, and a Markov chain can shift behaviour between sections.
-- **Cognitive harmony engine.** Chord progressions evolve via weighted
-  transition graphs with adjustable gravity and Narmour-based melodic
-  inertia. Eleven built-in palettes, automatic voice leading, and frozen
-  progressions to lock some sections while others evolve freely.
+- **Optional chord graph.** Define weighted chord and key transitions
+  via probability graphs, with gravity and automatic voice leading.
+  Eleven built-in palettes and frozen progressions to lock some sections
+  while others evolve freely. Layer on cognitive harmony for
+  Narmour-based melodic inertia.
 - **Sub-microsecond clock.** Hybrid sleep+spin timing achieves typical
   pulse jitter of < 5 us on Linux, with zero long-term drift.
 - **Turn anything into music.** ``composition.schedule()`` runs any
