@@ -946,7 +946,8 @@ class Sequencer:
 
 		Each MIDI ``clock`` tick advances exactly one pulse (24 ppqn = internal ppqn).
 		Transport messages (``start``, ``stop``, ``continue``) control sequencer state.
-		The loop waits for a ``start`` or ``continue`` before processing clock ticks.
+		The loop waits for a ``start`` or ``continue`` before advancing pulses,
+		but still uses incoming ticks to estimate BPM for display.
 		"""
 
 		assert self._midi_input_queue is not None, "MIDI input queue must be initialized for external clock"
@@ -962,8 +963,10 @@ class Sequencer:
 
 			if message.type == "clock":
 
-				# Ignore clock ticks until we receive a start or continue.
+				# Prime BPM estimation while waiting for start/continue,
+				# but do not advance pulses or schedule events yet.
 				if self._waiting_for_start:
+					self._estimate_bpm(time.perf_counter())
 					continue
 
 				self._estimate_bpm(time.perf_counter())
@@ -976,7 +979,6 @@ class Sequencer:
 				self.pulse_count = 0
 				self.current_bar = -1
 				self.current_beat = -1
-				self._clock_tick_times = []
 				self._waiting_for_start = False
 
 			elif message.type == "stop":

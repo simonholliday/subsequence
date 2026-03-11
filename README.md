@@ -1599,7 +1599,7 @@ When `clock_follow=True`:
 - A MIDI **stop** message halts the sequencer
 - A MIDI **start** message resets to pulse 0 and begins counting
 - A MIDI **continue** message resumes from the current position
-- BPM is estimated from incoming tick intervals (for display only)
+- BPM is estimated from incoming tick intervals (for display only), including ticks received before the first start
 - `set_bpm()` has no effect - tempo is determined by the external clock
 
 Without `clock_follow` (the default), `midi_input()` opens the input port but does not act on clock or transport messages - it can still receive CC input for mapping (see below).
