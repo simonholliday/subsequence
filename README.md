@@ -69,7 +69,10 @@ It is designed for **the musician who wants to build compositions that surprise 
 - **Not just for algorithms.** You can program traditional basslines or fixed drum grooves without any generative variation. Use Subsequence as a highly precise, Python-driven standard MIDI sequencer alongside your evolving patterns.
 - **Implicit Compositional Structure.** Subsequence understands predefined sections, bringing overarching musical form to a piece without getting stuck in infinite loops. Patterns rebuild each cycle with full context - chord, section, history - so music can grow and develop across defined movement.
 - **Built-in harmonic intelligence.** Optional chord graphs with weighted transitions, gravity, voice leading, and Narmour-based melodic cognition (big leaps tend to reverse, small steps tend to continue). The engine writes melodies that sound *human* because it models deep listener expectations.
-- **From sketch to studio.** Subsequence is a fast way to explore ideas. When something clicks, [record the session](#midi-recording-and-rendering) as a standard multi-channel MIDI file and bring it straight into your DAW to arrange, edit, and polish.
+- **Between traditional and generative.** Most sequencers repeat a fixed loop. Most live-coding environments are stateless - the algorithm has no memory of what it just generated. Subsequence rebuilds every pattern fresh each cycle with full context: current chord, section, history, shared data. Patterns that evolve, remember, and react.
+- **Patterns that talk to each other.** Shared state (`composition.data`) lets autonomous generators cooperate without coupling. A drum pattern can broadcast its density; a bass pattern reads it to place complementary gaps. No callbacks, no wiring - just a shared namespace rebuilt in sync.
+- **Explore, capture, produce.** Seed a session for deterministic output: explore freely, and when something clicks, the same seed recreates it exactly. [Record](#midi-recording-and-rendering) to a standard multi-channel `.mid` file and bring it straight into your DAW to arrange, edit, and polish.
+- **Turn anything into music.** Patterns are plain Python functions, so any data source - live APIs, sensors, files, network streams - can drive musical decisions at rebuild time. Orbital telemetry, weather data, stock feeds, machine learning outputs: if Python can read it, Subsequence can play it.
 - **Microtonal-ready.** Scala `.scl` file support and N-TET equal temperaments out of the box. Per-note pitch bend is injected automatically - no MPE, no special hardware. Works with any standard MIDI synth.
 
 ### What it does
@@ -123,6 +126,8 @@ For the complete API reference, see the **[documentation](https://simonholliday.
 Before diving into the API, here's what powers it. Subsequence is built on algorithms borrowed from mathematics, physics, biology, and computer science - ideas originally developed to model weather, simulate chemical reactions, draw straight lines on plotters, and generate textures for films. Each one, when applied to rhythm and melody, produces results with a character you can't achieve by programming notes by hand.
 
 These are some of the building blocks available for composition in Subsequence. You don't need to understand the maths to use them - most take two or three parameters and produce something musically interesting immediately.
+
+They're designed to work together inside the stateful engine. A Euclidean rhythm can thin itself based on a conductor signal; a cellular automaton can seed from the current chord; a Perlin noise field can drift velocity across bars while a Markov chain steers the harmony. The algorithms are the vocabulary - the rebuild engine is the grammar.
 
 The first three entries below (`perlin_1d`, `logistic_map`, `pink_noise`) are standalone functions in `subsequence.sequence_utils`, called directly inside pattern functions. The rest are `p.` methods on `PatternBuilder` - you'll see how patterns work in the [Composition API](#composition-api) section that follows.
 
