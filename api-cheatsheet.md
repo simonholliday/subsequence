@@ -44,6 +44,7 @@ The top-level controller for a musical piece.
 | `set_bpm(bpm) -> None` | Instantly change the tempo. |
 | `target_bpm(bpm, bars, shape) -> None` | Smoothly ramp the tempo to a target value over a number of bars. |
 | `trigger(fn, channel, beats, bars, steps, unit, quantize, drum_note_map, chord) -> None` | Trigger a one-shot pattern immediately or on a quantized boundary. |
+| `tuning(source, cents, ratios, equal, bend_range, channels, reference_note, exclude_drums) -> None` | Set a global microtonal tuning for the composition. |
 | `tweak(name, **kwargs) -> None` | Override parameters for a running pattern. |
 | `unmute(name) -> None` | Unmute a previously muted pattern. |
 | `web_ui() -> None` | Enable the realtime Web UI Dashboard. |
@@ -56,8 +57,10 @@ The musician's 'palette' for creating musical content.
 | Method | Description |
 |---|---|
 | `__init__(pattern, cycle, conductor, drum_note_map, section, bar, rng, tweaks, default_grid, data) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
+| `apply_tuning(tuning, bend_range, channels, reference_note) -> 'PatternBuilder'` | Apply a microtonal tuning to this pattern via pitch bend injection. |
 | `arpeggio(pitches, spacing, velocity, duration, direction, rng) -> 'PatternBuilder'` | Cycle through a list of pitches at regular beat intervals. |
 | `bend(note, amount, start, end, shape, resolution) -> 'PatternMidiMixin'` | Bend a specific note by index. |
+| `branch(seed, depth, path, mutation, velocity, duration, spacing) -> 'PatternAlgorithmicMixin'` | Generate a melodic variation by navigating a fractal tree of transforms. |
 | `bresenham(pitch, pulses, velocity, duration, dropout, no_overlap, rng) -> 'PatternAlgorithmicMixin'` | Generate a rhythm using the Bresenham line algorithm. |
 | `bresenham_poly(parts, velocity, duration, grid, dropout, no_overlap, rng) -> 'PatternAlgorithmicMixin'` | Distribute multiple drum voices across the pattern using weighted Bresenham. |
 | `broken_chord(chord_obj, root, order, spacing, velocity, duration, inversion) -> 'PatternBuilder'` | Play a chord as an arpeggio in a specific or random order. |
@@ -76,6 +79,7 @@ The musician's 'palette' for creating musical content.
 | `dropout(probability, rng) -> 'PatternBuilder'` | Randomly remove notes from the pattern. |
 | `euclidean(pitch, pulses, velocity, duration, dropout, no_overlap, rng) -> 'PatternAlgorithmicMixin'` | Generate a Euclidean rhythm. |
 | `every(n, fn) -> 'PatternBuilder'` | Apply a transformation every Nth cycle. |
+| `evolve(pitches, steps, drift, velocity, duration, spacing) -> 'PatternAlgorithmicMixin'` | Loop a pitch sequence that gradually mutates each cycle. |
 | `fibonacci(pitch, steps, velocity, duration) -> 'PatternAlgorithmicMixin'` | Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing). |
 | `fill(pitch, spacing, velocity, duration) -> 'PatternBuilder'` | Fill the pattern with a note repeating at a fixed beat interval. |
 | `ghost_fill(pitch, density, velocity, bias, no_overlap, grid, duration, rng) -> 'PatternAlgorithmicMixin'` | Fill the pattern with probability-biased ghost notes. |
@@ -96,12 +100,14 @@ The musician's 'palette' for creating musical content.
 | `osc(address, *args, beat) -> 'PatternMidiMixin'` | Send an OSC message at a beat position. |
 | `osc_ramp(address, start, end, beat_start, beat_end, resolution, shape) -> 'PatternMidiMixin'` | Interpolate an OSC float value over a beat range. |
 | `param(name, default) -> Any` | Read a tweakable parameter for this pattern. |
+| `phrase(length) -> subsequence.pattern_builder.Phrase` | Return the current bar's position within a repeating musical phrase. |
 | `pitch_bend(value, beat) -> 'PatternMidiMixin'` | Send a single pitch bend message at a beat position. |
 | `pitch_bend_ramp(start, end, beat_start, beat_end, resolution, shape) -> 'PatternMidiMixin'` | Interpolate pitch bend over a beat range. |
 | `portamento(time, shape, resolution, bend_range, wrap) -> 'PatternMidiMixin'` | Glide between all consecutive notes using pitch bend. |
 | `program_change(program, beat, bank_msb, bank_lsb) -> 'PatternMidiMixin'` | Send a Program Change message, optionally preceded by bank select. |
-| `quantize(key, mode) -> 'PatternBuilder'` | Snap all notes in the pattern to the nearest pitch in a scale. |
+| `quantize(key, mode, strength) -> 'PatternBuilder'` | Snap all notes in the pattern to the nearest pitch in a scale. |
 | `randomize(timing, velocity, rng) -> 'PatternBuilder'` | Add random variations to note timing and velocity. |
+| `ratchet(subdivisions, pitch, probability, velocity_start, velocity_end, shape, gate, steps, grid, rng) -> 'PatternAlgorithmicMixin'` | Subdivide existing notes into rapid repeated hits (rolls/ratchets). |
 | `reaction_diffusion(pitch, threshold, velocity, duration, feed_rate, kill_rate, steps, no_overlap, dropout, rng) -> 'PatternAlgorithmicMixin'` | Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation. |
 | `reverse() -> 'PatternBuilder'` | Flip the pattern backwards in time. |
 | `self_avoiding_walk(pitches, spacing, velocity, duration, rng) -> 'PatternAlgorithmicMixin'` | Generate a melody using a self-avoiding random walk. |
