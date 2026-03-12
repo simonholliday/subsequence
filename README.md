@@ -1,6 +1,6 @@
 # Subsequence
 
-**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence is a professional-grade generative MIDI sequencer and algorithmic composition engine for your studio. It gives you a palette of advanced algorithmic building blocks - Euclidean rhythm generators, cellular automata, L-systems, Markov chains - and a stateful engine that lets them interact and evolve over time, driving your hardware synths and VSTs with rock-solid timing.
+**A Stateful Algorithmic MIDI Sequencer for Python.** Subsequence is a generative MIDI sequencer and algorithmic composition engine for your studio. It gives you a palette of advanced algorithmic building blocks - Euclidean rhythm generators, cellular automata, L-systems, Markov chains - and a stateful engine that lets them interact and evolve over time, driving your hardware synths and VSTs with rock-solid timing.
 
 It is designed for **the professional musician who wants generative music with as much control or chaos as they choose** - where patterns combine, react to context, and develop in ways that reward exploration.
 
@@ -62,7 +62,7 @@ Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes
 
 ### Introduction
 
-Subsequence is a professional-grade generative MIDI sequencer and algorithmic composition engine for your studio. Engineered for rock-solid timing and efficiency, it gives you a palette of advanced algorithmic building blocks - Euclidean rhythm generators, cellular automata, L-systems, Markov chains - and a stateful engine that lets them interact and evolve over time.
+Subsequence is a generative MIDI sequencer and algorithmic composition engine for your studio. Engineered for rock-solid timing and efficiency, it gives you a palette of advanced algorithmic building blocks - Euclidean rhythm generators, cellular automata, L-systems, Markov chains - and a stateful engine that lets them interact and evolve over time.
 
 It is designed for **the professional musician who wants generative music with as much control or chaos as they choose** - where patterns combine, react to context, and develop in ways that reward exploration. An optional chord graph lets you define weighted chord and key transitions; layer on cognitive harmony for Narmour-based melodic inertia, gravity, and voice leading - progressions that model how listeners expect music to move.
 
