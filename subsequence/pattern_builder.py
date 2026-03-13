@@ -5,6 +5,7 @@ import typing
 import subsequence.chords
 import subsequence.constants
 import subsequence.constants.velocity
+import subsequence.easing
 import subsequence.groove
 import subsequence.intervals
 import subsequence.pattern
@@ -893,6 +894,95 @@ class PatternBuilder(
 
 			for note in step.notes:
 				note.velocity = int(low + (high - low) * vdc_value)
+		return self
+
+	def duck_map (
+		self,
+		steps: typing.Iterable[int],
+		floor: float = 0.0,
+		grid: typing.Optional[int] = None,
+	) -> typing.List[float]:
+
+		"""
+		Build a per-step velocity multiplier list for sidechain-style ducking.
+
+		Returns a list of floats, one per grid step: ``floor`` at each trigger
+		step in ``steps``, ``1.0`` everywhere else. Pass the result to
+		``p.data`` for another pattern to read, then apply with
+		``p.scale_velocities()``.
+
+		Parameters:
+			steps: Grid indices that trigger ducking (e.g. kick hit positions).
+			floor: Multiplier written at trigger steps. ``0.0`` = full silence,
+				``1.0`` = no effect. Values in between give partial ducking.
+			grid: Grid resolution (defaults to ``p.grid``).
+
+		Returns:
+			``List[float]`` of length ``grid``.
+
+		Example::
+
+			# Full duck on kick hits
+			p.data["kick_sc"] = p.duck_map(kick_steps)
+
+			# Softer duck
+			p.data["kick_sc"] = p.duck_map(kick_steps, floor=0.3)
+
+			# Velocity-proportional: deeper duck for harder kicks
+			p.data["kick_sc"] = p.duck_map(kick_steps, floor=1.0 - (velocity / 127))
+		"""
+
+		if grid is None:
+			grid = self._default_grid
+
+		trigger = set(steps)
+		return [floor if s in trigger else 1.0 for s in range(grid)]
+
+	def scale_velocities (
+		self,
+		factors: typing.Sequence[float],
+		grid: typing.Optional[int] = None,
+	) -> "PatternBuilder":
+
+		"""
+		Scale note velocities by a per-step multiplier list.
+
+		Each note's velocity is multiplied by the factor at the corresponding
+		grid step index. A factor of ``1.0`` leaves the velocity unchanged;
+		``0.0`` silences the note; ``0.5`` halves it.
+
+		Parameters:
+			factors: Per-step multipliers, one float per grid step.
+				Values outside ``[0.0, 1.0]`` are valid — result is clamped to
+				``[0, 127]`` after scaling.
+			grid: Grid resolution (defaults to ``p.grid``). Must match the
+				length of ``factors``.
+
+		Returns:
+			``self`` for fluent chaining.
+
+		Example::
+
+			# Sidechain ducking: silence bass on kick steps, full volume elsewhere.
+			kick_steps = {0, 4, 8, 12}
+			p.data["kick_sc"] = [0.0 if s in kick_steps else 1.0 for s in range(p.grid)]
+
+			# In the bass pattern:
+			p.scale_velocities(p.data.get("kick_sc", [1.0] * p.grid))
+		"""
+
+		if grid is None:
+			grid = self._default_grid
+
+		step_duration = self._pattern.length / grid
+		pulses_per_step = step_duration * subsequence.constants.MIDI_QUARTER_NOTE
+
+		for pulse, step in self._pattern.steps.items():
+			idx = int(round(pulse / pulses_per_step))
+			if 0 <= idx < len(factors):
+				for note in step.notes:
+					note.velocity = max(0, min(127, int(note.velocity * factors[idx])))
+
 		return self
 
 	def randomize (

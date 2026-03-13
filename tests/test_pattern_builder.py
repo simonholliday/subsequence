@@ -120,6 +120,50 @@ def test_fill_invalid_step_raises () -> None:
 		builder.fill(60, spacing=-1)
 
 
+def test_duck_map_builds_multiplier_list () -> None:
+
+	"""
+	duck_map should return floor at trigger steps and 1.0 elsewhere.
+	"""
+
+	_, builder = _make_builder(default_grid=4)
+
+	result = builder.duck_map(steps=[0, 2], floor=0.0)
+
+	assert result == [0.0, 1.0, 0.0, 1.0]
+
+
+def test_duck_map_partial_floor () -> None:
+
+	"""
+	duck_map should write the given floor value, not just 0.0.
+	"""
+
+	_, builder = _make_builder(default_grid=4)
+
+	result = builder.duck_map(steps=[1], floor=0.5)
+
+	assert result == [1.0, 0.5, 1.0, 1.0]
+
+
+def test_scale_velocities_applies_factors () -> None:
+
+	"""
+	scale_velocities should multiply each note's velocity by the per-step factor.
+	"""
+
+	pattern, builder = _make_builder(default_grid=4, length=4)
+
+	builder.sequence(steps=[0, 1, 2, 3], pitches=60, velocities=100, durations=0.1)
+	builder.scale_velocities([0.0, 0.5, 1.0, 1.0])
+
+	pps = subsequence.constants.MIDI_QUARTER_NOTE
+
+	assert pattern.steps[0].notes[0].velocity == 0
+	assert pattern.steps[pps].notes[0].velocity == 50
+	assert pattern.steps[pps * 2].notes[0].velocity == 100
+
+
 def test_chord_places_all_tones () -> None:
 
 	"""
