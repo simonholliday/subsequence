@@ -257,3 +257,46 @@ def test_map_value_zero_range_safeguard ():
 
 	val = subsequence.easing.map_value(0.5, 0.0, 0.0, 0.0, 100.0)
 	assert val == pytest.approx(0.0)
+
+
+# ─── ramp ─────────────────────────────────────────────────────────────────────
+
+
+def test_ramp_linear_three_steps ():
+
+	"""ramp with linear shape produces evenly spaced values."""
+
+	result = subsequence.easing.ramp(3, 0.0, 1.0, "linear")
+	assert result == pytest.approx([0.0, 0.5, 1.0])
+
+
+def test_ramp_bounds ():
+
+	"""ramp first and last values match low and high exactly."""
+
+	result = subsequence.easing.ramp(8, 50.0, 100.0, "ease_in_out")
+	assert result[0] == pytest.approx(50.0)
+	assert result[-1] == pytest.approx(100.0)
+
+
+def test_ramp_single_step ():
+
+	"""ramp(1, ...) returns [low] regardless of shape."""
+
+	assert subsequence.easing.ramp(1, 42.0, 99.0) == pytest.approx([42.0])
+
+
+def test_ramp_monotonic_ease_in ():
+
+	"""ramp with ease_in shape produces monotonically non-decreasing values."""
+
+	result = subsequence.easing.ramp(8, 0.0, 1.0, "ease_in")
+	assert all(result[i] <= result[i + 1] for i in range(len(result) - 1))
+
+
+def test_ramp_length ():
+
+	"""ramp returns a list of exactly n values."""
+
+	assert len(subsequence.easing.ramp(16, 20.0, 80.0)) == 16
+

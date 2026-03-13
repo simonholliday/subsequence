@@ -938,6 +938,56 @@ class PatternBuilder(
 		trigger = set(steps)
 		return [floor if s in trigger else 1.0 for s in range(grid)]
 
+	def velocity_ramp (
+		self,
+		low: int,
+		high: int,
+		shape: str = "linear",
+		grid: typing.Optional[int] = None,
+	) -> typing.List[int]:
+
+		"""
+		Build a per-step velocity list that ramps from *low* to *high*.
+
+		A musician-friendly shortcut for the common pattern of generating
+		a fixed-length velocity sweep using an easing curve. Returns
+		``List[int]`` ready to pass directly to ``velocities=`` parameters.
+
+		Parameters:
+			low: Velocity at the first step (0–127).
+			high: Velocity at the last step (0–127).
+			shape: Easing curve name (see ``subsequence.easing``). Common
+				values: ``"linear"``, ``"ease_in"``, ``"ease_out"``,
+				``"ease_in_out"``. Defaults to ``"linear"``.
+			grid: Number of steps (defaults to ``p.grid``).
+
+		Returns:
+			``List[int]`` of length ``grid``, values clamped to 0–127.
+
+		Example::
+
+			# Snare roll that swells into a downbeat
+			p.sequence(
+				steps=range(16),
+				pitches="snare_1",
+				durations=0.1,
+				velocities=p.velocity_ramp(25, 100, "ease_in"),
+			)
+
+			# Fade-out ghost fill
+			p.ghost_fill("snare_1", 1,
+				velocity=p.velocity_ramp(80, 20, "ease_out"),
+				bias="sixteenths", no_overlap=True)
+		"""
+
+		if grid is None:
+			grid = self._default_grid
+
+		return [
+			max(0, min(127, int(v)))
+			for v in subsequence.easing.ramp(grid, float(low), float(high), shape)
+		]
+
 	def scale_velocities (
 		self,
 		factors: typing.Sequence[float],

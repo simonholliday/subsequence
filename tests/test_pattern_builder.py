@@ -4725,3 +4725,24 @@ def test_phrase_last_of_16 ():
 def test_phrase_cycle_through_4_bars ():
 	positions = [_make_builder_at_bar(bar).phrase(4).bar for bar in range(8)]
 	assert positions == [0, 1, 2, 3, 0, 1, 2, 3]
+
+
+def test_velocity_ramp_returns_int_list ():
+	_, builder = _make_builder(default_grid=4, length=4)
+	result = builder.velocity_ramp(0, 100, "linear")
+	assert len(result) == 4
+	assert all(isinstance(v, int) for v in result)
+	assert result[0] == 0
+	assert result[-1] == 100
+
+
+def test_velocity_ramp_clamped ():
+	_, builder = _make_builder(default_grid=4, length=4)
+	result = builder.velocity_ramp(0, 200, "linear")
+	assert all(0 <= v <= 127 for v in result)
+
+
+def test_velocity_ramp_uses_grid ():
+	_, builder = _make_builder(default_grid=8, length=8)
+	result = builder.velocity_ramp(50, 100)
+	assert len(result) == 8

@@ -170,6 +170,50 @@ def map_value (
     return out_min + (out_max - out_min) * eased_t
 
 
+# ─── Batch helpers ────────────────────────────────────────────────────────────
+
+
+def ramp (
+	n: int,
+	low: float = 0.0,
+	high: float = 1.0,
+	shape: typing.Union[str, EasingFn] = "linear",
+) -> typing.List[float]:
+
+	"""Return a list of *n* values eased from *low* to *high*.
+
+	This is the batch equivalent of :func:`map_value` for the common case
+	of generating a fixed-length sequence that sweeps from one value to
+	another. Useful for velocity ramps, density envelopes, filter sweeps,
+	or any per-step value that should follow a curve.
+
+	Parameters:
+		n: Number of values to generate.
+		low: The value at the first step (t = 0).
+		high: The value at the last step (t = 1).
+		shape: Easing curve name or callable (see :data:`EASING_FUNCTIONS`).
+
+	Returns:
+		``List[float]`` of length *n*. For MIDI velocity use, cast to int:
+		``[int(v) for v in easing.ramp(p.grid, 50, 100, "ease_in_out")]``
+
+	Example::
+
+		# Snare roll that swells into a hit
+		velocities = [int(v) for v in easing.ramp(p.grid, 30, 100, "ease_in")]
+		p.sequence(steps=range(16), pitches="snare_1", velocities=velocities)
+
+		# Ghost fill velocity envelope passed directly (float values accepted)
+		p.ghost_fill("snare_1", 1, velocity=easing.ramp(p.grid, 20, 80, "ease_out"),
+		             bias="sixteenths", no_overlap=True)
+	"""
+
+	fn = get_easing(shape)
+	if n == 1:
+		return [float(low)]
+	return [low + (high - low) * fn(i / (n - 1)) for i in range(n)]
+
+
 # ─── Stateful interpolation ───────────────────────────────────────────────────
 
 
