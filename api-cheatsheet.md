@@ -77,6 +77,7 @@ The musician's 'palette' for creating musical content.
 | `drone(pitch, beat, velocity) -> 'PatternBuilder'` | A musical alias for `note_on`. Places a raw Note On event without a duration, typically used for sustained notes that span multiple cycles. Must be silenced later using `drone_off()`. |
 | `drone_off(pitch) -> 'PatternBuilder'` | A musical alias for `note_off`. Places a raw Note Off event at beat 0.0. Used to stop a sequence started by `drone()`. |
 | `dropout(probability, rng) -> 'PatternBuilder'` | Randomly remove notes from the pattern. |
+| `duck_map(steps, floor, grid) -> List[float]` | Build a per-step velocity multiplier list for sidechain-style ducking. |
 | `euclidean(pitch, pulses, velocity, duration, dropout, no_overlap, rng) -> 'PatternAlgorithmicMixin'` | Generate a Euclidean rhythm. |
 | `every(n, fn) -> 'PatternBuilder'` | Apply a transformation every Nth cycle. |
 | `evolve(pitches, steps, drift, velocity, duration, spacing) -> 'PatternAlgorithmicMixin'` | Loop a pitch sequence that gradually mutates each cycle. |
@@ -110,6 +111,7 @@ The musician's 'palette' for creating musical content.
 | `ratchet(subdivisions, pitch, probability, velocity_start, velocity_end, shape, gate, steps, grid, rng) -> 'PatternAlgorithmicMixin'` | Subdivide existing notes into rapid repeated hits (rolls/ratchets). |
 | `reaction_diffusion(pitch, threshold, velocity, duration, feed_rate, kill_rate, steps, no_overlap, dropout, rng) -> 'PatternAlgorithmicMixin'` | Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation. |
 | `reverse() -> 'PatternBuilder'` | Flip the pattern backwards in time. |
+| `scale_velocities(factors, grid) -> 'PatternBuilder'` | Scale note velocities by a per-step multiplier list. |
 | `self_avoiding_walk(pitches, spacing, velocity, duration, rng) -> 'PatternAlgorithmicMixin'` | Generate a melody using a self-avoiding random walk. |
 | `seq(notation, pitch, velocity) -> 'PatternBuilder'` | Build a pattern using an expressive string-based 'mini-notation'. |
 | `sequence(steps, pitches, velocities, durations, grid, probability, rng) -> 'PatternBuilder'` | A multi-parameter step sequencer. |
@@ -125,6 +127,7 @@ The musician's 'palette' for creating musical content.
 | `thin(pitch, strategy, amount, grid, rng) -> 'PatternAlgorithmicMixin'` | Remove notes from the pattern based on their rhythmic position. |
 | `thue_morse(pitch, velocity, duration, pitch_b, velocity_b, no_overlap, dropout, rng) -> 'PatternAlgorithmicMixin'` | Place notes using the Thue-Morse aperiodic binary sequence. |
 | `transpose(semitones) -> 'PatternBuilder'` | Shift all note pitches up or down. |
+| `velocity_ramp(low, high, shape, grid) -> List[int]` | Build a per-step velocity list that ramps from *low* to *high*. |
 | `velocity_shape(low, high) -> 'PatternBuilder'` | Apply organic velocity variation to all notes in the pattern. |
 
 
