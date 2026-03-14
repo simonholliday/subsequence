@@ -118,3 +118,52 @@ def patch_midi (monkeypatch: pytest.MonkeyPatch) -> None:
 	monkeypatch.setattr(mido, "open_output", _fake_open_output)
 	monkeypatch.setattr(mido, "get_input_names", _fake_get_input_names)
 	monkeypatch.setattr(mido, "open_input", _fake_open_input)
+
+
+# ---------------------------------------------------------------------------
+# Multi-device helpers
+# ---------------------------------------------------------------------------
+
+class NamedSpyMidiOut(SpyMidiOut):
+
+	"""SpyMidiOut with a human-readable name for multi-device tests."""
+
+	def __init__ (self, name: str = "unnamed") -> None:
+		super().__init__()
+		self.name = name
+
+
+def _make_multi_output_patcher(device_names: typing.List[str]) -> typing.Callable:
+
+	"""Return an open_output stub that creates a NamedSpyMidiOut per device name."""
+
+	ports: typing.Dict[str, NamedSpyMidiOut] = {n: NamedSpyMidiOut(n) for n in device_names}
+
+	def _open(name: str) -> NamedSpyMidiOut:
+		if name not in ports:
+			ports[name] = NamedSpyMidiOut(name)
+		return ports[name]
+
+	_open._ports = ports  # type: ignore[attr-defined]
+	return _open
+
+
+@pytest.fixture
+def patch_midi_multi (monkeypatch: pytest.MonkeyPatch):
+
+	"""Patch mido for multi-device tests.
+
+	Returns a dict mapping device names to their NamedSpyMidiOut instances.
+	Registers two outputs: 'Primary MIDI' and 'Secondary MIDI'.
+	"""
+
+	device_names = ["Primary MIDI", "Secondary MIDI", "Third MIDI"]
+
+	opener = _make_multi_output_patcher(device_names)
+
+	monkeypatch.setattr(mido, "get_output_names", lambda: device_names)
+	monkeypatch.setattr(mido, "open_output", opener)
+	monkeypatch.setattr(mido, "get_input_names", lambda: ["Input A", "Input B"])
+	monkeypatch.setattr(mido, "open_input", _fake_open_input)
+
+	return opener._ports  # type: ignore[attr-defined]

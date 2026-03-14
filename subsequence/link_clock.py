@@ -23,7 +23,7 @@ import typing
 def _require_aalink() -> typing.Any:
 	"""Import aalink or raise a helpful RuntimeError."""
 	try:
-		import aalink  # type: ignore[import-not-found]
+		import aalink  # type: ignore
 		return aalink
 	except ImportError:
 		raise RuntimeError(

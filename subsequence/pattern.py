@@ -31,6 +31,7 @@ class CcEvent:
 	value: int = 0						# 0–127 for CC/program_change, -8192..8191 for pitchwheel
 	data: typing.Optional[bytes] = None	# Raw bytes payload for SysEx messages
 	channel: typing.Optional[int] = None	# If set, overrides pattern.channel for this event
+	device: typing.Optional[int] = None	# If set, overrides pattern.device for this event
 
 
 @dataclasses.dataclass
@@ -75,23 +76,25 @@ class Pattern:
 	Allows us to define and manipulate music pattern objects.
 	"""
 
-	def __init__ (self, channel: int, length: float = 16, reschedule_lookahead: float = 1) -> None:
+	def __init__ (self, channel: int, length: float = 16, reschedule_lookahead: float = 1, device: int = 0) -> None:
 
 		"""
 		Initialize a new pattern with MIDI channel, length in beats, and reschedule lookahead.
 
 		Parameters:
 			channel: The MIDI channel (0-15) this pattern will output to.
-			length: The duration of the pattern before it loops/rebuilds, measured 
+			length: The duration of the pattern before it loops/rebuilds, measured
 				in beats (e.g., 16 = 4 bars in 4/4 time). Defaults to 16.
-			reschedule_lookahead: How many beats before the end of the pattern the next 
-				cycle is built. Defaults to 1 beat. This provides a safe computational 
+			reschedule_lookahead: How many beats before the end of the pattern the next
+				cycle is built. Defaults to 1 beat. This provides a safe computational
 				buffer so events are queued before the clock actually needs them.
+			device: Output device index (0-indexed).  0 = primary device (default).
 		"""
 
 		self.channel = channel
 		self.length = length
 		self.reschedule_lookahead = reschedule_lookahead
+		self.device = device
 
 		self.steps: typing.Dict[int, Step] = {}
 		self.cc_events: typing.List[CcEvent] = []

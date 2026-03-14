@@ -476,6 +476,25 @@ Pattern length can be specified two ways - use whichever is clearest:
 
 When `output_device` is omitted, Subsequence auto-discovers available MIDI devices. If only one device is connected it is used automatically; if several are found you are prompted to choose. To skip the prompt, pass the device name directly: `Composition(output_device="Your Device:Port", ...)`.
 
+**Multiple output devices** - use `comp.midi_output()` to register additional devices. Each call returns a device index (1, 2, …) that can be used in pattern decorators or as a named alias:
+
+```python
+comp = subsequence.Composition(bpm=120, output_device="MOTU Express")  # device 0
+
+comp.midi_output("Roland Integra", name="integra")   # device 1
+comp.midi_output("Elektron Analog Four", name="a4")  # device 2
+
+@comp.pattern(channel=1, beats=4, device="integra")
+def strings(p):
+    p.note(60, beat=0)
+
+@comp.pattern(channel=1, beats=4)  # device defaults to 0 (MOTU Express)
+def bass(p):
+    p.note(36, beat=0)
+```
+
+Patterns without a `device=` parameter always route to device 0 - single-device compositions work exactly as before without any changes.
+
 MIDI channels and drum note mappings are defined by the musician in their composition file - the module does not ship studio-specific constants. Channels use 1-based numbering by default (1-16, matching instrument panels - channel 10 is drums). To use 0-based numbering (0-15, matching the raw MIDI protocol), pass `zero_indexed_channels=True`:
 
 ```python
@@ -1710,6 +1729,21 @@ Two dispatch modes:
 - **`mode="queued"`** - injected into the sequencer event queue and sent at the next pulse boundary (~0–20 ms at 120 BPM). Properly ordered with note events and **is** recorded when recording is enabled.
 
 Built-in preset strings: `"cc"` (identity), `"cc:N"` (remap to CC N), `"pitchwheel"` (scale to ±8192). Pass a callable for full control over output message type and value scaling.
+
+**Multiple input/output devices** - both `cc_map()` and `cc_forward()` support `input_device=` and `output_device=` parameters for routing between devices:
+
+```python
+comp.midi_input("Arturia KeyStep", name="keys")
+comp.midi_input("Faderfox EC4", name="faders")    # second call adds an extra input
+
+comp.midi_output("Roland Integra", name="integra")
+
+# Only respond to CC 74 from the fader box
+comp.cc_map(74, "filter", input_device="faders")
+
+# Forward mod wheel from the keyboard to pitch bend on the Integra
+comp.cc_forward(1, "pitchwheel", input_device="keys", output_device="integra")
+```
 
 ### MIDI clock output
 

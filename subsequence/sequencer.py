@@ -27,6 +27,7 @@ class PatternLike (typing.Protocol):
 	"""
 
 	channel: int
+	device: int
 	length: float
 	reschedule_lookahead: float
 	steps: typing.Dict[int, typing.Any]
@@ -56,6 +57,7 @@ class MidiEvent:
 	control: int = dataclasses.field(compare=False, default=0)
 	value: int = dataclasses.field(compare=False, default=0)
 	data: typing.Any = dataclasses.field(compare=False, default=None)
+	device: int = dataclasses.field(compare=False, default=0)
 
 
 @dataclasses.dataclass
@@ -182,8 +184,12 @@ class Sequencer:
 		# Must be initialized before set_bpm() is called below.
 		self._link_clock: typing.Optional[typing.Any] = None
 
+		# Multi-device MIDI port registries.
+		# Output device 0 is always the primary/default device.
+		self._output_devices: subsequence.midi_utils.MidiDeviceRegistry = subsequence.midi_utils.MidiDeviceRegistry()
+		self._input_devices: subsequence.midi_utils.MidiDeviceRegistry = subsequence.midi_utils.MidiDeviceRegistry()
+
 		# Internal state initialization (needed before set_bpm)
-		self.midi_in: typing.Any = None
 		self._midi_input_queue: typing.Optional[asyncio.Queue] = None
 		self._input_loop: typing.Optional[asyncio.AbstractEventLoop] = None
 		self._event_loop: typing.Optional[asyncio.AbstractEventLoop] = None
@@ -196,7 +202,7 @@ class Sequencer:
 		self.pulse_count = 0
 		self.current_bar: int = -1
 		self.current_beat: int = -1
-		self.active_notes: typing.Set[typing.Tuple[int, int]] = set()
+		self.active_notes: typing.Set[typing.Tuple[int, int, int]] = set()  # (device, channel, note)
 
 		self.queue_lock = asyncio.Lock()
 		self.pattern_lock = asyncio.Lock()
@@ -223,8 +229,6 @@ class Sequencer:
 
 		self.set_bpm(initial_bpm)
 
-
-		self.midi_out = None
 		self._init_midi_output()
 
 		# OSC server reference — set by Composition after osc_server.start()
@@ -232,6 +236,50 @@ class Sequencer:
 
 		# Callbacks
 		self.callbacks: typing.List[typing.Callable[[int], typing.Coroutine]] = []
+
+	# ------------------------------------------------------------------
+	# Backward-compatible properties: midi_out / midi_in
+	# External code and tests may reference these directly.  They always
+	# resolve to device 0 of the respective registry.
+	# ------------------------------------------------------------------
+
+	@property
+	def midi_out (self) -> typing.Optional[typing.Any]:
+		"""Return the primary output port (device 0), or None."""
+		return self._output_devices.get(0)
+
+	@midi_out.setter
+	def midi_out (self, value: typing.Optional[typing.Any]) -> None:
+		"""Allow test code to inject a fake output port as device 0."""
+		if value is None:
+			return
+		if len(self._output_devices) == 0:
+			self._output_devices.add("default", value)
+		else:
+			self._output_devices.replace(0, value)
+
+	@property
+	def midi_in (self) -> typing.Optional[typing.Any]:
+		"""Return the primary input port (device 0), or None."""
+		return self._input_devices.get(0)
+
+	@midi_in.setter
+	def midi_in (self, value: typing.Optional[typing.Any]) -> None:
+		"""Allow test code to inject a fake input port as device 0."""
+		if value is None:
+			return
+		if len(self._input_devices) == 0:
+			self._input_devices.add("default", value)
+		else:
+			self._input_devices.replace(0, value)
+
+	def add_output_device (self, name: str, port: typing.Any) -> int:
+		"""Register an additional output device.  Returns the device index."""
+		return self._output_devices.add(name, port)
+
+	def add_input_device (self, name: str, port: typing.Any) -> int:
+		"""Register an additional input device.  Returns the device index."""
+		return self._input_devices.add(name, port)
 
 	def _record_event (self, pulse: int, message: typing.Union[mido.Message, mido.MetaMessage]) -> None:
 
@@ -399,37 +447,44 @@ class Sequencer:
 
 	def _init_midi_output (self) -> None:
 
-		"""Initialize the MIDI output port.
+		"""Initialize the primary MIDI output port (device 0).
 
 		When ``output_device_name`` was provided, opens that device directly.
 		When omitted, auto-discovers available devices: uses the only one if
 		exactly one is found, or prompts the user to choose if several exist.
 		"""
 
-		# Use the helper function for device selection
 		device_name, midi_out = subsequence.midi_utils.select_output_device(self.output_device_name)
-		
-		if device_name:
+
+		if device_name and midi_out is not None:
 			self.output_device_name = device_name
-			self.midi_out = midi_out
+			self._output_devices.add(device_name, midi_out)
 
 
 	def _init_midi_input (self) -> None:
 
-		"""Initialize the MIDI input port with a callback that bridges to the asyncio queue."""
+		"""Initialize the primary MIDI input port (device 0) with a callback."""
 
 		if self.input_device_name is None:
 			return
 
-		# Use the helper function for device selection
-		device_name, midi_in = subsequence.midi_utils.select_input_device(self.input_device_name, self._on_midi_input)
-		
-		if device_name:
+		callback = self._make_input_callback(0)
+		device_name, midi_in = subsequence.midi_utils.select_input_device(self.input_device_name, callback)
+
+		if device_name and midi_in is not None:
 			self.input_device_name = device_name
-			self.midi_in = midi_in
+			self._input_devices.add(device_name, midi_in)
+
+	def _make_input_callback (self, device_idx: int) -> typing.Callable:
+		"""Return a mido callback closure that tags messages with *device_idx*."""
+
+		def _callback (message: typing.Any) -> None:
+			self._on_midi_input(message, device_idx)
+
+		return _callback
 
 
-	def _on_midi_input (self, message: typing.Any) -> None:
+	def _on_midi_input (self, message: typing.Any, device_idx: int = 0) -> None:
 
 		"""Handle incoming MIDI messages from the input port callback thread.
 
@@ -438,6 +493,10 @@ class Sequencer:
 
 		CC input mappings are applied immediately here.  Single dict writes
 		are safe from a non-asyncio thread under CPython's GIL.
+
+		Parameters:
+			message: The incoming mido.Message.
+			device_idx: Index of the input device this message arrived on (0 = primary).
 		"""
 
 		if self._midi_input_queue is None or self._input_loop is None:
@@ -455,6 +514,10 @@ class Sequencer:
 				ch = mapping.get('channel')
 				if ch is not None and message.channel != ch:
 					continue
+				# Filter by input device if specified (None = any device).
+				in_dev = mapping.get('input_device')
+				if in_dev is not None and device_idx != in_dev:
+					continue
 				scaled = mapping['min_val'] + (message.value / 127.0) * (mapping['max_val'] - mapping['min_val'])
 				self._composition_data[mapping['key']] = scaled
 
@@ -466,6 +529,10 @@ class Sequencer:
 				ch = fwd.get('channel')
 				if ch is not None and message.channel != ch:
 					continue
+				# Filter by input device if specified (None = any device).
+				in_dev = fwd.get('input_device')
+				if in_dev is not None and device_idx != in_dev:
+					continue
 				try:
 					out_msg = fwd['transform'](message.value, message.channel)
 				except Exception:
@@ -474,10 +541,12 @@ class Sequencer:
 				if out_msg is None:
 					continue
 				if fwd['mode'] == 'instant':
-					midi_out = self.midi_out
-					if midi_out is not None:
-						try:  # type: ignore[unreachable]
-							midi_out.send(out_msg)
+					# Route to the specified output device (default: device 0).
+					out_dev = fwd.get('output_device', 0)
+					port = self._output_devices.get(out_dev)
+					if port is not None:
+						try:
+							port.send(out_msg)
 						except Exception:
 							logger.exception("CC forward send failed")
 				else:
@@ -588,7 +657,8 @@ class Sequencer:
 						message_type = 'note_on',
 						channel = note.channel,
 						note = note.pitch,
-						velocity = note.velocity
+						velocity = note.velocity,
+						device = pattern.device,
 					)
 
 					heapq.heappush(self.event_queue, on_event)
@@ -599,7 +669,8 @@ class Sequencer:
 						message_type = 'note_off',
 						channel = note.channel,
 						note = note.pitch,
-						velocity = 0
+						velocity = 0,
+						device = pattern.device,
 					)
 
 					heapq.heappush(self.event_queue, off_event)
@@ -615,7 +686,8 @@ class Sequencer:
 					channel = cc_event.channel if cc_event.channel is not None else pattern.channel,
 					control = cc_event.control,
 					value = cc_event.value,
-					data = cc_event.data
+					data = cc_event.data,
+					device = cc_event.device if cc_event.device is not None else pattern.device,
 				)
 
 				heapq.heappush(self.event_queue, midi_event)
@@ -630,7 +702,8 @@ class Sequencer:
 					message_type = note_ev.message_type,
 					channel = pattern.channel,
 					note = note_ev.pitch,
-					velocity = note_ev.velocity
+					velocity = note_ev.velocity,
+					device = pattern.device,
 				)
 				
 				heapq.heappush(self.event_queue, midi_event)
@@ -745,9 +818,9 @@ class Sequencer:
 			message_type: One of ``"clock"``, ``"start"``, ``"stop"``, ``"continue"``.
 		"""
 
-		if self.midi_out:
-			try:  # type: ignore[unreachable]
-				self.midi_out.send(mido.Message(message_type))
+		for port in self._output_devices:
+			try:
+				port.send(mido.Message(message_type))
 			except Exception:
 				logger.exception(f"Failed to send MIDI {message_type} message")
 
@@ -792,7 +865,7 @@ class Sequencer:
 		Stop the sequencer playback and cleanup resources.
 		"""
 
-		if not self.running and self.midi_out is None:
+		if not self.running and not self._output_devices:
 			return
 
 		logger.info("Stopping sequencer...")
@@ -807,13 +880,8 @@ class Sequencer:
 
 		await self.panic()
 
-		if self.midi_out:
-			self.midi_out.close()  # type: ignore[unreachable]
-			self.midi_out = None
-
-		if self.midi_in:
-			self.midi_in.close()
-			self.midi_in = None
+		self._output_devices.close_all()
+		self._input_devices.close_all()
 
 		self._midi_input_queue = None
 		self._input_loop = None
@@ -1201,12 +1269,12 @@ class Sequencer:
 
 				event = heapq.heappop(self.event_queue)
 				
-				# Track active notes
+				# Track active notes (keyed by device, channel, note)
 				if event.message_type == 'note_on' and event.velocity > 0:
-					self.active_notes.add((event.channel, event.note))
+					self.active_notes.add((event.device, event.channel, event.note))
 				elif event.message_type == 'note_off' or (event.message_type == 'note_on' and event.velocity == 0):
-					if (event.channel, event.note) in self.active_notes:
-						self.active_notes.remove((event.channel, event.note))
+					if (event.device, event.channel, event.note) in self.active_notes:
+						self.active_notes.remove((event.device, event.channel, event.note))
 
 				# Send events at or before the current pulse (late events are sent immediately).
 				self._send_midi(event)
@@ -1231,27 +1299,32 @@ class Sequencer:
 
 
 	async def _stop_all_active_notes (self) -> None:
-	
+
 		"""
 		Send note_off for all currently tracked active notes.
 		"""
-		
+
 		async with self.queue_lock:
-			for channel, note in list(self.active_notes):
-				if self.midi_out:
-					self.midi_out.send(mido.Message('note_off', channel=channel, note=note, velocity=0))  # type: ignore[unreachable]
+			for dev, channel, note in list(self.active_notes):
+				port = self._output_devices.get(dev)
+				if port is not None:
+					try:
+						port.send(mido.Message('note_off', channel=channel, note=note, velocity=0))
+					except Exception:
+						logger.exception("Failed to send note_off during stop")
 			self.active_notes.clear()
 
 
 	def _send_midi (self, event: MidiEvent) -> None:
 
 		"""
-		Send a MIDI message to the output port.
+		Send a MIDI message to the appropriate output device.
 		"""
 
-		if self.midi_out:
+		port = self._output_devices.get(event.device)
+		if port is not None:
 
-			try:  # type: ignore[unreachable]
+			try:
 
 				if event.message_type in ('note_on', 'note_off'):
 					msg = mido.Message(
@@ -1298,7 +1371,7 @@ class Sequencer:
 				else:
 					return
 
-				self.midi_out.send(msg)
+				port.send(msg)
 
 			except Exception:
 				logger.exception("MIDI send failed (device may be disconnected)")
@@ -1315,21 +1388,21 @@ class Sequencer:
 		# 1. Stop all tracked active notes manually
 		await self._stop_all_active_notes()
 
-		if self.midi_out:
+		for port in self._output_devices:
 
-			try:  # type: ignore[unreachable]
+			try:
 
 				# 2. Send "All Notes Off" (CC 123) and "All Sound Off" (CC 120) to all 16 channels
 				for channel in range(16):
-					self.midi_out.send(mido.Message('control_change', channel=channel, control=123, value=0))
-					self.midi_out.send(mido.Message('control_change', channel=channel, control=120, value=0))
+					port.send(mido.Message('control_change', channel=channel, control=123, value=0))
+					port.send(mido.Message('control_change', channel=channel, control=120, value=0))
 
 				# 3. Use built-in panic and reset
-				self.midi_out.panic()
+				port.panic()
 
 				# Note: reset() might close/reopen ports or clear internal buffers depending on backend,
 				# but mido docs say it sends "All Notes Off" and "Reset All Controllers".
-				self.midi_out.reset()
+				port.reset()
 
 			except Exception:
 				logger.exception("MIDI panic failed (device may be disconnected)")

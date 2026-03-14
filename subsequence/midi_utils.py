@@ -6,6 +6,106 @@ import mido
 logger = logging.getLogger(__name__)
 
 
+# Type alias for device identifiers: index (int), name (str), or None (device 0).
+DeviceId = typing.Union[int, str, None]
+
+
+class MidiDeviceRegistry:
+
+	"""Ordered registry of named MIDI ports (output or input).
+
+	Devices are stored in insertion order.  Index 0 is always the first
+	(or only) device — the default for all APIs that do not specify a device.
+	Devices can be looked up by integer index or by name string.
+	``None`` always resolves to index 0.
+
+	The registry is intended to be append-only once playback has started.
+	All registered port objects must already be open.
+	"""
+
+	def __init__ (self) -> None:
+
+		self._ports: typing.List[typing.Tuple[str, typing.Any]] = []
+		self._name_to_index: typing.Dict[str, int] = {}
+
+	def add (self, name: str, port: typing.Any) -> int:
+
+		"""Register a port under *name*.  Returns the assigned integer index."""
+
+		idx = len(self._ports)
+		self._ports.append((name, port))
+		# First registration wins for name collisions.
+		if name not in self._name_to_index:
+			self._name_to_index[name] = idx
+		return idx
+
+	def get (self, device: DeviceId = None) -> typing.Optional[typing.Any]:
+
+		"""Return the port for *device*, or ``None`` if the registry is empty.
+
+		``None`` → index 0.  ``int`` → direct index.  ``str`` → name lookup.
+		Returns ``None`` if the device cannot be resolved (empty registry,
+		out-of-range index, unknown name).
+		"""
+
+		if not self._ports:
+			return None
+		idx = self.index_of(device)
+		if idx < 0 or idx >= len(self._ports):
+			return None
+		return self._ports[idx][1]
+
+	def index_of (self, device: DeviceId = None) -> int:
+
+		"""Resolve *device* to an integer index.  Returns 0 for ``None``.
+		Returns -1 if the name is unknown or the index is out of range."""
+
+		if device is None:
+			return 0
+		if isinstance(device, int):
+			if 0 <= device < len(self._ports):
+				return device
+			return -1
+		# str
+		return self._name_to_index.get(device, -1)
+
+	def replace (self, index: int, port: typing.Any) -> None:
+
+		"""Replace the port object at *index* without changing the name or index mapping.
+
+		Used by the backward-compat ``midi_out``/``midi_in`` setters to allow
+		test code to inject a fake port after the registry has been populated.
+		Raises ``IndexError`` if *index* is out of range.
+		"""
+
+		if index < 0 or index >= len(self._ports):
+			raise IndexError(f"MidiDeviceRegistry: index {index} out of range (size {len(self._ports)})")
+		name = self._ports[index][0]
+		self._ports[index] = (name, port)
+
+	def close_all (self) -> None:
+
+		"""Close every registered port and clear the registry."""
+
+		for name, port in self._ports:
+			try:
+				port.close()
+			except Exception:
+				logger.exception(f"Error closing MIDI port '{name}'")
+		self._ports.clear()
+		self._name_to_index.clear()
+
+	def __len__ (self) -> int:
+		return len(self._ports)
+
+	def __iter__ (self) -> typing.Iterator[typing.Any]:
+		"""Iterate over port objects (not names)."""
+		return (port for _, port in self._ports)
+
+	def __bool__ (self) -> bool:
+		return bool(self._ports)
+
+
 def bank_select (bank: int) -> typing.Tuple[int, int]:
 
 	"""

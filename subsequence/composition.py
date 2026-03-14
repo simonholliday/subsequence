@@ -517,11 +517,20 @@ class _PendingPattern:
 		default_grid: int,
 		drum_note_map: typing.Optional[typing.Dict[str, int]],
 		reschedule_lookahead: float,
-		voice_leading: bool = False
+		voice_leading: bool = False,
+		device: int = 0,
+		raw_device: subsequence.midi_utils.DeviceId = None,
 	) -> None:
 
 		"""
 		Store pattern registration details for deferred scheduling.
+
+		*raw_device* holds the original ``DeviceId`` passed to ``pattern()``
+		(``None``, ``int``, or ``str``).  When it is a string, ``device``
+		starts at 0 as a placeholder and ``_resolve_pending_devices()`` in
+		``_run()`` replaces it with the correct integer index once all output
+		devices have been opened.  When it is ``None`` or an ``int``, ``device``
+		is already final and ``raw_device`` is not consulted again.
 		"""
 
 		self.builder_fn = builder_fn
@@ -531,6 +540,8 @@ class _PendingPattern:
 		self.drum_note_map = drum_note_map
 		self.reschedule_lookahead = reschedule_lookahead
 		self.voice_leading = voice_leading
+		self.device = device
+		self.raw_device: subsequence.midi_utils.DeviceId = raw_device
 
 
 class _PendingScheduled:
@@ -634,6 +645,15 @@ class Composition:
 		self._clock_output: bool = False
 		self._cc_mappings: typing.List[typing.Dict[str, typing.Any]] = []
 		self._cc_forwards: typing.List[typing.Dict[str, typing.Any]] = []
+		# Additional output devices registered with midi_output() after construction.
+		# Each entry: (device_name: str, alias: Optional[str])
+		self._additional_outputs: typing.List[typing.Tuple[str, typing.Optional[str]]] = []
+		# Additional input devices: (device_name: str, alias: Optional[str], clock_follow: bool)
+		self._additional_inputs: typing.List[typing.Tuple[str, typing.Optional[str], bool]] = []
+		# Maps alias/name → output device index (populated in _run after all devices are opened).
+		self._output_device_names: typing.Dict[str, int] = {}
+		# Maps alias/name → input device index (populated in _run after all input devices are opened).
+		self._input_device_names: typing.Dict[str, int] = {}
 		self.data: typing.Dict[str, typing.Any] = {}
 		self._osc_server: typing.Optional[subsequence.osc.OscServer] = None
 		self.conductor = subsequence.conductor.Conductor()
@@ -653,6 +673,54 @@ class Composition:
 		self._tuning_channels: typing.Optional[typing.List[int]] = None
 		self._tuning_reference_note: int = 60
 		self._tuning_exclude_drums: bool = True
+
+	def _resolve_device_id (self, device: subsequence.midi_utils.DeviceId) -> int:
+		"""Resolve an output device id (None/int/str) to an integer index.
+
+		``None`` → 0 (primary device).  ``int`` → returned as-is.
+		``str`` → looked up in ``_output_device_names``; logs a warning and
+		returns 0 if the name is unknown (called after all devices are opened
+		in ``_run()``).
+		"""
+		if device is None:
+			return 0
+		if isinstance(device, int):
+			return device
+		idx = self._output_device_names.get(device)
+		if idx is None:
+			logger.warning(
+				f"Unknown output device name '{device}' — routing to device 0. "
+				f"Available names: {list(self._output_device_names.keys())}"
+			)
+			return 0
+		return idx
+
+	def _resolve_input_device_id (self, device: subsequence.midi_utils.DeviceId) -> typing.Optional[int]:
+		"""Resolve an input device id (None/int/str) to an integer index.
+
+		``None`` → ``None`` (matches any input device — existing behaviour).
+		``int`` → returned as-is.  ``str`` → looked up in ``_input_device_names``;
+		logs a warning and returns ``None`` if the name is unknown.
+		Called after all input devices are opened in ``_run()``.
+		"""
+		if device is None:
+			return None
+		if isinstance(device, int):
+			return device
+		idx = self._input_device_names.get(device)
+		if idx is None:
+			logger.warning(
+				f"Unknown input device name '{device}' — mapping will be ignored. "
+				f"Available names: {list(self._input_device_names.keys())}"
+			)
+			return None
+		return idx
+
+	def _resolve_pending_devices (self) -> None:
+		"""Resolve name-based device ids on pending patterns now that all output devices are open."""
+		for pending in self._pending_patterns:
+			if isinstance(pending.raw_device, str):
+				pending.device = self._resolve_device_id(pending.raw_device)
 
 	def _resolve_channel (self, channel: int) -> int:
 
@@ -1252,26 +1320,78 @@ class Composition:
 
 		self._web_ui_enabled = True
 
-	def midi_input (self, device: str, clock_follow: bool = False) -> None:
+	def midi_input (self, device: str, clock_follow: bool = False, name: typing.Optional[str] = None) -> None:
 
 		"""
-		Configure MIDI input for external sync and MIDI messages.
+		Configure a MIDI input device for external sync and MIDI messages.
+
+		May be called multiple times to register additional input devices.
+		The first call sets the primary input (device 0).  Subsequent calls
+		add additional input devices (device 1, 2, …).  Only one device may
+		have ``clock_follow=True``.
 
 		Parameters:
 			device: The name of the MIDI input port.
-			clock_follow: If True, Subsequence will slave its clock to incoming 
-				MIDI Ticks. It will also follow MIDI Start/Stop/Continue 
-				commands.
+			clock_follow: If True, Subsequence will slave its clock to incoming
+				MIDI Ticks. It will also follow MIDI Start/Stop/Continue
+				commands.  Only valid for the primary input (first call).
+			name: Optional alias for use with ``cc_map(input_device=…)`` and
+				``cc_forward(input_device=…)``.  When omitted, the raw device
+				name is used.
 
 		Example:
 			```python
-			# Slave Subsequence to an external hardware sequencer
+			# Single controller (unchanged usage)
 			comp.midi_input("Scarlett 2i4", clock_follow=True)
+
+			# Multiple controllers
+			comp.midi_input("Arturia KeyStep", name="keys")
+			comp.midi_input("Faderfox EC4", name="faders")
 			```
 		"""
 
-		self._input_device = device
-		self._clock_follow = clock_follow
+		if self._input_device is None:
+			# First call: set primary input device (device 0)
+			self._input_device = device
+			self._clock_follow = clock_follow
+		else:
+			# Subsequent calls: register additional input devices
+			self._additional_inputs.append((device, name, clock_follow))
+
+	def midi_output (self, device: str, name: typing.Optional[str] = None) -> int:
+
+		"""
+		Register an additional MIDI output device.
+
+		The first output device is always the one passed to
+		``Composition(output_device=…)`` — that is device 0.
+		Each call to ``midi_output()`` adds the next device (1, 2, …).
+
+		Parameters:
+			device: The name of the MIDI output port.
+			name: Optional alias for use with ``pattern(device=…)``,
+				``cc_forward(output_device=…)``, etc.  When omitted, the raw
+				device name is used.
+
+		Returns:
+			The integer device index assigned (1, 2, 3, …).
+
+		Example:
+			```python
+			comp = subsequence.Composition(bpm=120, output_device="MOTU Express")
+
+			# Returns 1 — use as device=1 or device="integra"
+			comp.midi_output("Roland Integra", name="integra")
+
+			@comp.pattern(channel=1, beats=4, device="integra")
+			def strings(p):
+				p.note(60, beat=0)
+			```
+		"""
+
+		idx = 1 + len(self._additional_outputs)  # device 0 is always the primary
+		self._additional_outputs.append((device, name))
+		return idx
 
 	def clock_output (self, enabled: bool = True) -> None:
 
@@ -1353,7 +1473,8 @@ class Composition:
 		key: str,
 		channel: typing.Optional[int] = None,
 		min_val: float = 0.0,
-		max_val: float = 1.0
+		max_val: float = 1.0,
+		input_device: subsequence.midi_utils.DeviceId = None,
 	) -> None:
 
 		"""
@@ -1377,12 +1498,17 @@ class Composition:
 				``None`` matches any channel (default).
 			min_val: Scaled minimum — written when CC value is 0 (default 0.0).
 			max_val: Scaled maximum — written when CC value is 127 (default 1.0).
+			input_device: Only respond to CC messages from this input device
+				(index or name).  ``None`` responds to any input device (default).
 
 		Example:
 			```python
 			comp.midi_input("Arturia KeyStep")
 			comp.cc_map(74, "filter_cutoff")           # knob → 0.0–1.0
 			comp.cc_map(7, "volume", min_val=0, max_val=127)  # volume fader
+
+			# Multi-device: only listen to CC 74 from the "faders" controller
+			comp.cc_map(74, "filter", input_device="faders")
 			```
 		"""
 
@@ -1394,6 +1520,7 @@ class Composition:
 			'channel': resolved_channel,
 			'min_val': min_val,
 			'max_val': max_val,
+			'input_device': input_device,  # resolved to int index in _run()
 		})
 
 
@@ -1464,6 +1591,8 @@ class Composition:
 		channel: typing.Optional[int] = None,
 		output_channel: typing.Optional[int] = None,
 		mode: str = "instant",
+		input_device: subsequence.midi_utils.DeviceId = None,
+		output_device: subsequence.midi_utils.DeviceId = None,
 	) -> None:
 
 		"""
@@ -1542,6 +1671,8 @@ class Composition:
 			'output_channel': resolved_out_channel,
 			'mode': mode,
 			'transform': transform,
+			'input_device': input_device,   # resolved to int index in _run()
+			'output_device': output_device, # resolved to int index in _run()
 		})
 
 
@@ -1913,7 +2044,8 @@ class Composition:
 		unit: typing.Optional[float] = None,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
-		voice_leading: bool = False
+		voice_leading: bool = False,
+		device: subsequence.midi_utils.DeviceId = None,
 	) -> typing.Callable:
 
 		"""
@@ -1965,6 +2097,10 @@ class Composition:
 
 		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit)
 
+		# Resolve device string name to index if possible now; otherwise store
+		# the raw DeviceId and resolve it in _run() once all devices are open.
+		resolved_device: subsequence.midi_utils.DeviceId = device
+
 		def decorator (fn: typing.Callable) -> typing.Callable:
 
 			"""
@@ -1987,7 +2123,11 @@ class Composition:
 				default_grid = default_grid,
 				drum_note_map = drum_note_map,
 				reschedule_lookahead = reschedule_lookahead,
-				voice_leading = voice_leading
+				voice_leading = voice_leading,
+				# For int/None: resolve immediately.  For str: store 0 as
+				# placeholder; _resolve_pending_devices() fixes it in _run().
+				device = 0 if (resolved_device is None or isinstance(resolved_device, str)) else resolved_device,
+				raw_device = resolved_device,
 			)
 
 			self._pending_patterns.append(pending)
@@ -2006,7 +2146,8 @@ class Composition:
 		unit: typing.Optional[float] = None,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
-		voice_leading: bool = False
+		voice_leading: bool = False,
+		device: subsequence.midi_utils.DeviceId = None,
 	) -> None:
 
 		"""
@@ -2060,7 +2201,9 @@ class Composition:
 			default_grid = default_grid,
 			drum_note_map = drum_note_map,
 			reschedule_lookahead = reschedule_lookahead,
-			voice_leading = voice_leading
+			voice_leading = voice_leading,
+				device = 0 if (device is None or isinstance(device, str)) else device,
+			raw_device = device,
 		)
 
 		self._pending_patterns.append(pending)
@@ -2075,7 +2218,8 @@ class Composition:
 		unit: typing.Optional[float] = None,
 		quantize: float = 0,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
-		chord: bool = False
+		chord: bool = False,
+		device: subsequence.midi_utils.DeviceId = None,
 	) -> None:
 
 		"""
@@ -2139,8 +2283,11 @@ class Composition:
 
 		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, default=1.0)
 
+		# Resolve device index
+		resolved_device_idx = self._resolve_device_id(device)
+
 		# Create a temporary Pattern
-		pattern = subsequence.pattern.Pattern(channel=resolved_channel, length=beat_length)
+		pattern = subsequence.pattern.Pattern(channel=resolved_channel, length=beat_length, device=resolved_device_idx)
 
 		# Create a PatternBuilder
 		builder = subsequence.pattern_builder.PatternBuilder(
@@ -2282,6 +2429,54 @@ class Composition:
 		if self._input_device is not None:
 			self._sequencer.input_device_name = self._input_device
 			self._sequencer.clock_follow = self._clock_follow
+
+		# Open additional output devices (device 0 was opened in Sequencer.__init__).
+		# Build _output_device_names map: alias (or raw name) → device index.
+		# Always record device 0's alias (the primary output).
+		if self._sequencer.output_device_name:
+			self._output_device_names[self._sequencer.output_device_name] = 0
+
+		for dev_name, alias in self._additional_outputs:
+			open_name, port = subsequence.midi_utils.select_output_device(dev_name)
+			if open_name and port is not None:
+				idx = self._sequencer.add_output_device(open_name, port)
+				self._output_device_names[open_name] = idx
+				if alias is not None:
+					self._output_device_names[alias] = idx
+			else:
+				logger.warning(f"Could not open additional output device '{dev_name}'")
+
+		# Open additional input devices and build _input_device_names lookup.
+		# Also register the primary input (device 0) if one was configured.
+		if self._sequencer.input_device_name:
+			self._input_device_names[self._sequencer.input_device_name] = 0
+
+		for dev_name, alias, cf in self._additional_inputs:
+			dev_idx = len(self._sequencer._input_devices)  # next index
+			callback = self._sequencer._make_input_callback(dev_idx)
+			open_name, port = subsequence.midi_utils.select_input_device(dev_name, callback)
+			if open_name and port is not None:
+				self._sequencer.add_input_device(open_name, port)
+				self._input_device_names[open_name] = dev_idx
+				if alias is not None:
+					self._input_device_names[alias] = dev_idx
+			else:
+				logger.warning(f"Could not open additional input device '{dev_name}'")
+
+		# Resolve name-based device ids in cc_map/cc_forward/pending patterns.
+		# All devices are now open, so _output_device_names and _input_device_names are complete.
+		self._resolve_pending_devices()
+		for mapping in self._cc_mappings:
+			raw = mapping.get('input_device')
+			if isinstance(raw, str):
+				mapping['input_device'] = self._resolve_input_device_id(raw)
+		for fwd in self._cc_forwards:
+			raw_in = fwd.get('input_device')
+			if isinstance(raw_in, str):
+				fwd['input_device'] = self._resolve_input_device_id(raw_in)
+			raw_out = fwd.get('output_device')
+			if isinstance(raw_out, str):
+				fwd['output_device'] = self._resolve_device_id(raw_out)
 
 		# Pass clock output flag (suppressed automatically when clock_follow=True).
 		self._sequencer.clock_output = self._clock_output and not self._clock_follow
@@ -2512,7 +2707,8 @@ class Composition:
 					reschedule_lookahead = min(
 						pending.reschedule_lookahead,
 						composition_ref._harmony_reschedule_lookahead
-					)
+					),
+					device = pending.device,
 				)
 
 				self._builder_fn = pending.builder_fn
