@@ -10,7 +10,8 @@ The top-level controller for a musical piece.
 |---|---|
 | `__init__(output_device, bpm, time_signature, key, seed, record, record_filename, zero_indexed_channels) -> None` | Initialize a new composition. |
 | `builder_bar *(property)*` | Current bar index used by pattern builders. |
-| `cc_map(cc, key, channel, min_val, max_val) -> None` | Map an incoming MIDI CC to a ``composition.data`` key. |
+| `cc_forward(cc, output, channel, output_channel, mode, input_device, output_device) -> None` | Forward an incoming MIDI CC to the MIDI output in real-time. |
+| `cc_map(cc, key, channel, min_val, max_val, input_device) -> None` | Map an incoming MIDI CC to a ``composition.data`` key. |
 | `clear_tweak(name, *param_names) -> None` | Remove tweaked parameters from a running pattern. |
 | `clock_output(enabled) -> None` | Send MIDI timing clock to connected hardware. |
 | `display(enabled, grid, grid_scale) -> None` | Enable or disable the live terminal dashboard. |
@@ -24,16 +25,17 @@ The top-level controller for a musical piece.
 | `harmony(style, cycle_beats, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity, reschedule_lookahead) -> None` | Configure the harmonic logic and chord change intervals. |
 | `hotkey(key, action, quantize, label) -> None` | Register a single-key shortcut that fires during playback. |
 | `hotkeys(enabled) -> None` | Enable or disable the global hotkey listener. |
-| `layer(*builder_fns, channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading) -> None` | Combine multiple functions into a single MIDI pattern. |
+| `layer(*builder_fns, channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading, device) -> None` | Combine multiple functions into a single MIDI pattern. |
 | `link(quantum) -> 'Composition'` | Enable Ableton Link tempo and phase synchronisation. |
 | `live(port) -> None` | Enable the live coding eval server. |
 | `live_info() -> Dict[str, Any]` | Return a dictionary containing the current state of the composition. |
-| `midi_input(device, clock_follow) -> None` | Configure MIDI input for external sync and MIDI messages. |
+| `midi_input(device, clock_follow, name) -> None` | Configure a MIDI input device for external sync and MIDI messages. |
+| `midi_output(device, name) -> int` | Register an additional MIDI output device. |
 | `mute(name) -> None` | Mute a running pattern by name. |
 | `on_event(event_name, callback) -> None` | Register a callback for a sequencer event (e.g., "bar", "start", "stop"). |
 | `osc(receive_port, send_port, send_host) -> None` | Enable bi-directional Open Sound Control (OSC). |
 | `osc_map(address, handler) -> None` | Register a custom OSC handler. |
-| `pattern(channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading) -> Callable` | Register a function as a repeating MIDI pattern. |
+| `pattern(channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading, device) -> Callable` | Register a function as a repeating MIDI pattern. |
 | `play() -> None` | Start the composition. |
 | `render(bars, filename, max_minutes) -> None` | Render the composition to a MIDI file without real-time playback. |
 | `running_patterns *(property)*` | The currently active patterns, keyed by name. |
@@ -43,7 +45,7 @@ The top-level controller for a musical piece.
 | `sequencer *(property)*` | The underlying ``Sequencer`` instance. |
 | `set_bpm(bpm) -> None` | Instantly change the tempo. |
 | `target_bpm(bpm, bars, shape) -> None` | Smoothly ramp the tempo to a target value over a number of bars. |
-| `trigger(fn, channel, beats, bars, steps, unit, quantize, drum_note_map, chord) -> None` | Trigger a one-shot pattern immediately or on a quantized boundary. |
+| `trigger(fn, channel, beats, bars, steps, unit, quantize, drum_note_map, chord, device) -> None` | Trigger a one-shot pattern immediately or on a quantized boundary. |
 | `tuning(source, cents, ratios, equal, bend_range, channels, reference_note, exclude_drums) -> None` | Set a global microtonal tuning for the composition. |
 | `tweak(name, **kwargs) -> None` | Override parameters for a running pattern. |
 | `unmute(name) -> None` | Unmute a previously muted pattern. |
