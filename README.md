@@ -203,6 +203,27 @@ p.hit_steps("snare_1", {4, 12}, velocity=100)
 p.ghost_fill("snare_1", density=0.4, velocity=(30, 60), bias="offbeat", no_overlap=True)
 ```
 
+**Freeze placement each cycle** - by default ghost positions are different each cycle. Pass `rng=random.Random(seed)` to create a fresh RNG on every rebuild: the same steps are chosen every time, while velocity variation from a `(low, high)` tuple still shifts naturally.
+
+```python
+import random
+
+# Same ghost steps every cycle - placement locked, velocity still varies
+p.ghost_fill("snare_1", density=0.3, velocity=(25, 45),
+             bias="sixteenths", rng=random.Random(7))
+```
+
+**Custom bias with `build_ghost_bias`** - `p.build_ghost_bias(grid, bias)` is a public helper that generates the named weight list and returns it as a plain Python list. Modify specific steps before passing it back as `bias=` to get surgical control over which positions are suppressed or boosted.
+
+```python
+# Start from a named curve, then silence beat 3 and boost the step before beat 4
+weights = p.build_ghost_bias(16, "sixteenths")
+weights[8] = 0.0   # no ghosts around beat 3
+weights[11] = 1.0  # strong "and" before beat 4
+p.ghost_fill("snare_1", density=0.25, velocity=(25, 45),
+             bias=weights, no_overlap=True)
+```
+
 ### Thin
 
 The musical inverse of ghost fill - a subtractive partner to an additive process. Where ghost fill asks "where should I add?", thin asks "where should I remove?". `p.thin(strategy, amount, grid, rng)` removes notes by position-aware probability. `strategy` can be `"front"`, `"back"`, `"uniform"`, or a custom bias list; `amount` (0–1) controls how aggressively notes are thinned. Pair with a conductor signal to sculpt density over time.

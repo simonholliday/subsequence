@@ -290,10 +290,9 @@ class PatternAlgorithmicMixin:
 		assigning higher or lower chances of an event occurring based on the rhythmic
 		position within the beat (downbeat, offbeat, syncopated 16th note, etc).
 
-		Can be passed back into the `bias` argument of :meth:`ghost_fill()`. Exposing
-		this method allows users to generate a standard curve and then manually
-		modify specific probabilities on specific steps before passing it
-		to generative methods.
+		This is a public escape hatch: call it yourself, manipulate the returned list,
+		then pass the result as ``bias=`` to :meth:`ghost_fill()`.  This lets you pin
+		specific steps, boost a weak position, or combine two named curves.
 
 		Parameters:
 			grid: The total number of steps in the sequence (usually 16 or 32).
@@ -308,8 +307,20 @@ class PatternAlgorithmicMixin:
 				- ``"e_and_a"``    - 1.0 on all non-downbeat 16th positions, 0.05 on downbeats.
 
 		Returns:
-			A list of floats with length equal to `grid`, where each value
-			is a probability multiplier from 0.0 to 1.0.
+			A ``List[float]`` of length ``grid`` where each value is a probability
+			multiplier from 0.0 to 1.0.  The list is a plain Python list — modify
+			it freely before passing to ``ghost_fill(bias=...)``.
+
+		Example:
+			```python
+			# Start from a named curve, then zero out beat 3 (step 8) entirely
+			# and give the step before the snare (step 11) maximum weight.
+			weights = p.build_ghost_bias(16, "sixteenths")
+			weights[8] = 0.0   # silence around beat 3
+			weights[11] = 1.0  # boost the "and" before beat 4
+			p.ghost_fill("snare_1", density=0.25, velocity=(25, 45),
+			             bias=weights, no_overlap=True)
+			```
 		"""
 
 		steps_per_beat = max(1, grid // 4)
@@ -417,6 +428,8 @@ class PatternAlgorithmicMixin:
 				- ``"upbeat"``     - strictly 8th-note off-beats only
 				- ``"e_and_a"``    - all non-downbeat 16th positions
 				- Or: a list of floats (one per grid step) for a custom field.
+				  Use :meth:`build_ghost_bias` to generate a named curve
+				  and then modify specific steps before passing it here.
 
 			no_overlap: If True (default), skip where same pitch already exists.
 				Essential for layering ghosts around hand-placed anchors.
@@ -424,14 +437,29 @@ class PatternAlgorithmicMixin:
 			duration: Note duration in beats (default 0.1).
 			rng: Random generator.  Defaults to ``self.rng``.
 
+				**Tip — freeze placement each cycle:**  Pass
+				``rng=random.Random(seed)`` to create a *fresh* RNG instance on
+				every rebuild.  Because the seed resets, the same steps are
+				chosen on every cycle — ghost positions are locked in place while
+				velocity variation (from a ``(low, high)`` tuple) can still vary
+				each cycle, because it consumes separate RNG draws.  Using the
+				default ``self.rng`` advances state across rebuilds so placement
+				differs every cycle.
+
 		Example:
 			```python
+			import random
+
 			p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
 			p.hit_steps("snare_1", [4, 12], velocity=95)
+
+			# Different ghost placement each cycle (default)
 			p.ghost_fill("kick_1", density=0.2, velocity=(30, 45),
 			             bias="sixteenths", no_overlap=True)
+
+			# Same ghost steps every cycle — placement frozen, velocity still varies
 			p.ghost_fill("snare_1", density=0.15, velocity=(25, 40),
-			             bias="before")
+			             bias="before", rng=random.Random(42))
 			```
 		"""
 
