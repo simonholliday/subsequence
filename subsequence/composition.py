@@ -633,6 +633,7 @@ class Composition:
 		self._clock_follow: bool = False
 		self._clock_output: bool = False
 		self._cc_mappings: typing.List[typing.Dict[str, typing.Any]] = []
+		self._cc_forwards: typing.List[typing.Dict[str, typing.Any]] = []
 		self.data: typing.Dict[str, typing.Any] = {}
 		self._osc_server: typing.Optional[subsequence.osc.OscServer] = None
 		self.conductor = subsequence.conductor.Conductor()
@@ -1396,6 +1397,154 @@ class Composition:
 		})
 
 
+	@staticmethod
+	def _make_cc_forward_transform (
+		output: typing.Union[str, typing.Callable],
+		cc: int,
+		output_channel: typing.Optional[int],
+	) -> typing.Callable:
+
+		"""Build a transform callable from a preset string or user-supplied callable.
+
+		The returned callable has signature ``(value: int, channel: int) -> Optional[mido.Message]``
+		where ``channel`` is the 0-indexed incoming channel.
+		"""
+
+		import mido as _mido
+
+		def _out_ch (incoming: int) -> int:
+			return output_channel if output_channel is not None else incoming
+
+		if callable(output):
+			if output_channel is None:
+				return output
+			def _wrapped (value: int, channel: int) -> typing.Optional[typing.Any]:
+				msg = output(value, channel)
+				if msg is not None and output_channel is not None:
+					# Rebuild message with overridden channel
+					return _mido.Message(msg.type, channel=output_channel, **{
+						k: v for k, v in msg.__dict__.items() if k != 'channel'
+					})
+				return msg
+			return _wrapped
+
+		if output == 'cc':
+			def _cc_identity (value: int, channel: int) -> typing.Any:
+				return _mido.Message('control_change', channel=_out_ch(channel), control=cc, value=value)
+			return _cc_identity
+
+		if output.startswith('cc:'):
+			try:
+				target_cc = int(output[3:])
+			except ValueError:
+				raise ValueError(f"cc_forward(): invalid preset '{output}' — expected 'cc:N' where N is 0–127")
+			if not 0 <= target_cc <= 127:
+				raise ValueError(f"cc_forward(): CC number {target_cc} out of range 0–127")
+			def _cc_remap (value: int, channel: int) -> typing.Any:
+				return _mido.Message('control_change', channel=_out_ch(channel), control=target_cc, value=value)
+			return _cc_remap
+
+		if output == 'pitchwheel':
+			def _pitchwheel (value: int, channel: int) -> typing.Any:
+				pitch = int(value / 127 * 16383) - 8192
+				return _mido.Message('pitchwheel', channel=_out_ch(channel), pitch=pitch)
+			return _pitchwheel
+
+		raise ValueError(
+			f"cc_forward(): unknown preset '{output}'. "
+			"Use 'cc', 'cc:N' (e.g. 'cc:74'), 'pitchwheel', or a callable."
+		)
+
+
+	def cc_forward (
+		self,
+		cc: int,
+		output: typing.Union[str, typing.Callable],
+		*,
+		channel: typing.Optional[int] = None,
+		output_channel: typing.Optional[int] = None,
+		mode: str = "instant",
+	) -> None:
+
+		"""
+		Forward an incoming MIDI CC to the MIDI output in real-time.
+
+		Unlike ``cc_map()`` which writes incoming CC values to ``composition.data``
+		for use at pattern rebuild time, ``cc_forward()`` routes the signal
+		directly to the MIDI output — bypassing the pattern cycle entirely.
+
+		Both ``cc_map()`` and ``cc_forward()`` may be registered for the same CC
+		number; they operate independently.
+
+		Parameters:
+			cc: Incoming CC number to listen for (0–127).
+			output: What to send. Either a **preset string**:
+
+				- ``"cc"`` — identity forward, same CC number and value.
+				- ``"cc:N"`` — forward as CC number N (e.g. ``"cc:74"``).
+				- ``"pitchwheel"`` — scale 0–127 to -8192..8191 and send as pitch bend.
+
+				Or a **callable** with signature
+				``(value: int, channel: int) -> Optional[mido.Message]``.
+				Return a fully formed ``mido.Message`` to send, or ``None`` to suppress.
+				``channel`` is 0-indexed (the incoming channel).
+			channel: If given, only respond to CC messages on this channel.
+				Uses the same numbering convention as ``cc_map()``.
+				``None`` matches any channel (default).
+			output_channel: Override the output channel. ``None`` uses the
+				incoming channel. Uses the same numbering convention as ``pattern()``.
+			mode: Dispatch mode:
+
+				- ``"instant"`` *(default)* — send immediately on the MIDI input
+				  callback thread. Lowest latency (~1–5 ms). Instant forwards are
+				  **not** recorded when recording is enabled.
+				- ``"queued"`` — inject into the sequencer event queue and send at
+				  the next pulse boundary (~0–20 ms at 120 BPM). Queued forwards
+				  **are** recorded when recording is enabled.
+
+		Example:
+			```python
+			comp.midi_input("Arturia KeyStep")
+
+			# CC 1 → CC 1 (identity, instant)
+			comp.cc_forward(1, "cc")
+
+			# CC 1 → pitch bend on channel 1, queued (recordable)
+			comp.cc_forward(1, "pitchwheel", output_channel=1, mode="queued")
+
+			# CC 1 → CC 74, custom channel
+			comp.cc_forward(1, "cc:74", output_channel=2)
+
+			# Custom transform — remap CC range 0–127 to CC 74 range 40–100
+			import subsequence.midi as midi
+			comp.cc_forward(1, lambda v, ch: midi.cc(74, int(v / 127 * 60) + 40, channel=ch))
+
+			# Forward AND map to data simultaneously — both active on the same CC
+			comp.cc_map(1, "mod_wheel")
+			comp.cc_forward(1, "cc:74")
+			```
+		"""
+
+		if not 0 <= cc <= 127:
+			raise ValueError(f"cc_forward(): cc {cc} out of range 0–127")
+
+		if mode not in ('instant', 'queued'):
+			raise ValueError(f"cc_forward(): mode must be 'instant' or 'queued', got '{mode}'")
+
+		resolved_in_channel = self._resolve_channel(channel) if channel is not None else None
+		resolved_out_channel = self._resolve_channel(output_channel) if output_channel is not None else None
+
+		transform = self._make_cc_forward_transform(output, cc, resolved_out_channel)
+
+		self._cc_forwards.append({
+			'cc': cc,
+			'channel': resolved_in_channel,
+			'output_channel': resolved_out_channel,
+			'mode': mode,
+			'transform': transform,
+		})
+
+
 	def live (self, port: int = 5555) -> None:
 
 		"""
@@ -2145,8 +2294,9 @@ class Composition:
 				loop = asyncio.get_running_loop(),
 			)
 
-		# Share CC input mappings and a reference to composition.data with the sequencer.
+		# Share CC input mappings, forwards, and a reference to composition.data with the sequencer.
 		self._sequencer.cc_mappings = self._cc_mappings
+		self._sequencer.cc_forwards = self._cc_forwards
 		self._sequencer._composition_data = self.data
 
 		# Derive child RNGs from the master seed so each component gets

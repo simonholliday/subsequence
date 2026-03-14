@@ -36,6 +36,20 @@ class FakeMidiOut:
 		return None
 
 
+class SpyMidiOut(FakeMidiOut):
+
+	"""FakeMidiOut that records every sent message for test assertions."""
+
+	def __init__ (self) -> None:
+
+		self.sent: typing.List[mido.Message] = []
+
+
+	def send (self, message: mido.Message) -> None:
+
+		self.sent.append(message)
+
+
 class FakeMidiIn:
 
 	"""Minimal MIDI input stub for tests."""

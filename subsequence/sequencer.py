@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import dataclasses
 import heapq
 import itertools
@@ -169,6 +170,11 @@ class Sequencer:
 
 		# CC input mapping — populated from Composition.cc_map()
 		self.cc_mappings: typing.List[typing.Dict[str, typing.Any]] = []
+		# CC forwarding — populated from Composition.cc_forward()
+		self.cc_forwards: typing.List[typing.Dict[str, typing.Any]] = []
+		# Buffer for queued CC forwards: deque of (pulse, mido.Message) tuples.
+		# Appended on the mido callback thread; drained on the event loop thread.
+		self._forward_buffer: collections.deque = collections.deque()
 		# Shared reference to composition.data so CC mappings can update it
 		self._composition_data: typing.Dict[str, typing.Any] = {}
 
@@ -451,6 +457,63 @@ class Sequencer:
 					continue
 				scaled = mapping['min_val'] + (message.value / 127.0) * (mapping['max_val'] - mapping['min_val'])
 				self._composition_data[mapping['key']] = scaled
+
+		# Apply CC forwards: route incoming CC to MIDI output in real-time.
+		if message.type == 'control_change' and self.cc_forwards:
+			for fwd in self.cc_forwards:
+				if message.control != fwd['cc']:
+					continue
+				ch = fwd.get('channel')
+				if ch is not None and message.channel != ch:
+					continue
+				try:
+					out_msg = fwd['transform'](message.value, message.channel)
+				except Exception:
+					logger.exception("CC forward transform failed")
+					continue
+				if out_msg is None:
+					continue
+				if fwd['mode'] == 'instant':
+					midi_out = self.midi_out
+					if midi_out is not None:
+						try:  # type: ignore[unreachable]
+							midi_out.send(out_msg)
+						except Exception:
+							logger.exception("CC forward send failed")
+				else:
+					# Queued: buffer for drain in _process_pulse on the event loop thread.
+					self._forward_buffer.append((self.pulse_count, out_msg))
+
+
+	def _msg_to_midi_event (self, pulse: int, msg: typing.Any) -> MidiEvent:
+
+		"""Convert a mido.Message to a MidiEvent at the given pulse.
+
+		Used to inject queued CC forwards into the event heap.
+		"""
+
+		if msg.type == 'pitchwheel':
+			return MidiEvent(
+				pulse = pulse,
+				message_type = 'pitchwheel',
+				channel = msg.channel,
+				value = msg.pitch,
+			)
+		elif msg.type == 'control_change':
+			return MidiEvent(
+				pulse = pulse,
+				message_type = 'control_change',
+				channel = msg.channel,
+				control = msg.control,
+				value = msg.value,
+			)
+		else:
+			return MidiEvent(
+				pulse = pulse,
+				message_type = msg.type,
+				channel = getattr(msg, 'channel', 0),
+				value = getattr(msg, 'value', 0),
+			)
 
 
 	def _estimate_bpm (self, tick_time: float) -> None:
@@ -1126,6 +1189,13 @@ class Sequencer:
 		"""
 
 		async with self.queue_lock:
+
+			# Drain queued CC forwards into the event heap.
+			# deque.popleft() is GIL-atomic; safe to call from the event loop thread
+			# while the callback thread calls append().
+			while self._forward_buffer:
+				fwd_pulse, fwd_msg = self._forward_buffer.popleft()
+				heapq.heappush(self.event_queue, self._msg_to_midi_event(fwd_pulse, fwd_msg))
 
 			while self.event_queue and self.event_queue[0].pulse <= pulse:
 

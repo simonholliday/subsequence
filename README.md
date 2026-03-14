@@ -1659,6 +1659,37 @@ def arps (p):
 
 CC values are scaled from 0–127 to the `min_val`/`max_val` range and written to `composition.data[key]` on every incoming message. Thread safety is provided by Python's GIL for single dict writes.
 
+### Real-time CC forwarding
+
+`cc_map()` makes CC values available to patterns at rebuild time - useful for driving generative parameters. For cases where you need the signal to reach your synth immediately (pitch bend from a mod wheel, cutoff from a fader, expression from a pedal), use `cc_forward()` instead:
+
+```python
+composition.midi_input("Arturia KeyStep")
+
+# Forward CC 1 directly to pitch bend on channel 1 - instant, ~1–5 ms latency
+composition.cc_forward(1, "pitchwheel", output_channel=1)
+
+# Reroute CC 1 to CC 74 on the same channel
+composition.cc_forward(1, "cc:74")
+
+# Custom transform: scale CC 1 range to CC 74 range 40–100
+import subsequence.midi as midi
+composition.cc_forward(1,
+    lambda v, ch: midi.cc(74, int(v / 127 * 60) + 40, channel=ch)
+)
+
+# Forward AND map simultaneously - both are active
+composition.cc_map(1, "mod_depth")    # value available in patterns via composition.data
+composition.cc_forward(1, "cc:74")   # also forwarded in real-time
+```
+
+Two dispatch modes:
+
+- **`mode="instant"`** *(default)* - sent immediately on the MIDI input callback thread. Latency is ~1–5 ms (driver round-trip only). Not recorded when recording is enabled.
+- **`mode="queued"`** - injected into the sequencer event queue and sent at the next pulse boundary (~0–20 ms at 120 BPM). Properly ordered with note events and **is** recorded when recording is enabled.
+
+Built-in preset strings: `"cc"` (identity), `"cc:N"` (remap to CC N), `"pitchwheel"` (scale to ±8192). Pass a callable for full control over output message type and value scaling.
+
 ### MIDI clock output
 
 Make Subsequence the MIDI clock master so hardware can lock to its tempo:
