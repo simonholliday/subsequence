@@ -60,8 +60,8 @@ Composition tools:
   ``p.silence()``),
   groove templates (``Groove.swing()``, ``Groove.from_agr()``), swing via
   ``p.swing()`` (a shortcut for ``Groove.swing()``), randomize,
-  velocity shaping, dropout, per-step probability, and polyrhythms
-  via independent pattern lengths.
+  velocity shaping and ramps (``p.velocity_ramp()``), dropout, per-step
+  probability, and polyrhythms via independent pattern lengths.
 - **Melody generation.** ``p.melody()`` with ``MelodicState`` applies
   the Narmour Implication-Realization model to single-note lines:
   continuation after small steps, reversal after large leaps, chord-tone
@@ -95,7 +95,10 @@ Composition tools:
 Integration:
 
 - **MIDI clock.** Master (``clock_output()``) or follower
-  (``clock_follow=True``). Sync to a DAW or drive hardware.
+  (``clock_follow=True``). When multiple inputs are connected, only
+  one may be designated as the master clock source; messages from
+  other inputs are filtered to prevent sync interference. Sync to a
+  DAW or drive hardware.
 - **Hardware control.** CC input mapping from knobs/faders to
   ``composition.data``; patterns read and write the same dict via
   ``p.data`` for both external data access and cross-pattern

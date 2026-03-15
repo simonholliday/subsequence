@@ -654,3 +654,55 @@ def test_cc_map_unknown_input_device_none_means_any(patch_midi: None) -> None:
 
 	seq._on_midi_input(_cc(74, 64), device_idx=2)
 	assert 'filter' in seq._composition_data
+
+
+# ---------------------------------------------------------------------------
+# Multiple clock follower device tests
+# ---------------------------------------------------------------------------
+
+def test_multiple_clock_follow_raises_error(patch_midi: None) -> None:
+	"""Setting clock_follow=True on multiple devices raises ValueError."""
+	comp = subsequence.Composition(bpm=120)
+	comp.midi_input("Primary MIDI", clock_follow=True)
+	
+	with pytest.raises(ValueError, match="Only one input device can be configured to follow external clock"):
+		comp.midi_input("Secondary MIDI", clock_follow=True)
+
+
+@pytest.mark.asyncio
+async def test_clock_follower_ignores_other_devices(monkeypatch) -> None:
+	"""Sequencer ignores clock messages from devices that are not the clock_device_idx."""
+	seq = subsequence.sequencer.Sequencer(
+		output_device_name="Dummy MIDI",
+		initial_bpm=120,
+		input_device_name="Mock MIDI",
+		clock_follow=True,
+		spin_wait=False
+	)
+	seq.clock_device_idx = 1 # We only want clock from device 1
+	
+	seq._midi_input_queue = asyncio.Queue()
+	seq.running = True
+
+	# Create a mock for _estimate_bpm to track if clock was processed
+	processed_clocks = []
+	def mock_estimate_bpm(t):
+		processed_clocks.append(t)
+	monkeypatch.setattr(seq, "_estimate_bpm", mock_estimate_bpm)
+	monkeypatch.setattr(seq, "_check_bar_change", lambda p, b: None)
+	monkeypatch.setattr(seq, "_check_beat_change", lambda p, b: None)
+	monkeypatch.setattr(seq, "_advance_pulse", lambda: asyncio.sleep(0))
+	
+	# Send a clock message from device 0 (should be ignored)
+	seq._midi_input_queue.put_nowait((0, mido.Message('clock')))
+	
+	# Send a clock message from device 1 (should be processed)
+	seq._midi_input_queue.put_nowait((1, mido.Message('clock')))
+	
+	# Send a stop message from device 1 to break the loop
+	seq._midi_input_queue.put_nowait((1, mido.Message('stop')))
+	
+	await seq._run_loop_external_clock(96)
+	
+	# Only the clock message from device 1 should have reached _estimate_bpm
+	assert len(processed_clocks) == 1

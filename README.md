@@ -856,7 +856,7 @@ For bar-position logic, `p.phrase(length)` replaces raw modulo arithmetic with r
 - **`.progress`** - fractional progress: 0.0 on bar 0, rising each bar (0.25, 0.5, 0.75 for a 4-bar phrase)
 
 ```python
-@composition.pattern(channel=1, length=4)
+@composition.pattern(channel=1, beats=4)
 def drums(p):
 
     p.euclidean("kick_1", 4)
@@ -959,10 +959,11 @@ External data written by `composition.schedule()`, CC input, OSC, or hotkeys flo
 ```python
 import subsequence.constants.midi_notes as notes
 
-@composition.schedule(cycle_beats=16, wait_for_initial=True)
 def fetch_iss():
     data = requests.get("https://api.wheretheiss.at/v1/satellites/25544").json()
     composition.data["iss_lat"] = data["latitude"]
+
+composition.schedule(fetch_iss, cycle_beats=16, wait_for_initial=True)
 
 @composition.pattern(channel=1)
 def iss_melody(p):
@@ -1662,6 +1663,9 @@ composition.midi_input(device=MIDI_INPUT_DEVICE, clock_follow=True)
 composition.play()
 ```
 
+> [!IMPORTANT]
+> Only one MIDI input device can be configured to follow the external clock at a time. If you attempt to set `clock_follow=True` on multiple devices, a `ValueError` will be raised.
+
 When `clock_follow=True`:
 - The sequencer waits for a MIDI **start** or **continue** message before playing
 - Each incoming MIDI **clock** tick advances the sequencer by one pulse (24 ticks = 1 beat, matching the MIDI standard)
@@ -2127,7 +2131,7 @@ comp.tuning(equal=31, bend_range=4.0)
 def lead (p):
     t = Tuning.equal(19)           # 19-TET just for this voice
     p.apply_tuning(t, bend_range=2.0)
-    p.hit_steps([60, 62, 64, 67], range(4))
+    p.sequence(steps=range(4), pitches=[60, 62, 64, 67])
 ```
 
 `p.apply_tuning()` marks the pattern so the global tuning is not double-applied.
@@ -2142,7 +2146,7 @@ comp.tuning("meanquar.scl", bend_range=2.0, channels=[1, 2, 3, 4])
 @comp.pattern(channel=1, beats=4)
 def chords (p, chord):
     # Four simultaneous notes → each gets its own channel from [1, 2, 3, 4]
-    p.chord(chord.tones(60, count=4), beat=0, velocity=80)
+    p.chord(chord, root=60, count=4, velocity=80)
 ```
 
 For monophonic lines no `channels` pool is needed - all notes stay on the pattern's channel.

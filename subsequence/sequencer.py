@@ -154,6 +154,7 @@ class Sequencer:
 		self.input_device_name = input_device_name
 		self.time_signature = time_signature
 		self.clock_follow = clock_follow
+		self.clock_device_idx: int = 0
 		self.clock_output = clock_output and not clock_follow
 		self.pulses_per_beat = subsequence.constants.MIDI_QUARTER_NOTE
 
@@ -503,7 +504,7 @@ class Sequencer:
 			return
 
 		self._input_loop.call_soon_threadsafe(
-			self._midi_input_queue.put_nowait, message
+			self._midi_input_queue.put_nowait, (device_idx, message)
 		)
 
 		# Apply CC input mappings: map incoming CC values to composition.data.
@@ -1086,10 +1087,13 @@ class Sequencer:
 		while self.running:
 
 			try:
-				message = await asyncio.wait_for(
+				device_idx, message = await asyncio.wait_for(
 					self._midi_input_queue.get(), timeout=2.0
 				)
 			except asyncio.TimeoutError:
+				continue
+
+			if device_idx != self.clock_device_idx:
 				continue
 
 			if message.type == "clock":

@@ -1334,7 +1334,7 @@ class Composition:
 			device: The name of the MIDI input port.
 			clock_follow: If True, Subsequence will slave its clock to incoming
 				MIDI Ticks. It will also follow MIDI Start/Stop/Continue
-				commands.  Only valid for the primary input (first call).
+				commands. Only one device can have this enabled at a time.
 			name: Optional alias for use with ``cc_map(input_device=…)`` and
 				``cc_forward(input_device=…)``.  When omitted, the raw device
 				name is used.
@@ -1349,6 +1349,10 @@ class Composition:
 			comp.midi_input("Faderfox EC4", name="faders")
 			```
 		"""
+
+		if clock_follow:
+			if self.is_clock_following:
+				raise ValueError("Only one input device can be configured to follow external clock (clock_follow=True)")
 
 		if self._input_device is None:
 			# First call: set primary input device (device 0)
@@ -1755,7 +1759,7 @@ class Composition:
 
 		self._sequencer.set_bpm(bpm)
 
-		if not self._clock_follow and self._link_quantum is None:
+		if not self.is_clock_following and self._link_quantum is None:
 			self.bpm = bpm
 
 	def target_bpm (self, bpm: float, bars: int, shape: str = "linear") -> None:
@@ -1826,7 +1830,7 @@ class Composition:
 			"chord": chord_name,
 			"patterns": pattern_list,
 			"input_device": self._input_device,
-			"clock_follow": self._clock_follow,
+			"clock_follow": self.is_clock_following,
 			"data": self.data
 		}
 
@@ -2347,6 +2351,14 @@ class Composition:
 			else:
 				logger.warning("trigger() called before playback started; pattern ignored")
 
+	@property
+	def is_clock_following (self) -> bool:
+
+		"""True if either the primary or any additional device is following external clock."""
+
+		return self._clock_follow or any(cf for _, _, cf in self._additional_inputs)
+
+
 	def play (self) -> None:
 
 		"""
@@ -2429,6 +2441,14 @@ class Composition:
 		if self._input_device is not None:
 			self._sequencer.input_device_name = self._input_device
 			self._sequencer.clock_follow = self._clock_follow
+			self._sequencer.clock_device_idx = 0
+
+			if not self._clock_follow:
+				for idx, (_, _, cf) in enumerate(self._additional_inputs, start=1):
+					if cf:
+						self._sequencer.clock_follow = True
+						self._sequencer.clock_device_idx = idx
+						break
 
 		# Open additional output devices (device 0 was opened in Sequencer.__init__).
 		# Build _output_device_names map: alias (or raw name) → device index.
@@ -2479,7 +2499,7 @@ class Composition:
 				fwd['output_device'] = self._resolve_device_id(raw_out)
 
 		# Pass clock output flag (suppressed automatically when clock_follow=True).
-		self._sequencer.clock_output = self._clock_output and not self._clock_follow
+		self._sequencer.clock_output = self._clock_output and not self.is_clock_following
 
 		# Create Ableton Link clock if comp.link() was called.
 		if self._link_quantum is not None:
