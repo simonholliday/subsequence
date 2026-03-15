@@ -54,7 +54,7 @@ def _format_message (message: typing.Any) -> str:
 	parts = [message.type]
 
 	if hasattr(message, "channel"):
-		parts.append(f"ch={message.channel}")
+		parts.append(f"ch={message.channel + 1}")
 
 	if message.type in {"note_on", "note_off"}:
 		parts.append(f"note={message.note}")
@@ -90,6 +90,7 @@ def _run () -> int:
 
 	print("\nThis tool prints all incoming MIDI messages from a selected input device.")
 	print("Use it to discover note, CC, channel, and transport data from your controller.")
+	print("Note: MIDI channels are displayed 1-indexed (1-16) to match hardware panels.")
 
 	selected_name, midi_in = _select_input_device()
 
