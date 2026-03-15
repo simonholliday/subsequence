@@ -462,6 +462,22 @@ class Sequencer:
 			self._output_devices.add(device_name, midi_out)
 
 
+	def _open_midi_inputs (self) -> None:
+
+		"""
+		Set up the internal event loops and MIDI input ports.
+
+		This is called automatically by start(), but may be called manually
+		by Composition._run() earlier in the startup sequence to ensure
+		MIDI CC configuration is shared before ports begin background draining.
+		"""
+
+		if self.input_device_name is not None and self._midi_input_queue is None:
+			self._input_loop = asyncio.get_running_loop()
+			self._midi_input_queue = asyncio.Queue()
+			self._init_midi_input()
+
+
 	def _init_midi_input (self) -> None:
 
 		"""Initialize the primary MIDI input port (device 0) with a callback."""
@@ -840,10 +856,7 @@ class Sequencer:
 			return
 
 		# Set up MIDI input queue before opening the port.
-		if self.input_device_name is not None:
-			self._input_loop = asyncio.get_running_loop()
-			self._midi_input_queue = asyncio.Queue()
-			self._init_midi_input()
+		self._open_midi_inputs()
 
 		# Store the event loop for thread-safe scheduling (e.g., trigger() from user threads)
 		self._event_loop = asyncio.get_running_loop()

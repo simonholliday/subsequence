@@ -2439,56 +2439,38 @@ class Composition:
 		Async entry point that schedules all patterns and runs the sequencer.
 		"""
 
-		# Pass MIDI input configuration to the sequencer before start.
+		# 1. Pre-calculate MIDI input indices and configure sequencer clock follow.
 		if self._input_device is not None:
 			self._sequencer.input_device_name = self._input_device
 			self._sequencer.clock_follow = self._clock_follow
 			self._sequencer.clock_device_idx = 0
 
 			if not self._clock_follow:
+				# Find first additional input that wants to be the clock master.
 				for idx, (_, _, cf) in enumerate(self._additional_inputs, start=1):
 					if cf:
 						self._sequencer.clock_follow = True
 						self._sequencer.clock_device_idx = idx
 						break
 
-		# Open additional output devices (device 0 was opened in Sequencer.__init__).
-		# Build _output_device_names map: alias (or raw name) → device index.
-		# Always record device 0's alias (the primary output).
-		if self._sequencer.output_device_name:
-			self._output_device_names[self._sequencer.output_device_name] = 0
-
-		for dev_name, alias in self._additional_outputs:
-			open_name, port = subsequence.midi_utils.select_output_device(dev_name)
-			if open_name and port is not None:
-				idx = self._sequencer.add_output_device(open_name, port)
-				self._output_device_names[open_name] = idx
-				if alias is not None:
-					self._output_device_names[alias] = idx
-			else:
-				logger.warning(f"Could not open additional output device '{dev_name}'")
-
-		# Open additional input devices and build _input_device_names lookup.
-		# Also register the primary input (device 0) if one was configured.
+		# Populate input device name mapping early (before opening ports) so we can
+		# resolve CC mappings to integer device indices immediately.
 		if self._sequencer.input_device_name:
 			self._input_device_names[self._sequencer.input_device_name] = 0
 			if self._input_device_alias is not None:
 				self._input_device_names[self._input_device_alias] = 0
 
-		for dev_name, alias, cf in self._additional_inputs:
-			dev_idx = len(self._sequencer._input_devices)  # next index
-			callback = self._sequencer._make_input_callback(dev_idx)
-			open_name, port = subsequence.midi_utils.select_input_device(dev_name, callback)
-			if open_name and port is not None:
-				self._sequencer.add_input_device(open_name, port)
-				self._input_device_names[open_name] = dev_idx
-				if alias is not None:
-					self._input_device_names[alias] = dev_idx
-			else:
-				logger.warning(f"Could not open additional input device '{dev_name}'")
+		for idx, (dev_name, alias, _) in enumerate(self._additional_inputs, start=1):
+			self._input_device_names[dev_name] = idx
+			if alias:
+				self._input_device_names[alias] = idx
 
-		# Resolve name-based device ids in cc_map/cc_forward/pending patterns.
-		# All devices are now open, so _output_device_names and _input_device_names are complete.
+		# 2. Pre-calculate output device names.
+		if self._sequencer.output_device_name:
+			self._output_device_names[self._sequencer.output_device_name] = 0
+
+		# 3. Resolve name-based device ids in cc_map/cc_forward/pending patterns early.
+		# This ensures we have integer indices ready for the background callback thread.
 		self._resolve_pending_devices()
 		for mapping in self._cc_mappings:
 			raw = mapping.get('input_device')
@@ -2502,6 +2484,43 @@ class Composition:
 			if isinstance(raw_out, str):
 				fwd['output_device'] = self._resolve_device_id(raw_out)
 
+		# 4. Share CC input mappings, forwards, and a reference to composition.data
+		# with the sequencer BEFORE opening the ports. This ensures that any initial
+		# messages in the OS buffer are correctly mapped as soon as the port opens.
+		self._sequencer.cc_mappings = self._cc_mappings
+		self._sequencer.cc_forwards = self._cc_forwards
+		self._sequencer._composition_data = self.data
+
+		# 5. Open MIDI input ports early. Even without a deliberate sleep, opening
+		# them before pattern building minimizes the window for missed messages.
+		# Primary input
+		self._sequencer._open_midi_inputs()
+
+		# Additional inputs
+		for idx, (dev_name, alias, cf) in enumerate(self._additional_inputs, start=1):
+			# Use the pre-calculated index
+			callback = self._sequencer._make_input_callback(idx)
+			open_name, port = subsequence.midi_utils.select_input_device(dev_name, callback)
+			if open_name and port is not None:
+				self._sequencer.add_input_device(open_name, port)
+			else:
+				logger.warning(f"Could not open additional input device '{dev_name}'")
+
+		# 6. Open additional MIDI output devices.
+		for dev_name, alias in self._additional_outputs:
+			open_name, port = subsequence.midi_utils.select_output_device(dev_name)
+			if open_name and port is not None:
+				idx = self._sequencer.add_output_device(open_name, port)
+				self._output_device_names[open_name] = idx
+				if alias is not None:
+					self._output_device_names[alias] = idx
+			else:
+				logger.warning(f"Could not open additional output device '{dev_name}'")
+
+		# Resolve any name-based output device IDs on patterns that may have been added
+		# for additional output devices.
+		self._resolve_pending_devices()
+
 		# Pass clock output flag (suppressed automatically when clock_follow=True).
 		self._sequencer.clock_output = self._clock_output and not self.is_clock_following
 
@@ -2512,11 +2531,6 @@ class Composition:
 				quantum = self._link_quantum,
 				loop = asyncio.get_running_loop(),
 			)
-
-		# Share CC input mappings, forwards, and a reference to composition.data with the sequencer.
-		self._sequencer.cc_mappings = self._cc_mappings
-		self._sequencer.cc_forwards = self._cc_forwards
-		self._sequencer._composition_data = self.data
 
 		# Derive child RNGs from the master seed so each component gets
 		# an independent, deterministic stream.  When no seed is set,
