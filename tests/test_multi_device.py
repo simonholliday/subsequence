@@ -575,9 +575,10 @@ def test_input_alias_resolves_in_cc_map(patch_midi_multi) -> None:
 	comp.midi_input("Input B", name="faders")
 	comp.cc_map(74, "filter", input_device="faders")
 
-	# Manually populate _input_device_names as _run() would, then call resolution.
+	# Manual setup for resolution (simulating what _run would populate after opening ports).
 	comp._input_device_names["Input A"] = 0
-	comp._input_device_names["keys"] = 0
+	if comp._input_device_alias:
+		comp._input_device_names[comp._input_device_alias] = 0
 	comp._input_device_names["Input B"] = 1
 	comp._input_device_names["faders"] = 1
 
@@ -597,7 +598,8 @@ def test_input_alias_resolves_in_cc_forward(patch_midi_multi) -> None:
 	comp.cc_forward(1, "cc", input_device="keys")
 
 	comp._input_device_names["Input A"] = 0
-	comp._input_device_names["keys"] = 0
+	if comp._input_device_alias:
+		comp._input_device_names[comp._input_device_alias] = 0
 
 	for fwd in comp._cc_forwards:
 		raw_in = fwd.get('input_device')

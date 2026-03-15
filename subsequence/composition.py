@@ -641,6 +641,7 @@ class Composition:
 		self._is_live: bool = False
 		self._running_patterns: typing.Dict[str, typing.Any] = {}
 		self._input_device: typing.Optional[str] = None
+		self._input_device_alias: typing.Optional[str] = None
 		self._clock_follow: bool = False
 		self._clock_output: bool = False
 		self._cc_mappings: typing.List[typing.Dict[str, typing.Any]] = []
@@ -1357,6 +1358,7 @@ class Composition:
 		if self._input_device is None:
 			# First call: set primary input device (device 0)
 			self._input_device = device
+			self._input_device_alias = name
 			self._clock_follow = clock_follow
 		else:
 			# Subsequent calls: register additional input devices
@@ -2470,6 +2472,8 @@ class Composition:
 		# Also register the primary input (device 0) if one was configured.
 		if self._sequencer.input_device_name:
 			self._input_device_names[self._sequencer.input_device_name] = 0
+			if self._input_device_alias is not None:
+				self._input_device_names[self._input_device_alias] = 0
 
 		for dev_name, alias, cf in self._additional_inputs:
 			dev_idx = len(self._sequencer._input_devices)  # next index
