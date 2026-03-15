@@ -149,6 +149,15 @@ class PatternBuilder(
 		"""Number of grid slots in this pattern (e.g. 16 for a 4-beat sixteenth-note pattern)."""
 		return self._default_grid
 
+	def _has_pitch_at_beat (self, pitch: typing.Union[int, str], beat: float) -> bool:
+		"""Helper to check if a pitch is already sounding at a specific beat."""
+		midi_pitch = self._resolve_pitch(pitch)
+		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE + 0.5)
+		if pulse in self._pattern.steps:
+			return any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes)
+		return False
+
+
 	@property
 	def c (self) -> typing.Optional[subsequence.conductor.Conductor]:
 

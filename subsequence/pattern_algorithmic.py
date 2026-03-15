@@ -45,6 +45,7 @@ class PatternAlgorithmicMixin:
 			duration: float,
 		) -> "PatternAlgorithmicMixin": ...
 		def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int: ...
+		def _has_pitch_at_beat (self, pitch: typing.Union[int, str], beat: float) -> bool: ...
 
 	def _place_rhythm_sequence (
 		self,
@@ -64,7 +65,6 @@ class PatternAlgorithmicMixin:
 		across the pattern length. Zeros and dropout-gated steps are skipped.
 		"""
 
-		midi_pitch = self._resolve_pitch(pitch)
 		step_duration = self._pattern.length / len(sequence)
 
 		for i, hit_value in enumerate(sequence):
@@ -75,11 +75,8 @@ class PatternAlgorithmicMixin:
 			if dropout > 0 and rng.random() < dropout:
 				continue
 
-			if no_overlap:
-				pulse = int(i * step_duration * subsequence.constants.MIDI_QUARTER_NOTE + 0.5)
-				if pulse in self._pattern.steps:
-					if any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes):
-						continue
+			if no_overlap and self._has_pitch_at_beat(pitch, i * step_duration):
+				continue
 
 			self.note(pitch=pitch, beat=i * step_duration, velocity=velocity, duration=duration)
 
@@ -265,12 +262,8 @@ class PatternAlgorithmicMixin:
 
 			pitch = voice_names[voice_idx]
 
-			if no_overlap:
-				midi_pitch = self._resolve_pitch(pitch)
-				pulse = int(step_idx * step_duration * subsequence.constants.MIDI_QUARTER_NOTE + 0.5)
-				if pulse in self._pattern.steps:
-					if any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes):
-						continue
+			if no_overlap and self._has_pitch_at_beat(pitch, step_idx * step_duration):
+				continue
 
 			if isinstance(velocity, dict):
 				vel = velocity.get(pitch, subsequence.constants.velocity.DEFAULT_VELOCITY)
@@ -483,7 +476,6 @@ class PatternAlgorithmicMixin:
 		if max_weight <= 0:
 			return self
 
-		midi_pitch = self._resolve_pitch(pitch)
 		step_duration = self._pattern.length / grid
 
 		for i in range(grid):
@@ -492,11 +484,8 @@ class PatternAlgorithmicMixin:
 			if rng.random() >= prob:
 				continue
 
-			if no_overlap:
-				pulse = int(round(i * step_duration * subsequence.constants.MIDI_QUARTER_NOTE))
-				if pulse in self._pattern.steps:
-					if any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes):
-						continue
+			if no_overlap and self._has_pitch_at_beat(pitch, i * step_duration):
+				continue
 
 			if callable(velocity):
 				vel = int(velocity(i))

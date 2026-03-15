@@ -60,6 +60,86 @@ class MidiEvent:
 	device: int = dataclasses.field(compare=False, default=0)
 
 
+	def to_mido (self) -> typing.Optional[typing.Union[mido.Message, mido.MetaMessage]]:
+
+		"""Convert this event to a mido.Message, or None if it's an internal type (like OSC)."""
+
+		if self.message_type in ('note_on', 'note_off'):
+			return mido.Message(
+				self.message_type,
+				channel = self.channel,
+				note = self.note,
+				velocity = self.velocity
+			)
+
+		if self.message_type == 'control_change':
+			return mido.Message(
+				'control_change',
+				channel = self.channel,
+				control = self.control,
+				value = self.value
+			)
+
+		if self.message_type == 'pitchwheel':
+			return mido.Message(
+				'pitchwheel',
+				channel = self.channel,
+				pitch = self.value
+			)
+
+		if self.message_type == 'program_change':
+			return mido.Message(
+				'program_change',
+				channel = self.channel,
+				program = self.value
+			)
+
+		if self.message_type == 'sysex':
+			return mido.Message(
+				'sysex',
+				data = self.data if self.data is not None else b''
+			)
+
+		return None
+
+
+	@classmethod
+	def from_mido (cls, pulse: int, msg: typing.Union[mido.Message, mido.MetaMessage], device: int = 0) -> "MidiEvent":
+
+		"""Convert a mido.Message to a MidiEvent."""
+
+		if msg.type == 'pitchwheel':
+			return cls(
+				pulse = pulse,
+				message_type = 'pitchwheel',
+				channel = msg.channel,
+				value = msg.pitch,
+				device = device,
+			)
+
+		if msg.type == 'control_change':
+			return cls(
+				pulse = pulse,
+				message_type = 'control_change',
+				channel = msg.channel,
+				control = msg.control,
+				value = msg.value,
+				device = device,
+			)
+
+		return cls(
+			pulse = pulse,
+			message_type = msg.type,
+			channel = getattr(msg, 'channel', 0),
+			value = getattr(msg, 'value', 0),
+			note = getattr(msg, 'note', 0),
+			velocity = getattr(msg, 'velocity', 0),
+			data = getattr(msg, 'data', None),
+			control = getattr(msg, 'control', 0),
+			device = device,
+		)
+
+
 @dataclasses.dataclass
 class ScheduledPattern:
 
@@ -570,36 +650,6 @@ class Sequencer:
 					# Queued: buffer for drain in _process_pulse on the event loop thread.
 					self._forward_buffer.append((self.pulse_count, out_msg))
 
-
-	def _msg_to_midi_event (self, pulse: int, msg: typing.Any) -> MidiEvent:
-
-		"""Convert a mido.Message to a MidiEvent at the given pulse.
-
-		Used to inject queued CC forwards into the event heap.
-		"""
-
-		if msg.type == 'pitchwheel':
-			return MidiEvent(
-				pulse = pulse,
-				message_type = 'pitchwheel',
-				channel = msg.channel,
-				value = msg.pitch,
-			)
-		elif msg.type == 'control_change':
-			return MidiEvent(
-				pulse = pulse,
-				message_type = 'control_change',
-				channel = msg.channel,
-				control = msg.control,
-				value = msg.value,
-			)
-		else:
-			return MidiEvent(
-				pulse = pulse,
-				message_type = msg.type,
-				channel = getattr(msg, 'channel', 0),
-				value = getattr(msg, 'value', 0),
-			)
 
 
 	def _estimate_bpm (self, tick_time: float) -> None:
@@ -1280,7 +1330,7 @@ class Sequencer:
 			# while the callback thread calls append().
 			while self._forward_buffer:
 				fwd_pulse, fwd_msg = self._forward_buffer.popleft()
-				heapq.heappush(self.event_queue, self._msg_to_midi_event(fwd_pulse, fwd_msg))
+				heapq.heappush(self.event_queue, MidiEvent.from_mido(fwd_pulse, fwd_msg))
 
 			while self.event_queue and self.event_queue[0].pulse <= pulse:
 
@@ -1298,21 +1348,9 @@ class Sequencer:
 
 				if self.recording and event.message_type != 'osc':
 
-					if event.message_type in ('note_on', 'note_off'):
-						self._record_event(event.pulse, mido.Message(event.message_type, channel=event.channel, note=event.note, velocity=event.velocity))
-
-					elif event.message_type == 'control_change':
-						self._record_event(event.pulse, mido.Message('control_change', channel=event.channel, control=event.control, value=event.value))
-
-					elif event.message_type == 'pitchwheel':
-						self._record_event(event.pulse, mido.Message('pitchwheel', channel=event.channel, pitch=event.value))
-
-					elif event.message_type == 'program_change':
-						self._record_event(event.pulse, mido.Message('program_change', channel=event.channel, program=event.value))
-
-					elif event.message_type == 'sysex':
-						raw = event.data if event.data is not None else b''
-						self._record_event(event.pulse, mido.Message('sysex', data=raw))
+					mido_msg = event.to_mido()
+					if mido_msg is not None:
+						self._record_event(event.pulse, mido_msg)
 
 
 	async def _stop_all_active_notes (self) -> None:
@@ -1343,49 +1381,14 @@ class Sequencer:
 
 			try:
 
-				if event.message_type in ('note_on', 'note_off'):
-					msg = mido.Message(
-						event.message_type,
-						channel = event.channel,
-						note = event.note,
-						velocity = event.velocity
-					)
-
-				elif event.message_type == 'control_change':
-					msg = mido.Message(
-						'control_change',
-						channel = event.channel,
-						control = event.control,
-						value = event.value
-					)
-
-				elif event.message_type == 'pitchwheel':
-					msg = mido.Message(
-						'pitchwheel',
-						channel = event.channel,
-						pitch = event.value
-					)
-
-				elif event.message_type == 'program_change':
-					msg = mido.Message(
-						'program_change',
-						channel = event.channel,
-						program = event.value
-					)
-
-				elif event.message_type == 'sysex':
-					msg = mido.Message(
-						'sysex',
-						data = event.data if event.data is not None else b''
-					)
-
-				elif event.message_type == 'osc':
+				if event.message_type == 'osc':
 					if self.osc_server is not None:
 						address, args = event.data
 						self.osc_server.send(address, *args)
 					return
 
-				else:
+				msg = event.to_mido()
+				if msg is None:
 					return
 
 				port.send(msg)

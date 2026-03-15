@@ -287,11 +287,10 @@ async def test_queued_drained_in_process_pulse(patch_midi: None) -> None:
 	assert any(m.control == 74 and m.value == 64 for m in spy.sent)
 
 
-def test_msg_to_midi_event_cc(patch_midi: None) -> None:
-	"""_msg_to_midi_event should correctly convert a CC message."""
-	seq = _make_sequencer(conftest.SpyMidiOut())
+def test_midi_event_from_mido_cc(patch_midi: None) -> None:
+	"""from_mido should correctly convert a CC message."""
 	msg = mido.Message('control_change', channel=1, control=74, value=100)
-	event = seq._msg_to_midi_event(10, msg)
+	event = subsequence.sequencer.MidiEvent.from_mido(10, msg)
 	assert event.pulse == 10
 	assert event.message_type == 'control_change'
 	assert event.channel == 1
@@ -299,11 +298,10 @@ def test_msg_to_midi_event_cc(patch_midi: None) -> None:
 	assert event.value == 100
 
 
-def test_msg_to_midi_event_pitchwheel(patch_midi: None) -> None:
-	"""_msg_to_midi_event should correctly convert a pitchwheel message."""
-	seq = _make_sequencer(conftest.SpyMidiOut())
+def test_midi_event_from_mido_pitchwheel(patch_midi: None) -> None:
+	"""from_mido should correctly convert a pitchwheel message."""
 	msg = mido.Message('pitchwheel', channel=0, pitch=-4096)
-	event = seq._msg_to_midi_event(5, msg)
+	event = subsequence.sequencer.MidiEvent.from_mido(5, msg)
 	assert event.pulse == 5
 	assert event.message_type == 'pitchwheel'
 	assert event.value == -4096
