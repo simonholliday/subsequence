@@ -152,7 +152,7 @@ class PatternBuilder(
 	def _has_pitch_at_beat (self, pitch: typing.Union[int, str], beat: float) -> bool:
 		"""Helper to check if a pitch is already sounding at a specific beat."""
 		midi_pitch = self._resolve_pitch(pitch)
-		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE + 0.5)
+		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
 		if pulse in self._pattern.steps:
 			return any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes)
 		return False

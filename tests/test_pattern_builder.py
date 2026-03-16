@@ -4746,3 +4746,16 @@ def test_velocity_ramp_uses_grid ():
 	_, builder = _make_builder(default_grid=8, length=8)
 	result = builder.velocity_ramp(50, 100)
 	assert len(result) == 8
+
+
+def test_no_overlap_rounding_edge_case ():
+	"""_has_pitch_at_beat must use the same int() truncation as add_note_beats.
+	At a beat where beat*PPQ == N+0.5, int() gives N but int()+0.5 rounds to N+1,
+	so the lookup would miss the placed note and no_overlap=True would fail."""
+	_, builder = _make_builder(default_grid=16, length=4)
+	# 11.5/480 * 480 == 11.5 → int() truncates to 11, int(+0.5) rounds to 12
+	beat = 11.5 / subsequence.constants.MIDI_QUARTER_NOTE
+	# Place a note at the edge-case beat position via add_note_beats
+	builder._pattern.add_note_beats(beat, 60, 100, 0.25)
+	# _has_pitch_at_beat must find it (would return False under the old + 0.5 rounding)
+	assert builder._has_pitch_at_beat(60, beat), "_has_pitch_at_beat missed a note placed at the same beat (rounding mismatch)"
