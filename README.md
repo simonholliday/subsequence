@@ -88,7 +88,7 @@ It is designed for **the professional musician who wants generative music with a
 
 ### Minimal Example
 
-This is all the code you need to build a generative drum pattern:
+This is all the code you need to build a simple drum pattern:
 
 ```python
 import subsequence
