@@ -217,12 +217,24 @@ def scale_notes (
 	"""Return MIDI note numbers for a scale within a pitch range.
 
 	Parameters:
-		key: Root note name (``"C"``, ``"F#"``, ``"Bb"``, etc.).
+		key: Scale root as a note name (``"C"``, ``"F#"``, ``"Bb"``, etc.).
+		     This acts as a **pitch-class filter only** — it determines which
+		     semitone positions (0–11) are valid members of the scale, but does
+		     not affect which octave notes are drawn from. Notes are selected
+		     starting from ``low`` upward; ``key`` controls *which* notes are
+		     kept, not where the sequence starts. To guarantee the first
+		     returned note is the root, ``low`` must be a MIDI number whose
+		     pitch class matches ``key``. When starting from an arbitrary MIDI
+		     number, derive the key name with
+		     ``subsequence.chords.PC_TO_NOTE_NAME[root_pitch % 12]``.
 		mode: Scale mode name. Supports all keys of :data:`SCALE_MODE_MAP`
 		      (e.g. ``"ionian"``, ``"dorian"``, ``"natural_minor"``,
 		      ``"major_pentatonic"``). Use :func:`register_scale` for custom scales.
 		low: Lowest MIDI note (inclusive). When ``count`` is set, this is
-		     the starting note from which the scale ascends.
+		     the starting note from which the scale ascends. **If ``low`` is
+		     not a member of the scale defined by ``key``, it is silently
+		     skipped** and the first returned note will be the next in-scale
+		     pitch above ``low``.
 		high: Highest MIDI note (inclusive). Ignored when ``count`` is set.
 		count: Exact number of notes to return. Notes ascend from ``low``
 		       through successive scale degrees, cycling into higher octaves
@@ -248,6 +260,16 @@ def scale_notes (
 		# 15 notes of A minor pentatonic ascending from A3
 		subsequence.scale_notes("A", "minor_pentatonic", low=notes.A3, count=15)
 		# → [57, 60, 62, 64, 67, 69, 72, 74, 76, 79, 81, 84, 86, 88, 91]
+
+		# Misalignment: key="E" but low=C4 — first note is C, not E
+		subsequence.scale_notes("E", "minor", low=60, count=4)
+		# → [60, 62, 64, 67]  (C D E G — all in E natural minor, but starts on C)
+
+		# Fix: derive key name from root_pitch so low is always in the scale
+		root_pitch = 64  # E4
+		key = subsequence.chords.PC_TO_NOTE_NAME[root_pitch % 12]  # → "E"
+		subsequence.scale_notes(key, "minor", low=root_pitch, count=4)
+		# → [64, 66, 67, 69]  (E F# G A — starts on the root)
 		```
 	"""
 
