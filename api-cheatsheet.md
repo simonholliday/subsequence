@@ -25,6 +25,7 @@ The top-level controller for a musical piece.
 | `harmony(style, cycle_beats, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity, reschedule_lookahead) -> None` | Configure the harmonic logic and chord change intervals. |
 | `hotkey(key, action, quantize, label) -> None` | Register a single-key shortcut that fires during playback. |
 | `hotkeys(enabled) -> None` | Enable or disable the global hotkey listener. |
+| `is_clock_following *(property)*` | True if either the primary or any additional device is following external clock. |
 | `layer(*builder_fns, channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading, device) -> None` | Combine multiple functions into a single MIDI pattern. |
 | `link(quantum) -> 'Composition'` | Enable Ableton Link tempo and phase synchronisation. |
 | `live(port) -> None` | Enable the live coding eval server. |
