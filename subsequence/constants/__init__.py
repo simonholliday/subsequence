@@ -7,6 +7,7 @@ This package contains three sets of constants:
 - ``subsequence.constants.velocity`` - MIDI velocity constants
 - ``subsequence.constants.instruments`` - Instrument-specific note maps (GM, Vermona, etc.)
 - ``subsequence.constants.midi_notes`` - Named MIDI note constants C0–G9, C4 = 60 (Middle C)
+- ``subsequence.constants.midi_cc`` - Standard General MIDI Continuous Controller numbers
 
 Pulse constants are re-exported here for backwards compatibility, so
 ``subsequence.constants.MIDI_QUARTER_NOTE`` continues to work.
