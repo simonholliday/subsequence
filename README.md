@@ -2599,7 +2599,9 @@ Turns real-time International Space Station telemetry into an evolving compositi
 - `subsequence.constants.durations` provides beat-based duration constants. Import as `import subsequence.constants.durations as dur` and write `length = 9 * dur.SIXTEENTH` or `step = dur.DOTTED_EIGHTH` instead of raw floats. Constants: `THIRTYSECOND`, `SIXTEENTH`, `DOTTED_SIXTEENTH`, `TRIPLET_EIGHTH`, `EIGHTH`, `DOTTED_EIGHTH`, `TRIPLET_QUARTER`, `QUARTER`, `DOTTED_QUARTER`, `HALF`, `DOTTED_HALF`, `WHOLE`.
 - `subsequence.constants.velocity` provides MIDI velocity constants. `DEFAULT_VELOCITY = 100` (most notes), `DEFAULT_CHORD_VELOCITY = 90` (harmonic content), `VELOCITY_SHAPE_LOW = 64` and `VELOCITY_SHAPE_HIGH = 127` (velocity shaping boundaries), `MIN_VELOCITY = 0`, `MAX_VELOCITY = 127`.
 - `subsequence.constants.gm_drums` provides the General MIDI Level 1 drum note map. `GM_DRUM_MAP` can be passed as `drum_note_map`; individual constants like `KICK_1` are also available.
-- `subsequence.constants.midi_notes` provides named MIDI note constants C0–G9 (MIDI 12–127). Import as `import subsequence.constants.midi_notes as notes`. Convention: `C4 = 60` (Middle C, MMA standard). Naturals: `C4`, `D4`, … `B4`. Sharps: `CS4` (C♯4), `DS4`, `FS4`, `GS4`, `AS4`. Use instead of raw integers: `root = notes.E2` (40), `p.note(notes.A4)` (69).
+- `subsequence.constants.instruments.gm_instruments` provides all 128 General MIDI Level 1 instrument program numbers. `GM_INSTRUMENT_MAP` for string lookup, `GM_INSTRUMENT_NAMES` for display, `GM_FAMILIES` for family ranges, and individual constants like `VIOLIN`, `FLUTE`, etc.
+- `subsequence.constants.midi_notes` provides named MIDI note constants C_NEG1–G9 (MIDI 0–127). Import as `import subsequence.constants.midi_notes as notes`. Convention: `C4 = 60` (Middle C, MMA standard). Naturals: `C4`, `D4`, … `B4`. Sharps: `CS4` (C♯4), `DS4`, `FS4`, `GS4`, `AS4`. Also provides `note_to_name(60) → "C4"` and `name_to_note("Db4") → 61`. Use instead of raw integers: `root = notes.E2` (40), `p.note(notes.A4)` (69).
+- `subsequence.constants.midi_cc` provides named MIDI CC constants (0–127). Import as `import subsequence.constants.midi_cc as cc`. Constants: `FILTER_CUTOFF` (74), `SUSTAIN_PEDAL` (64), `MODULATION_WHEEL` (1), `VOLUME` (7), `PAN` (10), `ALL_NOTES_OFF` (123), etc. `GM_CC_MAP` dict for string lookup.
 - `subsequence.constants.pulses` provides pulse-based MIDI timing constants used internally by the engine.
 
 ### Infrastructure
@@ -2681,6 +2683,7 @@ Subsequence makes use of these excellent open-source libraries:
 | [mido ↗](https://github.com/mido/mido) | MIDI message handling and file I/O | MIT |
 | [python-rtmidi ↗](https://github.com/SpotlightKid/python-rtmidi) | Real-time MIDI I/O | MIT |
 | [python-osc ↗](https://github.com/attwad/python-osc) | OSC protocol support | Unlicense |
+| [pymididefs ↗](https://github.com/simonholliday/PyMidiDefs) | Canonical MIDI 1.0/2.0 constant definitions | MIT |
 | [websockets ↗](https://github.com/python-websockets/websockets) | Web UI dashboard communication | BSD-3-Clause |
 | [aalink ↗](https://github.com/artfwo/aalink) *(optional)* | Ableton Link integration | GPL-3.0 |
 
