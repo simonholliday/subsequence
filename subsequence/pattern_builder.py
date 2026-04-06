@@ -106,7 +106,7 @@ class PatternBuilder(
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info.
 
@@ -115,6 +115,7 @@ class PatternBuilder(
 			cycle: Zero-based rebuild counter.
 			conductor: Optional ``Conductor`` for time-varying signals.
 			drum_note_map: Optional mapping of drum names to MIDI notes.
+			cc_name_map: Optional mapping of CC names to MIDI CC numbers.
 			section: Current ``SectionInfo`` (or ``None``).
 			bar: Global bar count.
 			rng: Optional seeded ``Random`` for reproducibility.
@@ -136,6 +137,7 @@ class PatternBuilder(
 		self.cycle = cycle
 		self.conductor = conductor
 		self._drum_note_map = drum_note_map
+		self._cc_name_map = cc_name_map
 		self.section = section
 		self.bar = bar
 		self.rng: random.Random = rng or random.Random()
@@ -230,6 +232,21 @@ class PatternBuilder(
 			raise ValueError(f"Unknown drum name '{pitch}' - not found in drum_note_map")
 
 		return self._drum_note_map[pitch]
+
+	def _resolve_cc (self, control: typing.Union[int, str]) -> int:
+
+		"""Resolve a CC name or number to a MIDI CC number."""
+
+		if isinstance(control, int):
+			return control
+
+		if self._cc_name_map is None:
+			raise ValueError(f"String CC name '{control}' requires a cc_name_map, but none was provided")
+
+		if control not in self._cc_name_map:
+			raise ValueError(f"Unknown CC name '{control}' - not found in cc_name_map")
+
+		return self._cc_name_map[control]
 
 	def note (self, pitch: typing.Union[int, str], beat: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
 

@@ -516,7 +516,8 @@ class _PendingPattern:
 		length: float,
 		default_grid: int,
 		drum_note_map: typing.Optional[typing.Dict[str, int]],
-		reschedule_lookahead: float,
+		cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
+		reschedule_lookahead: float = 1,
 		voice_leading: bool = False,
 		device: int = 0,
 		raw_device: subsequence.midi_utils.DeviceId = None,
@@ -538,6 +539,7 @@ class _PendingPattern:
 		self.length = length
 		self.default_grid = default_grid
 		self.drum_note_map = drum_note_map
+		self.cc_name_map = cc_name_map
 		self.reschedule_lookahead = reschedule_lookahead
 		self.voice_leading = voice_leading
 		self.device = device
@@ -2049,6 +2051,7 @@ class Composition:
 		steps: typing.Optional[float] = None,
 		unit: typing.Optional[float] = None,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+		cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
 		voice_leading: bool = False,
 		device: subsequence.midi_utils.DeviceId = None,
@@ -2079,6 +2082,8 @@ class Composition:
 			unit: Duration of one step in beats (e.g. ``dur.SIXTEENTH``).
 				Requires ``steps=``.
 			drum_note_map: Optional mapping for drum instruments.
+			cc_name_map: Optional mapping of CC names to MIDI CC numbers.
+				Enables string-based CC names in ``p.cc()`` and ``p.cc_ramp()``.
 			reschedule_lookahead: Beats in advance to compute the next cycle.
 			voice_leading: If True, chords in this pattern will automatically
 				use inversions that minimize voice movement.
@@ -2128,6 +2133,7 @@ class Composition:
 				length = beat_length,
 				default_grid = default_grid,
 				drum_note_map = drum_note_map,
+				cc_name_map = cc_name_map,
 				reschedule_lookahead = reschedule_lookahead,
 				voice_leading = voice_leading,
 				# For int/None: resolve immediately.  For str: store 0 as
@@ -2151,6 +2157,7 @@ class Composition:
 		steps: typing.Optional[float] = None,
 		unit: typing.Optional[float] = None,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+		cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
 		voice_leading: bool = False,
 		device: subsequence.midi_utils.DeviceId = None,
@@ -2173,6 +2180,7 @@ class Composition:
 			steps: Step count for step mode. Requires ``unit=``.
 			unit: Duration of one step in beats. Requires ``steps=``.
 			drum_note_map: Optional mapping for drum instruments.
+			cc_name_map: Optional mapping of CC names to MIDI CC numbers.
 			reschedule_lookahead: Beats in advance to compute the next cycle.
 			voice_leading: If True, chords use smooth voice leading.
 		"""
@@ -2206,6 +2214,7 @@ class Composition:
 			length = beat_length,
 			default_grid = default_grid,
 			drum_note_map = drum_note_map,
+			cc_name_map = cc_name_map,
 			reschedule_lookahead = reschedule_lookahead,
 			voice_leading = voice_leading,
 				device = 0 if (device is None or isinstance(device, str)) else device,
@@ -2224,6 +2233,7 @@ class Composition:
 		unit: typing.Optional[float] = None,
 		quantize: float = 0,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+		cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		chord: bool = False,
 		device: subsequence.midi_utils.DeviceId = None,
 	) -> None:
@@ -2254,6 +2264,7 @@ class Composition:
 				``1`` = next beat (quarter note), ``4`` = next bar. Use ``dur.*``
 				constants from ``subsequence.constants.durations``.
 			drum_note_map: Optional drum name mapping for this pattern.
+			cc_name_map: Optional mapping of CC names to MIDI CC numbers.
 			chord: If ``True``, the builder function receives the current chord as
 				a second parameter (same as ``@composition.pattern``).
 
@@ -2300,6 +2311,7 @@ class Composition:
 			pattern=pattern,
 			cycle=0,  # One-shot patterns don't rebuild, so cycle is always 0
 			drum_note_map=drum_note_map,
+			cc_name_map=cc_name_map,
 			section=self._form_state.get_section_info() if self._form_state else None,
 			bar=self._builder_bar,
 			conductor=self.conductor,
@@ -2751,6 +2763,7 @@ class Composition:
 
 				self._builder_fn = pending.builder_fn
 				self._drum_note_map = pending.drum_note_map
+				self._cc_name_map = pending.cc_name_map
 				self._default_grid: int = pending.default_grid
 				self._wants_chord = _fn_has_parameter(pending.builder_fn, "chord")
 				self._cycle_count = 0
@@ -2782,6 +2795,7 @@ class Composition:
 					pattern = self,
 					cycle = current_cycle,
 					drum_note_map = self._drum_note_map,
+					cc_name_map = self._cc_name_map,
 					section = composition_ref._form_state.get_section_info() if composition_ref._form_state else None,
 					bar = composition_ref._builder_bar,
 					conductor = composition_ref.conductor,

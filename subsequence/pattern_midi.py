@@ -22,6 +22,7 @@ class PatternMidiMixin:
 	# ── Instance attributes provided by PatternBuilder at runtime ────────
 	_pattern: subsequence.pattern.Pattern
 	_default_grid: int
+	_cc_name_map: typing.Optional[typing.Dict[str, int]]
 
 	# ── Shared ramp helper ──────────────────────────────────────────────────
 
@@ -62,17 +63,19 @@ class PatternMidiMixin:
 
 	# ── CC messages ─────────────────────────────────────────────────────────
 
-	def cc (self, control: int, value: int, beat: float = 0.0) -> "PatternMidiMixin":
+	def cc (self, control: typing.Union[int, str], value: int, beat: float = 0.0) -> "PatternMidiMixin":
 
 		"""
 		Send a single CC message at a beat position.
 
 		Parameters:
-			control: MIDI CC number (0–127).
+			control: MIDI CC number (0–127), or a string name resolved
+				via the pattern's ``cc_name_map``.
 			value: CC value (0–127).
 			beat: Beat position within the pattern.
 		"""
 
+		control = self._resolve_cc(control)
 		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
 
 		self._pattern.cc_events.append(
@@ -87,7 +90,7 @@ class PatternMidiMixin:
 
 	def cc_ramp (
 		self,
-		control: int,
+		control: typing.Union[int, str],
 		start: int,
 		end: int,
 		beat_start: float = 0.0,
@@ -100,7 +103,8 @@ class PatternMidiMixin:
 		Interpolate a CC value over a beat range.
 
 		Parameters:
-			control: MIDI CC number (0–127).
+			control: MIDI CC number (0–127), or a string name resolved
+				via the pattern's ``cc_name_map``.
 			start: Starting CC value (0–127).
 			end: Ending CC value (0–127).
 			beat_start: Beat position to begin the ramp.
@@ -112,6 +116,8 @@ class PatternMidiMixin:
 			       callable that maps [0, 1] → [0, 1].  Defaults to ``"linear"``.
 			       See :mod:`subsequence.easing` for available shapes.
 		"""
+
+		control = self._resolve_cc(control)
 
 		if beat_end is None:
 			beat_end = self._pattern.length
