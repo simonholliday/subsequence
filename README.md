@@ -54,6 +54,7 @@ Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes
   - [Feature Roadmap](#feature-roadmap)
   - [Tests](#tests)
   - [Community and Feedback](#community-and-feedback)
+  - [Related Projects](#related-projects)
   - [Dependencies and Credits](#dependencies-and-credits)
   - [About the Author](#about-the-author)
   - [License](#license)
@@ -2673,6 +2674,10 @@ All feedback and suggestions will be gratefully received! Please use these chann
 
 * [Discussions](https://github.com/simonholliday/subsequence/discussions): The best place to ask questions and share ideas.
 * [Issues](https://github.com/simonholliday/subsequence/issues): If you ran into a bug, or have a specific feature request for the codebase, please open an Issue here.
+
+### Related Projects
+
+- **[Subsample ↗](https://github.com/simonholliday/subsample)** — A sister project by the same author: live sampler, automatic drum-kit builder, and MIDI sample instrument. Point a microphone at the world (or feed in recordings and sample packs) and Subsample captures, analyses, and maps every sound into a playable instrument automatically. Connect to Subsequence via a [virtual MIDI port](#virtual-midi) or standard MIDI hardware; enable [OSC](#osc-integration) on both sides for richer event communication (sample-captured notifications, density changes, visualiser data).
 
 ### Dependencies and Credits
 

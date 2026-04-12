@@ -24,6 +24,9 @@ class PatternMidiMixin:
 	_default_grid: int
 	_cc_name_map: typing.Optional[typing.Dict[str, int]]
 
+	if typing.TYPE_CHECKING:
+		def _resolve_cc (self, control: typing.Union[int, str]) -> int: ...
+
 	# ── Shared ramp helper ──────────────────────────────────────────────────
 
 	def _ramp_pulses (
@@ -75,14 +78,14 @@ class PatternMidiMixin:
 			beat: Beat position within the pattern.
 		"""
 
-		control = self._resolve_cc(control)
+		cc_num: int = self._resolve_cc(control)
 		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
 
 		self._pattern.cc_events.append(
 			subsequence.pattern.CcEvent(
 				pulse = pulse,
 				message_type = 'control_change',
-				control = control,
+				control = cc_num,
 				value = value
 			)
 		)
@@ -117,7 +120,7 @@ class PatternMidiMixin:
 			       See :mod:`subsequence.easing` for available shapes.
 		"""
 
-		control = self._resolve_cc(control)
+		cc_num: int = self._resolve_cc(control)
 
 		if beat_end is None:
 			beat_end = self._pattern.length
@@ -127,7 +130,7 @@ class PatternMidiMixin:
 				subsequence.pattern.CcEvent(
 					pulse = pulse,
 					message_type = 'control_change',
-					control = control,
+					control = cc_num,
 					value = max(0, min(127, int(round(val))))
 				)
 			)
