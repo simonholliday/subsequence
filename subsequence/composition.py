@@ -1019,7 +1019,7 @@ class Composition:
 		    composition.hotkey("s", lambda: composition.mute("drums"), quantize=4)
 
 		    # Named function — label is derived automatically
-		    def drop_to_breakdown():
+		    def drop_to_breakdown ():
 		        composition.form_jump("breakdown")
 		        composition.mute("lead")
 
@@ -1392,7 +1392,7 @@ class Composition:
 			comp.midi_output("Roland Integra", name="integra")
 
 			@comp.pattern(channel=1, beats=4, device="integra")
-			def strings(p):
+			def strings (p):
 				p.note(60, beat=0)
 			```
 		"""
@@ -1737,7 +1737,7 @@ class Composition:
 
 			composition.osc("/control")
 
-			def on_intensity(address, value):
+			def on_intensity (address, value):
 				composition.data["intensity"] = float(value)
 
 			composition.osc_map("/intensity", on_intensity)
@@ -2091,15 +2091,15 @@ class Composition:
 		Example:
 			```python
 			@comp.pattern(channel=1, beats=4)
-			def chords(p):
+			def chords (p):
 				p.chord([60, 64, 67], beat=0, velocity=80, duration=3.9)
 
 			@comp.pattern(channel=1, bars=2)
-			def long_phrase(p):
+			def long_phrase (p):
 				...
 
 			@comp.pattern(channel=1, steps=6, unit=dur.SIXTEENTH)
-			def riff(p):
+			def riff (p):
 				p.sequence(steps=[0, 1, 3, 5], pitches=60)
 			```
 		"""

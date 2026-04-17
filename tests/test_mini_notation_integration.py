@@ -4,7 +4,7 @@ import subsequence.pattern
 import subsequence.pattern_builder
 
 
-def test_seq_rhythm ():
+def test_seq_rhythm () -> None:
 
 	"""Test p.seq() with fixed pitch (rhythm mode)."""
 	
@@ -25,7 +25,7 @@ def test_seq_rhythm ():
 	assert steps[24].notes[0].pitch == 36
 
 
-def test_seq_melody ():
+def test_seq_melody () -> None:
 
 	"""Test p.seq() with symbols as pitches."""
 	

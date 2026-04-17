@@ -850,7 +850,7 @@ class PatternBuilder(
 			groove = subsequence.Groove.swing(percent=57)
 
 			@composition.pattern(channel=9, length=4)
-			def drums(p):
+			def drums (p):
 				p.hit_steps("kick", [0, 8], velocity=100)
 				p.hit_steps("hh", range(16), velocity=80)
 				p.groove(groove)               # full strength

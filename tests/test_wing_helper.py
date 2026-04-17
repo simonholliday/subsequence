@@ -15,13 +15,13 @@ import subsequence.helpers.wing as wing
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _build_osc_response(address: str, type_tags: str, *values: typing.Any) -> bytes:
+def _build_osc_response (address: str, type_tags: str, *values: typing.Any) -> bytes:
 	"""Build a minimal OSC response packet for use in socket mocks.
 
 	Constructs address + type tag string + values following the OSC 1.0 spec:
 	all segments are null-terminated and zero-padded to 4-byte boundaries.
 	"""
-	def _pad(data: bytes) -> bytes:
+	def _pad (data: bytes) -> bytes:
 		"""Null-terminate and pad to 4-byte boundary."""
 		data = data + b"\x00"
 		remainder = len(data) % 4

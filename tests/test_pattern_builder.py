@@ -1,4 +1,5 @@
 import random
+import typing
 
 import pytest
 
@@ -4459,7 +4460,7 @@ def test_lorenz_custom_mapping () -> None:
 
 	pattern, builder = _make_builder(length=4)
 
-	def my_map (x, y, z):
+	def my_map (x: float, y: float, z: float) -> typing.Tuple[int, int, float]:
 		return (60, 90, 0.1)
 
 	builder.lorenz([60, 62], spacing=0.5, mapping=my_map)
@@ -4671,63 +4672,63 @@ def _make_builder_at_bar (bar: int) -> "subsequence.pattern_builder.PatternBuild
 	builder.bar = bar
 	return builder
 
-def test_phrase_first ():
+def test_phrase_first () -> None:
 	builder = _make_builder_at_bar(0)
 	ph = builder.phrase(4)
 	assert ph.bar == 0
 	assert ph.first is True
 	assert ph.last is False
 
-def test_phrase_last ():
+def test_phrase_last () -> None:
 	builder = _make_builder_at_bar(3)
 	ph = builder.phrase(4)
 	assert ph.bar == 3
 	assert ph.first is False
 	assert ph.last is True
 
-def test_phrase_middle ():
+def test_phrase_middle () -> None:
 	builder = _make_builder_at_bar(2)
 	ph = builder.phrase(4)
 	assert ph.bar == 2
 	assert ph.first is False
 	assert ph.last is False
 
-def test_phrase_progress ():
+def test_phrase_progress () -> None:
 	assert _make_builder_at_bar(0).phrase(4).progress == pytest.approx(0.0)
 	assert _make_builder_at_bar(2).phrase(4).progress == pytest.approx(0.5)
 	assert _make_builder_at_bar(3).phrase(4).progress == pytest.approx(0.75)
 
-def test_phrase_wraps_correctly ():
+def test_phrase_wraps_correctly () -> None:
 	# bar=5 with phrase(4) → position 1 (5 % 4 == 1)
 	ph = _make_builder_at_bar(5).phrase(4)
 	assert ph.bar == 1
 	assert ph.first is False
 	assert ph.last is False
 
-def test_phrase_single_bar ():
+def test_phrase_single_bar () -> None:
 	ph = _make_builder_at_bar(0).phrase(1)
 	assert ph.bar == 0
 	assert ph.first is True
 	assert ph.last is True
 	assert ph.progress == pytest.approx(0.0)
 
-def test_phrase_length_8 ():
+def test_phrase_length_8 () -> None:
 	# bar=2 with phrase(8) → "bar 3 of every 8" in user's example
 	ph = _make_builder_at_bar(2).phrase(8)
 	assert ph.bar == 2
 	assert ph.first is False
 	assert ph.last is False
 
-def test_phrase_last_of_16 ():
+def test_phrase_last_of_16 () -> None:
 	# bar=15 with phrase(16) → last bar before every 16th
 	assert _make_builder_at_bar(15).phrase(16).last is True
 
-def test_phrase_cycle_through_4_bars ():
+def test_phrase_cycle_through_4_bars () -> None:
 	positions = [_make_builder_at_bar(bar).phrase(4).bar for bar in range(8)]
 	assert positions == [0, 1, 2, 3, 0, 1, 2, 3]
 
 
-def test_velocity_ramp_returns_int_list ():
+def test_velocity_ramp_returns_int_list () -> None:
 	_, builder = _make_builder(default_grid=4, length=4)
 	result = builder.velocity_ramp(0, 100, "linear")
 	assert len(result) == 4
@@ -4736,19 +4737,19 @@ def test_velocity_ramp_returns_int_list ():
 	assert result[-1] == 100
 
 
-def test_velocity_ramp_clamped ():
+def test_velocity_ramp_clamped () -> None:
 	_, builder = _make_builder(default_grid=4, length=4)
 	result = builder.velocity_ramp(0, 200, "linear")
 	assert all(0 <= v <= 127 for v in result)
 
 
-def test_velocity_ramp_uses_grid ():
+def test_velocity_ramp_uses_grid () -> None:
 	_, builder = _make_builder(default_grid=8, length=8)
 	result = builder.velocity_ramp(50, 100)
 	assert len(result) == 8
 
 
-def test_no_overlap_rounding_edge_case ():
+def test_no_overlap_rounding_edge_case () -> None:
 	"""_has_pitch_at_beat must use the same int() truncation as add_note_beats.
 	At a beat where beat*PPQ == N+0.5, int() gives N but int()+0.5 rounds to N+1,
 	so the lookup would miss the placed note and no_overlap=True would fail."""

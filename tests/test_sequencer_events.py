@@ -5,8 +5,6 @@ import pytest
 import subsequence.pattern
 import subsequence.sequencer
 
-from subsequence.sequencer import MidiEvent
-
 
 @pytest.mark.asyncio
 async def test_reschedule_event_precedes_pattern_rebuild (patch_midi: None) -> None:
@@ -247,7 +245,7 @@ async def test_osc_event_dispatched_to_server (patch_midi: None) -> None:
 	import heapq
 	heapq.heappush(
 		sequencer.event_queue,
-		MidiEvent(pulse=0, message_type='osc', channel=0, data=("/fader/1", (0.75,)))
+		subsequence.sequencer.MidiEvent(pulse=0, message_type='osc', channel=0, data=("/fader/1", (0.75,)))
 	)
 
 	await sequencer._process_pulse(0)
@@ -266,7 +264,7 @@ async def test_osc_event_noop_without_server (patch_midi: None) -> None:
 	import heapq
 	heapq.heappush(
 		sequencer.event_queue,
-		MidiEvent(pulse=0, message_type='osc', channel=0, data=("/fader/1", (0.5,)))
+		subsequence.sequencer.MidiEvent(pulse=0, message_type='osc', channel=0, data=("/fader/1", (0.5,)))
 	)
 
 	# Should complete without error

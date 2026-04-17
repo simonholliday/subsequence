@@ -57,6 +57,10 @@ class WeightedGraph (typing.Generic[NodeType]):
 
 		"""
 		Choose the next node from a source using weighted randomness.
+
+		Returns *source* unchanged if the node has no outgoing transitions,
+		or if every outgoing transition has been suppressed by a weight
+		modifier that returned zero or a negative value.
 		"""
 
 		options = self.get_transitions(source)

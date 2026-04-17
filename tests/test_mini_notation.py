@@ -3,7 +3,7 @@ import pytest
 import subsequence.mini_notation
 
 
-def test_basic_tokenization ():
+def test_basic_tokenization () -> None:
 	
 	"""Test breaking string into tokens."""
 	
@@ -17,7 +17,7 @@ def test_basic_tokenization ():
 	assert tokens == ["a", ["b", ["c", "d"]]]
 
 
-def test_basic_parsing ():
+def test_basic_parsing () -> None:
 
 	"""Test allocating time slots."""
 	
@@ -35,7 +35,7 @@ def test_basic_parsing ():
 	assert events[3].time == 3.0
 
 
-def test_subdivision ():
+def test_subdivision () -> None:
 
 	"""Test nested subdivisions."""
 	
@@ -63,7 +63,7 @@ def test_subdivision ():
 	assert events[3].time == 2.0
 
 
-def test_rests ():
+def test_rests () -> None:
 
 	"""Test rests (~) and (.) are skipped."""
 	
@@ -78,7 +78,7 @@ def test_rests ():
 	assert events[1].time == 2.0  # skips '1.0'
 
 
-def test_sustain ():
+def test_sustain () -> None:
 
 	"""Test sustain (_) extends previous note."""
 	
@@ -96,7 +96,7 @@ def test_sustain ():
 	assert events[1].time == 2.0
 
 
-def test_empty_string ():
+def test_empty_string () -> None:
 
 	"""Test empty notation returns no events."""
 
@@ -105,7 +105,7 @@ def test_empty_string ():
 	assert events == []
 
 
-def test_consecutive_sustains ():
+def test_consecutive_sustains () -> None:
 
 	"""Test multiple consecutive sustains extend the same note."""
 
@@ -116,7 +116,7 @@ def test_consecutive_sustains ():
 	assert events[0].duration == 4.0
 
 
-def test_sustain_at_start ():
+def test_sustain_at_start () -> None:
 
 	"""Test sustain at start with no prior note is ignored."""
 
@@ -127,7 +127,7 @@ def test_sustain_at_start ():
 	assert events[0].time == 2.0
 
 
-def test_invalid_total_duration ():
+def test_invalid_total_duration () -> None:
 
 	"""Test that zero or negative total_duration raises ValueError."""
 
@@ -138,7 +138,7 @@ def test_invalid_total_duration ():
 		subsequence.mini_notation.parse("a b", total_duration=-1.0)
 
 
-def test_errors ():
+def test_errors () -> None:
 
 	"""Test invalid syntax."""
 

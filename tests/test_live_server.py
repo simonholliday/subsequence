@@ -254,7 +254,7 @@ def test_mute_unmute (patch_midi: None) -> None:
 
 	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
-	def my_builder (p):
+	def my_builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(60, beat=0, velocity=100)
 
 	pending = subsequence.composition._PendingPattern(
@@ -318,7 +318,7 @@ def test_mute_preserves_cycle_count (patch_midi: None) -> None:
 
 	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
-	def my_builder (p):
+	def my_builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(60, beat=0, velocity=100)
 
 	pending = subsequence.composition._PendingPattern(
@@ -353,7 +353,7 @@ def test_pattern_hot_swap (patch_midi: None) -> None:
 
 	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
-	def my_pattern (p):
+	def my_pattern (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(60, beat=0, velocity=100)
 
 	pending = subsequence.composition._PendingPattern(
@@ -374,7 +374,7 @@ def test_pattern_hot_swap (patch_midi: None) -> None:
 
 	# Hot-swap with a new builder that places a note at beat 2.
 	@comp.pattern(channel=1, beats=4)
-	def my_pattern (p):
+	def my_pattern (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(72, beat=2, velocity=80)
 
 	# Trigger rebuild.
@@ -393,7 +393,7 @@ def test_hot_swap_updates_wants_chord (patch_midi: None) -> None:
 
 	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
-	def my_pattern (p):
+	def my_pattern (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(60, beat=0, velocity=100)
 
 	pending = subsequence.composition._PendingPattern(
@@ -413,7 +413,7 @@ def test_hot_swap_updates_wants_chord (patch_midi: None) -> None:
 
 	# Hot-swap with a builder that wants chord.
 	@comp.pattern(channel=1, beats=4)
-	def my_pattern (p, chord):
+	def my_pattern (p: "subsequence.pattern_builder.PatternBuilder", chord: "subsequence.chords.Chord") -> None:
 		pass
 
 	assert pattern._wants_chord is True
@@ -428,7 +428,7 @@ def test_live_info_includes_patterns (patch_midi: None) -> None:
 
 	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 
-	def drums (p):
+	def drums (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(36, beat=0, velocity=127)
 
 	pending = subsequence.composition._PendingPattern(

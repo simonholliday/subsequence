@@ -27,7 +27,7 @@ Typical workflow
 
     # 3. In your patterns, use standard p.osc() / p.osc_ramp() with WING addresses
     @composition.pattern(channel=0, length=4)
-    def mixer(p):
+    def mixer (p):
         p.osc_ramp("/ch/1/fdr", 0.0, 0.75, shape="ease_in")   # fade up channel 1
 
     # 4. Explore available addresses at development time
@@ -90,12 +90,12 @@ subnet-specific addresses derived from local interfaces."""
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 
-def _build_osc(address: str) -> bytes:
+def _build_osc (address: str) -> bytes:
 	"""Build a no-argument OSC message for *address*."""
 	return pythonosc.osc_message_builder.OscMessageBuilder(address=address).build().dgram
 
 
-def _parse_osc(data: bytes) -> typing.Optional[pythonosc.osc_message.OscMessage]:
+def _parse_osc (data: bytes) -> typing.Optional[pythonosc.osc_message.OscMessage]:
 	"""Parse raw bytes into an OscMessage, returning None on failure."""
 	try:
 		return pythonosc.osc_message.OscMessage(data)

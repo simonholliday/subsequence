@@ -20,7 +20,7 @@ import asyncio
 import typing
 
 
-def _require_aalink() -> typing.Any:
+def _require_aalink () -> typing.Any:
 	"""Import aalink or raise a helpful RuntimeError."""
 	try:
 		import aalink  # type: ignore

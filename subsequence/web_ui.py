@@ -52,12 +52,12 @@ class WebUI:
             os.makedirs(web_dir, exist_ok=True)
 
         class Handler(http.server.SimpleHTTPRequestHandler):
-            def __init__(self, *args: typing.Any, **kwargs: typing.Any) -> None:
+            def __init__ (self, *args: typing.Any, **kwargs: typing.Any) -> None:
                 super().__init__(*args, directory=web_dir, **kwargs)
-            def log_message(self, format: str, *args: typing.Any) -> None:
+            def log_message (self, format: str, *args: typing.Any) -> None:
                 pass # Suppress HTTP access logging to keep the console clean
 
-        def run_server() -> None:
+        def run_server () -> None:
             socketserver.TCPServer.allow_reuse_address = True
             with socketserver.TCPServer(("", self.http_port), Handler) as httpd:
                 try:
@@ -181,7 +181,7 @@ class WebUI:
                 self._cached_patterns.append(pattern_data)
         state["patterns"] = self._cached_patterns
 
-        def _extract_val(val: typing.Any) -> typing.Optional[float]:
+        def _extract_val (val: typing.Any) -> typing.Optional[float]:
             if hasattr(val, "current"): # Matches EasedValue
                 try:
                     return float(val.current)

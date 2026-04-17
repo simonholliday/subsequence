@@ -103,7 +103,7 @@ def test_cc_name_map_passed_through_decorator () -> None:
 	composition = subsequence.Composition(bpm=120)
 
 	@composition.pattern(channel=1, beats=4, cc_name_map=CC_MAP)
-	def sweep (p):
+	def sweep (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.cc("filter_cutoff", 100)
 
 	# The pattern is registered as pending — verify it carries the cc_name_map

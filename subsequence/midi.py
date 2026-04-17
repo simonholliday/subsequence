@@ -58,6 +58,7 @@ def pitchwheel (
 
 	Parameters:
 		pitch: Pitch bend value (-8192 to 8191).  0 is centre (no bend).
+		       Out-of-range values are clamped to the valid range.
 		channel: MIDI channel (0-indexed, 0–15).  Defaults to 0.
 
 	Returns:
@@ -74,6 +75,7 @@ def pitchwheel (
 		```
 	"""
 
+	pitch = max(-8192, min(8191, pitch))
 	return mido.Message('pitchwheel', channel=channel, pitch=pitch)
 
 

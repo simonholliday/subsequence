@@ -42,7 +42,7 @@ class SectionInfo:
 	Example:
 		```python
 		@composition.pattern(channel=9)
-		def drums(p):
+		def drums (p):
 			# Always play a basic kick
 			p.hit_steps("kick", [0, 8])
 

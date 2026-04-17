@@ -20,7 +20,7 @@ import conftest
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_sequencer(spy: conftest.SpyMidiOut) -> subsequence.sequencer.Sequencer:
+def _make_sequencer (spy: conftest.SpyMidiOut) -> subsequence.sequencer.Sequencer:
 	seq = subsequence.sequencer.Sequencer(
 		output_device_name = "Dummy MIDI",
 		initial_bpm = 120,
@@ -32,7 +32,7 @@ def _make_sequencer(spy: conftest.SpyMidiOut) -> subsequence.sequencer.Sequencer
 	return seq
 
 
-def _cc(control: int, value: int, channel: int = 0) -> mido.Message:
+def _cc (control: int, value: int, channel: int = 0) -> mido.Message:
 	return mido.Message('control_change', channel=channel, control=control, value=value)
 
 
@@ -40,32 +40,32 @@ def _cc(control: int, value: int, channel: int = 0) -> mido.Message:
 # Backward compatibility — single device (must work exactly as before)
 # ---------------------------------------------------------------------------
 
-def test_single_device_pattern_route(patch_midi: None) -> None:
+def test_single_device_pattern_route (patch_midi: None) -> None:
 	"""Single-device Composition still works; all events go to device 0."""
 	comp = subsequence.Composition(bpm=120)
 
 	@comp.pattern(channel=1, beats=4)
-	def bass(p: subsequence.pattern_builder.PatternBuilder) -> None:
+	def bass (p: subsequence.pattern_builder.PatternBuilder) -> None:
 		p.note(36, beat=0)
 
 	# Pattern device defaults to 0
 	assert comp._pending_patterns[0].device == 0
 
 
-def test_single_device_midi_out_property(patch_midi: None) -> None:
+def test_single_device_midi_out_property (patch_midi: None) -> None:
 	"""sequencer.midi_out property still works on single-device setup."""
 	seq = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
 	assert seq.midi_out is not None
 
 
-def test_midi_out_setter_compat(patch_midi: None) -> None:
+def test_midi_out_setter_compat (patch_midi: None) -> None:
 	"""sequencer.midi_out = spy still works (test injection path)."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
 	assert seq.midi_out is spy
 
 
-def test_single_device_send(patch_midi: None) -> None:
+def test_single_device_send (patch_midi: None) -> None:
 	"""Events without a device field default to device 0."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -78,7 +78,7 @@ def test_single_device_send(patch_midi: None) -> None:
 	assert spy.sent[0].value == 100
 
 
-def test_single_device_active_notes_track(patch_midi: None) -> None:
+def test_single_device_active_notes_track (patch_midi: None) -> None:
 	"""active_notes tracks (device, channel, note) tuples."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -91,14 +91,14 @@ def test_single_device_active_notes_track(patch_midi: None) -> None:
 	assert (0, 0, 60) in seq.active_notes
 
 
-def test_pattern_device_default(patch_midi: None) -> None:
+def test_pattern_device_default (patch_midi: None) -> None:
 	"""Pattern.device defaults to 0."""
 	import subsequence.pattern as pat
 	p = pat.Pattern(channel=0)
 	assert p.device == 0
 
 
-def test_cc_event_device_default(patch_midi: None) -> None:
+def test_cc_event_device_default (patch_midi: None) -> None:
 	"""CcEvent.device defaults to None (inherit from pattern)."""
 	import subsequence.pattern as pat
 	ev = pat.CcEvent(pulse=0, message_type='control_change')
@@ -109,7 +109,7 @@ def test_cc_event_device_default(patch_midi: None) -> None:
 # MidiDeviceRegistry
 # ---------------------------------------------------------------------------
 
-def test_registry_add_returns_index() -> None:
+def test_registry_add_returns_index () -> None:
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
 	i0 = reg.add("A", object())
 	i1 = reg.add("B", object())
@@ -117,14 +117,14 @@ def test_registry_add_returns_index() -> None:
 	assert i1 == 1
 
 
-def test_registry_get_none_returns_device_0() -> None:
+def test_registry_get_none_returns_device_0 () -> None:
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
 	obj = object()
 	reg.add("Primary", obj)
 	assert reg.get(None) is obj
 
 
-def test_registry_get_by_index() -> None:
+def test_registry_get_by_index () -> None:
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
 	a, b = object(), object()
 	reg.add("A", a)
@@ -132,7 +132,7 @@ def test_registry_get_by_index() -> None:
 	assert reg.get(1) is b
 
 
-def test_registry_get_by_name() -> None:
+def test_registry_get_by_name () -> None:
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
 	a, b = object(), object()
 	reg.add("Alpha", a)
@@ -140,18 +140,18 @@ def test_registry_get_by_name() -> None:
 	assert reg.get("Beta") is b
 
 
-def test_registry_get_unknown_name_returns_none() -> None:
+def test_registry_get_unknown_name_returns_none () -> None:
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
 	reg.add("A", object())
 	assert reg.get("NoSuchDevice") is None
 
 
-def test_registry_get_empty_returns_none() -> None:
+def test_registry_get_empty_returns_none () -> None:
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
 	assert reg.get(None) is None
 
 
-def test_registry_index_of() -> None:
+def test_registry_index_of () -> None:
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
 	reg.add("X", object())
 	reg.add("Y", object())
@@ -161,7 +161,7 @@ def test_registry_index_of() -> None:
 	assert reg.index_of("Z") == -1
 
 
-def test_registry_iter() -> None:
+def test_registry_iter () -> None:
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
 	objs = [object(), object()]
 	for i, o in enumerate(objs):
@@ -169,11 +169,11 @@ def test_registry_iter() -> None:
 	assert list(reg) == objs
 
 
-def test_registry_close_all() -> None:
+def test_registry_close_all () -> None:
 	closed = []
 
 	class TrackClose:
-		def close(self) -> None:
+		def close (self) -> None:
 			closed.append(True)
 
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
@@ -188,25 +188,25 @@ def test_registry_close_all() -> None:
 # Multi-device output routing
 # ---------------------------------------------------------------------------
 
-def test_pattern_device_by_index(patch_midi: None) -> None:
+def test_pattern_device_by_index (patch_midi: None) -> None:
 	"""@comp.pattern(device=1) stores device=1 on the pending pattern."""
 	comp = subsequence.Composition(bpm=120)
 	comp._additional_outputs.append(("Secondary MIDI", None))
 
 	@comp.pattern(channel=1, beats=4, device=1)
-	def strings(p):
+	def strings (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(60, beat=0)
 
 	assert comp._pending_patterns[0].device == 1
 
 
-def test_pattern_device_by_name(patch_midi_multi) -> None:
+def test_pattern_device_by_name (patch_midi_multi) -> None:
 	"""@comp.pattern(device='secondary') resolves to correct index."""
 	comp = subsequence.Composition(bpm=120, output_device="Primary MIDI")
 	comp.midi_output("Secondary MIDI", name="secondary")
 
 	@comp.pattern(channel=1, beats=4, device="secondary")
-	def p1(p):
+	def p1 (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		pass
 
 	# device=0 placeholder at registration time (name resolved in _run()); raw_device preserved
@@ -215,7 +215,7 @@ def test_pattern_device_by_name(patch_midi_multi) -> None:
 	assert pending.device == 0
 
 
-def test_midi_output_returns_index(patch_midi_multi) -> None:
+def test_midi_output_returns_index (patch_midi_multi) -> None:
 	"""comp.midi_output() returns sequential indices starting at 1."""
 	comp = subsequence.Composition(bpm=120, output_device="Primary MIDI")
 	i1 = comp.midi_output("Secondary MIDI", name="synth2")
@@ -224,7 +224,7 @@ def test_midi_output_returns_index(patch_midi_multi) -> None:
 	assert i2 == 2
 
 
-def test_events_routed_to_device_1(patch_midi: None) -> None:
+def test_events_routed_to_device_1 (patch_midi: None) -> None:
 	"""MidiEvent with device=1 is sent to the device-1 port."""
 	spy0 = conftest.SpyMidiOut()
 	spy1 = conftest.SpyMidiOut()
@@ -243,7 +243,7 @@ def test_events_routed_to_device_1(patch_midi: None) -> None:
 	assert spy1.sent[0].note == 60
 
 
-def test_events_default_to_device_0(patch_midi: None) -> None:
+def test_events_default_to_device_0 (patch_midi: None) -> None:
 	"""MidiEvent with device=0 (default) goes to the primary output."""
 	spy0 = conftest.SpyMidiOut()
 	spy1 = conftest.SpyMidiOut()
@@ -261,7 +261,7 @@ def test_events_default_to_device_0(patch_midi: None) -> None:
 	assert len(spy1.sent) == 0
 
 
-def test_active_notes_device_aware(patch_midi: None) -> None:
+def test_active_notes_device_aware (patch_midi: None) -> None:
 	"""Note-off is sent to the same device the note-on came from."""
 	spy0 = conftest.SpyMidiOut()
 	spy1 = conftest.SpyMidiOut()
@@ -281,7 +281,7 @@ def test_active_notes_device_aware(patch_midi: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_panic_all_devices(patch_midi: None) -> None:
+async def test_panic_all_devices (patch_midi: None) -> None:
 	"""panic() sends All Notes Off to every registered output device."""
 	spy0 = conftest.SpyMidiOut()
 	spy1 = conftest.SpyMidiOut()
@@ -292,7 +292,7 @@ async def test_panic_all_devices(patch_midi: None) -> None:
 	await seq.panic()
 
 	# Both devices should have received CC 123 and CC 120 on all 16 channels
-	def has_all_notes_off(spy: conftest.SpyMidiOut) -> bool:
+	def has_all_notes_off (spy: conftest.SpyMidiOut) -> bool:
 		return any(
 			m.type == 'control_change' and m.control == 123
 			for m in spy.sent
@@ -302,7 +302,7 @@ async def test_panic_all_devices(patch_midi: None) -> None:
 	assert has_all_notes_off(spy1)
 
 
-def test_schedule_pattern_propagates_device(patch_midi: None) -> None:
+def test_schedule_pattern_propagates_device (patch_midi: None) -> None:
 	"""schedule_pattern() copies pattern.device onto every MidiEvent."""
 	import subsequence.pattern as pat
 
@@ -324,7 +324,7 @@ def test_schedule_pattern_propagates_device(patch_midi: None) -> None:
 	assert len(spy1.sent) >= 1
 
 
-def test_cc_event_device_override(patch_midi: None) -> None:
+def test_cc_event_device_override (patch_midi: None) -> None:
 	"""CcEvent.device overrides pattern.device during schedule_pattern."""
 	import subsequence.pattern as pat
 
@@ -358,7 +358,7 @@ def test_cc_event_device_override(patch_midi: None) -> None:
 # Multi-device input routing
 # ---------------------------------------------------------------------------
 
-def test_cc_map_input_device_filter(patch_midi: None) -> None:
+def test_cc_map_input_device_filter (patch_midi: None) -> None:
 	"""CC mapping with input_device only fires for the specified device."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -381,7 +381,7 @@ def test_cc_map_input_device_filter(patch_midi: None) -> None:
 	assert 'filter' in seq._composition_data
 
 
-def test_cc_map_no_device_filter(patch_midi: None) -> None:
+def test_cc_map_no_device_filter (patch_midi: None) -> None:
 	"""CC mapping with input_device=None fires for any device (default)."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -403,7 +403,7 @@ def test_cc_map_no_device_filter(patch_midi: None) -> None:
 	assert 'filter' in seq._composition_data
 
 
-def test_cc_forward_input_device_filter(patch_midi: None) -> None:
+def test_cc_forward_input_device_filter (patch_midi: None) -> None:
 	"""CC forward with input_device only fires for the specified device."""
 	spy0 = conftest.SpyMidiOut()
 	spy1 = conftest.SpyMidiOut()
@@ -427,7 +427,7 @@ def test_cc_forward_input_device_filter(patch_midi: None) -> None:
 	assert len(spy0.sent) == 1
 
 
-def test_cc_forward_output_device_routing(patch_midi: None) -> None:
+def test_cc_forward_output_device_routing (patch_midi: None) -> None:
 	"""CC forward with output_device sends to the specified output port."""
 	spy0 = conftest.SpyMidiOut()
 	spy1 = conftest.SpyMidiOut()
@@ -448,7 +448,7 @@ def test_cc_forward_output_device_routing(patch_midi: None) -> None:
 	assert len(spy1.sent) == 1
 
 
-def test_multiple_midi_input_calls(patch_midi: None) -> None:
+def test_multiple_midi_input_calls (patch_midi: None) -> None:
 	"""Multiple comp.midi_input() calls register primary + additional inputs."""
 	comp = subsequence.Composition(bpm=120)
 	comp.midi_input("Arturia KeyStep", name="keys")
@@ -464,14 +464,14 @@ def test_multiple_midi_input_calls(patch_midi: None) -> None:
 # Composition API — device on cc_map / cc_forward
 # ---------------------------------------------------------------------------
 
-def test_cc_map_stores_input_device(patch_midi: None) -> None:
+def test_cc_map_stores_input_device (patch_midi: None) -> None:
 	"""cc_map() stores input_device in the mapping dict."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_map(74, "filter", input_device="faders")
 	assert comp._cc_mappings[-1]['input_device'] == "faders"
 
 
-def test_cc_forward_stores_input_output_device(patch_midi: None) -> None:
+def test_cc_forward_stores_input_output_device (patch_midi: None) -> None:
 	"""cc_forward() stores input_device and output_device."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_forward(1, "cc", input_device="keys", output_device=1)
@@ -484,7 +484,7 @@ def test_cc_forward_stores_input_output_device(patch_midi: None) -> None:
 # Clock output goes to all devices
 # ---------------------------------------------------------------------------
 
-def test_clock_goes_to_all_devices(patch_midi: None) -> None:
+def test_clock_goes_to_all_devices (patch_midi: None) -> None:
 	"""_send_clock_message sends to every registered output port."""
 	spy0 = conftest.SpyMidiOut()
 	spy1 = conftest.SpyMidiOut()
@@ -502,7 +502,7 @@ def test_clock_goes_to_all_devices(patch_midi: None) -> None:
 # Regression fixes — issues found during code review
 # ---------------------------------------------------------------------------
 
-def test_registry_replace() -> None:
+def test_registry_replace () -> None:
 	"""MidiDeviceRegistry.replace() swaps the port but keeps name and index intact."""
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
 	original = object()
@@ -514,7 +514,7 @@ def test_registry_replace() -> None:
 	assert reg.index_of("primary") == 0
 
 
-def test_registry_replace_out_of_range() -> None:
+def test_registry_replace_out_of_range () -> None:
 	"""MidiDeviceRegistry.replace() raises IndexError for out-of-range index."""
 	reg = subsequence.midi_utils.MidiDeviceRegistry()
 	reg.add("primary", object())
@@ -522,7 +522,7 @@ def test_registry_replace_out_of_range() -> None:
 		reg.replace(5, object())
 
 
-def test_midi_out_setter_uses_replace(patch_midi: None) -> None:
+def test_midi_out_setter_uses_replace (patch_midi: None) -> None:
 	"""midi_out setter on an existing registry preserves port name."""
 	spy_original = conftest.SpyMidiOut()
 	spy_replacement = conftest.SpyMidiOut()
@@ -538,12 +538,12 @@ def test_midi_out_setter_uses_replace(patch_midi: None) -> None:
 	assert seq.midi_out is spy_replacement
 
 
-def test_pending_pattern_raw_device_field(patch_midi: None) -> None:
+def test_pending_pattern_raw_device_field (patch_midi: None) -> None:
 	"""_PendingPattern.raw_device is a proper typed field, not a monkey-patch."""
 	comp = subsequence.Composition(bpm=120)
 
 	@comp.pattern(channel=1, beats=4, device="integra")
-	def strings(p):
+	def strings (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		pass
 
 	pending = comp._pending_patterns[0]
@@ -555,12 +555,12 @@ def test_pending_pattern_raw_device_field(patch_midi: None) -> None:
 	assert hasattr(pending, 'raw_device')
 
 
-def test_pending_pattern_int_device_resolved_immediately(patch_midi: None) -> None:
+def test_pending_pattern_int_device_resolved_immediately (patch_midi: None) -> None:
 	"""@comp.pattern(device=1) resolves immediately — raw_device and device both set."""
 	comp = subsequence.Composition(bpm=120)
 
 	@comp.pattern(channel=1, beats=4, device=1)
-	def strings(p):
+	def strings (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		pass
 
 	pending = comp._pending_patterns[0]
@@ -568,7 +568,7 @@ def test_pending_pattern_int_device_resolved_immediately(patch_midi: None) -> No
 	assert pending.device == 1
 
 
-def test_input_alias_resolves_in_cc_map(patch_midi_multi) -> None:
+def test_input_alias_resolves_in_cc_map (patch_midi_multi) -> None:
 	"""cc_map(input_device='faders') resolves the alias to the correct device index."""
 	comp = subsequence.Composition(bpm=120, output_device="Primary MIDI")
 	comp.midi_input("Input A", name="keys")
@@ -591,7 +591,7 @@ def test_input_alias_resolves_in_cc_map(patch_midi_multi) -> None:
 	assert comp._cc_mappings[-1]['input_device'] == 1
 
 
-def test_input_alias_resolves_in_cc_forward(patch_midi_multi) -> None:
+def test_input_alias_resolves_in_cc_forward (patch_midi_multi) -> None:
 	"""cc_forward(input_device='keys') resolves to the correct index."""
 	comp = subsequence.Composition(bpm=120, output_device="Primary MIDI")
 	comp.midi_input("Input A", name="keys")
@@ -609,7 +609,7 @@ def test_input_alias_resolves_in_cc_forward(patch_midi_multi) -> None:
 	assert comp._cc_forwards[-1]['input_device'] == 0
 
 
-def test_unknown_output_device_name_warns_and_defaults_to_zero(patch_midi: None, caplog) -> None:
+def test_unknown_output_device_name_warns_and_defaults_to_zero (patch_midi: None, caplog) -> None:
 	"""_resolve_device_id() logs a warning and falls back to device 0 on unknown name."""
 	import logging
 	comp = subsequence.Composition(bpm=120)
@@ -622,7 +622,7 @@ def test_unknown_output_device_name_warns_and_defaults_to_zero(patch_midi: None,
 	assert "typo_name" in caplog.text
 
 
-def test_unknown_input_device_name_warns_and_returns_none(patch_midi: None, caplog) -> None:
+def test_unknown_input_device_name_warns_and_returns_none (patch_midi: None, caplog) -> None:
 	"""_resolve_input_device_id() logs a warning and returns None on unknown name."""
 	import logging
 	comp = subsequence.Composition(bpm=120)
@@ -635,7 +635,7 @@ def test_unknown_input_device_name_warns_and_returns_none(patch_midi: None, capl
 	assert "typo_name" in caplog.text
 
 
-def test_cc_map_unknown_input_device_none_means_any(patch_midi: None) -> None:
+def test_cc_map_unknown_input_device_none_means_any (patch_midi: None) -> None:
 	"""cc_map with an unresolvable input_device name falls back to None (matches any)."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -662,7 +662,7 @@ def test_cc_map_unknown_input_device_none_means_any(patch_midi: None) -> None:
 # Multiple clock follower device tests
 # ---------------------------------------------------------------------------
 
-def test_multiple_clock_follow_raises_error(patch_midi: None) -> None:
+def test_multiple_clock_follow_raises_error (patch_midi: None) -> None:
 	"""Setting clock_follow=True on multiple devices raises ValueError."""
 	comp = subsequence.Composition(bpm=120)
 	comp.midi_input("Primary MIDI", clock_follow=True)
@@ -672,7 +672,7 @@ def test_multiple_clock_follow_raises_error(patch_midi: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_clock_follower_ignores_other_devices(monkeypatch) -> None:
+async def test_clock_follower_ignores_other_devices (monkeypatch) -> None:
 	"""Sequencer ignores clock messages from devices that are not the clock_device_idx."""
 	seq = subsequence.sequencer.Sequencer(
 		output_device_name="Dummy MIDI",
@@ -688,7 +688,7 @@ async def test_clock_follower_ignores_other_devices(monkeypatch) -> None:
 
 	# Create a mock for _estimate_bpm to track if clock was processed
 	processed_clocks = []
-	def mock_estimate_bpm(t):
+	def mock_estimate_bpm (t: float) -> None:
 		processed_clocks.append(t)
 	monkeypatch.setattr(seq, "_estimate_bpm", mock_estimate_bpm)
 	monkeypatch.setattr(seq, "_check_bar_change", lambda p, b: None)

@@ -133,13 +133,13 @@ class NamedSpyMidiOut(SpyMidiOut):
 		self.name = name
 
 
-def _make_multi_output_patcher(device_names: typing.List[str]) -> typing.Callable:
+def _make_multi_output_patcher (device_names: typing.List[str]) -> typing.Callable:
 
 	"""Return an open_output stub that creates a NamedSpyMidiOut per device name."""
 
 	ports: typing.Dict[str, NamedSpyMidiOut] = {n: NamedSpyMidiOut(n) for n in device_names}
 
-	def _open(name: str) -> NamedSpyMidiOut:
+	def _open (name: str) -> NamedSpyMidiOut:
 		if name not in ports:
 			ports[name] = NamedSpyMidiOut(name)
 		return ports[name]
@@ -149,7 +149,7 @@ def _make_multi_output_patcher(device_names: typing.List[str]) -> typing.Callabl
 
 
 @pytest.fixture
-def patch_midi_multi (monkeypatch: pytest.MonkeyPatch):
+def patch_midi_multi (monkeypatch: pytest.MonkeyPatch) -> typing.Dict[str, NamedSpyMidiOut]:
 
 	"""Patch mido for multi-device tests.
 

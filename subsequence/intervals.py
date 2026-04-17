@@ -1,6 +1,10 @@
+import logging
 import typing
 
 import subsequence.chords
+
+
+logger = logging.getLogger(__name__)
 
 
 INTERVAL_DEFINITIONS: typing.Dict[str, typing.List[int]] = {
@@ -326,7 +330,16 @@ def quantize_pitch (pitch: int, scale_pcs: typing.Sequence[int]) -> int:
 		if (pc - offset) % 12 in scale_pcs:
 			return pitch - offset
 
-	return pitch  # Fallback: should not be reached for any scale with gaps ≤ 6 semitones
+	# The search radius of ±6 semitones covers every gap in every scale with
+	# no gap wider than one tritone.  A wider gap (unusual custom scale) falls
+	# through here and keeps the original off-scale pitch — warn so the caller
+	# knows the result is not actually snapped to the scale.
+	logger.warning(
+		"quantize_pitch: no scale note within ±6 semitones of MIDI %d (pc=%d); "
+		"returning pitch unquantized. scale_pcs=%s",
+		pitch, pc, sorted(scale_pcs),
+	)
+	return pitch
 
 
 def get_intervals (name: str) -> typing.List[int]:

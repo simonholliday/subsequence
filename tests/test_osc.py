@@ -2,6 +2,9 @@ import asyncio
 import typing
 
 import pytest
+import pythonosc.dispatcher
+import pythonosc.osc_server
+import pythonosc.udp_client
 
 import subsequence
 import subsequence.osc
@@ -28,7 +31,6 @@ async def test_osc_bpm_handler (composition: subsequence.Composition) -> None:
 	port = server._transport.get_extra_info("sockname")[1]
 
 	# Send OSC message
-	import pythonosc.udp_client
 	client = pythonosc.udp_client.SimpleUDPClient("127.0.0.1", port)
 	client.send_message("/bpm", 145)
 
@@ -46,7 +48,7 @@ async def test_osc_mute_handler (composition: subsequence.Composition) -> None:
 
 	"""Sending /mute/<name> should mute the pattern."""
 
-	def drums (p):
+	def drums (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		pass
 
 	composition.pattern(channel=9)(drums)
@@ -59,7 +61,6 @@ async def test_osc_mute_handler (composition: subsequence.Composition) -> None:
 	await server.start()
 	port = server._transport.get_extra_info("sockname")[1]
 
-	import pythonosc.udp_client
 	client = pythonosc.udp_client.SimpleUDPClient("127.0.0.1", port)
 	client.send_message("/mute/drums", [])
 
@@ -83,7 +84,6 @@ async def test_osc_data_handler (composition: subsequence.Composition) -> None:
 	await server.start()
 	port = server._transport.get_extra_info("sockname")[1]
 
-	import pythonosc.udp_client
 	client = pythonosc.udp_client.SimpleUDPClient("127.0.0.1", port)
 	client.send_message("/data/velocity", 0.75)
 
@@ -100,12 +100,10 @@ async def test_osc_status_broadcasting (composition: subsequence.Composition) ->
 	"""The composition should broadcast status via OSC on each bar."""
 
 	# Setup a receiver server
-	import pythonosc.dispatcher
-	import pythonosc.osc_server
 	
 	received_messages = []
 	
-	def handle_status (address, *args):
+	def handle_status (address: str, *args: typing.Any) -> None:
 		received_messages.append((address, args))
 
 	dispatcher = pythonosc.dispatcher.Dispatcher()

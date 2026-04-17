@@ -1,4 +1,5 @@
 import random
+import typing
 
 import pytest
 
@@ -102,7 +103,7 @@ def test_form_state_generator () -> None:
 
 	"""FormState should work with a generator of (name, bars) tuples."""
 
-	def my_form ():
+	def my_form () -> typing.Iterator[typing.Tuple[str, int]]:
 		yield ("intro", 2)
 		yield ("verse", 4)
 
@@ -203,7 +204,7 @@ def test_section_injected_into_builder (patch_midi: None) -> None:
 
 	received_sections = []
 
-	def my_builder (p):
+	def my_builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		received_sections.append(p.section)
 
 	pending = subsequence.composition._PendingPattern(
@@ -231,7 +232,7 @@ def test_no_form_section_is_none (patch_midi: None) -> None:
 
 	received_sections = []
 
-	def my_builder (p):
+	def my_builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		received_sections.append(p.section)
 
 	pending = subsequence.composition._PendingPattern(
@@ -256,7 +257,7 @@ def test_builder_bar_available (patch_midi: None) -> None:
 
 	received_bars = []
 
-	def my_builder (p):
+	def my_builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		received_bars.append(p.bar)
 
 	pending = subsequence.composition._PendingPattern(

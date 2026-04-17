@@ -15,7 +15,7 @@ import subsequence.sequencer
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_composition(patch_midi: None) -> subsequence.Composition:
+def _make_composition (patch_midi: None) -> subsequence.Composition:
 	return subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
 

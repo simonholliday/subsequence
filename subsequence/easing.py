@@ -236,13 +236,13 @@ class EasedValue:
         iss_lat = subsequence.easing.EasedValue(initial=0.5)
 
         # Scheduled task (fires every 16 bars):
-        def fetch_data(p):
+        def fetch_data (p):
             new_lat = get_latest_latitude()   # 0.0–1.0
             iss_lat.update(new_lat)
 
         # Pattern (rebuilds every bar).  16-bar cycle matches the schedule.
         @composition.pattern(channel=0, length=4)
-        def drums(p):
+        def drums (p):
             progress = (p.cycle % 16) / 16   # 0 → 1 over one fetch cycle
             velocity = int(100 * iss_lat.get(progress))
             p.hit_steps("kick_1", range(16), velocity=velocity)

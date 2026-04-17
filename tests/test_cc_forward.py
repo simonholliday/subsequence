@@ -12,7 +12,7 @@ import conftest
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_sequencer(spy: conftest.SpyMidiOut) -> subsequence.sequencer.Sequencer:
+def _make_sequencer (spy: conftest.SpyMidiOut) -> subsequence.sequencer.Sequencer:
 	seq = subsequence.sequencer.Sequencer(
 		output_device_name="Dummy MIDI",
 		initial_bpm=120,
@@ -26,7 +26,7 @@ def _make_sequencer(spy: conftest.SpyMidiOut) -> subsequence.sequencer.Sequencer
 	return seq
 
 
-def _cc_msg(control: int, value: int, channel: int = 0) -> mido.Message:
+def _cc_msg (control: int, value: int, channel: int = 0) -> mido.Message:
 	return mido.Message('control_change', channel=channel, control=control, value=value)
 
 
@@ -34,7 +34,7 @@ def _cc_msg(control: int, value: int, channel: int = 0) -> mido.Message:
 # Composition API — registration
 # ---------------------------------------------------------------------------
 
-def test_cc_forward_stores_mapping(patch_midi: None) -> None:
+def test_cc_forward_stores_mapping (patch_midi: None) -> None:
 	"""cc_forward() should append one entry to _cc_forwards."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_forward(1, "cc")
@@ -45,19 +45,19 @@ def test_cc_forward_stores_mapping(patch_midi: None) -> None:
 	assert callable(fwd['transform'])
 
 
-def test_cc_forward_invalid_mode_raises(patch_midi: None) -> None:
+def test_cc_forward_invalid_mode_raises (patch_midi: None) -> None:
 	comp = subsequence.Composition(bpm=120)
 	with pytest.raises(ValueError, match="mode"):
 		comp.cc_forward(1, "cc", mode="realtime")
 
 
-def test_cc_forward_invalid_cc_raises(patch_midi: None) -> None:
+def test_cc_forward_invalid_cc_raises (patch_midi: None) -> None:
 	comp = subsequence.Composition(bpm=120)
 	with pytest.raises(ValueError):
 		comp.cc_forward(200, "cc")
 
 
-def test_cc_forward_coexists_with_cc_map(patch_midi: None) -> None:
+def test_cc_forward_coexists_with_cc_map (patch_midi: None) -> None:
 	"""Same CC can be registered in both cc_map and cc_forward."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_forward(1, "cc")
@@ -70,7 +70,7 @@ def test_cc_forward_coexists_with_cc_map(patch_midi: None) -> None:
 # Transform presets
 # ---------------------------------------------------------------------------
 
-def test_preset_cc_identity(patch_midi: None) -> None:
+def test_preset_cc_identity (patch_midi: None) -> None:
 	"""'cc' preset: identity forward, same CC number and value."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_forward(74, "cc")
@@ -82,7 +82,7 @@ def test_preset_cc_identity(patch_midi: None) -> None:
 	assert msg.value == 64
 
 
-def test_preset_cc_remap(patch_midi: None) -> None:
+def test_preset_cc_remap (patch_midi: None) -> None:
 	"""'cc:N' preset: forward as CC number N."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_forward(1, "cc:74")
@@ -94,13 +94,13 @@ def test_preset_cc_remap(patch_midi: None) -> None:
 	assert msg.value == 100
 
 
-def test_preset_cc_remap_invalid_raises(patch_midi: None) -> None:
+def test_preset_cc_remap_invalid_raises (patch_midi: None) -> None:
 	comp = subsequence.Composition(bpm=120)
 	with pytest.raises(ValueError):
 		comp.cc_forward(1, "cc:banana")
 
 
-def test_preset_pitchwheel_min(patch_midi: None) -> None:
+def test_preset_pitchwheel_min (patch_midi: None) -> None:
 	"""'pitchwheel' preset: CC 0 → pitch -8192."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_forward(1, "pitchwheel")
@@ -111,7 +111,7 @@ def test_preset_pitchwheel_min(patch_midi: None) -> None:
 	assert msg.pitch == -8192
 
 
-def test_preset_pitchwheel_max(patch_midi: None) -> None:
+def test_preset_pitchwheel_max (patch_midi: None) -> None:
 	"""'pitchwheel' preset: CC 127 → pitch 8191."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_forward(1, "pitchwheel")
@@ -122,7 +122,7 @@ def test_preset_pitchwheel_max(patch_midi: None) -> None:
 	assert msg.pitch == 8191
 
 
-def test_preset_pitchwheel_midpoint(patch_midi: None) -> None:
+def test_preset_pitchwheel_midpoint (patch_midi: None) -> None:
 	"""'pitchwheel' preset: CC 64 should be near 0."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_forward(1, "pitchwheel")
@@ -132,7 +132,7 @@ def test_preset_pitchwheel_midpoint(patch_midi: None) -> None:
 	assert abs(msg.pitch) < 200  # close to 0
 
 
-def test_callable_transform(patch_midi: None) -> None:
+def test_callable_transform (patch_midi: None) -> None:
 	"""User-supplied callable is stored and invoked correctly."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_forward(1, lambda v, ch: mido.Message('control_change', channel=ch, control=74, value=v // 2))
@@ -143,7 +143,7 @@ def test_callable_transform(patch_midi: None) -> None:
 	assert msg.value == 50
 
 
-def test_callable_can_return_none(patch_midi: None) -> None:
+def test_callable_can_return_none (patch_midi: None) -> None:
 	"""Callable returning None suppresses forwarding."""
 	comp = subsequence.Composition(bpm=120)
 	comp.cc_forward(1, lambda v, ch: None)
@@ -151,7 +151,7 @@ def test_callable_can_return_none(patch_midi: None) -> None:
 	assert transform(64, 0) is None
 
 
-def test_unknown_preset_raises(patch_midi: None) -> None:
+def test_unknown_preset_raises (patch_midi: None) -> None:
 	comp = subsequence.Composition(bpm=120)
 	with pytest.raises(ValueError, match="unknown preset"):
 		comp.cc_forward(1, "pitchbend")
@@ -161,7 +161,7 @@ def test_unknown_preset_raises(patch_midi: None) -> None:
 # Sequencer — instant mode
 # ---------------------------------------------------------------------------
 
-def test_instant_sends_immediately(patch_midi: None) -> None:
+def test_instant_sends_immediately (patch_midi: None) -> None:
 	"""Instant forward should call midi_out.send() from _on_midi_input."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -177,7 +177,7 @@ def test_instant_sends_immediately(patch_midi: None) -> None:
 	assert spy.sent[0].value == 64
 
 
-def test_instant_channel_filter_match(patch_midi: None) -> None:
+def test_instant_channel_filter_match (patch_midi: None) -> None:
 	"""Instant forward with channel filter should fire on matching channel."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -191,7 +191,7 @@ def test_instant_channel_filter_match(patch_midi: None) -> None:
 	assert len(spy.sent) == 1
 
 
-def test_instant_channel_filter_no_match(patch_midi: None) -> None:
+def test_instant_channel_filter_no_match (patch_midi: None) -> None:
 	"""Instant forward with channel filter should not fire on non-matching channel."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -205,7 +205,7 @@ def test_instant_channel_filter_no_match(patch_midi: None) -> None:
 	assert len(spy.sent) == 0
 
 
-def test_instant_cc_filter(patch_midi: None) -> None:
+def test_instant_cc_filter (patch_midi: None) -> None:
 	"""Instant forward should not fire on non-matching CC number."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -219,12 +219,12 @@ def test_instant_cc_filter(patch_midi: None) -> None:
 	assert len(spy.sent) == 0
 
 
-def test_instant_transform_exception_does_not_crash(patch_midi: None) -> None:
+def test_instant_transform_exception_does_not_crash (patch_midi: None) -> None:
 	"""A broken transform should log but not raise from _on_midi_input."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
 
-	def _bad_transform(v, ch):
+	def _bad_transform (v: int, ch: int) -> int:
 		raise RuntimeError("transform error")
 
 	seq.cc_forwards = [{
@@ -238,7 +238,7 @@ def test_instant_transform_exception_does_not_crash(patch_midi: None) -> None:
 	assert len(spy.sent) == 0
 
 
-def test_instant_transform_none_suppresses(patch_midi: None) -> None:
+def test_instant_transform_none_suppresses (patch_midi: None) -> None:
 	"""Instant forward with transform returning None should not call send."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -256,7 +256,7 @@ def test_instant_transform_none_suppresses(patch_midi: None) -> None:
 # Sequencer — queued mode
 # ---------------------------------------------------------------------------
 
-def test_queued_enters_buffer(patch_midi: None) -> None:
+def test_queued_enters_buffer (patch_midi: None) -> None:
 	"""Queued forward should append to _forward_buffer."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -272,7 +272,7 @@ def test_queued_enters_buffer(patch_midi: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_queued_drained_in_process_pulse(patch_midi: None) -> None:
+async def test_queued_drained_in_process_pulse (patch_midi: None) -> None:
 	"""_process_pulse() should drain _forward_buffer and send the messages."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
@@ -287,7 +287,7 @@ async def test_queued_drained_in_process_pulse(patch_midi: None) -> None:
 	assert any(m.control == 74 and m.value == 64 for m in spy.sent)
 
 
-def test_midi_event_from_mido_cc(patch_midi: None) -> None:
+def test_midi_event_from_mido_cc (patch_midi: None) -> None:
 	"""from_mido should correctly convert a CC message."""
 	msg = mido.Message('control_change', channel=1, control=74, value=100)
 	event = subsequence.sequencer.MidiEvent.from_mido(10, msg)
@@ -298,7 +298,7 @@ def test_midi_event_from_mido_cc(patch_midi: None) -> None:
 	assert event.value == 100
 
 
-def test_midi_event_from_mido_pitchwheel(patch_midi: None) -> None:
+def test_midi_event_from_mido_pitchwheel (patch_midi: None) -> None:
 	"""from_mido should correctly convert a pitchwheel message."""
 	msg = mido.Message('pitchwheel', channel=0, pitch=-4096)
 	event = subsequence.sequencer.MidiEvent.from_mido(5, msg)

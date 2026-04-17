@@ -1256,8 +1256,6 @@ class Sequencer:
 		to_reschedule: typing.List[ScheduledPattern] = []
 
 		async with self.callback_lock:
-            # DEBUG LOGGING
-			# logger.info(f"Checking callbacks at pulse {pulse}. Queue head: {self.callback_queue[0] if self.callback_queue else 'Empty'}")
 
 			while self.callback_queue and self.callback_queue[0][0] <= pulse:
 

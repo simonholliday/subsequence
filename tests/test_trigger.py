@@ -21,7 +21,7 @@ async def test_trigger_immediate_creates_pattern (patch_midi: None) -> None:
 	current_pulse = composition._sequencer.pulse_count
 
 	# Define a simple trigger function
-	def builder (p):
+	def builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(60, beat=0, velocity=100, duration=0.5)
 
 	# Manually set up the event loop before calling trigger
@@ -62,7 +62,7 @@ async def test_trigger_with_quantize_beat_boundary (patch_midi: None) -> None:
 	# Advance the sequencer to mid-beat (pulse 5 out of 24 pulses per beat)
 	composition._sequencer.pulse_count = 5
 
-	def builder (p):
+	def builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(62, beat=0, velocity=90, duration=0.5)
 
 	composition.trigger(builder, channel=1, quantize=dur.QUARTER)
@@ -93,7 +93,7 @@ async def test_trigger_with_quantize_bar_boundary (patch_midi: None) -> None:
 	# Advance to middle of a bar (pulse 50 out of 96 pulses per bar at 120 BPM)
 	composition._sequencer.pulse_count = 50
 
-	def builder (p):
+	def builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(64, beat=0, velocity=85, duration=0.5)
 
 	composition.trigger(builder, channel=1, quantize=dur.WHOLE)
@@ -124,7 +124,7 @@ async def test_trigger_with_chord_context (patch_midi: None) -> None:
 
 	captured_chord = None
 
-	def builder (p, chord):
+	def builder (p: "subsequence.pattern_builder.PatternBuilder", chord: "subsequence.chords.Chord") -> None:
 		nonlocal captured_chord
 		# Access the chord from the parameter
 		captured_chord = chord
@@ -155,7 +155,7 @@ async def test_trigger_with_drum_note_map (patch_midi: None) -> None:
 
 	await composition._sequencer.start()
 
-	def builder (p):
+	def builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note("kick_1", beat=0, velocity=100, duration=0.5)
 
 	composition.trigger(
@@ -185,7 +185,7 @@ async def test_trigger_builder_exception_is_logged (patch_midi: None) -> None:
 
 	await composition._sequencer.start()
 
-	def broken_builder (p):
+	def broken_builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		raise ValueError("Test error")
 
 	# Should not raise
@@ -209,7 +209,7 @@ async def test_trigger_before_playback_is_safe (patch_midi: None) -> None:
 		bpm=120,
 	)
 
-	def builder (p):
+	def builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(60, beat=0, velocity=100, duration=0.5)
 
 	# Trigger without calling play() - should not crash
@@ -228,7 +228,7 @@ async def test_trigger_uses_builder_chaining (patch_midi: None) -> None:
 
 	await composition._sequencer.start()
 
-	def builder (p):
+	def builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		# Use method chaining
 		p.note(60, beat=0, velocity=100, duration=0.5).note(62, beat=0.5, velocity=90, duration=0.5)
 

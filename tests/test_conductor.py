@@ -7,7 +7,7 @@ import subsequence.pattern
 import subsequence.pattern_builder
 
 
-def test_lfo_sine ():
+def test_lfo_sine () -> None:
 
 	"""Test sine wave LFO output."""
 	
@@ -30,7 +30,7 @@ def test_lfo_sine ():
 	assert conductor.get("sine", 4.0) == pytest.approx(0.5)
 
 
-def test_lfo_triangle ():
+def test_lfo_triangle () -> None:
 
 	"""Test triangle wave LFO output."""
 	
@@ -50,7 +50,7 @@ def test_lfo_triangle ():
 	assert conductor.get("tri", 3.0) == 0.5
 
 
-def test_line_ramp ():
+def test_line_ramp () -> None:
 
 	"""Test linear ramp."""
 	
@@ -70,7 +70,7 @@ def test_line_ramp ():
 	assert conductor.get("ramp", 5.0) == 1.0
 
 
-def test_line_loop ():
+def test_line_loop () -> None:
 
 	"""Test looping ramp."""
 	
@@ -87,7 +87,7 @@ def test_line_loop ():
 	assert conductor.get("loop", 6.0) == 0.5
 
 
-def test_lfo_saw ():
+def test_lfo_saw () -> None:
 
 	"""Test saw wave LFO output."""
 
@@ -107,7 +107,7 @@ def test_lfo_saw ():
 	assert conductor.get("saw", 3.0) == 0.75
 
 
-def test_lfo_square ():
+def test_lfo_square () -> None:
 
 	"""Test square wave LFO output."""
 
@@ -123,7 +123,7 @@ def test_lfo_square ():
 	assert conductor.get("sq", 3.0) == 0.0
 
 
-def test_lfo_phase_offset ():
+def test_lfo_phase_offset () -> None:
 
 	"""Test LFO with phase offset."""
 
@@ -137,7 +137,7 @@ def test_lfo_phase_offset ():
 	assert conductor.get("sine", 1.0) == pytest.approx(0.5)
 
 
-def test_lfo_custom_range ():
+def test_lfo_custom_range () -> None:
 
 	"""Test LFO with custom min/max values."""
 
@@ -154,7 +154,7 @@ def test_lfo_custom_range ():
 	assert conductor.get("vel", 1.0) == 75.0
 
 
-def test_lfo_invalid_cycle_beats ():
+def test_lfo_invalid_cycle_beats () -> None:
 
 	"""Test that zero or negative cycle_beats raises ValueError."""
 
@@ -167,7 +167,7 @@ def test_lfo_invalid_cycle_beats ():
 		conductor.lfo("bad", cycle_beats=-1.0)
 
 
-def test_line_invalid_duration ():
+def test_line_invalid_duration () -> None:
 
 	"""Test that zero or negative duration_beats raises ValueError."""
 
@@ -180,7 +180,7 @@ def test_line_invalid_duration ():
 		conductor.line("bad", start_val=0, end_val=1, duration_beats=-4.0)
 
 
-def test_missing_signal ():
+def test_missing_signal () -> None:
 
 	"""Querying an unregistered signal returns 0.0 and issues a warning."""
 
@@ -192,7 +192,7 @@ def test_missing_signal ():
 	assert result == 0.0
 
 
-def test_missing_signal_warns_once ():
+def test_missing_signal_warns_once () -> None:
 
 	"""The missing-signal warning is issued only once per signal name."""
 
@@ -207,7 +207,7 @@ def test_missing_signal_warns_once ():
 		assert conductor.get("ghost", 1.0) == 0.0
 
 
-def test_lfo_invalid_shape ():
+def test_lfo_invalid_shape () -> None:
 
 	"""An unrecognised LFO shape raises ValueError at construction time."""
 
@@ -217,7 +217,7 @@ def test_lfo_invalid_shape ():
 		conductor.lfo("bad", shape="wobbly")
 
 
-def test_signal_helper ():
+def test_signal_helper () -> None:
 
 	"""Test p.signal() reads the conductor at the current bar."""
 
@@ -237,7 +237,7 @@ def test_signal_helper ():
 	assert builder_zero.signal("tri") == 0.0
 
 
-def test_line_with_shape_ease_in ():
+def test_line_with_shape_ease_in () -> None:
 
 	"""Line with shape='ease_in' returns non-linear values."""
 
@@ -252,7 +252,7 @@ def test_line_with_shape_ease_in ():
 	assert conductor.get("ramp", 4.0) == pytest.approx(1.0)
 
 
-def test_line_with_shape_ease_in_out ():
+def test_line_with_shape_ease_in_out () -> None:
 
 	"""Line with shape='ease_in_out' is symmetric around the midpoint."""
 
@@ -266,7 +266,7 @@ def test_line_with_shape_ease_in_out ():
 	assert conductor.get("ramp", 1.0) < 25.0
 
 
-def test_line_with_callable_shape ():
+def test_line_with_callable_shape () -> None:
 
 	"""Line accepts a raw callable as the shape parameter."""
 
@@ -278,7 +278,7 @@ def test_line_with_callable_shape ():
 	assert conductor.get("ramp", 2.0) == pytest.approx(0.5 ** 0.5)
 
 
-def test_line_default_shape_is_linear ():
+def test_line_default_shape_is_linear () -> None:
 
 	"""The default Line shape remains linear (regression test)."""
 
@@ -288,7 +288,7 @@ def test_line_default_shape_is_linear ():
 	assert conductor.get("ramp", 2.0) == pytest.approx(0.5)
 
 
-def test_signal_helper_no_conductor ():
+def test_signal_helper_no_conductor () -> None:
 
 	"""Test p.signal() returns 0.0 when no conductor is attached."""
 

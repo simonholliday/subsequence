@@ -1,13 +1,22 @@
 """Tests for PatternAlgorithmicMixin — evolve() and branch() methods."""
 
+import typing
+
 import subsequence.constants
 import subsequence.constants.durations
 import subsequence.pattern
 import subsequence.pattern_builder
 
 
-def _make_builder(channel: int = 0, length: float = 4, cycle: int = 0, data: dict = None):
+def _make_builder (
+	channel: int = 0,
+	length: float = 4,
+	cycle: int = 0,
+	data: typing.Optional[dict] = None,
+) -> typing.Tuple[subsequence.pattern.Pattern, subsequence.pattern_builder.PatternBuilder]:
+
 	"""Create a Pattern and PatternBuilder pair for testing."""
+
 	default_grid = round(length / subsequence.constants.durations.SIXTEENTH)
 	pattern = subsequence.pattern.Pattern(channel=channel, length=length)
 	builder = subsequence.pattern_builder.PatternBuilder(
@@ -23,7 +32,7 @@ def _make_builder(channel: int = 0, length: float = 4, cycle: int = 0, data: dic
 # evolve()
 # ---------------------------------------------------------------------------
 
-def test_evolve_drift_zero_locks_loop() -> None:
+def test_evolve_drift_zero_locks_loop () -> None:
 	"""drift=0.0 must produce identical pitch output on every cycle."""
 	seed = [60, 62, 64, 67]
 	shared_data: dict = {}
@@ -41,7 +50,7 @@ def test_evolve_drift_zero_locks_loop() -> None:
 		assert later == pitches_by_cycle[0], "drift=0.0 should never change pitches"
 
 
-def test_evolve_drift_zero_seed_matches() -> None:
+def test_evolve_drift_zero_seed_matches () -> None:
 	"""On cycle 0 with drift=0 the output matches the seed exactly."""
 	seed = [60, 62, 64, 67]
 	pattern, builder = _make_builder(cycle=0)
@@ -51,7 +60,7 @@ def test_evolve_drift_zero_seed_matches() -> None:
 	assert pitches == seed
 
 
-def test_evolve_steps_truncates_seed() -> None:
+def test_evolve_steps_truncates_seed () -> None:
 	"""steps=2 should produce exactly 2 notes from a longer seed."""
 	seed = [60, 62, 64, 67]
 	pattern, builder = _make_builder(cycle=0)
@@ -61,7 +70,7 @@ def test_evolve_steps_truncates_seed() -> None:
 	assert count == 2
 
 
-def test_evolve_steps_extends_seed() -> None:
+def test_evolve_steps_extends_seed () -> None:
 	"""steps=6 with a 4-note seed should cycle and produce 6 notes."""
 	seed = [60, 62, 64, 67]
 	pattern, builder = _make_builder(length=8, cycle=0)
@@ -76,7 +85,7 @@ def test_evolve_steps_extends_seed() -> None:
 	assert pitches[4:] == seed[:2]
 
 
-def test_evolve_drift_one_replaces_all() -> None:
+def test_evolve_drift_one_replaces_all () -> None:
 	"""drift=1.0 must replace every note on cycle >= 1 (statistically certain)."""
 	seed = [60, 62, 64, 67]
 	shared_data: dict = {}
@@ -95,7 +104,7 @@ def test_evolve_drift_one_replaces_all() -> None:
 		assert p in seed, f"pitch {p} not in seed pool"
 
 
-def test_evolve_deterministic_with_fixed_rng() -> None:
+def test_evolve_deterministic_with_fixed_rng () -> None:
 	"""Same seed + same rng seed must produce identical evolution path."""
 	seed = [60, 62, 64, 67]
 	import random
@@ -115,7 +124,7 @@ def test_evolve_deterministic_with_fixed_rng() -> None:
 	assert results[0] == results[1], "evolve() must be deterministic given the same rng seed"
 
 
-def test_evolve_buffer_stays_in_pool() -> None:
+def test_evolve_buffer_stays_in_pool () -> None:
 	"""After many cycles of drift=1.0, all pitches must remain in the seed pool."""
 	seed = [60, 62, 64, 67]
 	shared_data: dict = {}
@@ -133,7 +142,7 @@ def test_evolve_buffer_stays_in_pool() -> None:
 # branch()
 # ---------------------------------------------------------------------------
 
-def test_branch_depth_zero_plays_seed() -> None:
+def test_branch_depth_zero_plays_seed () -> None:
 	"""depth=0 must play the seed unchanged (no transforms applied)."""
 	seed = [60, 64, 67, 72]
 	pattern, builder = _make_builder(cycle=0)
@@ -143,7 +152,7 @@ def test_branch_depth_zero_plays_seed() -> None:
 	assert pitches == seed
 
 
-def test_branch_path_zero_and_one_differ() -> None:
+def test_branch_path_zero_and_one_differ () -> None:
 	"""path=0 and path=1 at depth=1 must produce different sequences."""
 	seed = [60, 64, 67, 72]
 
@@ -158,11 +167,11 @@ def test_branch_path_zero_and_one_differ() -> None:
 	assert pitches0 != pitches1, "path=0 and path=1 should produce different variations"
 
 
-def test_branch_deterministic() -> None:
+def test_branch_deterministic () -> None:
 	"""Same seed + depth + path must always produce the same output."""
 	seed = [60, 64, 67, 72]
 
-	def _get_pitches(path):
+	def _get_pitches (path: int) -> typing.List[int]:
 		pattern, builder = _make_builder(cycle=0)
 		builder.branch(seed, depth=3, path=path, mutation=0.0, spacing=0.5)
 		return [n.pitch for step in sorted(pattern.steps.items()) for n in step[1].notes]
@@ -172,13 +181,13 @@ def test_branch_deterministic() -> None:
 	assert _get_pitches(5) == _get_pitches(5)
 
 
-def test_branch_path_wraps() -> None:
+def test_branch_path_wraps () -> None:
 	"""path=0 and path=2**depth should produce the same result (wrapping)."""
 	seed = [60, 64, 67, 72]
 	depth = 3
 	num_variations = 2 ** depth
 
-	def _get_pitches(path):
+	def _get_pitches (path: int) -> typing.List[int]:
 		pattern, builder = _make_builder(cycle=0)
 		builder.branch(seed, depth=depth, path=path, mutation=0.0, spacing=0.5)
 		return [n.pitch for step in sorted(pattern.steps.items()) for n in step[1].notes]
@@ -187,7 +196,7 @@ def test_branch_path_wraps() -> None:
 	assert _get_pitches(1) == _get_pitches(num_variations + 1)
 
 
-def test_branch_note_count_matches_seed() -> None:
+def test_branch_note_count_matches_seed () -> None:
 	"""Output should have the same number of notes as the seed."""
 	seed = [60, 64, 67, 72]
 	for depth in range(4):
@@ -198,7 +207,7 @@ def test_branch_note_count_matches_seed() -> None:
 			assert count == len(seed), f"depth={depth}, path={path}: expected {len(seed)} notes, got {count}"
 
 
-def test_branch_mutation_zero_is_deterministic() -> None:
+def test_branch_mutation_zero_is_deterministic () -> None:
 	"""mutation=0.0 must produce purely deterministic output (no rng involvement)."""
 	seed = [60, 64, 67, 72]
 	import random
@@ -215,7 +224,7 @@ def test_branch_mutation_zero_is_deterministic() -> None:
 	assert results[0] == results[1] == results[2]
 
 
-def test_branch_mutation_one_draws_from_seed_pool() -> None:
+def test_branch_mutation_one_draws_from_seed_pool () -> None:
 	"""mutation=1.0 must still draw only from the seed pool."""
 	seed = [60, 64, 67, 72]
 	pattern, builder = _make_builder(cycle=0)
@@ -226,7 +235,7 @@ def test_branch_mutation_one_draws_from_seed_pool() -> None:
 		assert p in seed, f"pitch {p} not in seed pool"
 
 
-def test_branch_cycle_path_advances() -> None:
+def test_branch_cycle_path_advances () -> None:
 	"""Using path=cycle should step through unique variations."""
 	seed = [60, 64, 67, 72]
 	depth = 3
@@ -249,7 +258,7 @@ def test_branch_cycle_path_advances() -> None:
 PPQN = subsequence.constants.MIDI_QUARTER_NOTE  # 24
 
 
-def test_ratchet_basic_subdivision() -> None:
+def test_ratchet_basic_subdivision () -> None:
 	"""A single note with subdivisions=3 becomes exactly 3 evenly-spaced notes."""
 	pattern, builder = _make_builder(length=4)
 	# Place one note at beat 0 with duration 1 beat (24 pulses).
@@ -266,7 +275,7 @@ def test_ratchet_basic_subdivision() -> None:
 	assert pulses[2] == round(2 * slot)
 
 
-def test_ratchet_velocity_linear_shaping() -> None:
+def test_ratchet_velocity_linear_shaping () -> None:
 	"""velocity_start/end with linear shape interpolates evenly across sub-hits."""
 	pattern, builder = _make_builder(length=4)
 	builder.note(60, beat=0, velocity=100, duration=1.0)
@@ -281,7 +290,7 @@ def test_ratchet_velocity_linear_shaping() -> None:
 	assert velocities[3] == 100
 
 
-def test_ratchet_pitch_filter_leaves_other_notes_unchanged() -> None:
+def test_ratchet_pitch_filter_leaves_other_notes_unchanged () -> None:
 	"""With pitch filter, non-matching notes are untouched."""
 	drum_map = {"kick": 36, "hh": 42}
 	pattern, builder = _make_builder(length=4)
@@ -306,7 +315,7 @@ def test_ratchet_pitch_filter_leaves_other_notes_unchanged() -> None:
 	assert len(hh_notes) == 3
 
 
-def test_ratchet_probability_zero_leaves_all_unchanged() -> None:
+def test_ratchet_probability_zero_leaves_all_unchanged () -> None:
 	"""probability=0.0 — no note is ratcheted."""
 	pattern, builder = _make_builder(length=4)
 	builder.note(60, beat=0, velocity=100, duration=1.0)
@@ -317,7 +326,7 @@ def test_ratchet_probability_zero_leaves_all_unchanged() -> None:
 	assert len(notes) == 2
 
 
-def test_ratchet_probability_one_ratchets_all() -> None:
+def test_ratchet_probability_one_ratchets_all () -> None:
 	"""probability=1.0 — every note is ratcheted."""
 	pattern, builder = _make_builder(length=4)
 	builder.note(60, beat=0, velocity=100, duration=1.0)
@@ -328,7 +337,7 @@ def test_ratchet_probability_one_ratchets_all() -> None:
 	assert len(notes) == 4
 
 
-def test_ratchet_gate_controls_duration() -> None:
+def test_ratchet_gate_controls_duration () -> None:
 	"""gate parameter sets sub-note duration as fraction of subdivision slot."""
 	pattern, builder = _make_builder(length=4)
 	# 1-beat note = 24 pulses, ratchet(2) → slot = 12 pulses
@@ -348,7 +357,7 @@ def test_ratchet_gate_controls_duration() -> None:
 	assert all(n.duration == 6 for n in notes2)
 
 
-def test_ratchet_short_note_clamping() -> None:
+def test_ratchet_short_note_clamping () -> None:
 	"""Subdivisions are clamped to note.duration so sub-hits never stack."""
 	pattern, builder = _make_builder(length=4)
 	# Place a note with duration=2 pulses (very short) — use pattern.add_note directly.
@@ -360,7 +369,7 @@ def test_ratchet_short_note_clamping() -> None:
 	assert len(notes) == 2
 
 
-def test_ratchet_steps_mask_targets_correct_positions() -> None:
+def test_ratchet_steps_mask_targets_correct_positions () -> None:
 	"""steps mask only ratchets notes at specified grid zones."""
 	pattern, builder = _make_builder(length=4)  # default_grid=16
 	# Three notes at beat 0, 1, 2 (grid steps 0, 4, 8 in a 16-step bar).
@@ -376,7 +385,7 @@ def test_ratchet_steps_mask_targets_correct_positions() -> None:
 	assert len(notes) == 5
 
 
-def test_ratchet_chainable() -> None:
+def test_ratchet_chainable () -> None:
 	"""ratchet() returns self so it can be chained."""
 	pattern, builder = _make_builder(length=4)
 	builder.note(60, beat=0, velocity=100, duration=1.0)
@@ -384,11 +393,11 @@ def test_ratchet_chainable() -> None:
 	assert result is builder
 
 
-def test_ratchet_deterministic_with_seed() -> None:
+def test_ratchet_deterministic_with_seed () -> None:
 	"""Same RNG seed + probability < 1.0 produces identical output across calls."""
 	import random
 
-	def run():
+	def run () -> tuple:
 		pattern, builder = _make_builder(length=4)
 		builder.note(60, beat=0, velocity=100, duration=1.0)
 		builder.note(60, beat=1, velocity=100, duration=1.0)
@@ -403,7 +412,7 @@ def test_ratchet_deterministic_with_seed() -> None:
 	assert run() == run()
 
 
-def test_ratchet_velocity_preserved_without_shaping() -> None:
+def test_ratchet_velocity_preserved_without_shaping () -> None:
 	"""Default velocity_start=1.0, velocity_end=1.0 keeps original velocity."""
 	pattern, builder = _make_builder(length=4)
 	builder.note(60, beat=0, velocity=80, duration=1.0)
