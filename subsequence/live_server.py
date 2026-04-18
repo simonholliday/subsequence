@@ -10,9 +10,12 @@ Messages are delimited by ``\\x04`` (ASCII EOT). The server reads until it
 receives this sentinel, evaluates the code, and sends the result (or error
 traceback) followed by ``\\x04``.
 
-Security note: the server binds to ``localhost`` only. It executes arbitrary
-Python in the composition's process - this is intentional for live coding, but
-the port should not be exposed to untrusted networks.
+Security note: the server binds to ``localhost`` only and is opt-in via
+``composition.live()``. It executes arbitrary Python in the composition's
+process - this is intentional for live coding. Any process on the same
+machine that can connect to the port has full code execution in this
+process, so do not enable live mode on shared or multi-user hosts, and
+never expose the port to a network.
 """
 
 import asyncio
@@ -160,7 +163,7 @@ class LiveServer:
 
 	def _build_namespace (self) -> typing.Dict[str, typing.Any]:
 
-		"""Build the namespace dict with safe builtins that can't block the sequencer."""
+		"""Build the namespace dict. The blocklist below prevents calls that would stall the async event loop - it is not a security sandbox. The live server executes arbitrary Python by design; see module docstring."""
 
 		import subsequence
 
