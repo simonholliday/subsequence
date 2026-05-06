@@ -76,7 +76,7 @@ class Pattern:
 	Allows us to define and manipulate music pattern objects.
 	"""
 
-	def __init__ (self, channel: int, length: float = 16, reschedule_lookahead: float = 1, device: int = 0) -> None:
+	def __init__ (self, channel: int, length: float = 16, reschedule_lookahead: float = 1, device: int = 0, mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]] = None) -> None:
 
 		"""
 		Initialize a new pattern with MIDI channel, length in beats, and reschedule lookahead.
@@ -89,12 +89,19 @@ class Pattern:
 				cycle is built. Defaults to 1 beat. This provides a safe computational
 				buffer so events are queued before the clock actually needs them.
 			device: Output device index (0-indexed).  0 = primary device (default).
+			mirrors: Additional ``(device, channel)`` destinations to duplicate every
+				note, CC, pitch bend, program change, SysEx, NRPN/RPN burst, and
+				drone event onto.  Both ``device`` and ``channel`` are 0-indexed in
+				canonical form; the user-facing entry points (decorator and runtime
+				API on ``Composition``) translate the user's channel-numbering
+				convention before storing here.
 		"""
 
 		self.channel = channel
 		self.length = length
 		self.reschedule_lookahead = reschedule_lookahead
 		self.device = device
+		self.mirrors: typing.List[typing.Tuple[int, int]] = list(mirrors) if mirrors else []
 
 		self.steps: typing.Dict[int, Step] = {}
 		self.cc_events: typing.List[CcEvent] = []

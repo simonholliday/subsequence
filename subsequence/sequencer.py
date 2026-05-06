@@ -736,7 +736,32 @@ class Sequencer:
 
 		"""
 		Schedules a pattern's notes and CC events into the sequencer's event queue.
+
+		If ``pattern.mirrors`` is non-empty, every note, CC, pitch bend, program
+		change, SysEx, NRPN/RPN burst, and drone event is duplicated onto each
+		mirror destination — see the "MIDI mirroring" section of the README.
+
+		**Bandwidth note**: each mirror destination multiplies the per-pattern
+		event count.  A dense pattern with two mirrors emits 3× the original.
+		For DIN-MIDI hardware on a saturated bus this can matter; over USB or
+		IAC it is rarely a concern.
+
+		**Tuning + mirrors**: ``CcEvent.channel`` and ``CcEvent.device`` overrides
+		(used by polyphonic microtonal tuning to rotate notes onto separate
+		channels) apply to the *primary* destination only.  Mirror destinations
+		always use their own pinned ``(device, channel)`` — i.e. a polyphonic-
+		tuning pattern mirrored to another synth will collapse all channel
+		rotations onto the mirror's single channel, losing per-note bend
+		isolation on that destination.  Apply tuning per-pattern if both ends
+		need it.
 		"""
+
+		# Primary destination first; mirrors follow.  Iteration order matters
+		# only for human readability when inspecting the queue — FIFO ordering
+		# at equal pulses is enforced by ``_push_event`` (the ``sequence``
+		# tie-breaker on ``MidiEvent``).
+		mirrors = getattr(pattern, 'mirrors', [])
+		destinations: typing.List[typing.Tuple[int, int]] = [(pattern.device, pattern.channel)] + list(mirrors)
 
 		async with self.queue_lock:
 
@@ -746,64 +771,84 @@ class Sequencer:
 
 				for note in step.notes:
 
-					# Note On
-					on_event = MidiEvent(
-						pulse = abs_pulse,
-						message_type = 'note_on',
-						channel = note.channel,
-						note = note.pitch,
-						velocity = note.velocity,
-						device = pattern.device,
-					)
+					for i, (dev, ch) in enumerate(destinations):
 
-					self._push_event(on_event)
+						# Primary preserves the Note's own channel (so polyphonic
+						# tuning's per-voice channel rotation lands correctly).
+						# Mirrors collapse onto the mirror's pinned channel.
+						note_channel = note.channel if i == 0 else ch
+						note_device = pattern.device if i == 0 else dev
 
-					# Note Off
-					off_event = MidiEvent(
-						pulse = abs_pulse + note.duration,
-						message_type = 'note_off',
-						channel = note.channel,
-						note = note.pitch,
-						velocity = 0,
-						device = pattern.device,
-					)
+						on_event = MidiEvent(
+							pulse = abs_pulse,
+							message_type = 'note_on',
+							channel = note_channel,
+							note = note.pitch,
+							velocity = note.velocity,
+							device = note_device,
+						)
+						self._push_event(on_event)
 
-					self._push_event(off_event)
+						off_event = MidiEvent(
+							pulse = abs_pulse + note.duration,
+							message_type = 'note_off',
+							channel = note_channel,
+							note = note.pitch,
+							velocity = 0,
+							device = note_device,
+						)
+						self._push_event(off_event)
 
-			# CC / pitch bend events
+			# CC / pitch bend / program change / SysEx events
 			for cc_event in getattr(pattern, 'cc_events', []):
 
 				abs_pulse = start_pulse + cc_event.pulse
 
-				midi_event = MidiEvent(
-					pulse = abs_pulse,
-					message_type = cc_event.message_type,
-					channel = cc_event.channel if cc_event.channel is not None else pattern.channel,
-					control = cc_event.control,
-					value = cc_event.value,
-					data = cc_event.data,
-					device = cc_event.device if cc_event.device is not None else pattern.device,
-				)
+				for i, (dev, ch) in enumerate(destinations):
 
-				self._push_event(midi_event)
+					if i == 0:
+						# Primary: respect per-event channel/device override if set
+						# (e.g. tuning pitch bends targeting specific channels).
+						event_channel = cc_event.channel if cc_event.channel is not None else ch
+						event_device = cc_event.device if cc_event.device is not None else dev
+					else:
+						# Mirror: always use the mirror's pinned (device, channel).
+						# See class docstring for the tuning interaction note.
+						event_channel = ch
+						event_device = dev
+
+					midi_event = MidiEvent(
+						pulse = abs_pulse,
+						message_type = cc_event.message_type,
+						channel = event_channel,
+						control = cc_event.control,
+						value = cc_event.value,
+						data = cc_event.data,
+						device = event_device,
+					)
+					self._push_event(midi_event)
 
 			# Raw Note On/Off events (drones)
 			for note_ev in getattr(pattern, 'raw_note_events', []):
 
 				abs_pulse = start_pulse + note_ev.pulse
 
-				midi_event = MidiEvent(
-					pulse = abs_pulse,
-					message_type = note_ev.message_type,
-					channel = pattern.channel,
-					note = note_ev.pitch,
-					velocity = note_ev.velocity,
-					device = pattern.device,
-				)
+				for (dev, ch) in destinations:
 
-				self._push_event(midi_event)
+					midi_event = MidiEvent(
+						pulse = abs_pulse,
+						message_type = note_ev.message_type,
+						channel = ch,
+						note = note_ev.pitch,
+						velocity = note_ev.velocity,
+						device = dev,
+					)
+					self._push_event(midi_event)
 
-			# OSC events
+			# OSC events — never mirrored.  OSC isn't bound to a MIDI port and
+			# mirroring it would require a different abstraction (multiple OSC
+			# servers / addresses).  If users want to broadcast OSC to several
+			# endpoints, that belongs in the OSC server config, not here.
 			for osc_event in getattr(pattern, 'osc_events', []):
 
 				abs_pulse = start_pulse + osc_event.pulse

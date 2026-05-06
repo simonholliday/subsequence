@@ -2032,6 +2032,45 @@ def filter_swell (p):
 | `p.nrpn_ramp(parameter, start, end, beat_start=0.0, beat_end=None, resolution=4, shape, fine=True, null_reset=True, channel=None)` | one-time selection at `beat_start`, Data Entry per step |
 | `p.rpn_ramp(...)` | identical, uses CC 101 / 100 for selection |
 
+### MIDI mirroring
+
+Send the same pattern to additional `(device, channel)` destinations as well as its primary output. Useful for **doubling** a part across two instruments — a hardware drum machine *and* a soft-synth on the same beat — without writing the pattern twice.
+
+Every event is mirrored: notes, CCs, pitch bend, NRPN/RPN bursts, program changes, SysEx, and drone on/off. The pattern's logic runs once and the resulting events fan out to each destination.
+
+**Static configuration on the decorator:**
+
+```python
+# Drums also play on (device 1, channel 10) and (device 2, channel 1)
+@composition.pattern(channel=10, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP,
+                     mirrors=[(1, 10), (2, 1)])
+def drums (p):
+    p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+    p.hit_steps("snare_1", [4, 12], velocity=90)
+```
+
+**Live toggle during playback:**
+
+```python
+# In a scheduled callback or live REPL session:
+composition.mirror("drums", device=1, channel=10)    # add a destination
+composition.mirror("drums", device=2, channel=1)     # and another
+composition.unmirror("drums", device=1, channel=10)  # remove just one
+composition.unmirror_all("drums")                    # remove all mirrors
+```
+
+Changes apply on the next pattern rebuild (bar-level granularity, the same as `mute()` / `unmute()`). `mirror()` is idempotent — calling with the same destination twice does not double-fan.
+
+**Things worth knowing:**
+
+- **Bandwidth multiplication.** Each mirror destination adds another full copy of the pattern's events to the queue and the bus. A dense pattern (16-step drum part with ghost fills and CC ramps) mirrored to two destinations triples the MIDI traffic from that pattern. Over USB or IAC virtual ports this is a non-issue; over saturated DIN-MIDI it can cause timing slop on the slowest destination. Mirror sparingly on slow links.
+
+- **Tuning + mirrors collapse polyphony.** Microtonal patterns built with `composition.tuning()` rotate notes onto a pool of channels (one channel per simultaneous voice) so each voice can have its own pitch bend. Mirroring sends every event to the mirror's *single* pinned channel, so the per-voice channel rotation is lost on the mirror destination. If both destinations need true microtonal output, define two patterns with their own `composition.tuning()` rather than mirroring.
+
+- **OSC is not mirrored.** OSC events bypass MIDI ports entirely; mirroring them would require a different abstraction. If you need an OSC message to fan out to multiple endpoints, configure that in your OSC routing (e.g. multiple servers, multicast).
+
+- **Mirror-to-self.** Setting `mirrors=[(0, 0)]` on a pattern whose primary is also `(0, 0)` will double every event to the same destination — almost certainly not what you want. Subsequence does not currently warn about this (it is technically valid for testing); double-check your mirror tuples.
+
 ### Scale quantization
 
 Snap all notes in a pattern to a named scale - essential after generative or sensor-driven pitch work:

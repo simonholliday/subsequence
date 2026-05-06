@@ -522,6 +522,7 @@ class _PendingPattern:
 		voice_leading: bool = False,
 		device: int = 0,
 		raw_device: subsequence.midi_utils.DeviceId = None,
+		mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]] = None,
 	) -> None:
 
 		"""
@@ -533,6 +534,9 @@ class _PendingPattern:
 		``_run()`` replaces it with the correct integer index once all output
 		devices have been opened.  When it is ``None`` or an ``int``, ``device``
 		is already final and ``raw_device`` is not consulted again.
+
+		*mirrors* is the list of additional ``(device_idx, channel_0_indexed)``
+		destinations resolved at decoration time.  Empty list = no mirroring.
 		"""
 
 		self.builder_fn = builder_fn
@@ -546,6 +550,7 @@ class _PendingPattern:
 		self.voice_leading = voice_leading
 		self.device = device
 		self.raw_device: subsequence.midi_utils.DeviceId = raw_device
+		self.mirrors: typing.List[typing.Tuple[int, int]] = list(mirrors) if mirrors else []
 
 
 class _PendingScheduled:
@@ -745,6 +750,41 @@ class Composition:
 			if not 1 <= channel <= 16:
 				raise ValueError(f"MIDI channel must be 1-16, got {channel}")
 			return channel - 1
+
+	def _resolve_mirrors (self, mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]]) -> typing.List[typing.Tuple[int, int]]:
+
+		"""
+		Validate and normalise a list of mirror destinations.
+
+		Each entry is a ``(device_idx, channel)`` tuple where ``channel`` is
+		expressed in the user's channel-numbering convention (1-16 by default,
+		0-15 when ``zero_indexed_channels=True``).  This method converts the
+		channel to canonical 0-indexed form and rejects malformed entries.
+
+		String device names are NOT supported here; users wanting a named
+		device should pass the integer index returned from ``midi_output()``.
+		"""
+
+		if mirrors is None:
+			return []
+
+		resolved: typing.List[typing.Tuple[int, int]] = []
+
+		for entry in mirrors:
+
+			# Validate shape — let bad inputs fail with a clear error at decoration
+			# time rather than producing inscrutable failures inside the sequencer.
+			if not isinstance(entry, tuple) or len(entry) != 2:
+				raise ValueError(f"Mirror entry must be a (device, channel) tuple, got {entry!r}")
+
+			device, channel = entry
+
+			if not isinstance(device, int):
+				raise ValueError(f"Mirror device must be an integer index, got {type(device).__name__} ({device!r})")
+
+			resolved.append((device, self._resolve_channel(channel)))
+
+		return resolved
 
 	@property
 	def harmonic_state (self) -> typing.Optional[subsequence.harmonic_state.HarmonicState]:
@@ -1870,6 +1910,77 @@ class Composition:
 		self._running_patterns[name]._muted = False
 		logger.info(f"Unmuted pattern: {name}")
 
+	def mirror (self, name: str, device: int, channel: int) -> None:
+
+		"""
+		Add a mirror destination to a running pattern.
+
+		Every note, CC, pitch bend, NRPN/RPN, program change, SysEx, and drone
+		event the pattern emits will also be sent to ``(device, channel)``,
+		starting from the next cycle rebuild.  Idempotent — calling with the
+		same destination twice does not double-fan.
+
+		Parameters:
+			name: Function name of the pattern to mirror.
+			device: Output device index (the integer returned from
+				``midi_output()``; 0 = primary device).
+			channel: MIDI channel using this composition's numbering convention
+				(1-16 by default; 0-15 if ``zero_indexed_channels=True``).
+
+		Bandwidth: each mirror adds another full copy of the pattern's events.
+		See the README "MIDI mirroring" section for the tradeoffs.
+		"""
+
+		if name not in self._running_patterns:
+			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
+
+		resolved_channel = self._resolve_channel(channel)
+		entry = (device, resolved_channel)
+
+		pattern = self._running_patterns[name]
+
+		if entry not in pattern.mirrors:
+			pattern.mirrors.append(entry)
+			logger.info(f"Mirror added: {name} -> device={device}, channel={resolved_channel}")
+		else:
+			logger.debug(f"Mirror already present on {name}: device={device}, channel={resolved_channel}")
+
+	def unmirror (self, name: str, device: int, channel: int) -> None:
+
+		"""
+		Remove a single mirror destination from a running pattern.
+
+		Idempotent: silently does nothing if the destination is not currently
+		mirrored.  The change applies on the next cycle rebuild.
+		"""
+
+		if name not in self._running_patterns:
+			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
+
+		resolved_channel = self._resolve_channel(channel)
+		entry = (device, resolved_channel)
+
+		pattern = self._running_patterns[name]
+
+		if entry in pattern.mirrors:
+			pattern.mirrors.remove(entry)
+			logger.info(f"Mirror removed: {name} -> device={device}, channel={resolved_channel}")
+
+	def unmirror_all (self, name: str) -> None:
+
+		"""
+		Remove every mirror destination from a running pattern.
+		"""
+
+		if name not in self._running_patterns:
+			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
+
+		pattern = self._running_patterns[name]
+
+		if pattern.mirrors:
+			pattern.mirrors.clear()
+			logger.info(f"All mirrors cleared on pattern: {name}")
+
 	def tweak (self, name: str, **kwargs: typing.Any) -> None:
 
 		"""Override parameters for a running pattern.
@@ -2058,6 +2169,7 @@ class Composition:
 		reschedule_lookahead: float = 1,
 		voice_leading: bool = False,
 		device: subsequence.midi_utils.DeviceId = None,
+		mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]] = None,
 	) -> typing.Callable:
 
 		"""
@@ -2095,6 +2207,13 @@ class Composition:
 			reschedule_lookahead: Beats in advance to compute the next cycle.
 			voice_leading: If True, chords in this pattern will automatically
 				use inversions that minimize voice movement.
+			mirrors: Optional list of additional ``(device, channel)`` destinations
+				to duplicate every event from this pattern onto.  Notes, CCs, pitch
+				bend, NRPN/RPN bursts, program changes, SysEx, and drone events are
+				all mirrored; OSC events are not (OSC is not bound to a MIDI port).
+				``device`` is the integer index returned by ``midi_output()`` (0 =
+				primary).  ``channel`` follows this composition's channel-numbering
+				convention.  See also ``mirror()`` / ``unmirror()`` for live toggling.
 
 		Example:
 			```python
@@ -2113,6 +2232,7 @@ class Composition:
 		"""
 
 		channel = self._resolve_channel(channel)
+		resolved_mirrors = self._resolve_mirrors(mirrors)
 
 		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit)
 
@@ -2149,6 +2269,7 @@ class Composition:
 				# placeholder; _resolve_pending_devices() fixes it in _run().
 				device = 0 if (resolved_device is None or isinstance(resolved_device, str)) else resolved_device,
 				raw_device = resolved_device,
+				mirrors = resolved_mirrors,
 			)
 
 			self._pending_patterns.append(pending)
@@ -2171,6 +2292,7 @@ class Composition:
 		reschedule_lookahead: float = 1,
 		voice_leading: bool = False,
 		device: subsequence.midi_utils.DeviceId = None,
+		mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]] = None,
 	) -> None:
 
 		"""
@@ -2195,9 +2317,12 @@ class Composition:
 				parameter numbers.
 			reschedule_lookahead: Beats in advance to compute the next cycle.
 			voice_leading: If True, chords use smooth voice leading.
+			mirrors: Optional list of additional ``(device, channel)`` destinations
+				to duplicate every event onto.  See ``pattern()`` for details.
 		"""
 
 		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit)
+		resolved_mirrors = self._resolve_mirrors(mirrors)
 
 		wants_chord = any(_fn_has_parameter(fn, "chord") for fn in builder_fns)
 
@@ -2230,6 +2355,7 @@ class Composition:
 			nrpn_name_map = nrpn_name_map,
 			reschedule_lookahead = reschedule_lookahead,
 			voice_leading = voice_leading,
+			mirrors = resolved_mirrors,
 				device = 0 if (device is None or isinstance(device, str)) else device,
 			raw_device = device,
 		)
@@ -2250,6 +2376,7 @@ class Composition:
 		nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		chord: bool = False,
 		device: subsequence.midi_utils.DeviceId = None,
+		mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]] = None,
 	) -> None:
 
 		"""
@@ -2283,6 +2410,8 @@ class Composition:
 				14-bit parameter numbers.
 			chord: If ``True``, the builder function receives the current chord as
 				a second parameter (same as ``@composition.pattern``).
+			mirrors: Optional list of additional ``(device, channel)`` destinations
+				to fire this one-shot onto in parallel with the primary destination.
 
 		Example:
 			```python
@@ -2313,6 +2442,7 @@ class Composition:
 
 		# Resolve channel numbering
 		resolved_channel = self._resolve_channel(channel)
+		resolved_mirrors = self._resolve_mirrors(mirrors)
 
 		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, default=1.0)
 
@@ -2320,7 +2450,7 @@ class Composition:
 		resolved_device_idx = self._resolve_device_id(device)
 
 		# Create a temporary Pattern
-		pattern = subsequence.pattern.Pattern(channel=resolved_channel, length=beat_length, device=resolved_device_idx)
+		pattern = subsequence.pattern.Pattern(channel=resolved_channel, length=beat_length, device=resolved_device_idx, mirrors=resolved_mirrors)
 
 		# Create a PatternBuilder
 		builder = subsequence.pattern_builder.PatternBuilder(
@@ -2776,6 +2906,7 @@ class Composition:
 						composition_ref._harmony_reschedule_lookahead
 					),
 					device = pending.device,
+					mirrors = pending.mirrors,
 				)
 
 				self._builder_fn = pending.builder_fn
