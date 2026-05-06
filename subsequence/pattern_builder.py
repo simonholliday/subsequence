@@ -2,6 +2,8 @@ import logging
 import random
 import typing
 
+import pymididefs.rpn
+
 import subsequence.chords
 import subsequence.constants
 import subsequence.constants.velocity
@@ -106,7 +108,7 @@ class PatternBuilder(
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info.
 
@@ -116,6 +118,11 @@ class PatternBuilder(
 			conductor: Optional ``Conductor`` for time-varying signals.
 			drum_note_map: Optional mapping of drum names to MIDI notes.
 			cc_name_map: Optional mapping of CC names to MIDI CC numbers.
+			nrpn_name_map: Optional mapping of NRPN parameter names to 14-bit
+				parameter numbers (0–16383).  Used by ``p.nrpn()`` and
+				``p.nrpn_ramp()`` for symbolic access — typically a
+				device-specific dictionary (e.g. Sequential Take 5's
+				``Osc1FreqFine`` → 9).
 			section: Current ``SectionInfo`` (or ``None``).
 			bar: Global bar count.
 			rng: Optional seeded ``Random`` for reproducibility.
@@ -138,6 +145,7 @@ class PatternBuilder(
 		self.conductor = conductor
 		self._drum_note_map = drum_note_map
 		self._cc_name_map = cc_name_map
+		self._nrpn_name_map = nrpn_name_map
 		self.section = section
 		self.bar = bar
 		self.rng: random.Random = rng or random.Random()
@@ -247,6 +255,43 @@ class PatternBuilder(
 			raise ValueError(f"Unknown CC name '{control}' - not found in cc_name_map")
 
 		return self._cc_name_map[control]
+
+	def _resolve_nrpn (self, parameter: typing.Union[int, str]) -> int:
+
+		"""Resolve an NRPN parameter name or number to a 14-bit parameter number.
+
+		Strings require an ``nrpn_name_map`` on the pattern decorator —
+		NRPN parameter numbers are vendor-specific, so subsequence does not
+		ship a default mapping.
+		"""
+
+		if isinstance(parameter, int):
+			return parameter
+
+		if self._nrpn_name_map is None:
+			raise ValueError(f"String NRPN name '{parameter}' requires an nrpn_name_map, but none was provided")
+
+		if parameter not in self._nrpn_name_map:
+			raise ValueError(f"Unknown NRPN name '{parameter}' - not found in nrpn_name_map")
+
+		return self._nrpn_name_map[parameter]
+
+	def _resolve_rpn (self, parameter: typing.Union[int, str]) -> int:
+
+		"""Resolve an RPN parameter name or number to a 14-bit parameter number.
+
+		Strings fall back to ``pymididefs.rpn.RPN_MAP`` — the standardised
+		set of MIDI Registered Parameter Numbers (``pitch_bend_sensitivity``,
+		``channel_fine_tuning``, ...).  No per-pattern map needed.
+		"""
+
+		if isinstance(parameter, int):
+			return parameter
+
+		if parameter not in pymididefs.rpn.RPN_MAP:
+			raise ValueError(f"Unknown RPN name '{parameter}' - not a standard Registered Parameter Number")
+
+		return pymididefs.rpn.RPN_MAP[parameter]
 
 	def note (self, pitch: typing.Union[int, str], beat: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
 

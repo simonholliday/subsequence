@@ -6,6 +6,9 @@ is inherited by ``PatternBuilder`` in ``pattern_builder.py``.
 
 import typing
 
+import pymididefs.cc
+import pymididefs.rpn
+
 import subsequence.constants
 import subsequence.easing
 import subsequence.pattern
@@ -23,10 +26,13 @@ class PatternMidiMixin:
 	_pattern: subsequence.pattern.Pattern
 	_default_grid: int
 	_cc_name_map: typing.Optional[typing.Dict[str, int]]
+	_nrpn_name_map: typing.Optional[typing.Dict[str, int]]
 
 	if typing.TYPE_CHECKING:
 		import subsequence.pattern_builder  # noqa: F401 — type-checking only
 		def _resolve_cc (self, control: typing.Union[int, str]) -> int: ...
+		def _resolve_nrpn (self, parameter: typing.Union[int, str]) -> int: ...
+		def _resolve_rpn (self, parameter: typing.Union[int, str]) -> int: ...
 
 	# ── Shared ramp helper ──────────────────────────────────────────────────
 
@@ -202,6 +208,353 @@ class PatternMidiMixin:
 			)
 
 		self._ramp_pulses(beat_start, beat_end, start, end, shape, resolution, _event)
+		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
+
+	# ── RPN / NRPN parameter control ────────────────────────────────────────
+	# RPN (Registered) and NRPN (Non-Registered) Parameter Numbers are the
+	# standard MIDI conventions for addressing parameters beyond the 128 CC
+	# slots, with optional 14-bit value precision.  Both are sequences of
+	# regular control_change messages co-scheduled at the same pulse:
+	#   CC 99 / 98     NRPN parameter MSB / LSB        (or 101 / 100 for RPN)
+	#   CC 6  / 38     Data Entry MSB / LSB
+	#   CC 101=127, 100=127   NULL — defensive deselect
+	# The Sequencer's MidiEvent.sequence tie-breaker preserves emission order
+	# at the same pulse, so the synth assigns the value to the right parameter.
+
+	def _append_param_select (self, pulse: int, channel: typing.Optional[int], parameter: int, msb_cc: int, lsb_cc: int) -> None:
+
+		"""Emit the two-CC parameter-select pair (NRPN: 99/98, RPN: 101/100)."""
+
+		param_msb, param_lsb = pymididefs.cc.pack_14bit(parameter)
+
+		self._pattern.cc_events.append(
+			subsequence.pattern.CcEvent(
+				pulse = pulse,
+				message_type = 'control_change',
+				control = msb_cc,
+				value = param_msb,
+				channel = channel,
+			)
+		)
+		self._pattern.cc_events.append(
+			subsequence.pattern.CcEvent(
+				pulse = pulse,
+				message_type = 'control_change',
+				control = lsb_cc,
+				value = param_lsb,
+				channel = channel,
+			)
+		)
+
+	def _append_data_entry (self, pulse: int, channel: typing.Optional[int], value: int, fine: bool) -> None:
+
+		"""Emit Data Entry MSB (and LSB if fine=True) for a parameter value."""
+
+		if fine:
+			value_msb, value_lsb = pymididefs.cc.pack_14bit(value)
+		else:
+			if not 0 <= value <= 127:
+				raise ValueError(f"NRPN/RPN value must be 0–127 when fine=False, got {value}")
+			value_msb = value
+			value_lsb = None
+
+		self._pattern.cc_events.append(
+			subsequence.pattern.CcEvent(
+				pulse = pulse,
+				message_type = 'control_change',
+				control = pymididefs.cc.DATA_ENTRY_MSB,
+				value = value_msb,
+				channel = channel,
+			)
+		)
+
+		if value_lsb is not None:
+			self._pattern.cc_events.append(
+				subsequence.pattern.CcEvent(
+					pulse = pulse,
+					message_type = 'control_change',
+					control = pymididefs.cc.DATA_ENTRY_LSB,
+					value = value_lsb,
+					channel = channel,
+				)
+			)
+
+	def _validate_ramp_endpoints (self, start: int, end: int, fine: bool) -> None:
+
+		"""Reject out-of-range NRPN/RPN ramp endpoints up front.
+
+		Mirrors the strict behaviour of ``_append_data_entry`` for one-shots
+		so a typo (e.g. forgetting ``fine=True`` with a 14-bit value) raises
+		immediately rather than silently clamping at every ramp step.
+		"""
+
+		limit = 16383 if fine else 127
+
+		for label, value in (("start", start), ("end", end)):
+			if not 0 <= value <= limit:
+				raise ValueError(f"NRPN/RPN ramp {label} must be 0–{limit} (fine={fine}), got {value}")
+
+	def _append_null_reset (self, pulse: int, channel: typing.Optional[int]) -> None:
+
+		"""Emit the RPN NULL sentinel (CC 101=127, CC 100=127) to deselect.
+
+		Defensive practice: prevents a stray later CC 6 / 38 from being
+		applied to whichever parameter was last selected on this channel.
+		"""
+
+		null_msb, null_lsb = pymididefs.cc.pack_14bit(pymididefs.rpn.NULL_PARAMETER)
+
+		self._pattern.cc_events.append(
+			subsequence.pattern.CcEvent(
+				pulse = pulse,
+				message_type = 'control_change',
+				control = pymididefs.cc.RPN_MSB,
+				value = null_msb,
+				channel = channel,
+			)
+		)
+		self._pattern.cc_events.append(
+			subsequence.pattern.CcEvent(
+				pulse = pulse,
+				message_type = 'control_change',
+				control = pymididefs.cc.RPN_LSB,
+				value = null_lsb,
+				channel = channel,
+			)
+		)
+
+	def nrpn (
+		self,
+		parameter: typing.Union[int, str],
+		value: int,
+		beat: float = 0.0,
+		fine: bool = False,
+		null_reset: bool = True,
+		channel: typing.Optional[int] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
+
+		"""
+		Send a single NRPN parameter write at a beat position.
+
+		NRPN (Non-Registered Parameter Number) addresses synth-specific
+		parameters that don't fit into the 128 standard CC slots — Sequential,
+		Korg, Roland, Elektron and others use it heavily for filter cutoff,
+		envelope amounts, oscillator detune, and similar deep parameters.
+		Many such parameters need values beyond 0–127 (e.g. 0–1023, 0–254);
+		set ``fine=True`` for full 14-bit precision.
+
+		Parameters:
+			parameter: 14-bit NRPN parameter number (0–16383), or a string
+				resolved via the pattern's ``nrpn_name_map``.
+			value: Parameter value.  0–127 if ``fine=False``; 0–16383 if
+				``fine=True``.
+			beat: Beat position within the pattern.
+			fine: If True, send 14-bit value via Data Entry MSB+LSB
+				(CC 6 + CC 38).  If False (default), send only Data Entry
+				MSB — sufficient for the common 0–127 range.
+			null_reset: If True (default), follow with the RPN null sentinel
+				to deselect the active parameter and prevent stray later
+				CC 6 / 38 messages from hitting it.
+			channel: Override the pattern's MIDI channel for this message.
+
+		Example:
+			```python
+			# Sequential Take 5 fine-tune (14-bit, range 0–1400)
+			p.nrpn(9, 700, fine=True)
+
+			# Roland JV-1080 reverb level (7-bit)
+			p.nrpn(0x0140, 80)
+			```
+		"""
+
+		param = self._resolve_nrpn(parameter)
+		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		self._append_param_select(pulse, channel, param, pymididefs.cc.NRPN_MSB, pymididefs.cc.NRPN_LSB)
+		self._append_data_entry(pulse, channel, value, fine)
+
+		if null_reset:
+			self._append_null_reset(pulse, channel)
+
+		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
+
+	def rpn (
+		self,
+		parameter: typing.Union[int, str],
+		value: int,
+		beat: float = 0.0,
+		fine: bool = False,
+		null_reset: bool = True,
+		channel: typing.Optional[int] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
+
+		"""
+		Send a single RPN parameter write at a beat position.
+
+		RPN (Registered Parameter Number) addresses the small standardised
+		set of parameters defined by the MIDI specification — pitch bend
+		range, master tuning, modulation depth — supported by virtually any
+		MIDI synth.  String names resolve via ``pymididefs.rpn.RPN_MAP``
+		out of the box, no map needed.
+
+		Standard RPN names: ``pitch_bend_sensitivity``,
+		``channel_fine_tuning``, ``channel_coarse_tuning``,
+		``tuning_program_select``, ``tuning_bank_select``,
+		``modulation_depth_range``.
+
+		Parameters:
+			parameter: 14-bit RPN parameter number (0–16383), or one of the
+				standard string names above.
+			value: Parameter value.  0–127 if ``fine=False``; 0–16383 if
+				``fine=True``.  Pitch bend sensitivity uses MSB = semitones
+				and LSB = cents, so set ``fine=True`` for sub-semitone control.
+			beat: Beat position within the pattern.
+			fine: If True, send 14-bit value via Data Entry MSB+LSB.
+			null_reset: If True (default), follow with the RPN null sentinel.
+			channel: Override the pattern's MIDI channel for this message.
+
+		Example:
+			```python
+			# Set pitch bend range to ±12 semitones
+			p.rpn("pitch_bend_sensitivity", 12)
+
+			# 4 semitones plus 50 cents
+			p.rpn("pitch_bend_sensitivity", 4 * 128 + 50, fine=True)
+			```
+		"""
+
+		param = self._resolve_rpn(parameter)
+		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		self._append_param_select(pulse, channel, param, pymididefs.cc.RPN_MSB, pymididefs.cc.RPN_LSB)
+		self._append_data_entry(pulse, channel, value, fine)
+
+		if null_reset:
+			self._append_null_reset(pulse, channel)
+
+		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
+
+	def nrpn_ramp (
+		self,
+		parameter: typing.Union[int, str],
+		start: int,
+		end: int,
+		beat_start: float = 0.0,
+		beat_end: typing.Optional[float] = None,
+		resolution: int = 4,
+		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
+		fine: bool = True,
+		null_reset: bool = True,
+		channel: typing.Optional[int] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
+
+		"""
+		Interpolate an NRPN value over a beat range.
+
+		The parameter is selected once at ``beat_start``; subsequent steps
+		emit only Data Entry messages.  Synths track the most recently
+		selected NRPN per the spec, so re-selecting per step would just
+		waste bandwidth.  If ``null_reset=True`` the RPN null sentinel is
+		appended once at ``beat_end``.
+
+		**Mid-ramp parameter persistence:** between ``beat_start`` and
+		``beat_end`` the synth still has this NRPN selected.  Avoid issuing
+		``p.cc(6, …)`` or ``p.cc(38, …)`` on the same channel during the
+		ramp window — they would land on the ramped parameter rather than
+		acting as plain data-entry CCs.
+
+		Bandwidth note: with ``fine=True`` (default) every step emits two
+		CCs.  Default ``resolution=4`` is one update every four pulses
+		(~20 ms at 120 BPM), which keeps the bus lightly loaded.  Increase
+		``resolution`` (e.g. ``8``) on slow DIN-MIDI links if you hear
+		other messages getting delayed.
+
+		Parameters:
+			parameter: 14-bit NRPN parameter number, or a string resolved
+				via the pattern's ``nrpn_name_map``.
+			start: Starting value (0–16383 when ``fine=True``, 0–127 when False).
+			end: Ending value.
+			beat_start: Beat position to begin the ramp.
+			beat_end: Beat position to end the ramp.  Defaults to pattern length.
+			resolution: Pulses between Data Entry messages (default 4).
+			shape: Easing curve — string name or callable [0, 1] → [0, 1].
+			fine: If True (default), use full 14-bit Data Entry MSB+LSB.
+			null_reset: If True (default), append the null sentinel at the
+				end of the ramp (not per step).
+			channel: Override the pattern's MIDI channel for this message.
+		"""
+
+		param = self._resolve_nrpn(parameter)
+		self._validate_ramp_endpoints(start, end, fine)
+
+		if beat_end is None:
+			beat_end = self._pattern.length
+
+		pulse_start = int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE)
+		pulse_end = int(beat_end * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		self._append_param_select(pulse_start, channel, param, pymididefs.cc.NRPN_MSB, pymididefs.cc.NRPN_LSB)
+
+		def _event (pulse: int, val: float) -> None:
+			# Clamp guards against custom easing callables that overshoot [0, 1].
+			if fine:
+				value = max(0, min(16383, int(round(val))))
+			else:
+				value = max(0, min(127, int(round(val))))
+			self._append_data_entry(pulse, channel, value, fine)
+
+		self._ramp_pulses(beat_start, beat_end, float(start), float(end), shape, resolution, _event)
+
+		if null_reset:
+			self._append_null_reset(pulse_end, channel)
+
+		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
+
+	def rpn_ramp (
+		self,
+		parameter: typing.Union[int, str],
+		start: int,
+		end: int,
+		beat_start: float = 0.0,
+		beat_end: typing.Optional[float] = None,
+		resolution: int = 4,
+		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
+		fine: bool = True,
+		null_reset: bool = True,
+		channel: typing.Optional[int] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
+
+		"""Interpolate an RPN value over a beat range.
+
+		Identical to :meth:`nrpn_ramp` but uses CC 101 / 100 for parameter
+		selection.  String names resolve via ``pymididefs.rpn.RPN_MAP``.
+		The same mid-ramp persistence note applies: avoid plain ``p.cc(6, …)``
+		on this channel during the ramp window.
+		"""
+
+		param = self._resolve_rpn(parameter)
+		self._validate_ramp_endpoints(start, end, fine)
+
+		if beat_end is None:
+			beat_end = self._pattern.length
+
+		pulse_start = int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE)
+		pulse_end = int(beat_end * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		self._append_param_select(pulse_start, channel, param, pymididefs.cc.RPN_MSB, pymididefs.cc.RPN_LSB)
+
+		def _event (pulse: int, val: float) -> None:
+			if fine:
+				clamped = max(0, min(16383, int(round(val))))
+			else:
+				clamped = max(0, min(127, int(round(val))))
+			self._append_data_entry(pulse, channel, clamped, fine)
+
+		self._ramp_pulses(beat_start, beat_end, float(start), float(end), shape, resolution, _event)
+
+		if null_reset:
+			self._append_null_reset(pulse_end, channel)
+
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	# ── Program change and SysEx ─────────────────────────────────────────────

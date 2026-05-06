@@ -1971,6 +1971,67 @@ p.slide(notes=[1, 3], extend=False)
 | `p.portamento(time=0.15, shape, resolution, bend_range=2.0, wrap=True)` | `bend_range=None` disables range check |
 | `p.slide(notes=None, steps=None, time=0.15, shape, resolution, bend_range=2.0, wrap=True, extend=True)` | `notes` or `steps` required |
 
+### NRPN and RPN parameter control
+
+CC messages address only the 128 standard MIDI controllers, with values clamped to 0–127. Many parameters on serious studio gear need more — a Sequential Take 5's oscillator fine-tune sweeps 0–1400, a Prophet-6's filter frequency 0–164, a Korg synth's envelope amount 0–254. **NRPN** (Non-Registered Parameter Number) and **RPN** (Registered Parameter Number) are the standard MIDI conventions for addressing those parameters with optional 14-bit precision. Sequential's manuals explicitly recommend NRPN as the preferred method of parameter transmission for exactly this reason.
+
+Subsequence emits both as ordinary `control_change` events under the hood, so they record cleanly into `.mid` files and route through every other channel of the sequencer for free.
+
+**`p.rpn()` — the small, standardised set of parameters every synth supports:**
+
+```python
+@composition.pattern(channel=1, beats=4)
+def setup (p):
+    # Set the synth's pitch bend range to ±12 semitones, once at the top
+    if p.cycle == 0:
+        p.rpn("pitch_bend_sensitivity", 12)
+```
+
+The standard RPN names — `pitch_bend_sensitivity`, `channel_fine_tuning`, `channel_coarse_tuning`, `tuning_program_select`, `tuning_bank_select`, `modulation_depth_range` — resolve out of the box, no map needed.
+
+**`p.nrpn()` — vendor-specific parameters by number:**
+
+```python
+# Sequential Take 5: sequencer on/off (NRPN 4198)
+p.nrpn(4198, 1)
+
+# Filter cutoff with 14-bit precision (synth supports 0–1023)
+p.nrpn(29, 800, fine=True)
+```
+
+For readable code, register a device-specific name map on the decorator:
+
+```python
+TAKE_5_NRPN = {
+    "filter_freq":   29,   # 0–1023 (fine=True)
+    "osc1_freq_fine": 9,   # 0–1400 (fine=True)
+    "lfo1_amt":      62,   # 0–255  (fine=True)
+}
+
+@composition.pattern(channel=1, beats=4, nrpn_name_map=TAKE_5_NRPN)
+def take5 (p):
+    p.nrpn("filter_freq", 700, fine=True)
+    p.nrpn("lfo1_amt", 128, fine=True)
+```
+
+**Smooth sweeps with `p.nrpn_ramp()` and `p.rpn_ramp()`:**
+
+```python
+@composition.pattern(channel=1, beats=4, nrpn_name_map=TAKE_5_NRPN)
+def filter_swell (p):
+    # Open the filter from closed to wide over four beats, exponentially
+    p.nrpn_ramp("filter_freq", start=0, end=1023, beat_end=4, shape="exponential")
+```
+
+`null_reset=True` (the default) appends a defensive *null parameter* sentinel after each write, so a later stray `p.cc(6, ...)` cannot accidentally land on the parameter you just selected. `fine=True` uses 14-bit Data Entry (CC 6 + CC 38) — defaults to `False` for one-shots and `True` for ramps, where smooth resolution matters more.
+
+| Method | Key parameters |
+|--------|---------------|
+| `p.nrpn(parameter, value, beat=0.0, fine=False, null_reset=True, channel=None)` | `parameter`: int or string from `nrpn_name_map` |
+| `p.rpn(parameter, value, beat=0.0, fine=False, null_reset=True, channel=None)` | `parameter`: int or standard RPN string |
+| `p.nrpn_ramp(parameter, start, end, beat_start=0.0, beat_end=None, resolution=4, shape, fine=True, null_reset=True, channel=None)` | one-time selection at `beat_start`, Data Entry per step |
+| `p.rpn_ramp(...)` | identical, uses CC 101 / 100 for selection |
+
 ### Scale quantization
 
 Snap all notes in a pattern to a named scale - essential after generative or sensor-driven pitch work:

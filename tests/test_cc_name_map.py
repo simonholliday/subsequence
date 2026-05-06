@@ -109,3 +109,60 @@ def test_cc_name_map_passed_through_decorator () -> None:
 	# The pattern is registered as pending — verify it carries the cc_name_map
 	assert len(composition._pending_patterns) == 1
 	assert composition._pending_patterns[0].cc_name_map is CC_MAP
+
+
+# --- nrpn_name_map (parallel to cc_name_map) ---
+
+
+NRPN_MAP = {"osc1_freq_fine": 9, "filter_freq": 29, "lfo1_amt": 62}
+
+
+def test_nrpn_string_resolves_via_nrpn_name_map () -> None:
+
+	"""A string NRPN name should resolve via nrpn_name_map."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0,
+		nrpn_name_map = NRPN_MAP,
+		default_grid = 16,
+	)
+	builder.nrpn("filter_freq", 100, null_reset=False)
+
+	# CC 99 (NRPN MSB) = 0; CC 98 (NRPN LSB) = 29 (filter_freq)
+	assert pattern.cc_events[0].value == 0
+	assert pattern.cc_events[1].value == 29
+
+
+def test_nrpn_name_map_passed_through_decorator () -> None:
+
+	"""nrpn_name_map should flow from @composition.pattern() to PatternBuilder."""
+
+	import subsequence
+
+	composition = subsequence.Composition(bpm=120)
+
+	@composition.pattern(channel=1, beats=4, nrpn_name_map=NRPN_MAP)
+	def sweep (p: "subsequence.pattern_builder.PatternBuilder") -> None:
+		p.nrpn("filter_freq", 500, fine=True)
+
+	# Pattern registered as pending — confirm the map is carried through
+	assert len(composition._pending_patterns) == 1
+	assert composition._pending_patterns[0].nrpn_name_map is NRPN_MAP
+
+
+def test_nrpn_unknown_string_with_map_raises () -> None:
+
+	"""Strings absent from nrpn_name_map raise ValueError."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0,
+		nrpn_name_map = NRPN_MAP,
+		default_grid = 16,
+	)
+
+	with pytest.raises(ValueError, match="Unknown NRPN name"):
+		builder.nrpn("not_in_map", 50)

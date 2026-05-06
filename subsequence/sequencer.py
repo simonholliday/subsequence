@@ -47,6 +47,14 @@ class MidiEvent:
 
 	"""
 	Represents a MIDI event scheduled at a specific pulse.
+
+	``sequence`` is a FIFO tie-breaker: when two events share a pulse, the
+	one pushed first dispatches first.  Without it, ``heapq`` ordering of
+	same-pulse events is undefined, which would break NRPN/RPN sequences
+	(CC 99 → 98 → 6 → 38) and risk reordering bank-select-before-program-change.
+	The Sequencer assigns ``sequence`` via its monotonic ``_event_counter``
+	at push time (see ``Sequencer._push_event``); direct constructions in
+	tests can leave it at the default.
 	"""
 
 	pulse: int
@@ -58,6 +66,7 @@ class MidiEvent:
 	value: int = dataclasses.field(compare=False, default=0)
 	data: typing.Any = dataclasses.field(compare=False, default=None)
 	device: int = dataclasses.field(compare=False, default=0)
+	sequence: int = 0
 
 
 	def to_mido (self) -> typing.Optional[typing.Union[mido.Message, mido.MetaMessage]]:
@@ -293,6 +302,11 @@ class Sequencer:
 		self.callback_lock = asyncio.Lock()
 		self.callback_queue: typing.List[typing.Tuple[int, int, ScheduledCallback]] = []
 		self._callback_counter = itertools.count()
+
+		# FIFO tie-breaker for same-pulse MidiEvents in event_queue.  Without
+		# it, ``heapq`` ordering of equal-pulse events is undefined, which
+		# breaks NRPN/RPN bursts (CC 99 → 98 → 6 → 38 must stay in order).
+		self._event_counter = itertools.count()
 		self.data: typing.Dict[str, typing.Any] = {}
 
 		# Timing variables
@@ -704,6 +718,20 @@ class Sequencer:
 		return self._get_schedule_timing(pattern.length, pattern.reschedule_lookahead)
 
 
+	def _push_event (self, event: MidiEvent) -> None:
+
+		"""Push a MidiEvent onto the queue, stamping a FIFO tie-breaker.
+
+		The ``sequence`` field guarantees that events sharing a ``pulse``
+		dispatch in insertion order — required for NRPN/RPN bursts and any
+		future protocol that emits multiple co-scheduled CCs (e.g. Bank
+		Select before Program Change).
+		"""
+
+		event.sequence = next(self._event_counter)
+		heapq.heappush(self.event_queue, event)
+
+
 	async def schedule_pattern (self, pattern: PatternLike, start_pulse: int) -> None:
 
 		"""
@@ -728,7 +756,7 @@ class Sequencer:
 						device = pattern.device,
 					)
 
-					heapq.heappush(self.event_queue, on_event)
+					self._push_event(on_event)
 
 					# Note Off
 					off_event = MidiEvent(
@@ -740,7 +768,7 @@ class Sequencer:
 						device = pattern.device,
 					)
 
-					heapq.heappush(self.event_queue, off_event)
+					self._push_event(off_event)
 
 			# CC / pitch bend events
 			for cc_event in getattr(pattern, 'cc_events', []):
@@ -757,13 +785,13 @@ class Sequencer:
 					device = cc_event.device if cc_event.device is not None else pattern.device,
 				)
 
-				heapq.heappush(self.event_queue, midi_event)
+				self._push_event(midi_event)
 
 			# Raw Note On/Off events (drones)
 			for note_ev in getattr(pattern, 'raw_note_events', []):
-				
+
 				abs_pulse = start_pulse + note_ev.pulse
-				
+
 				midi_event = MidiEvent(
 					pulse = abs_pulse,
 					message_type = note_ev.message_type,
@@ -772,8 +800,8 @@ class Sequencer:
 					velocity = note_ev.velocity,
 					device = pattern.device,
 				)
-				
-				heapq.heappush(self.event_queue, midi_event)
+
+				self._push_event(midi_event)
 
 			# OSC events
 			for osc_event in getattr(pattern, 'osc_events', []):
@@ -787,7 +815,7 @@ class Sequencer:
 					data = (osc_event.address, osc_event.args)
 				)
 
-				heapq.heappush(self.event_queue, osc_midi_event)
+				self._push_event(osc_midi_event)
 
 		logger.debug(f"Scheduled pattern at {start_pulse}, queue size: {len(self.event_queue)}")
 
@@ -961,6 +989,15 @@ class Sequencer:
 		async with self.callback_lock:
 			self.callback_queue = []
 			self._callback_counter = itertools.count()
+
+		# Note: ``_event_counter`` is intentionally NOT reset here.  The two
+		# counters above pair with queues that we do clear, so resetting them
+		# is symmetric.  ``self.event_queue`` is left to drain naturally and
+		# may carry stale items into a restart; resetting ``_event_counter``
+		# alongside an un-cleared queue would let a fresh push (sequence=0)
+		# sort ahead of a stale push (sequence=N) at the same pulse.  Since
+		# pulse is the primary heap key and the counter never overflows, we
+		# just let it keep counting forever.
 
 		self.active_notes = set()
 
@@ -1328,7 +1365,7 @@ class Sequencer:
 			# while the callback thread calls append().
 			while self._forward_buffer:
 				fwd_pulse, fwd_msg = self._forward_buffer.popleft()
-				heapq.heappush(self.event_queue, MidiEvent.from_mido(fwd_pulse, fwd_msg))
+				self._push_event(MidiEvent.from_mido(fwd_pulse, fwd_msg))
 
 			while self.event_queue and self.event_queue[0].pulse <= pulse:
 

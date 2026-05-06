@@ -19,7 +19,7 @@ dependencies = [
     "python-rtmidi",
     "python-osc",
     "websockets",
-    "pymididefs @ git+https://github.com/simonholliday/PyMidiDefs.git",
+    "pymididefs @ git+https://github.com/simonholliday/PyMidiDefs.git@v0.2.0",
 ]
 
 [project.urls]

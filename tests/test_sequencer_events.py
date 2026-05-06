@@ -271,3 +271,63 @@ async def test_osc_event_noop_without_server (patch_midi: None) -> None:
 	await sequencer._process_pulse(0)
 
 	assert len(sequencer.event_queue) == 0
+
+
+def test_same_pulse_events_preserve_insertion_order () -> None:
+
+	"""Events sharing a pulse must dispatch in FIFO order.
+
+	NRPN/RPN bursts (CC 99 → 98 → 6 → 38) and Bank Select before Program
+	Change rely on this guarantee.  Without the ``MidiEvent.sequence``
+	tie-breaker, ``heapq`` ordering of equal-pulse events is undefined.
+	"""
+
+	import heapq
+
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+
+	# Build an NRPN-style burst plus an unrelated note and CC at the same pulse,
+	# repeated twice — exactly the shape the heap reordered without the fix.
+	control_sequence = [99, 98, 6, 38, 0, 7, 99, 98, 6, 38]
+
+	for i, control in enumerate(control_sequence):
+
+		event = subsequence.sequencer.MidiEvent(
+			pulse = 10,
+			message_type = 'control_change' if control != 0 else 'note_on',
+			channel = 0,
+			control = control,
+			value = i,
+			note = 60 if control == 0 else 0,
+			velocity = 100 if control == 0 else 0,
+		)
+		sequencer._push_event(event)
+
+	dispatched_values = []
+
+	while sequencer.event_queue:
+		event = heapq.heappop(sequencer.event_queue)
+		dispatched_values.append(event.value)
+
+	assert dispatched_values == list(range(len(control_sequence)))
+
+
+def test_event_counter_resets_independently_per_sequencer () -> None:
+
+	"""Two separate Sequencer instances must not share counter state.
+
+	A leak here would manifest as test-order-dependent ordering bugs.
+	"""
+
+	seq_a = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+	seq_b = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+
+	event_a = subsequence.sequencer.MidiEvent(pulse=0, message_type='control_change', channel=0, control=1, value=0)
+	event_b = subsequence.sequencer.MidiEvent(pulse=0, message_type='control_change', channel=0, control=2, value=0)
+
+	seq_a._push_event(event_a)
+	seq_b._push_event(event_b)
+
+	# Both sequencers' first event should get sequence=0 from their own counter.
+	assert event_a.sequence == 0
+	assert event_b.sequence == 0

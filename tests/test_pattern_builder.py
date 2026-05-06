@@ -4225,6 +4225,284 @@ def test_program_change_clamped () -> None:
 	assert pc.value == 127
 
 
+# --- nrpn / rpn / nrpn_ramp / rpn_ramp ---
+
+
+def test_nrpn_emits_3_cc_sequence_without_null_reset () -> None:
+
+	"""nrpn() with null_reset=False emits 3 CCs in order: 99, 98, 6."""
+
+	pattern, builder = _make_builder()
+	builder.nrpn(88, 64, null_reset=False)
+
+	assert len(pattern.cc_events) == 3
+	a, b, c = pattern.cc_events
+
+	assert (a.control, a.value) == (99, 0)   # NRPN MSB (parameter 88 = 0×128+88)
+	assert (b.control, b.value) == (98, 88)  # NRPN LSB
+	assert (c.control, c.value) == (6, 64)   # Data Entry MSB
+
+	# All co-scheduled at the same pulse
+	assert {e.pulse for e in pattern.cc_events} == {0}
+	assert all(e.message_type == 'control_change' for e in pattern.cc_events)
+
+
+def test_nrpn_emits_5_ccs_with_null_reset_default () -> None:
+
+	"""null_reset defaults True — adds CC 101=127, CC 100=127 sentinel."""
+
+	pattern, builder = _make_builder()
+	builder.nrpn(88, 64)
+
+	assert len(pattern.cc_events) == 5
+
+	null_msb, null_lsb = pattern.cc_events[3], pattern.cc_events[4]
+	assert (null_msb.control, null_msb.value) == (101, 127)
+	assert (null_lsb.control, null_lsb.value) == (100, 127)
+
+
+def test_nrpn_fine_true_splits_14bit_value () -> None:
+
+	"""fine=True splits a 14-bit value across Data Entry MSB and LSB."""
+
+	pattern, builder = _make_builder()
+	# 12000 = 93 * 128 + 96
+	builder.nrpn(88, 12000, fine=True, null_reset=False)
+
+	assert len(pattern.cc_events) == 4
+	value_msb = pattern.cc_events[2]
+	value_lsb = pattern.cc_events[3]
+
+	assert (value_msb.control, value_msb.value) == (6, 93)
+	assert (value_lsb.control, value_lsb.value) == (38, 96)
+
+
+def test_nrpn_large_parameter_uses_msb () -> None:
+
+	"""Parameter numbers > 127 require non-zero NRPN MSB."""
+
+	pattern, builder = _make_builder()
+	# 4198 = 32 * 128 + 102 — Take 5's SeqOnOff parameter
+	builder.nrpn(4198, 1, null_reset=False)
+
+	param_msb, param_lsb, _ = pattern.cc_events
+	assert (param_msb.control, param_msb.value) == (99, 32)
+	assert (param_lsb.control, param_lsb.value) == (98, 102)
+
+
+def test_nrpn_raises_on_7bit_overflow () -> None:
+
+	"""fine=False values above 127 raise ValueError."""
+
+	_, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="0–127"):
+		builder.nrpn(0, 200, fine=False)
+
+
+def test_nrpn_raises_on_14bit_overflow () -> None:
+
+	"""fine=True values above 16383 raise ValueError via pack_14bit."""
+
+	_, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="14-bit"):
+		builder.nrpn(0, 20000, fine=True)
+
+
+def test_nrpn_name_map_resolves_string () -> None:
+
+	"""String parameter names resolve via the pattern's nrpn_name_map."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern = pattern,
+		cycle = 0,
+		nrpn_name_map = {"osc1_freq_fine": 9},
+		default_grid = 16,
+	)
+	builder.nrpn("osc1_freq_fine", 100, null_reset=False)
+
+	assert pattern.cc_events[0].value == 0   # NRPN MSB
+	assert pattern.cc_events[1].value == 9   # NRPN LSB resolves to 9
+
+
+def test_nrpn_unknown_string_raises () -> None:
+
+	"""String parameter without a matching nrpn_name_map raises."""
+
+	_, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="String NRPN name"):
+		builder.nrpn("unknown_param", 50)
+
+
+def test_nrpn_with_explicit_channel_overrides_pattern () -> None:
+
+	"""channel= override is applied to every CC in the burst."""
+
+	pattern, builder = _make_builder(channel=0)
+	builder.nrpn(88, 64, channel=7, null_reset=False)
+
+	assert all(e.channel == 7 for e in pattern.cc_events)
+
+
+def test_rpn_uses_cc_101_100 () -> None:
+
+	"""rpn() selects the parameter via CC 101 / 100, not 99 / 98."""
+
+	pattern, builder = _make_builder()
+	builder.rpn(0, 2, null_reset=False)
+
+	a, b, c = pattern.cc_events
+	assert (a.control, a.value) == (101, 0)
+	assert (b.control, b.value) == (100, 0)
+	assert (c.control, c.value) == (6, 2)
+
+
+def test_rpn_string_resolves_via_pymididefs () -> None:
+
+	"""Standard RPN names resolve without any per-pattern map."""
+
+	pattern, builder = _make_builder()
+	builder.rpn("pitch_bend_sensitivity", 12, null_reset=False)
+
+	# RPN MSB / LSB select param 0 (pitch_bend_sensitivity)
+	assert (pattern.cc_events[0].control, pattern.cc_events[0].value) == (101, 0)
+	assert (pattern.cc_events[1].control, pattern.cc_events[1].value) == (100, 0)
+	assert (pattern.cc_events[2].control, pattern.cc_events[2].value) == (6, 12)
+
+
+def test_rpn_unknown_name_raises () -> None:
+
+	"""Non-standard RPN name without fallback raises ValueError."""
+
+	_, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="Unknown RPN name"):
+		builder.rpn("not_a_standard_rpn", 1)
+
+
+def test_nrpn_ramp_selects_once_per_burst () -> None:
+
+	"""nrpn_ramp emits exactly one CC 99/98 pair plus per-step Data Entry."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.nrpn_ramp(88, start=0, end=16383, beat_start=0, beat_end=1, resolution=6, null_reset=False)
+
+	# Pulse 0..24 in steps of 6 → 5 ramp steps
+	param_selects = [e for e in pattern.cc_events if e.control in (99, 98)]
+	data_entry_msbs = [e for e in pattern.cc_events if e.control == 6]
+	data_entry_lsbs = [e for e in pattern.cc_events if e.control == 38]
+
+	# Exactly one selection at start
+	assert len(param_selects) == 2  # 99 + 98
+	assert all(e.pulse == 0 for e in param_selects)
+
+	# 5 ramp updates, each with MSB + LSB (fine=True default)
+	assert len(data_entry_msbs) == 5
+	assert len(data_entry_lsbs) == 5
+
+
+def test_nrpn_ramp_interpolates_14bit_values () -> None:
+
+	"""Linear ramp produces predictable 14-bit values reconstructible via pack_14bit."""
+
+	import pymididefs.cc
+
+	pattern, builder = _make_builder(length=4)
+	builder.nrpn_ramp(88, start=0, end=16383, beat_start=0, beat_end=1, resolution=6, null_reset=False)
+
+	# Reconstruct the (pulse → 14-bit value) trace from CC 6 / CC 38 pairs
+	by_pulse: dict[int, dict[int, int]] = {}
+	for e in pattern.cc_events:
+		if e.control in (6, 38):
+			by_pulse.setdefault(e.pulse, {})[e.control] = e.value
+
+	reconstructed = [
+		(pulse, pymididefs.cc.unpack_14bit(by_pulse[pulse][6], by_pulse[pulse][38]))
+		for pulse in sorted(by_pulse)
+	]
+
+	# Pulses 0, 6, 12, 18, 24 over 24 total → fractions 0.0, 0.25, 0.5, 0.75, 1.0
+	# Linear interpolation 0 → 16383 gives 0, 4096, 8192, 12287, 16383
+	# (rounding: 16383 × 0.25 = 4095.75 → 4096; × 0.75 = 12287.25 → 12287)
+	assert reconstructed == [
+		(0,  0),
+		(6,  4096),
+		(12, 8192),
+		(18, 12287),
+		(24, 16383),
+	]
+
+
+def test_nrpn_ramp_raises_on_out_of_range_endpoint () -> None:
+
+	"""Ramp endpoints outside the (fine-dependent) range raise immediately."""
+
+	_, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="ramp end must be 0"):
+		builder.nrpn_ramp(0, start=0, end=200, beat_start=0, beat_end=1, fine=False)
+
+	with pytest.raises(ValueError, match="ramp start must be 0"):
+		builder.nrpn_ramp(0, start=-1, end=100, beat_start=0, beat_end=1, fine=True)
+
+
+def test_rpn_ramp_raises_on_out_of_range_endpoint () -> None:
+
+	"""rpn_ramp shares the same endpoint validation."""
+
+	_, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="ramp end must be 0–16383"):
+		builder.rpn_ramp(0, start=0, end=20000, beat_start=0, beat_end=1, fine=True)
+
+
+def test_nrpn_ramp_null_reset_at_end () -> None:
+
+	"""null_reset=True (default) appends 101=127, 100=127 once at beat_end."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.nrpn_ramp(88, start=0, end=127, beat_start=0, beat_end=2, resolution=12)
+
+	null_msbs = [e for e in pattern.cc_events if e.control == 101 and e.value == 127]
+	null_lsbs = [e for e in pattern.cc_events if e.control == 100 and e.value == 127]
+
+	# Exactly one null sentinel pair
+	assert len(null_msbs) == 1
+	assert len(null_lsbs) == 1
+
+	# Both at beat_end (pulse 48)
+	expected_pulse = 2 * subsequence.constants.MIDI_QUARTER_NOTE
+	assert null_msbs[0].pulse == expected_pulse
+	assert null_lsbs[0].pulse == expected_pulse
+
+
+def test_nrpn_ramp_fine_false_emits_only_msb () -> None:
+
+	"""fine=False should emit Data Entry MSB only (no CC 38)."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.nrpn_ramp(88, start=0, end=127, beat_start=0, beat_end=1, resolution=6, fine=False, null_reset=False)
+
+	data_entry_lsbs = [e for e in pattern.cc_events if e.control == 38]
+	assert data_entry_lsbs == []
+
+
+def test_rpn_ramp_pitch_bend_sensitivity () -> None:
+
+	"""rpn_ramp works with the standard RPN string name."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.rpn_ramp("pitch_bend_sensitivity", start=0, end=12, beat_start=0, beat_end=1, resolution=12, fine=False, null_reset=False)
+
+	# Selection uses CC 101 / 100, not 99 / 98
+	param_selects = [e for e in pattern.cc_events if e.control in (99, 98, 101, 100)]
+	assert all(e.control in (101, 100) for e in param_selects)
+	assert len(param_selects) == 2
+
+
 # --- p.data — shared inter-pattern state ---
 
 
