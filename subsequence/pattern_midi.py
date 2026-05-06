@@ -221,9 +221,15 @@ class PatternMidiMixin:
 	# The Sequencer's MidiEvent.sequence tie-breaker preserves emission order
 	# at the same pulse, so the synth assigns the value to the right parameter.
 
-	def _append_param_select (self, pulse: int, channel: typing.Optional[int], parameter: int, msb_cc: int, lsb_cc: int) -> None:
+	def _append_param_select (self, pulse: int, parameter: int, msb_cc: int, lsb_cc: int) -> None:
 
-		"""Emit the two-CC parameter-select pair (NRPN: 99/98, RPN: 101/100)."""
+		"""Emit the two-CC parameter-select pair (NRPN: 99/98, RPN: 101/100).
+
+		Events are emitted on the pattern's channel — leaving ``CcEvent.channel``
+		unset (None) lets the sequencer fall through to ``pattern.channel``
+		at dispatch time, which is the normal behaviour for every other CC
+		method on this mixin.
+		"""
 
 		param_msb, param_lsb = pymididefs.cc.pack_14bit(parameter)
 
@@ -233,7 +239,6 @@ class PatternMidiMixin:
 				message_type = 'control_change',
 				control = msb_cc,
 				value = param_msb,
-				channel = channel,
 			)
 		)
 		self._pattern.cc_events.append(
@@ -242,11 +247,10 @@ class PatternMidiMixin:
 				message_type = 'control_change',
 				control = lsb_cc,
 				value = param_lsb,
-				channel = channel,
 			)
 		)
 
-	def _append_data_entry (self, pulse: int, channel: typing.Optional[int], value: int, fine: bool) -> None:
+	def _append_data_entry (self, pulse: int, value: int, fine: bool) -> None:
 
 		"""Emit Data Entry MSB (and LSB if fine=True) for a parameter value."""
 
@@ -264,7 +268,6 @@ class PatternMidiMixin:
 				message_type = 'control_change',
 				control = pymididefs.cc.DATA_ENTRY_MSB,
 				value = value_msb,
-				channel = channel,
 			)
 		)
 
@@ -275,7 +278,6 @@ class PatternMidiMixin:
 					message_type = 'control_change',
 					control = pymididefs.cc.DATA_ENTRY_LSB,
 					value = value_lsb,
-					channel = channel,
 				)
 			)
 
@@ -294,7 +296,7 @@ class PatternMidiMixin:
 			if not 0 <= value <= limit:
 				raise ValueError(f"NRPN/RPN ramp {label} must be 0–{limit} (fine={fine}), got {value}")
 
-	def _append_null_reset (self, pulse: int, channel: typing.Optional[int]) -> None:
+	def _append_null_reset (self, pulse: int) -> None:
 
 		"""Emit the RPN NULL sentinel (CC 101=127, CC 100=127) to deselect.
 
@@ -310,7 +312,6 @@ class PatternMidiMixin:
 				message_type = 'control_change',
 				control = pymididefs.cc.RPN_MSB,
 				value = null_msb,
-				channel = channel,
 			)
 		)
 		self._pattern.cc_events.append(
@@ -319,7 +320,6 @@ class PatternMidiMixin:
 				message_type = 'control_change',
 				control = pymididefs.cc.RPN_LSB,
 				value = null_lsb,
-				channel = channel,
 			)
 		)
 
@@ -330,7 +330,6 @@ class PatternMidiMixin:
 		beat: float = 0.0,
 		fine: bool = False,
 		null_reset: bool = True,
-		channel: typing.Optional[int] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
@@ -342,6 +341,10 @@ class PatternMidiMixin:
 		envelope amounts, oscillator detune, and similar deep parameters.
 		Many such parameters need values beyond 0–127 (e.g. 0–1023, 0–254);
 		set ``fine=True`` for full 14-bit precision.
+
+		Emitted on the pattern's MIDI channel.  To target a different channel
+		(e.g. a per-channel RPN config), define a separate pattern on that
+		channel or use ``composition.trigger(channel=…)`` for a one-shot.
 
 		Parameters:
 			parameter: 14-bit NRPN parameter number (0–16383), or a string
@@ -355,7 +358,6 @@ class PatternMidiMixin:
 			null_reset: If True (default), follow with the RPN null sentinel
 				to deselect the active parameter and prevent stray later
 				CC 6 / 38 messages from hitting it.
-			channel: Override the pattern's MIDI channel for this message.
 
 		Example:
 			```python
@@ -370,11 +372,11 @@ class PatternMidiMixin:
 		param = self._resolve_nrpn(parameter)
 		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
 
-		self._append_param_select(pulse, channel, param, pymididefs.cc.NRPN_MSB, pymididefs.cc.NRPN_LSB)
-		self._append_data_entry(pulse, channel, value, fine)
+		self._append_param_select(pulse, param, pymididefs.cc.NRPN_MSB, pymididefs.cc.NRPN_LSB)
+		self._append_data_entry(pulse, value, fine)
 
 		if null_reset:
-			self._append_null_reset(pulse, channel)
+			self._append_null_reset(pulse)
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
@@ -385,7 +387,6 @@ class PatternMidiMixin:
 		beat: float = 0.0,
 		fine: bool = False,
 		null_reset: bool = True,
-		channel: typing.Optional[int] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
@@ -402,6 +403,8 @@ class PatternMidiMixin:
 		``tuning_program_select``, ``tuning_bank_select``,
 		``modulation_depth_range``.
 
+		Emitted on the pattern's MIDI channel.
+
 		Parameters:
 			parameter: 14-bit RPN parameter number (0–16383), or one of the
 				standard string names above.
@@ -411,7 +414,6 @@ class PatternMidiMixin:
 			beat: Beat position within the pattern.
 			fine: If True, send 14-bit value via Data Entry MSB+LSB.
 			null_reset: If True (default), follow with the RPN null sentinel.
-			channel: Override the pattern's MIDI channel for this message.
 
 		Example:
 			```python
@@ -426,11 +428,11 @@ class PatternMidiMixin:
 		param = self._resolve_rpn(parameter)
 		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
 
-		self._append_param_select(pulse, channel, param, pymididefs.cc.RPN_MSB, pymididefs.cc.RPN_LSB)
-		self._append_data_entry(pulse, channel, value, fine)
+		self._append_param_select(pulse, param, pymididefs.cc.RPN_MSB, pymididefs.cc.RPN_LSB)
+		self._append_data_entry(pulse, value, fine)
 
 		if null_reset:
-			self._append_null_reset(pulse, channel)
+			self._append_null_reset(pulse)
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
@@ -445,7 +447,6 @@ class PatternMidiMixin:
 		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
 		fine: bool = True,
 		null_reset: bool = True,
-		channel: typing.Optional[int] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
@@ -469,6 +470,8 @@ class PatternMidiMixin:
 		``resolution`` (e.g. ``8``) on slow DIN-MIDI links if you hear
 		other messages getting delayed.
 
+		Emitted on the pattern's MIDI channel.
+
 		Parameters:
 			parameter: 14-bit NRPN parameter number, or a string resolved
 				via the pattern's ``nrpn_name_map``.
@@ -481,7 +484,6 @@ class PatternMidiMixin:
 			fine: If True (default), use full 14-bit Data Entry MSB+LSB.
 			null_reset: If True (default), append the null sentinel at the
 				end of the ramp (not per step).
-			channel: Override the pattern's MIDI channel for this message.
 		"""
 
 		param = self._resolve_nrpn(parameter)
@@ -490,10 +492,9 @@ class PatternMidiMixin:
 		if beat_end is None:
 			beat_end = self._pattern.length
 
-		pulse_start = int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE)
 		pulse_end = int(beat_end * subsequence.constants.MIDI_QUARTER_NOTE)
 
-		self._append_param_select(pulse_start, channel, param, pymididefs.cc.NRPN_MSB, pymididefs.cc.NRPN_LSB)
+		self._append_param_select(int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE), param, pymididefs.cc.NRPN_MSB, pymididefs.cc.NRPN_LSB)
 
 		def _event (pulse: int, val: float) -> None:
 			# Clamp guards against custom easing callables that overshoot [0, 1].
@@ -501,12 +502,12 @@ class PatternMidiMixin:
 				value = max(0, min(16383, int(round(val))))
 			else:
 				value = max(0, min(127, int(round(val))))
-			self._append_data_entry(pulse, channel, value, fine)
+			self._append_data_entry(pulse, value, fine)
 
 		self._ramp_pulses(beat_start, beat_end, float(start), float(end), shape, resolution, _event)
 
 		if null_reset:
-			self._append_null_reset(pulse_end, channel)
+			self._append_null_reset(pulse_end)
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
@@ -521,7 +522,6 @@ class PatternMidiMixin:
 		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
 		fine: bool = True,
 		null_reset: bool = True,
-		channel: typing.Optional[int] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Interpolate an RPN value over a beat range.
@@ -538,22 +538,22 @@ class PatternMidiMixin:
 		if beat_end is None:
 			beat_end = self._pattern.length
 
-		pulse_start = int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE)
 		pulse_end = int(beat_end * subsequence.constants.MIDI_QUARTER_NOTE)
 
-		self._append_param_select(pulse_start, channel, param, pymididefs.cc.RPN_MSB, pymididefs.cc.RPN_LSB)
+		self._append_param_select(int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE), param, pymididefs.cc.RPN_MSB, pymididefs.cc.RPN_LSB)
 
 		def _event (pulse: int, val: float) -> None:
+			# Clamp guards against custom easing callables that overshoot [0, 1].
 			if fine:
-				clamped = max(0, min(16383, int(round(val))))
+				value = max(0, min(16383, int(round(val))))
 			else:
-				clamped = max(0, min(127, int(round(val))))
-			self._append_data_entry(pulse, channel, clamped, fine)
+				value = max(0, min(127, int(round(val))))
+			self._append_data_entry(pulse, value, fine)
 
 		self._ramp_pulses(beat_start, beat_end, float(start), float(end), shape, resolution, _event)
 
 		if null_reset:
-			self._append_null_reset(pulse_end, channel)
+			self._append_null_reset(pulse_end)
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 

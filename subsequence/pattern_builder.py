@@ -262,10 +262,13 @@ class PatternBuilder(
 
 		Strings require an ``nrpn_name_map`` on the pattern decorator —
 		NRPN parameter numbers are vendor-specific, so subsequence does not
-		ship a default mapping.
+		ship a default mapping.  Integer parameters must be in the 14-bit
+		range 0–16383.
 		"""
 
 		if isinstance(parameter, int):
+			if not 0 <= parameter <= 16383:
+				raise ValueError(f"NRPN parameter number must be 0–16383, got {parameter}")
 			return parameter
 
 		if self._nrpn_name_map is None:
@@ -282,10 +285,13 @@ class PatternBuilder(
 
 		Strings fall back to ``pymididefs.rpn.RPN_MAP`` — the standardised
 		set of MIDI Registered Parameter Numbers (``pitch_bend_sensitivity``,
-		``channel_fine_tuning``, ...).  No per-pattern map needed.
+		``channel_fine_tuning``, ...).  No per-pattern map needed.  Integer
+		parameters must be in the 14-bit range 0–16383.
 		"""
 
 		if isinstance(parameter, int):
+			if not 0 <= parameter <= 16383:
+				raise ValueError(f"RPN parameter number must be 0–16383, got {parameter}")
 			return parameter
 
 		if parameter not in pymididefs.rpn.RPN_MAP:

@@ -289,9 +289,35 @@ def test_pattern_decorator_validates_mirror_shape () -> None:
 
 	composition = subsequence.Composition(bpm=120)
 
-	with pytest.raises(ValueError, match="Mirror entry must be a"):
+	with pytest.raises(ValueError, match="exactly 2 elements"):
 		@composition.pattern(channel=1, beats=4, mirrors=[(1,)])  # type: ignore[list-item]
 		def bad1 (p: "subsequence.pattern_builder.PatternBuilder") -> None:
+			pass
+
+
+def test_pattern_decorator_accepts_list_mirrors () -> None:
+
+	"""Mirror entries can be lists, not just tuples — useful for JSON-driven configs."""
+
+	composition = subsequence.Composition(bpm=120)
+
+	@composition.pattern(channel=1, beats=4, mirrors=[[1, 5], [2, 9]])  # type: ignore[list-item]
+	def from_config (p: "subsequence.pattern_builder.PatternBuilder") -> None:
+		pass
+
+	pending = composition._pending_patterns[0]
+	assert pending.mirrors == [(1, 4), (2, 8)]
+
+
+def test_pattern_decorator_rejects_bool_as_device () -> None:
+
+	"""``True`` / ``False`` are technically int subclasses but should be rejected as devices."""
+
+	composition = subsequence.Composition(bpm=120)
+
+	with pytest.raises(ValueError, match="Mirror device must be an integer"):
+		@composition.pattern(channel=1, beats=4, mirrors=[(True, 5)])  # type: ignore[list-item]
+		def bad_bool (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 			pass
 
 
@@ -335,6 +361,48 @@ def test_layer_decorator_accepts_mirrors () -> None:
 
 	pending = composition._pending_patterns[0]
 	assert pending.mirrors == [(1, 4)]
+
+
+@pytest.mark.asyncio
+async def test_trigger_with_mirrors_fans_out (patch_midi: None) -> None:
+
+	"""composition.trigger(mirrors=...) duplicates events onto mirror destinations.
+
+	The full trigger path: temp Pattern → PatternBuilder → schedule_pattern.
+	Verifies the mirrors list survives the round trip and the sequencer
+	fan-outs to both destinations.
+	"""
+
+	import asyncio
+
+	composition = subsequence.Composition(bpm=120)
+	# trigger() needs an event loop reference to defer scheduling onto.  In a
+	# real run that's set in Sequencer.start(); for this test we set it
+	# explicitly to the running loop.
+	composition._sequencer._event_loop = asyncio.get_event_loop()
+
+	composition.trigger(
+		lambda p: p.note(60, beat=0, velocity=100, duration=0.5),
+		channel=1,
+		beats=1,
+		mirrors=[(1, 5)],
+	)
+
+	# trigger() spawns an asyncio task for schedule_pattern; let it complete.
+	await asyncio.sleep(0)
+
+	note_ons = [e for e in composition._sequencer.event_queue if e.message_type == 'note_on']
+	# Primary on (device=0); mirror on (device=1)
+	assert sorted({e.device for e in note_ons}) == [0, 1]
+
+	# Both events carry the same note number on their respective channels.
+	# Composition is in default 1-indexed mode, so channel=1 → 0 internal,
+	# and the mirror's channel=5 → 4 internal.
+	by_device = {e.device: e for e in note_ons}
+	assert by_device[0].channel == 0
+	assert by_device[0].note == 60
+	assert by_device[1].channel == 4
+	assert by_device[1].note == 60
 
 
 # ── Runtime API ────────────────────────────────────────────────────────────
@@ -439,16 +507,78 @@ def test_runtime_mirror_validates_channel () -> None:
 		composition.mirror("drums", device=1, channel=0)
 
 
+def test_runtime_mirror_warns_on_mirror_to_self (caplog: pytest.LogCaptureFixture) -> None:
+
+	"""Mirroring a pattern to its own (device, channel) logs a warning."""
+
+	import logging
+
+	composition = subsequence.Composition(bpm=120)
+	composition._running_patterns["drums"] = _running_pattern_stub(channel=4)  # internal 0-indexed = 4
+
+	with caplog.at_level(logging.WARNING):
+		composition.mirror("drums", device=0, channel=5)  # 5 → 4 internal == primary
+
+	assert any("primary destination" in record.message for record in caplog.records)
+
+
+def test_decorator_warns_on_mirror_to_self (caplog: pytest.LogCaptureFixture) -> None:
+
+	"""@composition.pattern(mirrors=...) where a mirror equals the primary logs a warning.
+
+	Composition default is 1-indexed channels.  ``channel=1`` → internal 0;
+	``channel=2`` → internal 1.  A mirror tuple is ``(device, user_channel)``
+	resolved the same way.
+	"""
+
+	import logging
+
+	composition = subsequence.Composition(bpm=120)
+
+	with caplog.at_level(logging.WARNING):
+		# Primary (device=0, channel=0); mirror (device=0, channel=1) — different, no warn.
+		@composition.pattern(channel=1, beats=4, mirrors=[(0, 2)])
+		def ok (p: "subsequence.pattern_builder.PatternBuilder") -> None:
+			pass
+
+		# Primary (device=0, channel=1); mirror (device=0, channel=1) — collision.
+		@composition.pattern(channel=2, beats=4, mirrors=[(0, 2)])
+		def bad (p: "subsequence.pattern_builder.PatternBuilder") -> None:
+			pass
+
+	# Only the second pattern's mirror collides
+	warnings = [r for r in caplog.records if "primary destination" in r.message]
+	assert len(warnings) == 1
+
+
+def test_runtime_unmirror_debug_log_when_absent (caplog: pytest.LogCaptureFixture) -> None:
+
+	"""unmirror() on a missing destination logs a debug message (not an error)."""
+
+	import logging
+
+	composition = subsequence.Composition(bpm=120)
+	composition._running_patterns["drums"] = _running_pattern_stub(mirrors=[(1, 9)])
+
+	with caplog.at_level(logging.DEBUG):
+		composition.unmirror("drums", device=2, channel=5)
+
+	assert any("no-op" in record.message for record in caplog.records)
+
+
 # ── Mute interaction ───────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_mirror_with_muted_pattern_produces_no_events (patch_midi: None) -> None:
 
-	"""A muted pattern produces no events on the primary OR any mirror.
+	"""A muted pattern emits nothing on either the primary or any mirror.
 
-	Mirroring fans out whatever the pattern emits; a muted pattern emits nothing,
-	so this falls out for free — but worth pinning against accidental regression.
+	Tests the full path through the sequencer: a muted ``_DecoratorPattern``
+	short-circuits in ``_rebuild`` so its event collections stay empty;
+	``schedule_pattern`` then has nothing to fan out.  Worth pinning so a
+	future change to mute or to the fan-out doesn't accidentally leak events
+	to mirrors.
 	"""
 
 	composition = subsequence.Composition(bpm=120)
@@ -457,12 +587,13 @@ async def test_mirror_with_muted_pattern_produces_no_events (patch_midi: None) -
 	def silent (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(60, beat=0, velocity=100, duration=0.5)
 
-	# Build the pattern from pending and mute it
 	pending = composition._pending_patterns[0]
 	pattern = composition._build_pattern_from_pending(pending)
+
 	pattern._muted = True
 	pattern._rebuild()
 
-	# Steps + cc_events should be empty post-rebuild because muted bails early
-	assert pattern.steps == {}
-	assert pattern.cc_events == []
+	await composition._sequencer.schedule_pattern(pattern, start_pulse=0)
+
+	# Sequencer queue should be empty on both destinations.
+	assert composition._sequencer.event_queue == []

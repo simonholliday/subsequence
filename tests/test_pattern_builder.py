@@ -4310,6 +4310,29 @@ def test_nrpn_raises_on_14bit_overflow () -> None:
 		builder.nrpn(0, 20000, fine=True)
 
 
+def test_nrpn_raises_on_out_of_range_parameter_number () -> None:
+
+	"""Integer parameter numbers must be in the 14-bit range 0–16383."""
+
+	_, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="NRPN parameter number must be 0–16383"):
+		builder.nrpn(20000, 0)
+
+	with pytest.raises(ValueError, match="NRPN parameter number must be 0–16383"):
+		builder.nrpn(-1, 0)
+
+
+def test_rpn_raises_on_out_of_range_parameter_number () -> None:
+
+	"""Integer RPN parameter numbers must be in the 14-bit range."""
+
+	_, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="RPN parameter number must be 0–16383"):
+		builder.rpn(20000, 0)
+
+
 def test_nrpn_name_map_resolves_string () -> None:
 
 	"""String parameter names resolve via the pattern's nrpn_name_map."""
@@ -4337,14 +4360,15 @@ def test_nrpn_unknown_string_raises () -> None:
 		builder.nrpn("unknown_param", 50)
 
 
-def test_nrpn_with_explicit_channel_overrides_pattern () -> None:
+def test_nrpn_emits_on_pattern_channel () -> None:
 
-	"""channel= override is applied to every CC in the burst."""
+	"""NRPN events leave CcEvent.channel unset so the sequencer falls back to pattern.channel."""
 
-	pattern, builder = _make_builder(channel=0)
-	builder.nrpn(88, 64, channel=7, null_reset=False)
+	pattern, builder = _make_builder(channel=4)
+	builder.nrpn(88, 64, null_reset=False)
 
-	assert all(e.channel == 7 for e in pattern.cc_events)
+	# All emitted events delegate channel resolution to the pattern.
+	assert all(e.channel is None for e in pattern.cc_events)
 
 
 def test_rpn_uses_cc_101_100 () -> None:

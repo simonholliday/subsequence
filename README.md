@@ -2027,10 +2027,12 @@ def filter_swell (p):
 
 | Method | Key parameters |
 |--------|---------------|
-| `p.nrpn(parameter, value, beat=0.0, fine=False, null_reset=True, channel=None)` | `parameter`: int or string from `nrpn_name_map` |
-| `p.rpn(parameter, value, beat=0.0, fine=False, null_reset=True, channel=None)` | `parameter`: int or standard RPN string |
-| `p.nrpn_ramp(parameter, start, end, beat_start=0.0, beat_end=None, resolution=4, shape, fine=True, null_reset=True, channel=None)` | one-time selection at `beat_start`, Data Entry per step |
+| `p.nrpn(parameter, value, beat=0.0, fine=False, null_reset=True)` | `parameter`: int or string from `nrpn_name_map` |
+| `p.rpn(parameter, value, beat=0.0, fine=False, null_reset=True)` | `parameter`: int or standard RPN string |
+| `p.nrpn_ramp(parameter, start, end, beat_start=0.0, beat_end=None, resolution=4, shape, fine=True, null_reset=True)` | one-time selection at `beat_start`, Data Entry per step |
 | `p.rpn_ramp(...)` | identical, uses CC 101 / 100 for selection |
+
+All four emit on the pattern's MIDI channel.  To target a different channel, define a separate pattern on that channel or use `composition.trigger(channel=…)` for a one-shot.
 
 ### MIDI mirroring
 
@@ -2069,7 +2071,7 @@ Changes apply on the next pattern rebuild (bar-level granularity, the same as `m
 
 - **OSC is not mirrored.** OSC events bypass MIDI ports entirely; mirroring them would require a different abstraction. If you need an OSC message to fan out to multiple endpoints, configure that in your OSC routing (e.g. multiple servers, multicast).
 
-- **Mirror-to-self.** Setting `mirrors=[(0, 0)]` on a pattern whose primary is also `(0, 0)` will double every event to the same destination — almost certainly not what you want. Subsequence does not currently warn about this (it is technically valid for testing); double-check your mirror tuples.
+- **Mirror-to-self.** Adding a mirror equal to the pattern's primary destination would double every event to the same `(device, channel)` — almost certainly unintended. Subsequence logs a warning when this is detected at decoration or runtime time. The warning fires for both the decorator (`mirrors=[...]`) and the live API (`composition.mirror(...)`); deferred string device names skip the check at decoration time but pick it up once the pattern is running.
 
 ### Scale quantization
 

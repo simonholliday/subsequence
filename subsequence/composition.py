@@ -751,18 +751,29 @@ class Composition:
 				raise ValueError(f"MIDI channel must be 1-16, got {channel}")
 			return channel - 1
 
-	def _resolve_mirrors (self, mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]]) -> typing.List[typing.Tuple[int, int]]:
+	def _resolve_mirrors (
+		self,
+		mirrors: typing.Optional[typing.Iterable[typing.Sequence[int]]],
+		primary: typing.Optional[typing.Tuple[int, int]] = None,
+	) -> typing.List[typing.Tuple[int, int]]:
 
 		"""
 		Validate and normalise a list of mirror destinations.
 
-		Each entry is a ``(device_idx, channel)`` tuple where ``channel`` is
-		expressed in the user's channel-numbering convention (1-16 by default,
-		0-15 when ``zero_indexed_channels=True``).  This method converts the
-		channel to canonical 0-indexed form and rejects malformed entries.
+		Each entry is a 2-element sequence ``(device_idx, channel)`` — tuple,
+		list, or any 2-iterable.  ``channel`` is expressed in the user's
+		channel-numbering convention (1-16 by default, 0-15 when
+		``zero_indexed_channels=True``).  This method converts the channel
+		to canonical 0-indexed form and rejects malformed entries.
 
 		String device names are NOT supported here; users wanting a named
 		device should pass the integer index returned from ``midi_output()``.
+
+		If ``primary=(device, channel)`` is supplied (canonical 0-indexed
+		form), a mirror entry equal to it triggers a ``logger.warning`` —
+		this is almost always a user error (every event would double-fire
+		on the same destination).  Skipped when ``primary`` is ``None``,
+		since the runtime API call site supplies its own check.
 		"""
 
 		if mirrors is None:
@@ -772,17 +783,33 @@ class Composition:
 
 		for entry in mirrors:
 
-			# Validate shape — let bad inputs fail with a clear error at decoration
-			# time rather than producing inscrutable failures inside the sequencer.
-			if not isinstance(entry, tuple) or len(entry) != 2:
-				raise ValueError(f"Mirror entry must be a (device, channel) tuple, got {entry!r}")
+			# Accept any 2-element iterable (tuple, list, etc.) — config files
+			# and JSON sources naturally produce lists.  Validate shape at
+			# decoration time so bad inputs surface here instead of producing
+			# inscrutable failures inside the sequencer.
+			try:
+				items = list(entry)
+			except TypeError:
+				raise ValueError(f"Mirror entry must be a (device, channel) pair, got {entry!r}")
 
-			device, channel = entry
+			if len(items) != 2:
+				raise ValueError(f"Mirror entry must have exactly 2 elements (device, channel), got {entry!r}")
 
-			if not isinstance(device, int):
+			device, channel = items
+
+			if not isinstance(device, int) or isinstance(device, bool):
 				raise ValueError(f"Mirror device must be an integer index, got {type(device).__name__} ({device!r})")
 
-			resolved.append((device, self._resolve_channel(channel)))
+			resolved_entry = (device, self._resolve_channel(channel))
+
+			if primary is not None and resolved_entry == primary:
+				logger.warning(
+					f"Mirror destination {resolved_entry} matches the pattern's primary destination "
+					f"— every event will double-fire on this (device, channel).  This is almost "
+					f"certainly unintended."
+				)
+
+			resolved.append(resolved_entry)
 
 		return resolved
 
@@ -1939,6 +1966,15 @@ class Composition:
 
 		pattern = self._running_patterns[name]
 
+		# Mirror-to-self check: comparing against the live pattern's resolved
+		# (device, channel).  Unlike the decorator path this is always concrete.
+		if entry == (pattern.device, pattern.channel):
+			logger.warning(
+				f"Mirror destination {entry} matches '{name}'s primary destination "
+				f"— every event will double-fire on this (device, channel).  This is almost "
+				f"certainly unintended."
+			)
+
 		if entry not in pattern.mirrors:
 			pattern.mirrors.append(entry)
 			logger.info(f"Mirror added: {name} -> device={device}, channel={resolved_channel}")
@@ -1965,6 +2001,8 @@ class Composition:
 		if entry in pattern.mirrors:
 			pattern.mirrors.remove(entry)
 			logger.info(f"Mirror removed: {name} -> device={device}, channel={resolved_channel}")
+		else:
+			logger.debug(f"unmirror() no-op on {name}: device={device}, channel={resolved_channel} not in mirrors")
 
 	def unmirror_all (self, name: str) -> None:
 
@@ -2232,13 +2270,23 @@ class Composition:
 		"""
 
 		channel = self._resolve_channel(channel)
-		resolved_mirrors = self._resolve_mirrors(mirrors)
 
 		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit)
 
 		# Resolve device string name to index if possible now; otherwise store
 		# the raw DeviceId and resolve it in _run() once all devices are open.
 		resolved_device: subsequence.midi_utils.DeviceId = device
+
+		# Mirror-to-self check is only reliable when the primary device is a
+		# concrete integer at decoration time.  ``None`` resolves to device 0
+		# downstream, so we treat it as 0 here too.  Strings are deferred to
+		# ``_run()`` and we skip the check for them.
+		primary: typing.Optional[typing.Tuple[int, int]]
+		if isinstance(resolved_device, str):
+			primary = None
+		else:
+			primary = (resolved_device if resolved_device is not None else 0, channel)
+		resolved_mirrors = self._resolve_mirrors(mirrors, primary=primary)
 
 		def decorator (fn: typing.Callable) -> typing.Callable:
 
@@ -2322,7 +2370,18 @@ class Composition:
 		"""
 
 		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit)
-		resolved_mirrors = self._resolve_mirrors(mirrors)
+
+		# Resolve channel up-front so the mirror-to-self check has the canonical
+		# primary form to compare against.
+		resolved_channel = self._resolve_channel(channel)
+
+		# See pattern() for the same comment about None / str handling.
+		primary: typing.Optional[typing.Tuple[int, int]]
+		if isinstance(device, str):
+			primary = None
+		else:
+			primary = (device if device is not None else 0, resolved_channel)
+		resolved_mirrors = self._resolve_mirrors(mirrors, primary=primary)
 
 		wants_chord = any(_fn_has_parameter(fn, "chord") for fn in builder_fns)
 
@@ -2343,11 +2402,9 @@ class Composition:
 				for fn in builder_fns:
 					fn(p)
 
-		resolved = self._resolve_channel(channel)
-
 		pending = _PendingPattern(
 			builder_fn = merged_builder,
-			channel = resolved,  # already resolved to 0-indexed
+			channel = resolved_channel,  # already resolved to 0-indexed above
 			length = beat_length,
 			default_grid = default_grid,
 			drum_note_map = drum_note_map,
@@ -2442,12 +2499,13 @@ class Composition:
 
 		# Resolve channel numbering
 		resolved_channel = self._resolve_channel(channel)
-		resolved_mirrors = self._resolve_mirrors(mirrors)
 
 		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, default=1.0)
 
-		# Resolve device index
+		# Resolve device index — for trigger() this is always concrete by call time,
+		# so the mirror-to-self check has the full primary tuple available.
 		resolved_device_idx = self._resolve_device_id(device)
+		resolved_mirrors = self._resolve_mirrors(mirrors, primary=(resolved_device_idx, resolved_channel))
 
 		# Create a temporary Pattern
 		pattern = subsequence.pattern.Pattern(channel=resolved_channel, length=beat_length, device=resolved_device_idx, mirrors=resolved_mirrors)
