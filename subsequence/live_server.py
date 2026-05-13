@@ -19,7 +19,6 @@ never expose the port to a network.
 """
 
 import asyncio
-import builtins
 import logging
 import traceback
 import typing
@@ -50,7 +49,7 @@ class LiveServer:
 
 		"""Start listening for connections on localhost."""
 
-		self._namespace = self._build_namespace()
+		self._namespace = self._composition._build_live_namespace()
 
 		self._server = await asyncio.start_server(
 			self._handle_connection,
@@ -160,35 +159,3 @@ class LiveServer:
 			return "SystemExit is not allowed in live mode."
 		except Exception:
 			return traceback.format_exc()
-
-	def _build_namespace (self) -> typing.Dict[str, typing.Any]:
-
-		"""Build the namespace dict. The blocklist below prevents calls that would stall the async event loop - it is not a security sandbox. The live server executes arbitrary Python by design; see module docstring."""
-
-		import subsequence
-
-		safe_builtins = {name: getattr(builtins, name) for name in dir(builtins)}
-
-		blocked = {"help", "input", "breakpoint", "exit", "quit"}
-
-		for name in blocked:
-			safe_builtins[name] = _blocked(name)
-
-		return {
-			"__builtins__": safe_builtins,
-			"composition": self._composition,
-			"subsequence": subsequence,
-		}
-
-
-def _blocked (name: str) -> typing.Callable:
-
-	"""Return a function that raises RuntimeError when called."""
-
-	def _raise (*args: typing.Any, **kwargs: typing.Any) -> None:
-		raise RuntimeError(f"{name}() is not available in live mode - it would block the sequencer.")
-
-	_raise.__name__ = name
-	_raise.__qualname__ = name
-
-	return _raise

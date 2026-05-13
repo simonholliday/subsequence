@@ -40,6 +40,8 @@ Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes
   - [Web UI Dashboard (Beta)](#web-ui-dashboard-beta)
   - [MIDI recording and rendering](#midi-recording-and-rendering)
   - [Live coding](#live-coding)
+  - [Live coding via file watching](#live-coding-via-file-watching)
+  - [Loading patterns from a string](#loading-patterns-from-a-string)
   - [Clock accuracy](#clock-accuracy)
   - [MIDI input and external clock](#midi-input-and-external-clock)
   - [Ableton Link](#ableton-link)
@@ -1503,7 +1505,12 @@ If the time cap fires, a warning is logged explaining how to remove it. All patt
 
 ### Live coding
 
-Modify a running composition without stopping playback. Subsequence includes a TCP eval server that accepts Python code from any source - the bundled REPL client, an editor plugin, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state - all while the music plays.
+Modify a running composition without stopping playback. There are two complementary modes:
+
+- **TCP eval server** (this section) — type one expression at a time at a REPL. Best for quick tweaks: nudging a parameter, muting a pattern, querying state.
+- **[File watching](#live-coding-via-file-watching)** (next section) — edit a whole composition file in your normal editor and save. Best for iterating on multiple patterns or working out a piece. Both modes share the same hot-swap machinery and can be enabled together.
+
+The TCP eval server accepts Python code from any source - the bundled REPL client, an editor plugin, or a raw socket. Change tempo, mute patterns, hot-swap pattern logic, and query state - all while the music plays.
 
 ### Enable the server
 
@@ -1616,6 +1623,94 @@ python -c "import socket; s=socket.socket(); s.connect(('127.0.0.1',5555)); s.se
 ### Input validation
 
 All code is validated as syntactically correct Python before execution. If you send a typo or malformed code, the server returns a `SyntaxError` traceback - nothing is executed, and the running composition is never affected.
+
+### Live coding via file watching
+
+The REPL above lets you tweak one expression at a time.  When you want to iterate on a **whole composition file** — editing patterns in your normal editor and hearing the changes on save — use `composition.watch()` instead.
+
+The recommended workflow is to split your composition across two files:
+
+- A **wrapper** that runs once and does all the one-time setup (MIDI device selection, harmony engine, form, tempo) and then calls `composition.watch("patterns.py")`.
+- A **live file** that holds only your `@composition.pattern` definitions. The watcher monitors this file's modification time and reloads it on every save.
+
+What gets hot-swapped:
+- Edits to an existing `@composition.pattern` function — the pattern's state (channel, mirrors, device, cycle counter, voice-leading state) is preserved; only the build logic swaps. The change takes effect on the next bar.
+- Patterns added to the file — they appear in rotation on the next reschedule.
+- Patterns deleted from the file — they are unregistered: sounding notes are stopped (including drones and notes on mirror destinations) and the pattern is dropped from rotation.
+
+What's NOT hot-swapped:
+- Calls to `composition.harmony()`, `composition.form()`, `composition.midi_output()`, etc. — these mutate composition state and belong in the wrapper file. If you put them in the live file, every reload re-executes them (probably not what you want).
+- Module-level state in the live file (e.g. `state = MelodicState(...)`). The live file is exec'd into a **fresh namespace** on every reload, so module-level state resets. For long-lived state, define it in the wrapper and read/write via `composition.data`.
+
+Error handling:
+- **Syntax errors** are caught before execution. The watcher logs a warning and skips the reload entirely; your previous patterns keep running.
+- **Runtime errors** during exec (e.g. `NameError`, `ImportError`) are caught at the same boundary: the entire reload is skipped, previous state preserved, error logged. Fix the file and save again.
+- **File missing or unreadable** mid-poll (editor's "atomic save" via write-temp-then-rename) is also caught and skipped; the next poll picks up the saved file.
+
+**Minimal example:**
+
+```python
+# live_init.py — runs once
+import pathlib
+import subsequence
+
+LIVE_FILE = pathlib.Path(__file__).parent / "live_patterns.py"
+
+composition = subsequence.Composition(bpm=120, key="E")
+composition.harmony(style="aeolian_minor", cycle_beats=4, gravity=0.8)
+composition.watch(LIVE_FILE)
+
+if __name__ == "__main__":
+    composition.play()
+```
+
+```python
+# live_patterns.py — edit me while the composition runs
+import subsequence.constants.instruments.gm_drums as gm_drums
+
+@composition.pattern(channel=10, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+def drums (p):
+    p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+    p.hit_steps("snare_1", [4, 12], velocity=90)
+    p.hit_steps("hi_hat_closed", range(16), velocity=70)
+```
+
+Run `python live_init.py` and edit `live_patterns.py` to taste.  See [examples/live_init.py](examples/live_init.py) and [examples/live_patterns.py](examples/live_patterns.py) for a working starting point.
+
+The file watcher and the TCP REPL (`composition.live()`) are independent — you can enable either, both, or neither.  `composition.unregister(name)` is available from both: a deleted pattern in the live file calls it automatically; you can also call it directly from the REPL.
+
+### Loading patterns from a string
+
+`composition.load_patterns(source)` does exactly what `watch()` does on save, but the source is presented as an in-memory string instead of being read from disk. Useful when patterns arrive over a network — e.g. a small web service that accepts pattern uploads from a trusted contributor, or a message-queue consumer.
+
+```python
+composition.load_patterns(
+    SOURCE_STRING,
+    source_label="uploaded-session-abc",  # appears in SyntaxError.filename + tracebacks
+)
+```
+
+Semantics match `watch()` exactly:
+- `@composition.pattern` decorators in the source hot-swap their counterparts in place.
+- Newly-decorated patterns are graduated into rotation.
+- Patterns currently running but **not** declared in the source are unregistered (the source is treated as the full new truth — same as a saved file).
+- `composition` and `subsequence` are available inside the source's namespace; the same builtins blocklist (`help`, `input`, `breakpoint`, `exit`, `quit`) applies.
+
+Errors propagate so a caller can react (e.g. a web handler returning HTTP 400):
+- `SyntaxError` if the source doesn't compile.
+- Whatever the source raised during `exec()`.
+- In either case, current composition state is preserved — the diff-and-unregister phase is skipped on exec failure, so a half-broken upload can't tear down working patterns.
+
+Two ways to call it:
+
+1. **Pre-`play()`** — runs synchronously on the calling thread. Patterns land in `_pending_patterns` and `play()` graduates them. Equivalent to writing the decorators in the script.
+2. **Post-`play()`, from a worker thread** — typically a web-handler thread. The method schedules the mutation onto the composition's event loop and blocks until it completes (`future.result()`), re-raising any exception. This is the common case for web upload flows.
+
+**Threading constraint:** `load_patterns()` must not be called from inside the composition's own event loop thread (e.g. a pattern callback) — it would deadlock waiting for itself. The method detects this and raises `RuntimeError` with a clear message. From an async coroutine already on the loop, `await composition._apply_source_async(...)` instead.
+
+**Security:** `exec()` is not sandboxed; the source has full Python access in this process. The builtins blocklist prevents calls that would stall the event loop — it is not a security boundary. Only call with source from trusted senders.
+
+See [examples/load_patterns.py](examples/load_patterns.py) for a working example.
 
 ### Clock accuracy
 
@@ -2678,6 +2773,14 @@ Turns real-time International Space Station telemetry into an evolving compositi
 2. Connect your MIDI port to a multitimbral synth or DAW (channels: 10=Drums, 6=Bass, 1=Chords, 4=Arp). [Note: MIDI channels are zero-indexed in the code, i.e. 9, 5, 0, 3].
 3. Run: `python examples/iss.py`.
 
+### Live-coding workflow (`examples/live_init.py` and `examples/live_patterns.py`)
+
+Demonstrates the [file-watching live coding](#live-coding-via-file-watching) workflow. `live_init.py` is the wrapper that runs once — it sets up harmony and tempo, then calls `composition.watch("live_patterns.py")`. `live_patterns.py` is the live-editable file with a minimal drum beat. Run `python examples/live_init.py`, then open `live_patterns.py` in your editor and save edits to hear them on the next bar without stopping the clock. Patterns deleted from the file are unregistered automatically; syntax and runtime errors skip the reload and preserve the previous state.
+
+### Load patterns from a string (`examples/load_patterns.py`)
+
+Demonstrates [`composition.load_patterns(source)`](#loading-patterns-from-a-string) — the in-memory string analogue of `composition.watch(path)`. Same compile + exec + activate + diff-and-unregister behaviour, but with the source presented as a Python string instead of being read from a file. Use this when patterns arrive over a network (web upload from a trusted contributor, message-queue consumer) or for one-shot session loads with no file backing. The example calls it before `play()` to register an initial set of patterns from a string; post-`play()` calls work the same way and are typically invoked from a worker thread (e.g. a web handler).
+
 ### Extra utilities
 
 ### Rhythm & Pattern
@@ -2712,6 +2815,7 @@ Turns real-time International Space Station telemetry into an evolving compositi
 - `subsequence.event_emitter` supports sync/async events used by the sequencer.
 - `subsequence.osc` provides the OSC server/client for bi-directional communication. Receiving: `/bpm`, `/mute`, `/unmute`, `/data`. Status broadcasting: `/bar`, `/bpm`, `/chord`, `/section`. Pattern output: `p.osc()`, `p.osc_ramp()`.
 - `subsequence.live_server` provides the TCP eval server for live coding. Started internally by `composition.live()`.
+- `subsequence.live_reloader` provides the file-watching reloader for whole-file live coding. Started internally by `composition.watch(path)`. Polls the file's modification time in a daemon thread, validates Python syntax via `compile()`, and on save re-execs the file into a fresh namespace that has `composition` and `subsequence` in scope. The decorator's existing hot-swap path replaces builder functions in place for matching names; new patterns are graduated into `_running_patterns` via `Composition._activate_new_pending_patterns()`; deleted patterns are torn down via `composition.unregister(name)`.
 - `subsequence.live_client` provides the interactive REPL client. Run with `python -m subsequence.live_client`.
 
 ## 7. Project Info

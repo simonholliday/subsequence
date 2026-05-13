@@ -1368,6 +1368,14 @@ class Sequencer:
 
 				_, _, scheduled_pattern = heapq.heappop(self.reschedule_queue)
 
+				# Lazy pattern removal: if Composition.unregister() set the
+				# ``_removed`` flag on this pattern, skip both the rebuild and
+				# the re-push so it disappears from rotation.  Already-queued
+				# events in event_queue play out; sustaining notes were stopped
+				# by unregister() via _stop_pattern_notes().
+				if getattr(scheduled_pattern.pattern, '_removed', False):
+					continue
+
 				next_start_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses
 				scheduled_pattern.cycle_start_pulse = next_start_pulse
 
@@ -1448,6 +1456,34 @@ class Sequencer:
 					except Exception:
 						logger.exception("Failed to send note_off during stop")
 			self.active_notes.clear()
+
+
+	async def _stop_pattern_notes (self, pattern: PatternLike) -> None:
+
+		"""Send note_off for active notes belonging to a single pattern.
+
+		Targets the pattern's primary ``(device, channel)`` plus every entry
+		in ``pattern.mirrors``, so patterns with mirrors have their notes
+		stopped on every output port they fan out to.  Used by
+		``Composition.unregister()`` to flush drones and any sustaining
+		notes when a pattern is being torn down.
+		"""
+
+		mirrors = getattr(pattern, 'mirrors', [])
+		targets: typing.Set[typing.Tuple[int, int]] = {(pattern.device, pattern.channel)} | set(mirrors)
+
+		async with self.queue_lock:
+
+			stranded = [t for t in self.active_notes if (t[0], t[1]) in targets]
+
+			for dev, channel, note in stranded:
+				port = self._output_devices.get(dev)
+				if port is not None:
+					try:
+						port.send(mido.Message('note_off', channel=channel, note=note, velocity=0))
+					except Exception:
+						logger.exception(f"Failed to send note_off during unregister (dev={dev}, ch={channel}, note={note})")
+				self.active_notes.discard((dev, channel, note))
 
 
 	def _send_midi (self, event: MidiEvent) -> None:

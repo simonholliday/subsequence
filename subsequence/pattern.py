@@ -103,6 +103,12 @@ class Pattern:
 		self.device = device
 		self.mirrors: typing.List[typing.Tuple[int, int]] = list(mirrors) if mirrors else []
 
+		# Set to True by ``Composition.unregister()`` to signal the sequencer's
+		# reschedule loop to stop re-adding this pattern.  Lazy removal: events
+		# already queued in ``event_queue`` play out; sustaining notes are
+		# stopped by the unregister() call, but no new cycles fire.
+		self._removed: bool = False
+
 		self.steps: typing.Dict[int, Step] = {}
 		self.cc_events: typing.List[CcEvent] = []
 		self.osc_events: typing.List[OscEvent] = []

@@ -1,12 +1,15 @@
 import asyncio
+import builtins
 import dataclasses
 import inspect
 import logging
 import os
+import pathlib
 import queue
 import random
 import re
 import signal
+import types
 import typing
 
 import subsequence.chord_graphs
@@ -15,6 +18,7 @@ import subsequence.constants.durations
 import subsequence.display
 import subsequence.harmonic_state
 import subsequence.keystroke
+import subsequence.live_reloader
 import subsequence.live_server
 import subsequence.osc
 import subsequence.pattern
@@ -568,6 +572,25 @@ class _PendingScheduled:
 		self.defer = defer
 
 
+def _live_blocked (name: str) -> typing.Callable:
+
+	"""Return a function that raises ``RuntimeError`` when called.
+
+	Substituted for built-ins that would block the async event loop
+	(``help``, ``input``, ``breakpoint``, ``exit``, ``quit``).  Used by
+	``Composition._build_live_namespace`` to populate the safe builtins
+	dict for both the file watcher and the TCP eval server.
+	"""
+
+	def _raise (*args: typing.Any, **kwargs: typing.Any) -> None:
+		raise RuntimeError(f"{name}() is not available in live mode - it would block the sequencer.")
+
+	_raise.__name__ = name
+	_raise.__qualname__ = name
+
+	return _raise
+
+
 class Composition:
 
 	"""
@@ -647,6 +670,7 @@ class Composition:
 		self._builder_bar: int = 0
 		self._display: typing.Optional[subsequence.display.Display] = None
 		self._live_server: typing.Optional[subsequence.live_server.LiveServer] = None
+		self._live_reloader: typing.Optional[subsequence.live_reloader.LiveReloader] = None
 		self._is_live: bool = False
 		self._running_patterns: typing.Dict[str, typing.Any] = {}
 		self._input_device: typing.Optional[str] = None
@@ -731,6 +755,43 @@ class Composition:
 		for pending in self._pending_patterns:
 			if isinstance(pending.raw_device, str):
 				pending.device = self._resolve_device_id(pending.raw_device)
+
+	async def _activate_new_pending_patterns (self) -> None:
+
+		"""Build and schedule any pending patterns whose names are not yet running.
+
+		Used by ``LiveReloader._reload_async`` to bring NEW patterns added
+		in a live reload into rotation mid-flight.  Existing patterns
+		hot-swap via the decorator (their ``_builder_fn`` is replaced in
+		place); only patterns whose names are not yet in ``_running_patterns``
+		need this graduation step.
+
+		Newly-scheduled patterns start at the current sequencer pulse —
+		they'll generate events from now onward, and the next reschedule
+		will fire at the same offset as their primary cycle.
+		"""
+
+		# Resolve any deferred string-device names against the now-open
+		# device registry (no-op for int/None devices).
+		self._resolve_pending_devices()
+
+		new_pending = [
+			pending for pending in self._pending_patterns
+			if pending.builder_fn.__name__ not in self._running_patterns
+		]
+
+		if not new_pending:
+			return
+
+		current_pulse = self._sequencer.pulse_count
+
+		for pending in new_pending:
+
+			pattern = self._build_pattern_from_pending(pending)
+			await self._sequencer.schedule_pattern_repeating(pattern, start_pulse = current_pulse)
+			self._running_patterns[pending.builder_fn.__name__] = pattern
+
+			logger.info(f"Live-reload: scheduled new pattern '{pending.builder_fn.__name__}'")
 
 	def _resolve_channel (self, channel: int) -> int:
 
@@ -1758,8 +1819,8 @@ class Composition:
 		"""
 		Enable the live coding eval server.
 
-		This allows you to connect to a running composition using the 
-		`subsequence.live_client` REPL and hot-swap pattern code or 
+		This allows you to connect to a running composition using the
+		`subsequence.live_client` REPL and hot-swap pattern code or
 		modify variables in real-time.
 
 		Parameters:
@@ -1768,6 +1829,234 @@ class Composition:
 
 		self._live_server = subsequence.live_server.LiveServer(self, port=port)
 		self._is_live = True
+
+	def watch (self, path: typing.Union[str, pathlib.Path], poll_interval: float = 0.25) -> None:
+
+		"""Watch a Python file and reload it into the composition on every save.
+
+		The watched file is exec'd into a namespace with ``composition`` and
+		``subsequence`` available.  ``@composition.pattern`` decorators inside
+		the file hot-swap their corresponding running patterns in place;
+		patterns whose function bodies have been deleted from the file are
+		unregistered automatically on the next reload (notes stopped,
+		removed from the running-pattern set).
+
+		An **initial synchronous load** happens here — if the file has a
+		``SyntaxError`` or doesn't exist at this moment, the exception
+		propagates so the user knows immediately.  Subsequent reloads
+		happen on the composition's event loop and tolerate transient
+		errors (logged, skipped).
+
+		Call BEFORE ``composition.play()``.  Reloads happen on the
+		composition's event loop, so all mutations are thread-safe.
+
+		See the "Live coding via file watching" section of the README for
+		the recommended wrapper-script + live-file split.
+
+		Parameters:
+			path: Path to the Python file to watch.
+			poll_interval: Seconds between ``mtime`` polls (default 0.25 s).
+
+		Example::
+
+			# live_init.py — runs once
+			composition = subsequence.Composition(bpm=120, key="E")
+			composition.harmony(style="aeolian_minor")
+			composition.watch("live_patterns.py")
+			composition.play()
+		"""
+
+		# Required for the decorator hot-swap path to fire on re-decoration.
+		self._is_live = True
+
+		self._live_reloader = subsequence.live_reloader.LiveReloader(
+			composition = self,
+			path = path,
+			poll_interval = poll_interval,
+		)
+		self._live_reloader.start()
+
+	def load_patterns (
+		self,
+		source:       str,
+		source_label: str = "<string>",
+	) -> None:
+
+		"""Compile and apply a pattern-source string to the composition.
+
+		Equivalent to one ``watch()`` reload triggered by save, but with the
+		source presented in-memory rather than on disk.  Useful for web /
+		REST handlers that accept pattern uploads from a trusted contributor,
+		or for one-shot session loads with no file backing.
+
+		Behaviour mirrors ``watch()``:
+		* The source is exec'd into a fresh namespace with ``composition``
+		  and ``subsequence`` in scope.
+		* ``@composition.pattern`` decorators in the source hot-swap their
+		  corresponding running patterns in place.
+		* Patterns currently running but **not** declared in the source are
+		  unregistered — the source is treated as the full new truth.
+		* If the composition is already playing, the swap happens on the
+		  event loop thread; the call blocks until it completes.
+		* If the composition has not yet called ``play()``, the source runs
+		  on the caller's thread; decorators populate ``_pending_patterns``
+		  and ``play()`` picks them up in the usual way.
+
+		Errors are raised so the caller can act on them:
+		* ``SyntaxError`` if ``source`` fails to compile.
+		* The exception raised inside ``exec()`` for any runtime error.
+		* ``RuntimeError`` if called from inside the composition's own
+		  event loop thread (would deadlock — see Threading below).
+
+		In either failure case, existing composition state is preserved —
+		the diff-and-unregister phase is skipped if exec raised, so a
+		half-broken upload cannot tear down working patterns.
+
+		Threading:
+			Designed to be called from a thread DIFFERENT from the
+			composition's event loop — typically a web-handler worker.
+			Cannot be called from inside the loop itself (a pattern
+			callback, an asyncio task spawned by the composition).  From
+			there, ``await composition._apply_source_async(...)`` directly.
+
+		SECURITY WARNING: ``exec()`` is not sandboxed.  The source has full
+		Python access in this process.  Only pass source from trusted
+		senders.  The built-in blocklist (``help``, ``input``, ``breakpoint``,
+		``exit``, ``quit``) prevents calls that would stall the event loop;
+		it is not a security boundary.
+
+		Parameters:
+			source:       Python source declaring ``@composition.pattern``
+				functions.
+			source_label: Identifier used in compile errors and tracebacks
+				(appears as the filename in ``SyntaxError`` and ``__file__``-
+				style traceback lines).  Default ``"<string>"``.
+		"""
+
+		# Required for the decorator hot-swap path to fire on re-decoration.
+		self._is_live = True
+
+		# Compile on the caller's thread so SyntaxError comes back fast,
+		# before any cross-thread scheduling.
+		compiled = compile(source, source_label, "exec")
+		namespace = self._build_live_namespace()
+
+		loop = self._sequencer._event_loop
+
+		if loop is not None and loop.is_running():
+
+			# Refuse to deadlock: calling load_patterns() from inside the
+			# composition's own event loop (e.g. from a pattern callback or
+			# an asyncio task spawned by the composition) would have us
+			# block waiting for a coroutine that can only run when this
+			# thread yields.  Tell the caller exactly what to do instead.
+			try:
+				current_loop: typing.Optional[asyncio.AbstractEventLoop] = asyncio.get_running_loop()
+			except RuntimeError:
+				current_loop = None
+
+			if current_loop is loop:
+				raise RuntimeError(
+					"load_patterns() cannot be called from inside the composition's "
+					"event loop thread — it would deadlock waiting for the "
+					"scheduled coroutine to run on the very thread that's blocked. "
+					"From a worker thread, call it normally.  From an async "
+					"coroutine already on the loop, "
+					"`await composition._apply_source_async(compile(source, label, 'exec'), "
+					"composition._build_live_namespace())` instead."
+				)
+
+			# Composition is playing — mutation must happen on the loop thread.
+			# future.result() blocks the caller until the coroutine finishes
+			# and re-raises any exception it threw.
+			future = asyncio.run_coroutine_threadsafe(
+				self._apply_source_async(compiled, namespace),
+				loop = loop,
+			)
+			future.result()
+
+		else:
+			# Pre-play: no event loop yet.  Decorators populate
+			# _pending_patterns; play() graduates them in the usual way.
+			# Diff-and-unregister is unnecessary here — nothing is running.
+			exec(compiled, namespace)
+
+	async def _apply_source_async (
+		self,
+		compiled:  types.CodeType,
+		namespace: typing.Dict[str, typing.Any],
+	) -> None:
+
+		"""Execute pre-compiled live source against the running composition.
+
+		Runs on the event loop thread.  Performs ``exec()``, graduates any
+		newly-decorated patterns into ``_running_patterns``, then unregisters
+		any patterns that were running but absent from the source.
+
+		Raises whatever ``exec()`` raises.  When that happens, the diff-and-
+		unregister phase is skipped — the namespace is incomplete, so any
+		patterns the source failed to reach would be misinterpreted as
+		deletions and torn down.
+
+		Called from two places:
+		* ``Composition.load_patterns()`` via ``run_coroutine_threadsafe``.
+		* ``LiveReloader._reload_async`` directly (already on the loop).
+		"""
+
+		# Bail before any state mutation if exec raises — propagates to
+		# the caller (load_patterns re-raises; LiveReloader catches + logs).
+		exec(compiled, namespace)
+
+		# Graduate newly-decorated patterns from _pending_patterns into
+		# _running_patterns so they start firing on the next reschedule.
+		# Patterns that hot-swapped via the decorator path don't appear
+		# in _pending_patterns and don't need this step.
+		await self._activate_new_pending_patterns()
+
+		# Detect deletions: anything currently running but not declared in
+		# the just-exec'd namespace has been removed by the user and should
+		# be torn down.  Decorators do NOT remove from _running_patterns
+		# when a function disappears from the source.
+		declared = {
+			name for name, obj in namespace.items()
+			if callable(obj) and name in self._running_patterns
+		}
+
+		for name in list(self._running_patterns.keys()):
+			if name not in declared:
+				self.unregister(name)
+
+	def _build_live_namespace (self) -> typing.Dict[str, typing.Any]:
+
+		"""Build a fresh namespace dict for exec'ing live source.
+
+		Provides ``composition`` (this Composition), ``subsequence`` (the
+		package), and a safe builtins set with ``help``, ``input``,
+		``breakpoint``, ``exit``, ``quit`` blocked.
+
+		Single source of truth: both ``live_reloader`` (file watching) and
+		``live_server`` (TCP REPL) call this so live source sees the same
+		environment from either entry point.
+
+		The blocklist prevents calls that would stall the async event loop
+		running the sequencer.  It is **not** a security sandbox — exec'd
+		code can still do anything Python allows.
+		"""
+
+		import subsequence  # local import: this module is imported during subsequence init
+
+		safe_builtins = {name: getattr(builtins, name) for name in dir(builtins)}
+
+		blocked = {"help", "input", "breakpoint", "exit", "quit"}
+
+		for name in blocked:
+			safe_builtins[name] = _live_blocked(name)
+
+		return {
+			"__builtins__": safe_builtins,
+			"composition":  self,
+			"subsequence":  subsequence,
+		}
 
 	def osc (self, receive_port: int = 9000, send_port: int = 9001, send_host: str = "127.0.0.1") -> None:
 
@@ -1936,6 +2225,58 @@ class Composition:
 
 		self._running_patterns[name]._muted = False
 		logger.info(f"Unmuted pattern: {name}")
+
+	def unregister (self, name: str) -> None:
+
+		"""Fully remove a running pattern from rotation.
+
+		Unlike ``mute()`` (which keeps the pattern alive but silent),
+		``unregister()`` tears the pattern down entirely.  It sets
+		``pattern._removed = True`` so the sequencer's reschedule loop
+		skips re-adding it on the next pulse; sends ``note_off`` for any
+		of the pattern's currently-sounding notes on the primary
+		destination AND on every mirror destination (so drones and
+		sustaining notes stop immediately); and removes the entry from
+		``_running_patterns`` so it no longer appears in ``live_info()``,
+		the terminal grid, or any other consumer that enumerates running
+		patterns.
+
+		Already-queued events in the sequencer's event queue play out —
+		note_offs are paired with their note_ons at queue time, so notes
+		end at their natural duration; only drones rely on the targeted
+		``_stop_pattern_notes`` pass.
+
+		Idempotent: silently logs a ``debug`` and returns if the pattern
+		is already absent.  Useful from both the live REPL
+		(``composition.live()``) and the file watcher
+		(``composition.watch()``), which calls this for any pattern
+		removed from the watched file between reloads.
+
+		Parameters:
+			name: Function name of the pattern to remove.
+		"""
+
+		if name not in self._running_patterns:
+			logger.debug(f"unregister() no-op: pattern '{name}' not running")
+			return
+
+		pattern = self._running_patterns[name]
+
+		# Mark for removal first so the reschedule loop sees the flag even if
+		# it fires concurrently with the note-off pass below.
+		pattern._removed = True
+
+		# Stop sustaining notes (including drones) on every destination this
+		# pattern outputs to.  Fire-and-forget across threads via the event
+		# loop; ``_stop_pattern_notes`` acquires the queue lock internally.
+		if self._sequencer._event_loop is not None:
+			asyncio.run_coroutine_threadsafe(
+				self._sequencer._stop_pattern_notes(pattern),
+				loop = self._sequencer._event_loop,
+			)
+
+		del self._running_patterns[name]
+		logger.info(f"Unregistered pattern: {name}")
 
 	def mirror (self, name: str, device: int, channel: int) -> None:
 
@@ -2924,6 +3265,9 @@ class Composition:
 
 		if self._live_server is not None:
 			await self._live_server.stop()
+
+		if self._live_reloader is not None:
+			self._live_reloader.stop()
 
 		if self._osc_server is not None:
 			await self._osc_server.stop()
