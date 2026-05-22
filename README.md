@@ -119,6 +119,15 @@ pip install -e .
 ```bash
 pip install -e ".[link]"
 ```
+
+> **Linux only:** the MIDI backend (ALSA) requires your user to be in the `audio` group. If the next step fails with `open /dev/snd/seq failed: Permission denied`:
+>
+> ```bash
+> sudo usermod -a -G audio $USER
+> ```
+>
+> Then log out and back in. (Or run `newgrp audio` to start a single shell with the new group active.)
+
 3. Run the demo:
 ```bash
 python examples/demo.py

@@ -18,7 +18,6 @@ Form:
 import logging
 
 import subsequence
-import subsequence.helpers.wing as wing
 
 import subsequence.constants.instruments.gm_drums as gm_drums
 import subsequence.constants.midi_notes as midi_notes

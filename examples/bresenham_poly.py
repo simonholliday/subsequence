@@ -16,6 +16,8 @@ Form sections (16 bars each, graph transitions):
 MIDI channel 10 (GM drums).
 """
 
+import pathlib
+
 import subsequence
 import subsequence.easing
 import subsequence.sequence_utils
@@ -25,7 +27,10 @@ DRUM_CHANNEL = 10
 
 composition = subsequence.Composition(bpm=120)
 
-groove = subsequence.Groove.from_agr("Swing 16ths 57.agr")
+# Shared example asset — loaded from a path relative to this script so the
+# example runs from any working directory.
+GROOVE_PATH = pathlib.Path(__file__).parent / "assets" / "Swing 16ths 57.agr"
+groove = subsequence.Groove.from_agr(str(GROOVE_PATH))
 
 # ── Form: weighted graph cycles through sections infinitely ──────────
 # Each section is 16 bars.  Transitions are weighted so the form usually

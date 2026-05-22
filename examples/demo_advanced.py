@@ -75,7 +75,7 @@ class ArpPattern (subsequence.pattern.Pattern):
 		self.steps = {}
 		chord   = self.harmonic_state.get_current_chord()
 		pitches = chord.tones(root=60, count=4)
-		self.add_arpeggio_beats(pitches, step_beats=0.25, velocity=90)
+		self.add_arpeggio_beats(pitches, spacing_beats=0.25, velocity=90)
 
 	def on_reschedule (self) -> None:
 		self._build()

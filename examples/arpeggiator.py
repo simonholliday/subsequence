@@ -74,13 +74,13 @@ def bass (p, chord):
 
 	p.legato(0.9)
 
-@composition.pattern(channel=ARP_CHANNEL, length=5, unit=dur.SIXTEENTH)
+@composition.pattern(channel=ARP_CHANNEL, steps=5, unit=dur.SIXTEENTH)
 def arp (p, chord):
 
 	pitches = chord.tones(root=60, count=5)
 	p.arpeggio(pitches, spacing=dur.SIXTEENTH, direction="up")
 
-@composition.pattern(channel=LEAD_CHANNEL, length=6, unit=dur.SIXTEENTH)
+@composition.pattern(channel=LEAD_CHANNEL, steps=6, unit=dur.SIXTEENTH)
 def lead (p, chord):
 
 	root = chord.root_note(84)

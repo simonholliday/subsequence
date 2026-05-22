@@ -25,6 +25,8 @@ Sections:
 MIDI channel 10 (GM drums).
 """
 
+import pathlib
+
 import subsequence
 import subsequence.easing
 import subsequence.sequence_utils
@@ -32,7 +34,11 @@ import subsequence.constants.instruments.gm_drums as gm_drums
 
 DRUM_CHANNEL = 10
 composition = subsequence.Composition(bpm=132)
-groove = subsequence.Groove.from_agr("Swing 16ths 57.agr")
+
+# Shared example asset — loaded from a path relative to this script so the
+# example runs from any working directory.
+GROOVE_PATH = pathlib.Path(__file__).parent / "assets" / "Swing 16ths 57.agr"
+groove = subsequence.Groove.from_agr(str(GROOVE_PATH))
 
 # ── Form ──────────────────────────────────────────────────────────────
 #

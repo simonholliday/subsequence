@@ -1,0 +1,145 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Ableton MajorVersion="5" MinorVersion="11.0_11300" SchemaChangeCount="3" Creator="Ableton Live 11.3.12" Revision="4a81dc007ffbbd395b36962f04cbfb1d422abd1d">
+	<Groove>
+		<LomId Value="0" />
+		<Name Value="Swing 16ths 57" />
+		<Clip>
+			<Value>
+				<MidiClip Id="0" Time="0">
+					<LomId Value="0" />
+					<LomIdView Value="0" />
+					<CurrentStart Value="0" />
+					<CurrentEnd Value="4" />
+					<Loop>
+						<LoopStart Value="0" />
+						<LoopEnd Value="4" />
+						<StartRelative Value="0" />
+						<LoopOn Value="true" />
+						<OutMarker Value="4" />
+						<HiddenLoopStart Value="0" />
+						<HiddenLoopEnd Value="4" />
+					</Loop>
+					<Name Value="Swing 16ths 57" />
+					<Annotation Value="" />
+					<Color Value="19" />
+					<LaunchMode Value="0" />
+					<LaunchQuantisation Value="0" />
+					<TimeSignature>
+						<TimeSignatures>
+							<RemoteableTimeSignature Id="0">
+								<Numerator Value="4" />
+								<Denominator Value="4" />
+								<Time Value="0" />
+							</RemoteableTimeSignature>
+						</TimeSignatures>
+					</TimeSignature>
+					<Envelopes>
+						<Envelopes />
+					</Envelopes>
+					<ScrollerTimePreserver>
+						<LeftTime Value="0" />
+						<RightTime Value="0" />
+					</ScrollerTimePreserver>
+					<TimeSelection>
+						<AnchorTime Value="0" />
+						<OtherTime Value="0" />
+					</TimeSelection>
+					<Legato Value="false" />
+					<Ram Value="false" />
+					<GrooveSettings>
+						<GrooveId Value="-1" />
+					</GrooveSettings>
+					<Disabled Value="false" />
+					<VelocityAmount Value="0" />
+					<FollowAction>
+						<FollowTime Value="4" />
+						<IsLinked Value="true" />
+						<LoopIterations Value="1" />
+						<FollowActionA Value="4" />
+						<FollowActionB Value="0" />
+						<FollowChanceA Value="100" />
+						<FollowChanceB Value="0" />
+						<JumpIndexA Value="1" />
+						<JumpIndexB Value="1" />
+						<FollowActionEnabled Value="false" />
+					</FollowAction>
+					<Grid>
+						<FixedNumerator Value="1" />
+						<FixedDenominator Value="16" />
+						<GridIntervalPixel Value="20" />
+						<Ntoles Value="2" />
+						<SnapToGrid Value="true" />
+						<Fixed Value="true" />
+					</Grid>
+					<FreezeStart Value="0" />
+					<FreezeEnd Value="0" />
+					<IsWarped Value="true" />
+					<TakeId Value="-1" />
+					<Notes>
+						<KeyTracks>
+							<KeyTrack Id="0">
+								<Notes>
+									<MidiNoteEvent Time="0" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="1" />
+									<MidiNoteEvent Time="0.284999895937395942" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="2" />
+									<MidiNoteEvent Time="0.5" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="3" />
+									<MidiNoteEvent Time="0.784999895937395942" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="4" />
+									<MidiNoteEvent Time="1" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="5" />
+									<MidiNoteEvent Time="1.2849998959373958" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="6" />
+									<MidiNoteEvent Time="1.5" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="7" />
+									<MidiNoteEvent Time="1.7849998959373958" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="8" />
+									<MidiNoteEvent Time="2" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="9" />
+									<MidiNoteEvent Time="2.2849998959373958" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="10" />
+									<MidiNoteEvent Time="2.5" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="11" />
+									<MidiNoteEvent Time="2.7849998959373958" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="12" />
+									<MidiNoteEvent Time="3" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="13" />
+									<MidiNoteEvent Time="3.2849998959373958" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="14" />
+									<MidiNoteEvent Time="3.5" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="15" />
+									<MidiNoteEvent Time="3.7849998959373958" Duration="0.0625" Velocity="127" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="16" />
+								</Notes>
+								<MidiKey Value="36" />
+							</KeyTrack>
+						</KeyTracks>
+						<PerNoteEventStore>
+							<EventLists />
+						</PerNoteEventStore>
+						<NoteIdGenerator>
+							<NextId Value="17" />
+						</NoteIdGenerator>
+					</Notes>
+					<BankSelectCoarse Value="-1" />
+					<BankSelectFine Value="-1" />
+					<ProgramChange Value="-1" />
+					<NoteEditorFoldInZoom Value="-1" />
+					<NoteEditorFoldInScroll Value="0" />
+					<NoteEditorFoldOutZoom Value="-1" />
+					<NoteEditorFoldOutScroll Value="0" />
+					<NoteEditorFoldScaleZoom Value="-1" />
+					<NoteEditorFoldScaleScroll Value="0" />
+					<ScaleInformation>
+						<RootNote Value="0" />
+						<Name Value="Major" />
+					</ScaleInformation>
+					<IsInKey Value="true" />
+					<NoteSpellingPreference Value="3" />
+					<PreferFlatRootNote Value="false" />
+					<ExpressionGrid>
+						<FixedNumerator Value="1" />
+						<FixedDenominator Value="16" />
+						<GridIntervalPixel Value="20" />
+						<Ntoles Value="2" />
+						<SnapToGrid Value="false" />
+						<Fixed Value="false" />
+					</ExpressionGrid>
+				</MidiClip>
+			</Value>
+		</Clip>
+		<Grid Value="3" />
+		<QuantizationAmount Value="0" />
+		<TimingAmount Value="100" />
+		<RandomAmount Value="0" />
+		<VelocityAmount Value="0" />
+		<Annotation Value="" />
+		<Selection Value="true" />
+		<SourceContext />
+	</Groove>
+</Ableton>
