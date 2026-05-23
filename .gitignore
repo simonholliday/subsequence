@@ -17,9 +17,6 @@ session_*.mid
 docs/html/
 docs/*.html
 
-# Work in progress
-examples/wip
-
 # Project metadata and instructions
 CLAUDE.md
 README-AGENTS.md

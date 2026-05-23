@@ -133,6 +133,8 @@ pip install -e ".[link]"
 python examples/demo.py
 ```
 
+To experiment with your own ideas, copy any example into [`sandbox/`](sandbox/) and edit freely — the contents are gitignored, so you can iterate without commit churn.
+
 For the complete API reference, see the **[documentation](https://simonholliday.github.io/subsequence)**.
 
 ## 2. Generating Music

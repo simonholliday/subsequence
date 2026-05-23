@@ -1,0 +1,11 @@
+# Sandbox — personal compositions and experimentation.
+#
+# Everything in this directory is gitignored EXCEPT the .gitignore and
+# README themselves, so the directory exists in a fresh clone but the
+# contents you create here stay local to your checkout.
+#
+# To intentionally track a file from here, use `git add -f <file>`.
+
+*
+!.gitignore
+!README.md
