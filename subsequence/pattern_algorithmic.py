@@ -48,11 +48,46 @@ class PatternAlgorithmicMixin:
 		def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int: ...
 		def _has_pitch_at_beat (self, pitch: typing.Union[int, str], beat: float) -> bool: ...
 
+	def _resolve_velocity (self, velocity: typing.Union[int, typing.Tuple[int, int]], rng: typing.Optional[random.Random] = None) -> int:
+
+		"""Resolve a velocity argument to a single integer.
+
+		Accepts a plain ``int`` (returned unchanged) or a ``(low, high)``
+		tuple from which a random value is drawn via ``rng.randint``.
+		Centralised here so every note-placement method offers the same
+		idiom — ``velocity=(60, 90)`` works wherever ``velocity=`` is
+		accepted.
+
+		Raises ``TypeError`` for any other shape so a typo surfaces at
+		the call site rather than as a malformed MIDI event later in
+		the sequencer dispatch loop.
+
+		Parameters:
+			velocity: An int 0-127 or a ``(low, high)`` 2-tuple
+				describing an inclusive random range.
+			rng: Random generator.  Defaults to ``self.rng``.
+
+		Returns:
+			A single integer velocity.
+		"""
+
+		if isinstance(velocity, tuple):
+			if len(velocity) != 2:
+				raise ValueError(f"velocity tuple must be (low, high), got {velocity!r}")
+			if rng is None:
+				rng = self.rng
+			return rng.randint(int(velocity[0]), int(velocity[1]))
+		if isinstance(velocity, bool):
+			raise TypeError(f"velocity must be int or (low, high) tuple, got bool: {velocity!r}")
+		if isinstance(velocity, (int, float)):
+			return int(velocity)
+		raise TypeError(f"velocity must be int or (low, high) tuple, got {type(velocity).__name__}: {velocity!r}")
+
 	def _place_rhythm_sequence (
 		self,
 		sequence: typing.List[int],
 		pitch: typing.Union[int, str],
-		velocity: int,
+		velocity: typing.Union[int, typing.Tuple[int, int]],
 		duration: float,
 		dropout: float,
 		rng: random.Random,
@@ -64,6 +99,8 @@ class PatternAlgorithmicMixin:
 		Shared implementation for ``euclidean()`` and ``bresenham()``.
 		Each active step (1) is placed as a note; steps are evenly spaced
 		across the pattern length. Zeros and dropout-gated steps are skipped.
+		A ``(low, high)`` ``velocity`` tuple is resolved per hit by
+		``self.note()``, giving each placed note a fresh random velocity.
 		"""
 
 		step_duration = self._pattern.length / len(sequence)
@@ -81,7 +118,7 @@ class PatternAlgorithmicMixin:
 
 			self.note(pitch=pitch, beat=i * step_duration, velocity=velocity, duration=duration)
 
-	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
+	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Generate a Euclidean rhythm.
@@ -93,7 +130,8 @@ class PatternAlgorithmicMixin:
 		Parameters:
 			pitch: MIDI note or drum name.
 			pulses: Total number of notes to place.
-			velocity: MIDI velocity.
+			velocity: MIDI velocity, or a ``(low, high)`` tuple for a
+				fresh random draw per hit.
 			duration: Note duration.
 			dropout: Probability (0.0 to 1.0) of skipping each pulse.
 			no_overlap: If True, skip steps where a note of the same pitch
@@ -115,7 +153,7 @@ class PatternAlgorithmicMixin:
 		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
+	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Generate a rhythm using the Bresenham line algorithm.
@@ -126,7 +164,8 @@ class PatternAlgorithmicMixin:
 		Parameters:
 			pitch: MIDI note or drum name.
 			pulses: Total number of notes to place.
-			velocity: MIDI velocity.
+			velocity: MIDI velocity, or a ``(low, high)`` tuple for a
+				fresh random draw per hit.
 			duration: Note duration.
 			dropout: Probability (0.0 to 1.0) of skipping each pulse.
 			no_overlap: If True, skip steps where a note of the same pitch
@@ -505,7 +544,7 @@ class PatternAlgorithmicMixin:
 		pitch: typing.Union[int, str],
 		rule: int = 30,
 		generation: typing.Optional[int] = None,
-		velocity: int = 60,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = 60,
 		duration: float = 0.1,
 		no_overlap: bool = False,
 		dropout: float = 0.0,
@@ -528,7 +567,8 @@ class PatternAlgorithmicMixin:
 			rule: Wolfram rule number (0–255).  Default 30.
 			generation: CA generation to render.  Defaults to ``self.cycle``
 				so the pattern evolves each bar automatically.
-			velocity: MIDI velocity.
+			velocity: MIDI velocity, or a ``(low, high)`` tuple for a
+				fresh random draw per hit.
 			duration: Note duration in beats.
 			no_overlap: If True, skip where same pitch already exists.
 			dropout: Probability (0.0–1.0) of skipping each hit.
@@ -643,7 +683,7 @@ class PatternAlgorithmicMixin:
 		self,
 		transitions: typing.Dict[str, typing.List[typing.Tuple[str, int]]],
 		pitch_map: typing.Dict[str, int],
-		velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		duration: float = 0.1,
 		spacing: float = 0.25,
 		start: typing.Optional[str] = None,
@@ -666,7 +706,8 @@ class PatternAlgorithmicMixin:
 				probability of that transition.
 			pitch_map: Mapping of state name to absolute MIDI note number.
 				States absent from this dict are walked but produce no note.
-			velocity: MIDI velocity for all placed notes (default 100).
+			velocity: MIDI velocity for all placed notes (default 100),
+				or a ``(low, high)`` tuple for a fresh random draw per step.
 			duration: Note duration in beats (default 0.1).
 			spacing: Time between note onsets in beats (default 0.25 = 16th note).
 			start: Name of the starting state.  Defaults to the first key
@@ -892,10 +933,10 @@ class PatternAlgorithmicMixin:
 	def thue_morse (
 		self,
 		pitch: typing.Union[int, str],
-		velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		duration: float = 0.1,
 		pitch_b: typing.Optional[typing.Union[int, str]] = None,
-		velocity_b: typing.Optional[int] = None,
+		velocity_b: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
 		no_overlap: bool = False,
 		dropout: float = 0.0,
 		rng: typing.Optional[random.Random] = None,
@@ -916,11 +957,13 @@ class PatternAlgorithmicMixin:
 
 		Parameters:
 			pitch: Pitch (MIDI note number or drum name) for sequence-1 positions.
-			velocity: MIDI velocity for ``pitch``.
+			velocity: MIDI velocity for ``pitch``, or a ``(low, high)``
+			    tuple for a fresh random draw per hit.
 			duration: Note duration in beats.
 			pitch_b: Optional second pitch placed at sequence-0 positions.
 			    When set, all steps produce a note (no rests).
-			velocity_b: Velocity for ``pitch_b``.  Defaults to ``velocity``.
+			velocity_b: Velocity for ``pitch_b`` (int or ``(low, high)``
+			    tuple).  Defaults to ``velocity``.
 			no_overlap: Skip steps where ``pitch`` is already sounding.
 			dropout: Probability [0.0–1.0] of randomly skipping any active step.
 			rng: Random number generator.  Defaults to ``self.rng``.

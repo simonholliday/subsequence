@@ -488,6 +488,15 @@ Pattern length can be specified two ways - use whichever is clearest:
 @composition.pattern(channel=1, bars=2)    # 2 bars (8 beats)
 ```
 
+**Velocity** — every `velocity=` parameter on a `PatternBuilder` method accepts either a single integer (`velocity=90`) or a `(low, high)` tuple (`velocity=(60, 95)`) for a fresh random draw on each placed note. The convention is universal — it works with `p.hit()`, `p.hit_steps()`, `p.note()`, `p.sequence()`, `p.fill()`, `p.arpeggio()`, `p.chord()`, `p.strum()`, `p.broken_chord()`, and every algorithmic generator (`p.euclidean()`, `p.bresenham()`, `p.cellular_1d()`, `p.markov()`, `p.melody()`, `p.lsystem()`, `p.thue_morse()`, `p.fibonacci()`, `p.lorenz()`, etc.). On methods that place several notes (`p.chord()`, `p.strum()`, `p.arpeggio()`, etc.), each note gets its own independent random draw, so a strum or chord feels human rather than mechanically uniform.
+
+```python
+p.hit_steps("hh", range(16), velocity=(40, 90))      # humanised hats
+p.chord(chord, root=48, count=5, velocity=(70, 100)) # each voice slightly different
+```
+
+Anything other than `int | (low, high)` raises `ValueError`/`TypeError` at the builder call — the per-pattern error handler logs it and skips the rebuild rather than corrupting downstream events.
+
 When `output_device` is omitted, Subsequence auto-discovers available MIDI devices. If only one device is connected it is used automatically; if several are found you are prompted to choose. To skip the prompt, pass the device name directly: `Composition(output_device="Your Device:Port", ...)`.
 
 The name is matched exactly against `mido.get_output_names()` — partial names and substrings are rejected, and on Linux/ALSA the port string includes the client and port IDs (e.g. `"Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"`, `"RtMidiIn Client:My Virtual Port 128:0"`). The trailing `:client:port` digits are assigned in connection order and can drift between reboots or when a virtual port is recreated. To look up the current names:

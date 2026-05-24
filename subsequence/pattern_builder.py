@@ -299,7 +299,7 @@ class PatternBuilder(
 
 		return pymididefs.rpn.RPN_MAP[parameter]
 
-	def note (self, pitch: typing.Union[int, str], beat: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
+	def note (self, pitch: typing.Union[int, str], beat: float, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
 
 		"""
 		Place a single MIDI note at a specific beat position.
@@ -309,7 +309,8 @@ class PatternBuilder(
 				the pattern's `drum_note_map`.
 			beat: The beat position (0.0 is the start). Negative values
 				wrap from the end (e.g., -1.0 is one beat before the end).
-			velocity: MIDI velocity (0-127, default 100).
+			velocity: MIDI velocity (0-127, default 100), or a
+				``(low, high)`` tuple for a single random draw.
 			duration: Note duration in beats (default 0.25).
 
 		Example:
@@ -321,6 +322,7 @@ class PatternBuilder(
 		"""
 
 		midi_pitch = self._resolve_pitch(pitch)
+		resolved_velocity = self._resolve_velocity(velocity)
 
 		# Negative beat values wrap to the end of the pattern.
 		if beat < 0:
@@ -329,25 +331,27 @@ class PatternBuilder(
 		self._pattern.add_note_beats(
 			beat_position = beat,
 			pitch = midi_pitch,
-			velocity = velocity,
+			velocity = resolved_velocity,
 			duration_beats = duration
 		)
 		return self
 
-	def note_on (self, pitch: typing.Union[int, str], beat: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
+	def note_on (self, pitch: typing.Union[int, str], beat: float, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
 
 		"""
 		Place an explicit Note On event without a duration.
 		Useful for drones or infinite sustains. Must be paired with
 		a `note_off()` later to silence the note.
-		
+
 		Parameters:
 			pitch: MIDI note number (0-127) or a drum name string.
 			beat: The beat position (0.0 is the start).
-			velocity: MIDI velocity (0-127, default 100).
+			velocity: MIDI velocity (0-127, default 100), or a
+				``(low, high)`` tuple for a single random draw.
 		"""
 
 		midi_pitch = self._resolve_pitch(pitch)
+		resolved_velocity = self._resolve_velocity(velocity)
 		if beat < 0:
 			beat = self._pattern.length + beat
 
@@ -355,7 +359,7 @@ class PatternBuilder(
 			message_type = 'note_on',
 			beat_position = beat,
 			pitch = midi_pitch,
-			velocity = velocity
+			velocity = resolved_velocity
 		)
 		return self
 
@@ -381,17 +385,18 @@ class PatternBuilder(
 		)
 		return self
 
-	def drone (self, pitch: typing.Union[int, str], beat: float = 0.0, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
+	def drone (self, pitch: typing.Union[int, str], beat: float = 0.0, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
 
 		"""
 		A musical alias for `note_on`. Places a raw Note On event without a duration,
 		typically used for sustained notes that span multiple cycles.
 		Must be silenced later using `drone_off()`.
-		
+
 		Parameters:
 			pitch: MIDI note number (0-127) or a drum name string.
 			beat: The beat position (0.0 is the start).
-			velocity: MIDI velocity (0-127, default 100).
+			velocity: MIDI velocity (0-127, default 100), or a
+				``(low, high)`` tuple for a single random draw.
 		"""
 
 		self.note_on(pitch, beat=beat, velocity=velocity)
@@ -424,14 +429,22 @@ class PatternBuilder(
 		self.cc(control=120, value=0, beat=beat)
 		return self
 
-	def hit (self, pitch: typing.Union[int, str], beats: typing.List[float], velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1) -> "PatternBuilder":
+	def hit (self, pitch: typing.Union[int, str], beats: typing.List[float], velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1) -> "PatternBuilder":
 
 		"""
 		Place multiple short 'hits' at a list of beat positions.
 
+		Parameters:
+			pitch: MIDI note number or drum name.
+			beats: List of beat positions.
+			velocity: MIDI velocity (0-127), or a ``(low, high)`` tuple
+				for a fresh random draw per hit.
+			duration: Note duration in beats.
+
 		Example:
 			```python
-			p.hit("snare", [1, 3])  # Standard backbeat
+			p.hit("snare", [1, 3])                      # Standard backbeat
+			p.hit("snare", [1, 3], velocity=(80, 110))  # Human velocity range
 			```
 		"""
 
@@ -439,7 +452,7 @@ class PatternBuilder(
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 		return self
 
-	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		Place short hits at specific step (grid) positions.
@@ -447,7 +460,8 @@ class PatternBuilder(
 		Parameters:
 			pitch: MIDI note number or drum name.
 			steps: A list of grid indices (0 to ``grid - 1``).
-			velocity: MIDI velocity (0-127).
+			velocity: MIDI velocity (0-127), or a ``(low, high)`` tuple
+				for a fresh random draw per step.
 			duration: Note duration in beats.
 			grid: How many grid slots the pattern is divided into.
 				Defaults to the pattern's ``default_grid`` (set from the
@@ -460,6 +474,9 @@ class PatternBuilder(
 			```python
 			# Typical sixteenth-note hi-hats with some probability variation
 			p.hit_steps("hh", range(16), velocity=70, probability=0.8)
+
+			# Humanised hi-hats — each step gets a fresh random velocity.
+			p.hit_steps("hh", range(16), velocity=(40, 90))
 			```
 		"""
 
@@ -480,7 +497,7 @@ class PatternBuilder(
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 		return self
 
-	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.List[int]] = 100, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = 100, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		A multi-parameter step sequencer.
@@ -492,7 +509,9 @@ class PatternBuilder(
 		Parameters:
 			steps: List of grid indices to trigger.
 			pitches: Pitch or list of pitches.
-			velocities: Velocity or list of velocities (default 100).
+			velocities: Velocity (default 100), ``(low, high)`` tuple for
+				a fresh random draw per step, or a list of velocities
+				cycled per step.
 			durations: Duration or list of durations (default 0.1).
 			grid: Grid resolution. Defaults to the pattern's
 				``default_grid`` (derived from the decorator's ``length``
@@ -510,7 +529,12 @@ class PatternBuilder(
 
 		n = len(steps)
 		pitches_list = _expand_sequence_param("pitches", pitches, n)
-		velocities_list = _expand_sequence_param("velocities", velocities, n)
+		# Treat a (low, high) tuple as a single random-range descriptor
+		# rather than a 2-element list to cycle through.
+		if isinstance(velocities, tuple):
+			velocities_list = [velocities] * n
+		else:
+			velocities_list = _expand_sequence_param("velocities", velocities, n)
 		durations_list = _expand_sequence_param("durations", durations, n)
 
 		step_duration = self._pattern.length / grid
@@ -524,7 +548,7 @@ class PatternBuilder(
 			self.note(pitch=pitches_list[i], beat=beat, velocity=velocities_list[i], duration=durations_list[i])
 		return self
 
-	def seq (self, notation: str, pitch: typing.Union[str, int, None] = None, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
+	def seq (self, notation: str, pitch: typing.Union[str, int, None] = None, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
 
 		"""
 		Build a pattern using an expressive string-based 'mini-notation'.
@@ -543,7 +567,8 @@ class PatternBuilder(
 			pitch: If provided, all symbols in the string are triggers for
 				this specific pitch. If `None`, symbols are interpreted as
 				pitches (e.g., "60" or "kick").
-			velocity: MIDI velocity (default 100).
+			velocity: MIDI velocity (default 100), or a ``(low, high)``
+				tuple for a fresh random draw per event.
 
 		Example:
 			```python
@@ -584,14 +609,22 @@ class PatternBuilder(
 			)
 		return self
 
-	def fill (self, pitch: typing.Union[int, str], spacing: float, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
+	def fill (self, pitch: typing.Union[int, str], spacing: float, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
 
 		"""
 		Fill the pattern with a note repeating at a fixed beat interval.
 
+		Parameters:
+			pitch: MIDI note number or drum name.
+			spacing: Time between each note in beats.
+			velocity: MIDI velocity (default 100), or a ``(low, high)``
+				tuple for a fresh random draw per note.
+			duration: Note duration in beats.
+
 		Example:
 			```python
-			p.fill("hh", spacing=0.25)  # sixteenth notes
+			p.fill("hh", spacing=0.25)                       # sixteenth notes
+			p.fill("hh", spacing=0.25, velocity=(40, 80))    # humanised
 			```
 		"""
 
@@ -609,7 +642,7 @@ class PatternBuilder(
 		self,
 		pitches: typing.Union[typing.List[int], typing.List[str]],
 		spacing: float = 0.25,
-		velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		duration: typing.Optional[float] = None,
 		direction: str = "up",
 		rng: typing.Optional[random.Random] = None
@@ -621,7 +654,8 @@ class PatternBuilder(
 		Parameters:
 			pitches: List of MIDI note numbers or note name strings (e.g. ``"C4"``).
 			spacing: Time between each note in beats (default 0.25 = 16th note).
-			velocity: MIDI velocity for all notes (default 85).
+			velocity: MIDI velocity for all notes (default 100), or a
+			          ``(low, high)`` tuple for a fresh random draw per note.
 			duration: Note duration in beats. Defaults to ``spacing`` (each note
 			          fills its slot exactly).
 			direction: Order in which pitches are cycled:
@@ -642,8 +676,8 @@ class PatternBuilder(
 			# Ping-pong: C E G E C E G E ...
 			p.arpeggio([60, 64, 67], spacing=0.25, direction="up_down")
 
-			# Descending
-			p.arpeggio([60, 64, 67], spacing=0.25, direction="down")
+			# Descending with humanised velocity
+			p.arpeggio([60, 64, 67], spacing=0.25, direction="down", velocity=(60, 95))
 			```
 		"""
 
@@ -673,15 +707,22 @@ class PatternBuilder(
 		if duration is None:
 			duration = spacing
 
-		self._pattern.add_arpeggio_beats(
-			pitches = resolved,
-			spacing_beats = spacing,
-			velocity = velocity,
-			duration_beats = duration
-		)
+		# Place notes one at a time via self.note() so a (low, high)
+		# velocity tuple produces a fresh random draw per arp note.
+		beat = 0.0
+		i = 0
+		while beat < self._pattern.length:
+			self.note(
+				pitch = resolved[i % len(resolved)],
+				beat = beat,
+				velocity = velocity,
+				duration = duration,
+			)
+			beat += spacing
+			i += 1
 		return self
 
-	def chord (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None, detached: typing.Optional[float] = None) -> "PatternBuilder":
+	def chord (self, chord_obj: typing.Any, root: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None, detached: typing.Optional[float] = None) -> "PatternBuilder":
 
 		"""
 		Place a chord at the start of the pattern.
@@ -693,7 +734,10 @@ class PatternBuilder(
 			chord_obj: The chord to play (usually the `chord` parameter
 				passed to your pattern function).
 			root: MIDI root note (e.g., 60 for Middle C).
-			velocity: MIDI velocity (default 90).
+			velocity: MIDI velocity (default 90), or a ``(low, high)``
+				tuple for a fresh random draw per chord tone (each
+				voice gets a slightly different velocity — useful for
+				humanising the "fingers" feel).
 			sustain: If True, the notes last for the entire pattern duration.
 				Mutually exclusive with ``legato`` and ``detached``.
 			duration: Note duration in beats (default 1.0). Ignored when
@@ -738,7 +782,7 @@ class PatternBuilder(
 			self._pattern.add_note_beats(
 				beat_position = 0.0,
 				pitch = pitch,
-				velocity = velocity,
+				velocity = self._resolve_velocity(velocity),
 				duration_beats = duration
 			)
 
@@ -746,7 +790,7 @@ class PatternBuilder(
 			self.legato(legato)
 		return self
 
-	def strum (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, offset: float = 0.05, direction: str = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None) -> "PatternBuilder":
+	def strum (self, chord_obj: typing.Any, root: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, offset: float = 0.05, direction: str = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None) -> "PatternBuilder":
 
 		"""
 		Play a chord with a small time offset between each note (strum effect).
@@ -759,7 +803,8 @@ class PatternBuilder(
 			chord_obj: The chord to play (usually the ``chord`` parameter
 				passed to your pattern function).
 			root: MIDI root note (e.g., 60 for Middle C).
-			velocity: MIDI velocity (default 90).
+			velocity: MIDI velocity (default 90), or a ``(low, high)``
+				tuple for a fresh random draw per strum note.
 			sustain: If True, the notes last for the entire pattern duration.
 				Mutually exclusive with ``legato`` and ``detached``.
 			duration: Note duration in beats (default 1.0). Ignored when
@@ -824,7 +869,7 @@ class PatternBuilder(
 			self.legato(legato)
 		return self
 
-	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: int = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0) -> "PatternBuilder":
+	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0) -> "PatternBuilder":
 
 		"""
 		Play a chord as an arpeggio in a specific or random order.
@@ -842,7 +887,8 @@ class PatternBuilder(
 			root: MIDI root note (e.g., 60 for Middle C).
 			order: List of indices into the chord tones array, dictating playback order.
 			spacing: Time between each note in beats (default 0.25 = 16th note).
-			velocity: MIDI velocity for all notes (default 85).
+			velocity: MIDI velocity for all notes (default 100), or a
+				``(low, high)`` tuple for a fresh random draw per note.
 			duration: Note duration in beats. Defaults to ``spacing``.
 			inversion: Specific chord inversion (ignored if voice leading is on).
 

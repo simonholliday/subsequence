@@ -1423,22 +1423,36 @@ class Sequencer:
 			while self.event_queue and self.event_queue[0].pulse <= pulse:
 
 				event = heapq.heappop(self.event_queue)
-				
-				# Track active notes (keyed by device, channel, note)
-				if event.message_type == 'note_on' and event.velocity > 0:
-					self.active_notes.add((event.device, event.channel, event.note))
-				elif event.message_type == 'note_off' or (event.message_type == 'note_on' and event.velocity == 0):
-					if (event.device, event.channel, event.note) in self.active_notes:
-						self.active_notes.remove((event.device, event.channel, event.note))
 
-				# Send events at or before the current pulse (late events are sent immediately).
-				self._send_midi(event)
+				# Defensive: dispatching a single malformed event must not
+				# crash the sequencer loop and stop the whole composition.
+				# A bad event (e.g. a tuple stored on Note.velocity by a
+				# misuse of a builder method) is logged with full context
+				# and skipped; subsequent events continue normally.
+				try:
 
-				if self.recording and event.message_type != 'osc':
+					# Track active notes (keyed by device, channel, note)
+					if event.message_type == 'note_on' and event.velocity > 0:
+						self.active_notes.add((event.device, event.channel, event.note))
+					elif event.message_type == 'note_off' or (event.message_type == 'note_on' and event.velocity == 0):
+						if (event.device, event.channel, event.note) in self.active_notes:
+							self.active_notes.remove((event.device, event.channel, event.note))
 
-					mido_msg = event.to_mido()
-					if mido_msg is not None:
-						self._record_event(event.pulse, mido_msg)
+					# Send events at or before the current pulse (late events are sent immediately).
+					self._send_midi(event)
+
+					if self.recording and event.message_type != 'osc':
+
+						mido_msg = event.to_mido()
+						if mido_msg is not None:
+							self._record_event(event.pulse, mido_msg)
+
+				except Exception:
+
+					logger.exception(
+						"Failed to dispatch %s event at pulse %d (device=%s, channel=%s) — skipping",
+						event.message_type, event.pulse, event.device, event.channel
+					)
 
 
 	async def _stop_all_active_notes (self) -> None:
