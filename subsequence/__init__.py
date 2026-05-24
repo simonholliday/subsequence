@@ -89,8 +89,9 @@ Composition tools:
 - **Randomness tools.** Weighted choice, no-repeat shuffle, random
   walk, probability gates. Deterministic seeding (``seed=42``) makes
   every decision repeatable.
-- **Pattern transforms.** Legato, staccato, reverse, double/half-time,
-  shift, transpose, invert, randomize, and conditional ``p.every()``.
+- **Pattern transforms.** Legato, detached, staccato, reverse,
+  double/half-time, shift, transpose, invert, randomize, and conditional
+  ``p.every()``.
 
 Integration:
 
@@ -112,7 +113,8 @@ Integration:
   one-shot patterns in response to sensors, OSC, or any event.
 - **Terminal display.** Live status line (BPM, bar, section, chord).
   Add ``grid=True`` for an ASCII pattern grid showing velocity and
-  sustain - makes legato and staccato visually distinct at a glance.
+  sustain - makes legato, detached, and staccato visually distinct at
+  a glance.
   Add ``grid_scale=2`` to zoom in horizontally, revealing swing and
   groove micro-timing.
 - **Web UI Dashboard (Beta).** Enable with ``composition.web_ui()`` to 

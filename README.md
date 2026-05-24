@@ -1062,7 +1062,24 @@ def guitar (p, chord):
     p.strum(chord, root=notes.E3, velocity=85, offset=0.06, legato=0.95)
 ```
 
-`sustain=True` and `legato=` are mutually exclusive - passing both raises a `ValueError`.
+### Detached chords
+
+Pass `detached=` directly to `chord()` or `strum()` to hold the chord almost the full cycle and release it cleanly `detached` beats before the next chord begins. This is the declarative form of "set `duration = pattern.length - detached`" — the math tracks `count` and `offset` automatically, and it is polyphony-safe: no voice from this chord is still sounding when the next one starts. Useful on voice-limited synths (the Sequential Take 5's 5 voices, any monophonic bass) where overlapping releases would cause unpredictable voice stealing.
+
+```python
+@composition.pattern(channel=1, beats=8, voice_leading=True)
+def pad (p, chord):
+    # Chord rings until 0.25 beats before the next 8-beat cycle.
+    p.chord(chord, root=notes.E3, velocity=90, count=5, detached=0.25)
+
+@composition.pattern(channel=1, beats=8, voice_leading=True)
+def guitar (p, chord):
+    # Last strum note ends 0.25 beats before next chord; earlier notes
+    # end proportionally sooner — releases staggered like the placements.
+    p.strum(chord, root=notes.E3, velocity=85, count=5, offset=0.1, detached=0.25)
+```
+
+`sustain=True`, `legato=`, and `detached=` are mutually exclusive — passing more than one raises a `ValueError`.
 
 ### Drones and sustained notes
 
@@ -1433,7 +1450,7 @@ Each column is one grid step (16th notes by default). Velocity and duration are 
 | `█` | Loud attack (velocity >= 75%) |
 | `>` | Sustain (note still sounding from a previous step) |
 
-The sustain marker makes legato and staccato patterns visually distinct - a legato bass line fills its steps with `>` between attacks; drum hits are short and show no sustain. Drum patterns show one row per distinct drum sound, labelled from the drum note map. Pitched patterns show a single summary row.
+The sustain marker makes legato, detached, and staccato patterns visually distinct - a legato bass line fills its steps with `>` all the way to the next attack; a detached line shows `>` markers that stop short of the next attack, leaving a visible gap; drum and staccato hits are short and show no sustain. Drum patterns show one row per distinct drum sound, labelled from the drum note map. Pitched patterns show a single summary row.
 
 ### Grid scale
 
@@ -2022,7 +2039,7 @@ Pass `data` as a `bytes` object or a list of integers (0–127). The surrounding
 
 ### Pitch bend automation
 
-Three post-build transforms generate correctly-timed pitch bend events by reading actual note positions and durations - no manual beat arithmetic required. Call them *after* `legato()` / `staccato()` so durations are final.
+Three post-build transforms generate correctly-timed pitch bend events by reading actual note positions and durations - no manual beat arithmetic required. Call them *after* `legato()` / `detached()` / `staccato()` so durations are final.
 
 **`p.bend()` - bend a specific note by index:**
 

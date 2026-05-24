@@ -1731,6 +1731,135 @@ def test_strum_legato_sustain_clash_raises () -> None:
 		builder.strum(chord, root=60, sustain=True, legato=0.9)
 
 
+# --- detached= shorthand on chord() and strum() ---
+
+
+def test_chord_detached_shortens_duration () -> None:
+
+	"""chord(detached=0.5) gives every chord note duration = (length - detached)."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	builder.chord(chord, root=60, velocity=90, detached=0.5)
+
+	# duration = 4.0 - 0.5 = 3.5 beats = 84 pulses
+	expected_duration = int(3.5 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	for note in pattern.steps[0].notes:
+		assert note.duration == expected_duration
+
+
+def test_chord_detached_sustain_clash_raises () -> None:
+
+	"""chord(sustain=True, detached=0.5) should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="mutually exclusive"):
+		builder.chord(chord, root=60, sustain=True, detached=0.5)
+
+
+def test_chord_detached_legato_clash_raises () -> None:
+
+	"""chord(legato=0.9, detached=0.5) should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="mutually exclusive"):
+		builder.chord(chord, root=60, legato=0.9, detached=0.5)
+
+
+def test_chord_default_no_detached_unchanged () -> None:
+
+	"""chord() without detached= leaves note durations at the default 1-beat value (regression)."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	builder.chord(chord, root=60, velocity=90)
+
+	expected_duration = int(1.0 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	for note in pattern.steps[0].notes:
+		assert note.duration == expected_duration
+
+
+def test_strum_detached_uniform_duration_with_stagger () -> None:
+
+	"""strum(detached=0.25) gives uniform duration so the LAST note ends `detached` beats before cycle end."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")  # 3 tones
+
+	builder.strum(chord, root=60, velocity=90, offset=0.1, detached=0.25)
+
+	# duration = 4.0 - 0.25 - (3 - 1) * 0.1 = 3.55 beats = 85 pulses
+	expected_duration = int(3.55 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	# All strum notes share the same uniform duration; releases are staggered
+	# only because the onsets are staggered.
+	for step in pattern.steps.values():
+		for note in step.notes:
+			assert note.duration == expected_duration
+
+
+def test_strum_detached_last_note_ends_before_cycle_boundary () -> None:
+
+	"""The last note of a detached strum must release before the cycle end."""
+
+	pattern, builder = _make_builder(length=8)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")  # 3 tones
+
+	builder.strum(chord, root=60, velocity=90, offset=0.1, count=5, detached=0.25)
+
+	# The last note onset is at (count-1) * offset = 0.4 beats; duration is
+	# (8.0 - 0.25 - 0.4) = 7.35 beats. End-of-note pulse = onset + duration.
+	# Cycle end pulse = 8 * MIDI_QUARTER_NOTE.
+	total_pulses = int(8 * subsequence.constants.MIDI_QUARTER_NOTE)
+	target_release_pulse = total_pulses - int(0.25 * subsequence.constants.MIDI_QUARTER_NOTE)
+
+	# Find the last note (highest pulse position).
+	last_pulse = max(pattern.steps.keys())
+	last_note  = pattern.steps[last_pulse].notes[0]
+	last_release_pulse = last_pulse + last_note.duration
+
+	# Within 1 pulse of the target boundary (allowing for int truncation).
+	assert abs(last_release_pulse - target_release_pulse) <= 1
+
+
+def test_strum_detached_sustain_clash_raises () -> None:
+
+	"""strum(sustain=True, detached=0.25) should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="mutually exclusive"):
+		builder.strum(chord, root=60, sustain=True, detached=0.25)
+
+
+def test_strum_detached_legato_clash_raises () -> None:
+
+	"""strum(legato=0.9, detached=0.25) should raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="mutually exclusive"):
+		builder.strum(chord, root=60, legato=0.9, detached=0.25)
+
+
 # --- Broken Chord ---
 
 

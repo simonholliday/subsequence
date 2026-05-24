@@ -74,7 +74,7 @@ The musician's 'palette' for creating musical content.
 | `cellular(pitch, rule, generation, velocity, duration, no_overlap, dropout, rng) -> 'PatternAlgorithmicMixin'` | Generate an evolving rhythm using a 1D cellular automaton. |
 | `cellular_1d(pitch, rule, generation, velocity, duration, no_overlap, dropout, rng) -> 'PatternAlgorithmicMixin'` | Generate an evolving rhythm using a 1D cellular automaton. |
 | `cellular_2d(pitches, rule, generation, velocity, duration, no_overlap, dropout, seed, density, rng) -> 'PatternAlgorithmicMixin'` | Generate polyphonic patterns using a 2D Life-like cellular automaton. |
-| `chord(chord_obj, root, velocity, sustain, duration, inversion, count, legato) -> 'PatternBuilder'` | Place a chord at the start of the pattern. |
+| `chord(chord_obj, root, velocity, sustain, duration, inversion, count, legato, detached) -> 'PatternBuilder'` | Place a chord at the start of the pattern. |
 | `de_bruijn(pitches, window, spacing, velocity, duration) -> 'PatternAlgorithmicMixin'` | Generate a melody that exhaustively traverses all pitch subsequences. |
 | `double_time() -> 'PatternBuilder'` | Compress all notes into the first half of the pattern, doubling the speed. |
 | `drone(pitch, beat, velocity) -> 'PatternBuilder'` | A musical alias for `note_on`. Places a raw Note On event without a duration, typically used for sustained notes that span multiple cycles. Must be silenced later using `drone_off()`. |
@@ -94,6 +94,7 @@ The musician's 'palette' for creating musical content.
 | `hit_steps(pitch, steps, velocity, duration, grid, probability, rng) -> 'PatternBuilder'` | Place short hits at specific step (grid) positions. |
 | `invert(pivot) -> 'PatternBuilder'` | Invert all pitches around a pivot note. |
 | `legato(ratio) -> 'PatternBuilder'` | Adjust note durations to fill the gap until the next note. |
+| `detached(beats) -> 'PatternBuilder'` | Shorten note durations so a guaranteed gap of `beats` precedes the next onset. |
 | `lorenz(pitches, spacing, velocity, duration, dt, sigma, rho, beta, x0, y0, z0, mapping) -> 'PatternAlgorithmicMixin'` | Generate a note sequence driven by the Lorenz strange attractor. |
 | `lsystem(pitch_map, axiom, rules, generations, spacing, velocity, duration) -> 'PatternAlgorithmicMixin'` | Generate a note sequence using L-system string rewriting. |
 | `markov(transitions, pitch_map, velocity, duration, spacing, start) -> 'PatternAlgorithmicMixin'` | Generate a sequence by walking a first-order Markov chain. |
@@ -124,7 +125,7 @@ The musician's 'palette' for creating musical content.
 | `silence(beat) -> 'PatternBuilder'` | Sends an 'All Notes Off' (CC 123) and 'All Sound Off' (CC 120) message on the pattern's channel to immediately silence any ringing notes or drones. |
 | `slide(notes, steps, time, shape, resolution, bend_range, wrap, extend) -> 'PatternMidiMixin'` | TB-303-style selective slide into specific notes. |
 | `staccato(ratio) -> 'PatternBuilder'` | Set all note durations to a fixed proportion of a beat. |
-| `strum(chord_obj, root, velocity, sustain, duration, inversion, count, offset, direction, legato) -> 'PatternBuilder'` | Play a chord with a small time offset between each note (strum effect). |
+| `strum(chord_obj, root, velocity, sustain, duration, inversion, count, offset, direction, legato, detached) -> 'PatternBuilder'` | Play a chord with a small time offset between each note (strum effect). |
 | `swing(amount, grid, strength) -> 'PatternBuilder'` | Apply swing feel to all notes in the pattern. |
 | `sysex(data, beat) -> 'PatternMidiMixin'` | Send a System Exclusive (SysEx) message at a beat position. |
 | `thin(pitch, strategy, amount, grid, rng) -> 'PatternAlgorithmicMixin'` | Remove notes from the pattern based on their rhythmic position. |

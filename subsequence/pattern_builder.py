@@ -681,7 +681,7 @@ class PatternBuilder(
 		)
 		return self
 
-	def chord (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None) -> "PatternBuilder":
+	def chord (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None, detached: typing.Optional[float] = None) -> "PatternBuilder":
 
 		"""
 		Place a chord at the start of the pattern.
@@ -695,29 +695,44 @@ class PatternBuilder(
 			root: MIDI root note (e.g., 60 for Middle C).
 			velocity: MIDI velocity (default 90).
 			sustain: If True, the notes last for the entire pattern duration.
-				Mutually exclusive with ``legato``.
+				Mutually exclusive with ``legato`` and ``detached``.
 			duration: Note duration in beats (default 1.0). Ignored when
-				``legato`` is set, since legato recalculates all durations.
+				``legato`` or ``detached`` is set, since those recalculate
+				durations.
 			inversion: Specific chord inversion (ignored if voice leading is on).
 			count: Number of notes to play (cycles tones if higher than
 				the chord's natural size).
 			legato: If given, calls ``p.legato(ratio)`` after placing the
 				chord, stretching each note to fill ``ratio`` of the gap to
-				the next note. Mutually exclusive with ``sustain``.
+				the next note. Mutually exclusive with ``sustain`` and
+				``detached``.
+			detached: If given, the chord rings until ``detached`` beats
+				before the next cycle — equivalent to setting
+				``duration = pattern.length - detached``.  Use this for a
+				declarative polyphony-safety margin so the chord always
+				releases before the next chord begins.  Mutually exclusive
+				with ``sustain`` and ``legato``.
 
 		Example::
 
 			# Shorthand for: p.chord(...) then p.legato(0.9)
 			p.chord(chord, root=root, velocity=85, count=4, legato=0.9)
+
+			# Hold the chord almost the full cycle, releasing 0.25 beats
+			# before the next chord begins.
+			p.chord(chord, root=root, velocity=85, count=5, detached=0.25)
 		"""
 
-		if sustain and legato is not None:
-			raise ValueError("sustain=True and legato= are mutually exclusive — use one or the other")
+		set_count = (1 if sustain else 0) + (1 if legato is not None else 0) + (1 if detached is not None else 0)
+		if set_count > 1:
+			raise ValueError("sustain=, legato=, and detached= are mutually exclusive — use one or the other")
 
 		pitches = chord_obj.tones(root=root, inversion=inversion, count=count)
 
 		if sustain:
 			duration = float(self._pattern.length)
+		elif detached is not None:
+			duration = float(self._pattern.length) - detached
 
 		for pitch in pitches:
 			self._pattern.add_note_beats(
@@ -731,7 +746,7 @@ class PatternBuilder(
 			self.legato(legato)
 		return self
 
-	def strum (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, offset: float = 0.05, direction: str = "up", legato: typing.Optional[float] = None) -> "PatternBuilder":
+	def strum (self, chord_obj: typing.Any, root: int, velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, offset: float = 0.05, direction: str = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None) -> "PatternBuilder":
 
 		"""
 		Play a chord with a small time offset between each note (strum effect).
@@ -746,9 +761,10 @@ class PatternBuilder(
 			root: MIDI root note (e.g., 60 for Middle C).
 			velocity: MIDI velocity (default 90).
 			sustain: If True, the notes last for the entire pattern duration.
-				Mutually exclusive with ``legato``.
+				Mutually exclusive with ``legato`` and ``detached``.
 			duration: Note duration in beats (default 1.0). Ignored when
-				``legato`` is set, since legato recalculates all durations.
+				``legato`` or ``detached`` is set, since those recalculate
+				durations.
 			inversion: Specific chord inversion (ignored if voice leading is on).
 			count: Number of notes to play (cycles tones if higher than
 				the chord's natural size).
@@ -756,7 +772,17 @@ class PatternBuilder(
 			direction: ``"up"`` for low-to-high, ``"down"`` for high-to-low.
 			legato: If given, calls ``p.legato(ratio)`` after placing the
 				chord, stretching each note to fill ``ratio`` of the gap to
-				the next note. Mutually exclusive with ``sustain``.
+				the next note. Mutually exclusive with ``sustain`` and
+				``detached``.
+			detached: If given, every strum note rings with a uniform
+				duration of ``pattern.length - detached - (count - 1) * offset``.
+				The last note ends exactly ``detached`` beats before the
+				next cycle; earlier notes end proportionally sooner, so
+				releases are staggered in the same shape as the placements
+				(the hand lifts the way it landed).  Polyphony-safe:
+				guarantees nothing from this strum is still sounding when
+				the next chord begins.  Mutually exclusive with ``sustain``
+				and ``legato``.
 
 		Example::
 
@@ -765,10 +791,15 @@ class PatternBuilder(
 
 			# Fast downward strum
 			p.strum(chord, root=52, direction="down", offset=0.03)
+
+			# Five-voice strum with a 0.25-beat safety gap before the
+			# next chord — won't exhaust polyphony on a 5-voice synth.
+			p.strum(chord, root=48, count=5, offset=0.1, detached=0.25)
 		"""
 
-		if sustain and legato is not None:
-			raise ValueError("sustain=True and legato= are mutually exclusive — use one or the other")
+		set_count = (1 if sustain else 0) + (1 if legato is not None else 0) + (1 if detached is not None else 0)
+		if set_count > 1:
+			raise ValueError("sustain=, legato=, and detached= are mutually exclusive — use one or the other")
 
 		if offset <= 0:
 			raise ValueError("offset must be positive")
@@ -783,6 +814,8 @@ class PatternBuilder(
 
 		if sustain:
 			duration = float(self._pattern.length)
+		elif detached is not None:
+			duration = float(self._pattern.length) - detached - (len(pitches) - 1) * offset
 
 		for i, pitch in enumerate(pitches):
 			self.note(pitch=pitch, beat=i * offset, velocity=velocity, duration=duration)
@@ -1242,6 +1275,56 @@ class PatternBuilder(
 		for step in self._pattern.steps.values():
 			for note in step.notes:
 				note.duration = duration_pulses
+		return self
+
+	def detached (self, beats: float = 0.05) -> "PatternBuilder":
+
+		"""
+		Shorten note durations so a guaranteed silence precedes the next onset.
+
+		The complement of :meth:`legato`.  For every placed note, the duration
+		is shrunk so that at least ``beats`` beats of silence remain before
+		the next note begins (wrapping around to the first note for the last
+		one).  Use this when you want a clean detached articulation, or as a
+		polyphony-safety margin between chord transitions on a monophonic or
+		voice-limited synth.
+
+		Parameters:
+			beats: Minimum gap in beats before the next onset (default 0.05
+				— roughly 25 ms at 120 BPM).  Must be positive.
+
+		Example::
+
+			# Bassline on a mono synth: each 16th note ends 0.05 beats
+			# before the next, so the synth never retriggers mid-note.
+			p.arpeggio(chord.tones(36, count=4), spacing=0.25).detached()
+
+			# Explicit larger gap for a longer release tail.
+			p.melody(state, spacing=0.25).detached(0.1)
+		"""
+
+		if beats <= 0:
+			raise ValueError("detached beats must be positive")
+
+		if not self._pattern.steps:
+			return self
+
+		sorted_positions = sorted(self._pattern.steps.keys())
+		total_pulses    = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
+		detached_pulses = int(beats * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		for i, position in enumerate(sorted_positions):
+
+			# Calculate gap to next note (wrap-around for the last one)
+			if i < len(sorted_positions) - 1:
+				gap = sorted_positions[i + 1] - position
+			else:
+				gap = (total_pulses - position) + sorted_positions[0]
+
+			new_duration = max(1, gap - detached_pulses)
+
+			for note in self._pattern.steps[position].notes:
+				note.duration = new_duration
 		return self
 
 	def quantize (self, key: str, mode: str = "ionian", strength: float = 1.0) -> "PatternBuilder":
