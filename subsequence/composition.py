@@ -623,8 +623,22 @@ class Composition:
 		Initialize a new composition.
 
 		Parameters:
-			output_device: The name of the MIDI output port to use. If `None`,
-				Subsequence will attempt to find a device, prompting if necessary.
+			output_device: The exact name of the MIDI output port to use,
+				as reported by ``mido.get_output_names()``. Matching is
+				strict — the string must equal an entry in that list
+				verbatim. On Linux/ALSA, names include the client and
+				port IDs (e.g.
+				``"Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"``); the
+				trailing ``:client:port`` digits are assigned in
+				connection order and can change between reboots or when
+				a virtual port is recreated. To look up the current
+				names::
+
+				    import mido
+				    for n in mido.get_output_names(): print(n)
+
+				If `None`, Subsequence auto-discovers — uses the only
+				available device, or prompts to choose if several exist.
 			bpm: Initial tempo in beats per minute (default 120).
 			key: The root key of the piece (e.g., "C", "F#", "Bb").
 				Required if you plan to use `harmony()`.
@@ -1506,7 +1520,11 @@ class Composition:
 		Each call to ``midi_output()`` adds the next device (1, 2, …).
 
 		Parameters:
-			device: The name of the MIDI output port.
+			device: The exact name of the MIDI output port, as reported
+				by ``mido.get_output_names()``. Matching is strict —
+				partial names and substrings are rejected. See
+				``Composition.__init__`` for the lookup snippet and a
+				note on ALSA name stability on Linux.
 			name: Optional alias for use with ``pattern(device=…)``,
 				``cc_forward(output_device=…)``, etc.  When omitted, the raw
 				device name is used.

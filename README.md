@@ -490,6 +490,15 @@ Pattern length can be specified two ways - use whichever is clearest:
 
 When `output_device` is omitted, Subsequence auto-discovers available MIDI devices. If only one device is connected it is used automatically; if several are found you are prompted to choose. To skip the prompt, pass the device name directly: `Composition(output_device="Your Device:Port", ...)`.
 
+The name is matched exactly against `mido.get_output_names()` — partial names and substrings are rejected, and on Linux/ALSA the port string includes the client and port IDs (e.g. `"Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"`, `"RtMidiIn Client:My Virtual Port 128:0"`). The trailing `:client:port` digits are assigned in connection order and can drift between reboots or when a virtual port is recreated. To look up the current names:
+
+```python
+import mido
+for n in mido.get_output_names(): print(n)
+```
+
+The same rule applies to every place that takes a device name — `Composition(output_device=…)`, `composition.midi_output(…)`, `composition.midi_input(…)`.
+
 **Multiple output devices** - use `comp.midi_output()` to register additional devices. Each call returns a device index (1, 2, …) that can be used in pattern decorators or as a named alias:
 
 ```python
