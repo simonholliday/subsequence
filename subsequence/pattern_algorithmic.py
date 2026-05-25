@@ -42,7 +42,7 @@ class PatternAlgorithmicMixin:
 			self,
 			pitch: typing.Union[int, str],
 			beat: float,
-			velocity: int,
+			velocity: typing.Union[int, typing.Tuple[int, int]],
 			duration: float,
 		) -> "subsequence.pattern_builder.PatternBuilder": ...
 		def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int: ...
