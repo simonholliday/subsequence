@@ -527,6 +527,25 @@ def bass(p):
 
 Patterns without a `device=` parameter always route to device 0 - single-device compositions work exactly as before without any changes.
 
+**Latency compensation** - when you drive a mix of hardware synths (which respond almost instantly) and digital instruments (a software sampler might sound ~20ms late because of its audio buffer), notes scheduled on the same beat don't *sound* together. Tell Subsequence each device's physical latency in milliseconds and it lines everything up. Because you can't send a note into the past, it makes things align by **delaying the faster devices to meet the slowest one**:
+
+```python
+comp = subsequence.Composition(
+    bpm=120,
+    output_device="Scarlett 2i4",      # hardware, device 0 — no latency
+)
+comp.midi_output("Subsample", name="sampler", latency_ms=22)   # sounds 22ms late
+```
+
+Here the sampler (device 1) is the slowest at 22ms, so every note bound for device 0 is held back 22ms; all of them then sound at the same instant. Set `latency_ms=` on the constructor for the primary device, or on each `midi_output()` call for the rest. Latency is a non-negative figure you measure once for your rig.
+
+A few things worth knowing:
+
+- **It's per device, so mirroring just works** - if you mirror a drum pattern from hardware to the sampler, each copy is compensated for its own destination.
+- **The recorded `.mid` is left uncompensated** - it captures the musical (logical) timing, since compensation is specific to your physical setup. Re-importing and playing through the same rig applies it again.
+- **The MIDI clock is never delayed** - only note and expression events are, so external gear stays locked to the beat.
+- **Watch the whole-rig latency** - the slowest device sets how late *everything* responds to live input. If that exceeds ~30ms Subsequence logs a warning, because tight live playing starts to suffer.
+
 MIDI channels and drum note mappings are defined by the musician in their composition file - the module does not ship studio-specific constants. Channels use 1-based numbering by default (1-16, matching instrument panels - channel 10 is drums). To use 0-based numbering (0-15, matching the raw MIDI protocol), pass `zero_indexed_channels=True`:
 
 ```python

@@ -8,7 +8,7 @@ The top-level controller for a musical piece.
 
 | Method | Description |
 |---|---|
-| `__init__(output_device, bpm, time_signature, key, seed, record, record_filename, zero_indexed_channels) -> None` | Initialize a new composition. |
+| `__init__(output_device, bpm, time_signature, key, seed, record, record_filename, zero_indexed_channels, latency_ms) -> None` | Initialize a new composition. |
 | `builder_bar *(property)*` | Current bar index used by pattern builders. |
 | `cc_forward(cc, output, channel, output_channel, mode, input_device, output_device) -> None` | Forward an incoming MIDI CC to the MIDI output in real-time. |
 | `cc_map(cc, key, channel, min_val, max_val, input_device) -> None` | Map an incoming MIDI CC to a ``composition.data`` key. |
@@ -31,7 +31,7 @@ The top-level controller for a musical piece.
 | `live(port) -> None` | Enable the live coding eval server. |
 | `live_info() -> Dict[str, Any]` | Return a dictionary containing the current state of the composition. |
 | `midi_input(device, clock_follow, name) -> None` | Configure a MIDI input device for external sync and MIDI messages. |
-| `midi_output(device, name) -> int` | Register an additional MIDI output device. |
+| `midi_output(device, name, latency_ms) -> int` | Register an additional MIDI output device (with optional latency compensation). |
 | `mute(name) -> None` | Mute a running pattern by name. |
 | `on_event(event_name, callback) -> None` | Register a callback for a sequencer event (e.g., "bar", "start", "stop"). |
 | `osc(receive_port, send_port, send_host) -> None` | Enable bi-directional Open Sound Control (OSC). |

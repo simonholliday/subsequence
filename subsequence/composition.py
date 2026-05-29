@@ -35,6 +35,11 @@ import subsequence.link_clock
 logger = logging.getLogger(__name__)
 
 
+# Above this whole-rig latency (ms), delay compensation is delaying every
+# faster device enough that live-input feel may suffer — worth a warning.
+_LATENCY_WARN_THRESHOLD_MS = 30.0
+
+
 # ---------------------------------------------------------------------------
 # Hotkey support — dataclasses and label derivation
 # ---------------------------------------------------------------------------
@@ -131,6 +136,23 @@ class ScheduleContext:
 	"""
 
 	cycle: int
+
+
+@dataclasses.dataclass
+class _AdditionalOutput:
+
+	"""A MIDI output device registered via ``composition.midi_output()``.
+
+	Attributes:
+		device: The exact MIDI output port name.
+		alias: Optional friendly name for device-id lookups.
+		latency_ms: Physical output latency in milliseconds for delay
+			compensation (0.0 = no compensation).
+	"""
+
+	device: str
+	alias: typing.Optional[str] = None
+	latency_ms: float = 0.0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -616,7 +638,8 @@ class Composition:
 		seed: typing.Optional[int] = None,
 		record: bool = False,
 		record_filename: typing.Optional[str] = None,
-		zero_indexed_channels: bool = False
+		zero_indexed_channels: bool = False,
+		latency_ms: float = 0.0
 	) -> None:
 
 		"""
@@ -652,6 +675,12 @@ class Composition:
 				Channel 10 is drums, the way musicians and hardware panels
 				show it. When True, channels use 0-based numbering (0-15)
 				matching the raw MIDI protocol.
+			latency_ms: Physical output latency of the primary device in
+				milliseconds, for delay compensation (default 0.0, must be
+				non-negative). Set this when the primary output sounds late
+				(e.g. a software sampler) so Subsequence delays faster
+				devices to line everything up. See ``midi_output()`` for
+				additional devices.
 
 		Example:
 			```python
@@ -659,12 +688,16 @@ class Composition:
 			```
 		"""
 
+		if latency_ms < 0:
+			raise ValueError(f"latency_ms must be non-negative — got {latency_ms}")
+
 		self.output_device = output_device
 		self.bpm = bpm
 		self.time_signature = time_signature
 		self.key = key
 		self._seed: typing.Optional[int] = seed
 		self._zero_indexed_channels: bool = zero_indexed_channels
+		self._output_latency_ms: float = latency_ms
 
 		self._sequencer = subsequence.sequencer.Sequencer(
 			output_device_name = output_device,
@@ -694,8 +727,7 @@ class Composition:
 		self._cc_mappings: typing.List[typing.Dict[str, typing.Any]] = []
 		self._cc_forwards: typing.List[typing.Dict[str, typing.Any]] = []
 		# Additional output devices registered with midi_output() after construction.
-		# Each entry: (device_name: str, alias: Optional[str])
-		self._additional_outputs: typing.List[typing.Tuple[str, typing.Optional[str]]] = []
+		self._additional_outputs: typing.List[_AdditionalOutput] = []
 		# Additional input devices: (device_name: str, alias: Optional[str], clock_follow: bool)
 		self._additional_inputs: typing.List[typing.Tuple[str, typing.Optional[str], bool]] = []
 		# Maps alias/name → output device index (populated in _run after all devices are opened).
@@ -1510,7 +1542,7 @@ class Composition:
 			# Subsequent calls: register additional input devices
 			self._additional_inputs.append((device, name, clock_follow))
 
-	def midi_output (self, device: str, name: typing.Optional[str] = None) -> int:
+	def midi_output (self, device: str, name: typing.Optional[str] = None, latency_ms: float = 0.0) -> int:
 
 		"""
 		Register an additional MIDI output device.
@@ -1528,6 +1560,11 @@ class Composition:
 			name: Optional alias for use with ``pattern(device=…)``,
 				``cc_forward(output_device=…)``, etc.  When omitted, the raw
 				device name is used.
+			latency_ms: Physical output latency of this device in
+				milliseconds, for delay compensation (default 0.0, must be
+				non-negative). Set this when the device sounds late (e.g. a
+				software sampler) so Subsequence delays faster devices to
+				line everything up.
 
 		Returns:
 			The integer device index assigned (1, 2, 3, …).
@@ -1539,15 +1576,42 @@ class Composition:
 			# Returns 1 — use as device=1 or device="integra"
 			comp.midi_output("Roland Integra", name="integra")
 
+			# A software sampler that sounds 20ms late
+			comp.midi_output("Subsample", name="sampler", latency_ms=20)
+
 			@comp.pattern(channel=1, beats=4, device="integra")
 			def strings (p):
 				p.note(60, beat=0)
 			```
 		"""
 
+		if latency_ms < 0:
+			raise ValueError(f"latency_ms must be non-negative — got {latency_ms}")
+
 		idx = 1 + len(self._additional_outputs)  # device 0 is always the primary
-		self._additional_outputs.append((device, name))
+		self._additional_outputs.append(_AdditionalOutput(device=device, alias=name, latency_ms=latency_ms))
 		return idx
+
+	def _warn_if_high_latency (self) -> None:
+
+		"""Warn if delay compensation adds a large whole-rig latency.
+
+		The slowest device defines the alignment point — every faster device is
+		delayed up to that amount — so a large maximum means the whole rig
+		responds late to live input.  Emitted once at startup.
+		"""
+
+		candidates: typing.List[typing.Tuple[str, float]] = [("primary output", self._output_latency_ms)]
+		candidates += [(out.alias or out.device, out.latency_ms) for out in self._additional_outputs]
+
+		slow_name, max_ms = max(candidates, key=lambda c: c[1])
+
+		if max_ms > _LATENCY_WARN_THRESHOLD_MS:
+			logger.warning(
+				"Device latency compensation: '%s' is the slowest at %.0fms, so faster "
+				"devices are delayed up to %.0fms to stay aligned — live-input feel may suffer.",
+				slow_name, max_ms, max_ms,
+			)
 
 	def clock_output (self, enabled: bool = True) -> None:
 
@@ -3044,6 +3108,10 @@ class Composition:
 		# 2. Pre-calculate output device names.
 		if self._sequencer.output_device_name:
 			self._output_device_names[self._sequencer.output_device_name] = 0
+			# Primary device (index 0) is open by now (_init_midi_output ran in
+			# the Sequencer constructor), so its latency can be set safely here.
+			if self._output_latency_ms:
+				self._sequencer.set_device_latency(0, self._output_latency_ms)
 
 		# 3. Resolve name-based device ids in cc_map/cc_forward/pending patterns early.
 		# This ensures we have integer indices ready for the background callback thread.
@@ -3083,15 +3151,20 @@ class Composition:
 				logger.warning(f"Could not open additional input device '{dev_name}'")
 
 		# 6. Open additional MIDI output devices.
-		for dev_name, alias in self._additional_outputs:
-			open_name, port = subsequence.midi_utils.select_output_device(dev_name)
+		for out in self._additional_outputs:
+			open_name, port = subsequence.midi_utils.select_output_device(out.device)
 			if open_name and port is not None:
-				idx = self._sequencer.add_output_device(open_name, port)
+				idx = self._sequencer.add_output_device(open_name, port, out.latency_ms)
 				self._output_device_names[open_name] = idx
-				if alias is not None:
-					self._output_device_names[alias] = idx
+				if out.alias is not None:
+					self._output_device_names[out.alias] = idx
 			else:
-				logger.warning(f"Could not open additional output device '{dev_name}'")
+				logger.warning(f"Could not open additional output device '{out.device}'")
+
+		# Warn if latency compensation adds noticeable whole-rig delay: the
+		# slowest device defines the alignment point, so every faster device is
+		# delayed up to that amount and live-input feel suffers.
+		self._warn_if_high_latency()
 
 		# Resolve any name-based output device IDs on patterns that may have been added
 		# for additional output devices.

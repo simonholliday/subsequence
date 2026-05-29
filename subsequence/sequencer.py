@@ -294,6 +294,12 @@ class Sequencer:
 		self.current_beat: int = -1
 		self.active_notes: typing.Set[typing.Tuple[int, int, int]] = set()  # (device, channel, note)
 
+		# Device latency compensation: cached max across all output devices, and
+		# the set of in-flight deferred sends (call_later handles) awaiting their
+		# per-device offset.  See _dispatch_with_compensation() and stop().
+		self._max_device_latency_ms: float = 0.0
+		self._pending_sends: typing.Set[asyncio.TimerHandle] = set()
+
 		self.queue_lock = asyncio.Lock()
 		self.pattern_lock = asyncio.Lock()
 		self.reschedule_queue: typing.List[typing.Tuple[int, int, ScheduledPattern]] = []
@@ -368,13 +374,37 @@ class Sequencer:
 		else:
 			self._input_devices.replace(0, value)
 
-	def add_output_device (self, name: str, port: typing.Any) -> int:
-		"""Register an additional output device.  Returns the device index."""
-		return self._output_devices.add(name, port)
+	def add_output_device (self, name: str, port: typing.Any, latency_ms: float = 0.0) -> int:
+		"""Register an additional output device.  Returns the device index.
+
+		*latency_ms* is the device's physical output latency for compensation
+		(see :meth:`set_device_latency`).
+		"""
+		idx = self._output_devices.add(name, port, latency_ms)
+		self._max_device_latency_ms = self._output_devices.max_latency()
+		return idx
 
 	def add_input_device (self, name: str, port: typing.Any) -> int:
 		"""Register an additional input device.  Returns the device index."""
 		return self._input_devices.add(name, port)
+
+	def set_device_latency (self, device: subsequence.midi_utils.DeviceId, latency_ms: float) -> None:
+
+		"""Set an output device's physical latency (ms) for delay compensation.
+
+		Latency is normalised engine-wide: the slowest device plays at its
+		logical time and every faster device's output is deferred by
+		``max_latency − its_latency`` so all devices sound together.  See
+		:meth:`_dispatch_with_compensation`.
+
+		Parameters:
+			device: Output device id (int index, name str, or None for device 0).
+			latency_ms: Non-negative physical output latency in milliseconds.
+				Raises ``ValueError`` if negative or the device is unknown.
+		"""
+
+		self._output_devices.set_latency(device, latency_ms)
+		self._max_device_latency_ms = self._output_devices.max_latency()
 
 	def _record_event (self, pulse: int, message: typing.Union[mido.Message, mido.MetaMessage]) -> None:
 
@@ -1012,6 +1042,12 @@ class Sequencer:
 		if self.task:
 			await self.task
 
+		# Cancel any latency-compensation deferrals still in flight.  Must happen
+		# after the loop has stopped producing (await self.task) and before
+		# close_all() so a pending call_later can't fire on a closed port.
+		# panic() below is the silence authority for any note stranded by this.
+		self._cancel_pending_sends()
+
 		if self.clock_output:
 			self._send_clock_message("stop")
 
@@ -1438,8 +1474,11 @@ class Sequencer:
 						if (event.device, event.channel, event.note) in self.active_notes:
 							self.active_notes.remove((event.device, event.channel, event.note))
 
-					# Send events at or before the current pulse (late events are sent immediately).
-					self._send_midi(event)
+					# Send events at or before the current pulse (late events are sent
+					# immediately).  Latency compensation may defer the actual send by
+					# the device's offset, but recording below always uses the LOGICAL
+					# pulse — the .mid is the uncompensated score.
+					self._dispatch_with_compensation(event)
 
 					if self.recording and event.message_type != 'osc':
 
@@ -1499,6 +1538,74 @@ class Sequencer:
 						logger.exception(f"Failed to send note_off during unregister (dev={dev}, ch={channel}, note={note})")
 				self.active_notes.discard((dev, channel, note))
 
+
+	def _send_offset_seconds (self, device: int) -> float:
+
+		"""Return the latency-compensation send offset (seconds) for *device*.
+
+		``(max_latency − device_latency) / 1000``, clamped ≥ 0.  The slowest
+		device returns 0 (sent at logical time); faster devices return a
+		positive delay so they sound together.
+
+		Invariant: the offset is **per-device**, so every event for one device
+		shares it.  That is what preserves same-pulse FIFO order through
+		deferral — an NRPN burst (CC 99 → 98 → 6 → 38) on one device stays in
+		order because all four are deferred by the same amount.  A future
+		per-channel/per-message latency would break that and must not be added
+		without re-thinking burst ordering.
+		"""
+
+		offset_ms = self._max_device_latency_ms - self._output_devices.latency_of(device)
+		if offset_ms <= 0.0:
+			return 0.0
+		return offset_ms / 1000.0
+
+	def _dispatch_with_compensation (self, event: MidiEvent) -> None:
+
+		"""Send *event* now, or defer it by its device's latency offset.
+
+		Deferral is a wall-clock ``call_later`` so it is correct regardless of
+		tempo or clock source.  Skipped entirely in render mode (no real clock
+		— deferring would drop events from the rendered file) and when no event
+		loop is running (the synchronous test path).
+		"""
+
+		if self.render_mode or self._event_loop is None:
+			self._send_midi(event)
+			return
+
+		offset_s = self._send_offset_seconds(event.device)
+		if offset_s <= 0.0:
+			self._send_midi(event)
+			return
+
+		# Defer the physical send.  The one-element ``cell`` lets the callback
+		# discard exactly its own handle from _pending_sends (the handle isn't
+		# known until call_later returns, but _fire only runs after we append).
+		cell: typing.List[asyncio.TimerHandle] = []
+
+		def _fire () -> None:
+			self._pending_sends.discard(cell[0])
+			self._send_midi(event)
+
+		handle = self._event_loop.call_later(offset_s, _fire)
+		cell.append(handle)
+		self._pending_sends.add(handle)
+
+	def _cancel_pending_sends (self) -> None:
+
+		"""Cancel and forget all in-flight deferred sends.  Idempotent.
+
+		Called during ``stop()`` before ports close so a pending ``call_later``
+		can never fire ``port.send()`` on a closed port.  Stranded notes are not
+		a concern here: ``panic()`` runs after this and is the silence
+		authority (``active_notes`` reflects logical time and can diverge from
+		what physically fired, so it is not relied upon).
+		"""
+
+		for handle in self._pending_sends:
+			handle.cancel()
+		self._pending_sends.clear()
 
 	def _send_midi (self, event: MidiEvent) -> None:
 

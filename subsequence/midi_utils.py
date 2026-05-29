@@ -27,13 +27,22 @@ class MidiDeviceRegistry:
 
 		self._ports: typing.List[typing.Tuple[str, typing.Any]] = []
 		self._name_to_index: typing.Dict[str, int] = {}
+		# Per-device physical output latency in milliseconds, parallel to
+		# self._ports by index.  Kept separate from the (name, port) tuple so
+		# replace() can swap the port object without disturbing latency.
+		self._latencies: typing.List[float] = []
 
-	def add (self, name: str, port: typing.Any) -> int:
+	def add (self, name: str, port: typing.Any, latency_ms: float = 0.0) -> int:
 
-		"""Register a port under *name*.  Returns the assigned integer index."""
+		"""Register a port under *name*.  Returns the assigned integer index.
+
+		*latency_ms* is the device's physical output latency (non-negative);
+		see :meth:`set_latency`.
+		"""
 
 		idx = len(self._ports)
 		self._ports.append((name, port))
+		self._latencies.append(max(0.0, float(latency_ms)))
 		# First registration wins for name collisions.
 		if name not in self._name_to_index:
 			self._name_to_index[name] = idx
@@ -82,6 +91,42 @@ class MidiDeviceRegistry:
 			raise IndexError(f"MidiDeviceRegistry: index {index} out of range (size {len(self._ports)})")
 		name = self._ports[index][0]
 		self._ports[index] = (name, port)
+		# Latency is intentionally preserved — replace() is a pure port swap.
+
+	def set_latency (self, device: DeviceId, latency_ms: float) -> None:
+
+		"""Set the physical output latency (milliseconds) for *device*.
+
+		*latency_ms* must be non-negative — a device cannot sound before it is
+		triggered, so a negative output latency is meaningless.  Raises
+		``ValueError`` for a negative value or an unknown device.
+		"""
+
+		if latency_ms < 0:
+			raise ValueError(f"latency_ms must be non-negative — got {latency_ms}")
+		idx = self.index_of(device)
+		if idx < 0:
+			raise ValueError(f"Unknown output device: {device!r}")
+		self._latencies[idx] = float(latency_ms)
+
+	def latency_of (self, device: DeviceId = None) -> float:
+
+		"""Return the latency (ms) for *device*, or 0.0 if it cannot be resolved.
+
+		Defensive on the hot dispatch path: an unknown device yields 0.0 rather
+		than raising, so a stray event can never crash the send loop.
+		"""
+
+		idx = self.index_of(device)
+		if idx < 0 or idx >= len(self._latencies):
+			return 0.0
+		return self._latencies[idx]
+
+	def max_latency (self) -> float:
+
+		"""Return the largest latency across all registered devices (0.0 if empty)."""
+
+		return max(self._latencies, default=0.0)
 
 	def close_all (self) -> None:
 
@@ -95,6 +140,7 @@ class MidiDeviceRegistry:
 				logger.exception(f"Error closing MIDI port '{name}'")
 		self._ports.clear()
 		self._name_to_index.clear()
+		self._latencies.clear()
 
 	def __len__ (self) -> int:
 		return len(self._ports)

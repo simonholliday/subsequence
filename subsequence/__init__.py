@@ -100,6 +100,9 @@ Integration:
   one may be designated as the master clock source; messages from
   other inputs are filtered to prevent sync interference. Sync to a
   DAW or drive hardware.
+- **Latency compensation.** Declare each output device's physical
+  latency (``latency_ms=``); Subsequence delays the faster devices so
+  a mix of hardware and slower software instruments sound together.
 - **Hardware control.** CC input mapping from knobs/faders to
   ``composition.data``; patterns read and write the same dict via
   ``p.data`` for both external data access and cross-pattern
