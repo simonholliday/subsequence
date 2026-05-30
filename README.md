@@ -2223,6 +2223,23 @@ composition.unmirror_all("drums")                    # remove all mirrors
 
 Changes apply on the next pattern rebuild (bar-level granularity, the same as `mute()` / `unmute()`). `mirror()` is idempotent — calling with the same destination twice does not double-fan.
 
+**Per-destination drum maps (symbolic mirror):**
+
+When you mirror a *drum* part to a device with a different drum map, a plain `(device, channel)` mirror copies the raw note number — which can sound the wrong voice (a Vermona DRM1's closed hi-hat is note 44, but on a General-MIDI sampler note 44 is the *pedal* hat). Add a third element — a `drum_note_map` — and each destination re-resolves the drum *name* through its own map instead:
+
+```python
+import subsequence.constants.instruments.vermona_drm1_drums as drm1
+import subsequence.constants.instruments.gm_drums as gm   # General MIDI, from PyMidiDefs
+
+# Primary plays the DRM1; the mirror plays a GM sampler with its own note numbers.
+@composition.pattern(channel=10, drum_note_map=drm1.VERMONA_DRM1_DRUM_MAP,
+                     mirrors=[(1, 10, gm.GM_DRUM_MAP)])
+def drums (p):
+    p.hit_steps("hi_hat_closed", [2, 6, 10, 14], velocity=90)   # → 44 on the DRM1, 42 on the sampler
+```
+
+The live API takes the same optional map: `composition.mirror("drums", device=1, channel=10, drum_note_map=gm.GM_DRUM_MAP)`. `unmirror()` matches on `(device, channel)` only.
+
 **Things worth knowing:**
 
 - **Bandwidth multiplication.** Each mirror destination adds another full copy of the pattern's events to the queue and the bus. A dense pattern (16-step drum part with ghost fills and CC ramps) mirrored to two destinations triples the MIDI traffic from that pattern. Over USB or IAC virtual ports this is a non-issue; over saturated DIN-MIDI it can cause timing slop on the slowest destination. Mirror sparingly on slow links.
@@ -2232,6 +2249,10 @@ Changes apply on the next pattern rebuild (bar-level granularity, the same as `m
 - **OSC is not mirrored.** OSC events bypass MIDI ports entirely; mirroring them would require a different abstraction. If you need an OSC message to fan out to multiple endpoints, configure that in your OSC routing (e.g. multiple servers, multicast).
 
 - **Mirror-to-self.** Adding a mirror equal to the pattern's primary destination would double every event to the same `(device, channel)` — almost certainly unintended. Subsequence logs a warning when this is detected at decoration or runtime time. The warning fires for both the decorator (`mirrors=[...]`) and the live API (`composition.mirror(...)`); deferred string device names skip the check at decoration time but pick it up once the pattern is running.
+
+- **Author in canonical (GM) names for symbolic mirroring.** A per-destination map re-resolves the drum *name*, so the name you write must exist in **both** the primary and the mirror map. Use the General MIDI names from `pymididefs.drums` (re-exported as `subsequence.constants.instruments.gm_drums`) — the shared vocabulary the device maps alias. The four instruments GM defines in numbered pairs also have unnumbered **primary aliases** — `"kick"`/`"snare"`/`"crash"`/`"ride"` resolve to the `_1` variant on any map that has the voice — so you can write the simplest names. A device participates only if its `drum_note_map` carries those GM aliases; the bundled DRM1 and TR-8S maps do, **for the voices they genuinely have**. If a name is missing from a mirror's map (or you use a plain 2-tuple), the primary's resolved number is copied — the legacy behaviour, no surprise. No new vocabulary or list is introduced; GM (PyMidiDefs) is the canonical source. Drones and CC are not symbolically translated in this release.
+
+  > **Breaking change (drum maps).** The `VERMONA_DRM1_DRUM_MAP` previously aliased the *whole* GM kit by approximating absent voices (e.g. `cowbell` → multi, cymbals → hi-hat); those subjective approximations have been removed in favour of faithful-core aliasing. GM names the DRM1 has no real voice for now raise `Unknown drum name` rather than triggering a stand-in — address those voices by their native `drum_1` / `drum_2` / `multi` names. The TR-8S map gains faithful GM aliases in the same spirit.
 
 ### Scale quantization
 

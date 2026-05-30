@@ -26,17 +26,18 @@ The top-level controller for a musical piece.
 | `hotkey(key, action, quantize, label) -> None` | Register a single-key shortcut that fires during playback. |
 | `hotkeys(enabled) -> None` | Enable or disable the global hotkey listener. |
 | `is_clock_following *(property)*` | True if either the primary or any additional device is following external clock. |
-| `layer(*builder_fns, channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading, device) -> None` | Combine multiple functions into a single MIDI pattern. |
+| `layer(*builder_fns, channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading, device, mirrors) -> None` | Combine multiple functions into a single MIDI pattern. |
 | `link(quantum) -> 'Composition'` | Enable Ableton Link tempo and phase synchronisation. |
 | `live(port) -> None` | Enable the live coding eval server. |
 | `live_info() -> Dict[str, Any]` | Return a dictionary containing the current state of the composition. |
 | `midi_input(device, clock_follow, name) -> None` | Configure a MIDI input device for external sync and MIDI messages. |
 | `midi_output(device, name, latency_ms) -> int` | Register an additional MIDI output device (with optional latency compensation). |
+| `mirror(name, device, channel, drum_note_map) -> None` | Add a mirror destination to a running pattern; an optional per-destination drum map re-resolves drum names for that device. |
 | `mute(name) -> None` | Mute a running pattern by name. |
 | `on_event(event_name, callback) -> None` | Register a callback for a sequencer event (e.g., "bar", "start", "stop"). |
 | `osc(receive_port, send_port, send_host) -> None` | Enable bi-directional Open Sound Control (OSC). |
 | `osc_map(address, handler) -> None` | Register a custom OSC handler. |
-| `pattern(channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading, device) -> Callable` | Register a function as a repeating MIDI pattern. |
+| `pattern(channel, beats, bars, steps, unit, drum_note_map, reschedule_lookahead, voice_leading, device, mirrors) -> Callable` | Register a function as a repeating MIDI pattern. |
 | `play() -> None` | Start the composition. |
 | `render(bars, filename, max_minutes) -> None` | Render the composition to a MIDI file without real-time playback. |
 | `running_patterns *(property)*` | The currently active patterns, keyed by name. |
@@ -46,9 +47,11 @@ The top-level controller for a musical piece.
 | `sequencer *(property)*` | The underlying ``Sequencer`` instance. |
 | `set_bpm(bpm) -> None` | Instantly change the tempo. |
 | `target_bpm(bpm, bars, shape) -> None` | Smoothly ramp the tempo to a target value over a number of bars. |
-| `trigger(fn, channel, beats, bars, steps, unit, quantize, drum_note_map, chord, device) -> None` | Trigger a one-shot pattern immediately or on a quantized boundary. |
+| `trigger(fn, channel, beats, bars, steps, unit, quantize, drum_note_map, chord, device, mirrors) -> None` | Trigger a one-shot pattern immediately or on a quantized boundary. |
 | `tuning(source, cents, ratios, equal, bend_range, channels, reference_note, exclude_drums) -> None` | Set a global microtonal tuning for the composition. |
 | `tweak(name, **kwargs) -> None` | Override parameters for a running pattern. |
+| `unmirror(name, device, channel) -> None` | Remove a single mirror destination (matches on device + channel, ignoring any map). |
+| `unmirror_all(name) -> None` | Remove every mirror destination from a running pattern. |
 | `unmute(name) -> None` | Unmute a previously muted pattern. |
 | `web_ui() -> None` | Enable the realtime Web UI Dashboard. |
 

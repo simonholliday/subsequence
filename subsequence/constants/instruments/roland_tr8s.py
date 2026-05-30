@@ -37,6 +37,17 @@ Three ways to use this module:
        p.hit_steps(tr8s.BD, [0, 4, 8, 12], velocity=127)
        p.cc(tr8s.BD_TUNE, 64)
 
+``ROLAND_TR8S_DRUM_MAP`` also accepts General MIDI drum names — the unnumbered
+``"kick"`` / ``"snare"`` / ``"crash"`` / ``"ride"`` primaries as well as the
+numbered ``"kick_1"``, ``"hi_hat_closed"``, ``"side_stick"``, etc. — as aliases
+for the matching TR-8S voices, a *faithful* subset only, covering the voices
+the machine genuinely has.  This lets GM-named patterns play on the TR-8S and
+lets it take part in symbolic mirroring (each device re-resolves a shared drum
+name through its own map).  Voices the TR-8S lacks (cowbell, tambourine,
+congas, splash/Chinese cymbals, …) are intentionally not aliased.  Canonical
+GM names come from `pymididefs.drums <https://github.com/simonholliday/PyMidiDefs>`_
+(``GM_DRUM_MAP``).
+
 Note: The TR-8S CC assignments are instrument-specific and overlap with
 standard GM CC numbers in incompatible ways (e.g. CC 9 = Shuffle on the
 TR-8S, not a standard GM assignment).  This map does NOT extend GM_CC_MAP.
@@ -168,6 +179,7 @@ RC_CTRL  = 110
 # ═══════════════════════════════════════════════════════════════════════
 
 ROLAND_TR8S_DRUM_MAP: typing.Dict[str, int] = {
+	# Native TR-8S track names
 	"bd": BD,
 	"sd": SD,
 	"lt": LT,
@@ -179,6 +191,45 @@ ROLAND_TR8S_DRUM_MAP: typing.Dict[str, int] = {
 	"oh": OH,
 	"cc": CC,
 	"rc": RC,
+
+	# General MIDI aliases — *faithful correspondences only*, i.e. GM names for
+	# the voices the TR-8S genuinely has.  Canonical names come from
+	# ``pymididefs.drums`` (``GM_DRUM_MAP``).  This lets GM-named patterns play
+	# on the TR-8S and lets it take part in symbolic mirroring (each device
+	# re-resolves a shared drum name through its own map).  Voices the TR-8S
+	# lacks (cowbell, tambourine, congas, splash/Chinese cymbals, guiro, …) are
+	# deliberately NOT aliased — no creative approximations onto unrelated voices.
+	#
+	# Unnumbered "primary" aliases (the GM_DRUM_PRIMARY_ALIASES convention from
+	# pymididefs.drums): the bare name resolves to the same voice as the _1
+	# variant.  The TR-8S has a real kick / snare / crash / ride, so all four apply.
+	"kick":  BD,
+	"snare": SD,
+	"crash": CC,
+	"ride":  RC,
+
+	"kick_1": BD,
+	"kick_2": BD,
+	"snare_1": SD,
+	"snare_2": SD,
+	"side_stick": RS,			# GM 37 == TR-8S RS 37
+	"hand_clap": HC,			# GM 39 == TR-8S HC 39
+	"hi_hat_closed": CH,		# GM 42 == TR-8S CH 42
+	"hi_hat_pedal": CH,			# foot-closed hat -> the closed hi-hat voice
+	"hi_hat_open": OH,			# GM 46 == TR-8S OH 46
+	"crash_1": CC,				# GM 49 == TR-8S CC 49
+	"crash_2": CC,
+	"ride_1": RC,				# GM 51 == TR-8S RC 51
+	"ride_2": RC,
+
+	# GM's six toms onto the TR-8S's three, grouped by register (each TR-8S tom
+	# anchored on an exact note match: LT 43, MT 47, HT 50).
+	"low_floor_tom": LT,
+	"high_floor_tom": LT,
+	"low_tom": MT,
+	"low_mid_tom": MT,
+	"high_mid_tom": HT,
+	"high_tom": HT,
 }
 
 

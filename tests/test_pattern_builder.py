@@ -286,6 +286,44 @@ def test_integer_pitch_bypasses_map () -> None:
 	assert pattern.steps[0].notes[0].pitch == 60
 
 
+def test_note_origin_set_for_string_pitch () -> None:
+
+	"""A named drum hit carries its original name on the Note (for mirroring)."""
+
+	drum_map = {"hi_hat_closed": 44}
+	pattern, builder = _make_builder(drum_note_map=drum_map)
+
+	builder.note("hi_hat_closed", beat=0)
+
+	note = pattern.steps[0].notes[0]
+	assert note.pitch == 44
+	assert note.origin == "hi_hat_closed"
+
+
+def test_note_origin_none_for_int_pitch () -> None:
+
+	"""A numeric pitch leaves ``origin`` unset — nothing to re-resolve."""
+
+	pattern, builder = _make_builder()
+
+	builder.note(60, beat=0)
+
+	assert pattern.steps[0].notes[0].origin is None
+
+
+def test_add_note_origin_passthrough () -> None:
+
+	"""``Pattern.add_note`` forwards ``origin`` to the Note; default is None."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	pattern.add_note(position=0, pitch=44, velocity=100, duration=6, origin="hi_hat_closed")
+	pattern.add_note(position=6, pitch=60, velocity=100, duration=6)
+
+	assert pattern.steps[0].notes[0].origin == "hi_hat_closed"
+	assert pattern.steps[6].notes[0].origin is None
+
+
 def test_note_on_adds_raw_event () -> None:
 
 	"""

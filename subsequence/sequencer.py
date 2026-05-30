@@ -150,6 +150,65 @@ class MidiEvent:
 
 
 @dataclasses.dataclass
+class _MirrorTarget:
+
+	"""A resolved fan-out destination — a ``(device, channel)`` plus an optional
+	per-device ``drum_note_map`` used to re-resolve mirrored drum names.
+
+	Constructed transiently inside ``schedule_pattern`` (never stored on the
+	Pattern, never public) purely for ergonomic attribute access in the
+	fan-out loops.  Stored mirror entries remain plain tuples — a dict-bearing
+	entry would be unhashable and could not live in the ``set`` used by
+	``_stop_pattern_notes``.
+	"""
+
+	device: int
+	channel: int
+	drum_note_map: typing.Optional[typing.Dict[str, int]] = None
+
+
+def _to_target (entry: typing.Sequence[typing.Any]) -> _MirrorTarget:
+
+	"""Coerce a stored mirror entry to a ``_MirrorTarget``.
+
+	*entry* is ``(device, channel)`` or ``(device, channel, drum_note_map)`` —
+	a tuple or list.  Branching on length here keeps the 2-vs-3 split in one
+	place (and off the typed ``MirrorSpec`` union).
+	"""
+
+	drum_map = entry[2] if len(entry) == 3 else None
+	return _MirrorTarget(entry[0], entry[1], drum_map)
+
+
+def _mirror_pitch (note: typing.Any, target: _MirrorTarget, primary: bool) -> int:
+
+	"""Return the MIDI note number to emit for *note* at *target*.
+
+	The primary destination always uses the note's already-resolved pitch.  A
+	mirror with its own ``drum_note_map`` re-resolves the note's drum name
+	(``note.origin``) to that device's number.  If there is no map, no name, or
+	the name is absent from the map, it falls back to the resolved pitch — the
+	exact legacy copy-the-number behaviour, so 2-tuple mirrors and pitched
+	notes are unaffected.
+	"""
+
+	if primary:
+		return typing.cast(int, note.pitch)
+
+	drum_map = target.drum_note_map
+
+	if drum_map is not None and note.origin is not None:
+		if note.origin in drum_map:
+			return drum_map[note.origin]
+		# Name present on the note and a map exists, but the map lacks it: the
+		# mirror cannot honour this voice, so the primary's number is copied.
+		# This is the one misconfiguration the feature invites (DEBUG, opt-in).
+		logger.debug(f"Mirror drum_note_map has no entry for {note.origin!r} — copying primary note {note.pitch} to device {target.device}")
+
+	return typing.cast(int, note.pitch)
+
+
+@dataclasses.dataclass
 class ScheduledPattern:
 
 	"""
@@ -791,7 +850,7 @@ class Sequencer:
 		# at equal pulses is enforced by ``_push_event`` (the ``sequence``
 		# tie-breaker on ``MidiEvent``).
 		mirrors = getattr(pattern, 'mirrors', [])
-		destinations: typing.List[typing.Tuple[int, int]] = [(pattern.device, pattern.channel)] + list(mirrors)
+		destinations: typing.List[_MirrorTarget] = [_MirrorTarget(pattern.device, pattern.channel, None)] + [_to_target(entry) for entry in mirrors]
 
 		async with self.queue_lock:
 
@@ -801,19 +860,21 @@ class Sequencer:
 
 				for note in step.notes:
 
-					for i, (dev, ch) in enumerate(destinations):
+					for i, target in enumerate(destinations):
 
 						# Primary preserves the Note's own channel (so polyphonic
 						# tuning's per-voice channel rotation lands correctly).
-						# Mirrors collapse onto the mirror's pinned channel.
-						note_channel = note.channel if i == 0 else ch
-						note_device = pattern.device if i == 0 else dev
+						# Mirrors collapse onto the mirror's pinned channel and
+						# re-resolve the drum name through their own map.
+						note_channel = note.channel if i == 0 else target.channel
+						note_device = pattern.device if i == 0 else target.device
+						note_value = _mirror_pitch(note, target, primary = (i == 0))
 
 						on_event = MidiEvent(
 							pulse = abs_pulse,
 							message_type = 'note_on',
 							channel = note_channel,
-							note = note.pitch,
+							note = note_value,
 							velocity = note.velocity,
 							device = note_device,
 						)
@@ -823,7 +884,7 @@ class Sequencer:
 							pulse = abs_pulse + note.duration,
 							message_type = 'note_off',
 							channel = note_channel,
-							note = note.pitch,
+							note = note_value,
 							velocity = 0,
 							device = note_device,
 						)
@@ -834,18 +895,18 @@ class Sequencer:
 
 				abs_pulse = start_pulse + cc_event.pulse
 
-				for i, (dev, ch) in enumerate(destinations):
+				for i, target in enumerate(destinations):
 
 					if i == 0:
 						# Primary: respect per-event channel/device override if set
 						# (e.g. tuning pitch bends targeting specific channels).
-						event_channel = cc_event.channel if cc_event.channel is not None else ch
-						event_device = cc_event.device if cc_event.device is not None else dev
+						event_channel = cc_event.channel if cc_event.channel is not None else target.channel
+						event_device = cc_event.device if cc_event.device is not None else target.device
 					else:
 						# Mirror: always use the mirror's pinned (device, channel).
 						# See class docstring for the tuning interaction note.
-						event_channel = ch
-						event_device = dev
+						event_channel = target.channel
+						event_device = target.device
 
 					midi_event = MidiEvent(
 						pulse = abs_pulse,
@@ -863,15 +924,15 @@ class Sequencer:
 
 				abs_pulse = start_pulse + note_ev.pulse
 
-				for (dev, ch) in destinations:
+				for target in destinations:
 
 					midi_event = MidiEvent(
 						pulse = abs_pulse,
 						message_type = note_ev.message_type,
-						channel = ch,
+						channel = target.channel,
 						note = note_ev.pitch,
 						velocity = note_ev.velocity,
-						device = dev,
+						device = target.device,
 					)
 					self._push_event(midi_event)
 
@@ -1523,7 +1584,9 @@ class Sequencer:
 		"""
 
 		mirrors = getattr(pattern, 'mirrors', [])
-		targets: typing.Set[typing.Tuple[int, int]] = {(pattern.device, pattern.channel)} | set(mirrors)
+		# Build the target set from each entry's (device, channel) prefix — a
+		# 3-tuple mirror carries a dict (drum_note_map) and would be unhashable.
+		targets: typing.Set[typing.Tuple[int, int]] = {(pattern.device, pattern.channel)} | {(e[0], e[1]) for e in mirrors}
 
 		async with self.queue_lock:
 

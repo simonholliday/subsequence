@@ -321,6 +321,10 @@ class PatternBuilder(
 			```
 		"""
 
+		# Capture the drum name (if any) before it is resolved to a number, so
+		# mirror destinations can re-resolve it through their own drum_note_map.
+		origin = pitch if isinstance(pitch, str) else None
+
 		midi_pitch = self._resolve_pitch(pitch)
 		resolved_velocity = self._resolve_velocity(velocity)
 
@@ -332,7 +336,8 @@ class PatternBuilder(
 			beat_position = beat,
 			pitch = midi_pitch,
 			velocity = resolved_velocity,
-			duration_beats = duration
+			duration_beats = duration,
+			origin = origin
 		)
 		return self
 

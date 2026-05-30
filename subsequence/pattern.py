@@ -5,6 +5,18 @@ import subsequence.constants
 import subsequence.constants.velocity
 
 
+# A mirror destination: ``(device, channel)`` or, to re-resolve drum names
+# per device, ``(device, channel, drum_note_map)``.  The optional third element
+# lets a mirrored drum hit sound the correct voice on a device whose drum map
+# differs from the primary's — see ``Sequencer.schedule_pattern``.  The
+# user-facing entry points accept any of these (and lists, for JSON sources);
+# ``Composition._resolve_mirrors`` normalises channel numbering before storing.
+MirrorSpec = typing.Union[
+	typing.Tuple[int, int],
+	typing.Tuple[int, int, typing.Optional[typing.Dict[str, int]]],
+]
+
+
 @dataclasses.dataclass
 class Note:
 
@@ -16,6 +28,7 @@ class Note:
 	velocity: int
 	duration: int
 	channel: int
+	origin: typing.Optional[str] = None		# Original drum-name string (if the pitch was named), kept so mirror destinations can re-resolve it through their own drum_note_map.  None for numeric/pitched notes.
 
 
 @dataclasses.dataclass
@@ -76,7 +89,7 @@ class Pattern:
 	Allows us to define and manipulate music pattern objects.
 	"""
 
-	def __init__ (self, channel: int, length: float = 16, reschedule_lookahead: float = 1, device: int = 0, mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]] = None) -> None:
+	def __init__ (self, channel: int, length: float = 16, reschedule_lookahead: float = 1, device: int = 0, mirrors: typing.Optional[typing.Iterable[MirrorSpec]] = None) -> None:
 
 		"""
 		Initialize a new pattern with MIDI channel, length in beats, and reschedule lookahead.
@@ -94,14 +107,17 @@ class Pattern:
 				drone event onto.  Both ``device`` and ``channel`` are 0-indexed in
 				canonical form; the user-facing entry points (decorator and runtime
 				API on ``Composition``) translate the user's channel-numbering
-				convention before storing here.
+				convention before storing here.  An entry may carry an optional
+				third element — a ``drum_note_map`` — so a mirrored drum hit is
+				re-resolved by name to that device's own note number (see
+				``Sequencer.schedule_pattern``).
 		"""
 
 		self.channel = channel
 		self.length = length
 		self.reschedule_lookahead = reschedule_lookahead
 		self.device = device
-		self.mirrors: typing.List[typing.Tuple[int, int]] = list(mirrors) if mirrors else []
+		self.mirrors: typing.List[MirrorSpec] = list(mirrors) if mirrors else []
 
 		# Set to True by ``Composition.unregister()`` to signal the sequencer's
 		# reschedule loop to stop re-adding this pattern.  Lazy removal: events
@@ -115,10 +131,15 @@ class Pattern:
 		self.raw_note_events: typing.List[RawNoteEvent] = []
 
 
-	def add_note (self, position: int, pitch: int, velocity: int, duration: int) -> None:
+	def add_note (self, position: int, pitch: int, velocity: int, duration: int, origin: typing.Optional[str] = None) -> None:
 
 		"""
 		Add a note to the pattern at a specific pulse position.
+
+		``origin`` is the original drum-name string when the pitch was named
+		(e.g. ``"hi_hat_closed"``), or ``None`` for numeric pitches.  It is
+		carried on the Note so mirror destinations can re-resolve the name
+		through their own ``drum_note_map`` — see ``Sequencer.schedule_pattern``.
 		"""
 
 		if position not in self.steps:
@@ -128,7 +149,8 @@ class Pattern:
 			pitch = pitch,
 			velocity = velocity,
 			duration = duration,
-			channel = self.channel
+			channel = self.channel,
+			origin = origin
 		)
 
 		self.steps[position].notes.append(note)
@@ -157,10 +179,13 @@ class Pattern:
 					duration = note_duration
 				)
 
-	def add_note_beats (self, beat_position: float, pitch: int, velocity: int, duration_beats: float, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+	def add_note_beats (self, beat_position: float, pitch: int, velocity: int, duration_beats: float, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE, origin: typing.Optional[str] = None) -> None:
 
 		"""
 		Add a note to the pattern at a beat position.
+
+		``origin`` is the original drum-name string (or ``None``); it is
+		forwarded to ``add_note`` so the resulting Note carries it.
 		"""
 
 		if beat_position < 0:
@@ -182,7 +207,8 @@ class Pattern:
 			position = position,
 			pitch = pitch,
 			velocity = velocity,
-			duration = duration
+			duration = duration,
+			origin = origin
 		)
 
 

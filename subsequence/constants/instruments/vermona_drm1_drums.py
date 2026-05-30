@@ -22,6 +22,16 @@ Two ways to use this module:
        @composition.pattern(channel=9, length=4)
        def drums (p):
            p.hit_steps(drm1.KICK, [0, 4, 8, 12], velocity=127)
+
+``VERMONA_DRM1_DRUM_MAP`` also accepts a *faithful* subset of General MIDI drum
+names (e.g. ``"kick_1"``, ``"snare_1"``, ``"hi_hat_closed"``) as aliases — only
+for the voices the DRM1 genuinely has (kick, snare, clap, hi-hats).  These
+shared GM names are what let the DRM1 take part in symbolic mirroring (each
+device re-resolves a drum name through its own map).  GM names for instruments
+the DRM1 lacks (toms, ride/crash cymbals, shakers, cowbell and other latin/aux
+percussion) are intentionally NOT aliased — address those by their native
+``drum_1`` / ``drum_2`` / ``multi`` names.  Canonical GM names come from
+`pymididefs.drums <https://github.com/simonholliday/PyMidiDefs>`_ (``GM_DRUM_MAP``).
 """
 
 import typing
@@ -55,69 +65,22 @@ VERMONA_DRM1_DRUM_MAP: typing.Dict[str, int] = {
 	"hihat_2_closed": HIHAT_2_CLOSED,
 	"hihat_2_open": HIHAT_2_OPEN,
 	"clap": CLAP,
-	
-	# GM Drums aliases (for drop-in compatibility).
-	# 
-	# This comprehensive mapping ensures that sequences written for standard
-	# General MIDI kits will still produce sound when played on the DRM1,
-	# avoiding "silent" beats. While some mappings are obvious (kick -> kick),
-	# others are creative approximations (e.g., cymbals -> hi-hat 2 open, 
-	# cowbell -> multi) designed to trigger the best available alternative
-	# physical instrument channel.
-	
-	# Kicks
+
+	# General MIDI aliases — *faithful correspondences only*, i.e. GM names for
+	# the voices the DRM1 genuinely has.  Canonical names come from
+	# ``pymididefs.drums`` (``GM_DRUM_MAP``); this is the shared vocabulary used
+	# by symbolic mirroring (each device re-resolves a drum name through its own
+	# map).  GM names for instruments the DRM1 lacks — toms, ride/crash cymbals,
+	# shakers, and latin/aux percussion — are deliberately NOT aliased: a
+	# "creative approximation" onto an unrelated voice (cowbell -> multi,
+	# cymbal -> hi-hat) was an over-reach.  Use the native ``drum_1`` /
+	# ``drum_2`` / ``multi`` names for those instead.
 	"kick_1": KICK,
 	"kick_2": KICK,
-	
-	# Snares & Claps
 	"snare_1": SNARE,
 	"snare_2": SNARE,
-	"side_stick": SNARE,
-	"hand_clap": CLAP,
-
-	# Toms (Low toms -> Drum 1, Mid/High toms -> Drum 2)
-	"low_floor_tom": DRUM_1,
-	"high_floor_tom": DRUM_1,
-	"low_tom": DRUM_1,
-	"low_mid_tom": DRUM_2,
-	"high_mid_tom": DRUM_2,
-	"high_tom": DRUM_2,
-
-	# Hi-Hats
+	"hand_clap": CLAP,			# GM 39 == DRM1 CLAP 39
 	"hi_hat_closed": HIHAT_1_CLOSED,
-	"hi_hat_pedal": HIHAT_1_CLOSED,
+	"hi_hat_pedal": HIHAT_1_CLOSED,		# foot-closed hat -> the closed hi-hat voice
 	"hi_hat_open": HIHAT_1_OPEN,
-
-	# Ride & Crash Cymbals (Mapped to the 2nd Hi-Hat channel's open decay)
-	"crash_1": HIHAT_2_OPEN,
-	"crash_2": HIHAT_2_OPEN,
-	"splash_cymbal": HIHAT_2_OPEN,
-	"chinese_cymbal": HIHAT_2_OPEN,
-	"ride_1": HIHAT_2_OPEN,
-	"ride_2": HIHAT_2_OPEN,
-	"ride_bell": HIHAT_2_OPEN,
-
-	# Shakers & Tambourines (Mapped to 2nd Hi-Hat channel's closed decay)
-	"tambourine": HIHAT_2_CLOSED,
-	"cabasa": HIHAT_2_CLOSED,
-	"maracas": HIHAT_2_CLOSED,
-	"shaker": HIHAT_2_CLOSED,
-
-	# Percussion (Cowbell, Woodblocks, Claves, Congas, etc. -> Multi channel)
-	"cowbell": MULTI,
-	"claves": MULTI,
-	"high_woodblock": MULTI,
-	"low_woodblock": MULTI,
-	"high_bongo": MULTI,
-	"low_bongo": MULTI,
-	"mute_high_conga": MULTI,
-	"open_high_conga": MULTI,
-	"low_conga": MULTI,
-	"high_timbale": MULTI,
-	"low_timbale": MULTI,
-	"high_agogo": MULTI,
-	"low_agogo": MULTI,
-	"mute_triangle": MULTI,
-	"open_triangle": MULTI,
-	"vibraslap": MULTI,
 }

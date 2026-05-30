@@ -289,7 +289,7 @@ def test_pattern_decorator_validates_mirror_shape () -> None:
 
 	composition = subsequence.Composition(bpm=120)
 
-	with pytest.raises(ValueError, match="exactly 2 elements"):
+	with pytest.raises(ValueError, match="2 or 3 elements"):
 		@composition.pattern(channel=1, beats=4, mirrors=[(1,)])  # type: ignore[list-item]
 		def bad1 (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 			pass
@@ -597,3 +597,153 @@ async def test_mirror_with_muted_pattern_produces_no_events (patch_midi: None) -
 
 	# Sequencer queue should be empty on both destinations.
 	assert composition._sequencer.event_queue == []
+
+
+# ── Symbolic mirror (per-destination drum_note_map) ─────────────────────────
+
+
+def test_resolve_mirrors_normalizes_three_tuple () -> None:
+
+	"""A 3-tuple mirror resolves the channel and preserves the drum map."""
+
+	composition = subsequence.Composition(bpm=120)  # 1-indexed
+	gm = {"hi_hat_closed": 42}
+
+	@composition.pattern(channel=1, beats=4, mirrors=[(1, 10, gm)])
+	def drums (p: "subsequence.pattern_builder.PatternBuilder") -> None:
+		pass
+
+	pending = composition._pending_patterns[0]
+	assert pending.mirrors == [(1, 9, gm)]		# channel 10 → 9, map preserved
+
+
+def test_resolve_mirrors_rejects_non_dict_map () -> None:
+
+	"""A non-dict third element raises at decoration time."""
+
+	composition = subsequence.Composition(bpm=120)
+
+	with pytest.raises(ValueError, match="drum_note_map must be a dict"):
+		@composition.pattern(channel=1, beats=4, mirrors=[(1, 10, "not a dict")])  # type: ignore[list-item]
+		def bad (p: "subsequence.pattern_builder.PatternBuilder") -> None:
+			pass
+
+
+def test_mirror_pitch_helper () -> None:
+
+	"""``_mirror_pitch`` covers every branch: primary, hit, miss, no-name, no-map."""
+
+	named = subsequence.pattern.Note(pitch=44, velocity=100, duration=6, channel=0, origin="hi_hat_closed")
+	unnamed = subsequence.pattern.Note(pitch=44, velocity=100, duration=6, channel=0, origin=None)
+	other = subsequence.pattern.Note(pitch=44, velocity=100, duration=6, channel=0, origin="clap")
+
+	with_map = subsequence.sequencer._MirrorTarget(1, 5, {"hi_hat_closed": 42})
+	no_map = subsequence.sequencer._MirrorTarget(1, 5, None)
+
+	# Primary always uses the already-resolved pitch.
+	assert subsequence.sequencer._mirror_pitch(named, with_map, primary=True) == 44
+	# Mirror + map + matching name → re-resolved.
+	assert subsequence.sequencer._mirror_pitch(named, with_map, primary=False) == 42
+	# Mirror + map + name absent → fall back to the number.
+	assert subsequence.sequencer._mirror_pitch(other, with_map, primary=False) == 44
+	# Mirror + map + no origin → fall back.
+	assert subsequence.sequencer._mirror_pitch(unnamed, with_map, primary=False) == 44
+	# Mirror + no map → fall back (legacy 2-tuple behaviour).
+	assert subsequence.sequencer._mirror_pitch(named, no_map, primary=False) == 44
+
+
+@pytest.mark.asyncio
+async def test_symbolic_mirror_fans_out_per_device_map (patch_midi: None) -> None:
+
+	"""The headline case: one named hit, two device-specific notes.
+
+	A closed hi-hat is note 44 on the primary (DRM1) and 42 on the mirror (GM).
+	"""
+
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+	pattern = subsequence.pattern.Pattern(channel=0, length=4, device=0, mirrors=[(1, 5, {"hi_hat_closed": 42})])
+	pattern.add_note(position=0, pitch=44, velocity=100, duration=12, origin="hi_hat_closed")
+
+	await sequencer.schedule_pattern(pattern, start_pulse=0)
+
+	note_ons = [e for e in sequencer.event_queue if e.message_type == 'note_on']
+	by_device = {e.device: e for e in note_ons}
+
+	assert by_device[0].note == 44		# primary: the DRM1's resolved note
+	assert by_device[1].note == 42		# mirror: re-resolved via the GM map
+
+
+@pytest.mark.asyncio
+async def test_symbolic_mirror_falls_back_when_name_absent (patch_midi: None) -> None:
+
+	"""A name absent from the mirror's map copies the primary's number."""
+
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+	pattern = subsequence.pattern.Pattern(channel=0, length=4, device=0, mirrors=[(1, 5, {"hi_hat_closed": 42})])
+	pattern.add_note(position=0, pitch=44, velocity=100, duration=12, origin="clap")  # not in mirror map
+
+	await sequencer.schedule_pattern(pattern, start_pulse=0)
+
+	note_ons = [e for e in sequencer.event_queue if e.message_type == 'note_on']
+	by_device = {e.device: e for e in note_ons}
+
+	assert by_device[0].note == 44
+	assert by_device[1].note == 44		# fallback — copy the number
+
+
+@pytest.mark.asyncio
+async def test_symbolic_mirror_two_tuple_no_translation (patch_midi: None) -> None:
+
+	"""A plain 2-tuple mirror copies the number even when the note is named."""
+
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+	pattern = subsequence.pattern.Pattern(channel=0, length=4, device=0, mirrors=[(1, 5)])
+	pattern.add_note(position=0, pitch=44, velocity=100, duration=12, origin="hi_hat_closed")
+
+	await sequencer.schedule_pattern(pattern, start_pulse=0)
+
+	note_ons = [e for e in sequencer.event_queue if e.message_type == 'note_on']
+	by_device = {e.device: e for e in note_ons}
+
+	assert by_device[0].note == 44
+	assert by_device[1].note == 44		# legacy behaviour, unchanged
+
+
+def test_runtime_mirror_with_drum_note_map () -> None:
+
+	"""composition.mirror(..., drum_note_map=...) stores a 3-tuple entry."""
+
+	composition = subsequence.Composition(bpm=120)
+	composition._running_patterns["drums"] = _running_pattern_stub()
+	gm = {"hi_hat_closed": 42}
+
+	composition.mirror("drums", device=1, channel=10, drum_note_map=gm)
+
+	assert composition._running_patterns["drums"].mirrors == [(1, 9, gm)]
+
+
+def test_runtime_unmirror_ignores_map () -> None:
+
+	"""unmirror() removes a 3-tuple entry matching on (device, channel) only."""
+
+	composition = subsequence.Composition(bpm=120)
+	composition._running_patterns["drums"] = _running_pattern_stub(mirrors=[(1, 9, {"hi_hat_closed": 42})])
+
+	composition.unmirror("drums", device=1, channel=10)  # no map argument
+
+	assert composition._running_patterns["drums"].mirrors == []
+
+
+def test_runtime_mirror_updates_map_in_place () -> None:
+
+	"""Re-mirroring the same (device, channel) with a new map re-points it."""
+
+	composition = subsequence.Composition(bpm=120)
+	composition._running_patterns["drums"] = _running_pattern_stub()
+
+	composition.mirror("drums", device=1, channel=10, drum_note_map={"hi_hat_closed": 42})
+	composition.mirror("drums", device=1, channel=10, drum_note_map={"hi_hat_closed": 99})
+
+	mirrors = composition._running_patterns["drums"].mirrors
+	assert len(mirrors) == 1
+	assert mirrors[0] == (1, 9, {"hi_hat_closed": 99})

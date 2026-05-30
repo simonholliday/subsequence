@@ -548,7 +548,7 @@ class _PendingPattern:
 		voice_leading: bool = False,
 		device: int = 0,
 		raw_device: subsequence.midi_utils.DeviceId = None,
-		mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]] = None,
+		mirrors: typing.Optional[typing.Iterable[subsequence.pattern.MirrorSpec]] = None,
 	) -> None:
 
 		"""
@@ -576,7 +576,7 @@ class _PendingPattern:
 		self.voice_leading = voice_leading
 		self.device = device
 		self.raw_device: subsequence.midi_utils.DeviceId = raw_device
-		self.mirrors: typing.List[typing.Tuple[int, int]] = list(mirrors) if mirrors else []
+		self.mirrors: typing.List[subsequence.pattern.MirrorSpec] = list(mirrors) if mirrors else []
 
 
 class _PendingScheduled:
@@ -860,62 +860,78 @@ class Composition:
 
 	def _resolve_mirrors (
 		self,
-		mirrors: typing.Optional[typing.Iterable[typing.Sequence[int]]],
+		mirrors: typing.Optional[typing.Iterable[subsequence.pattern.MirrorSpec]],
 		primary: typing.Optional[typing.Tuple[int, int]] = None,
-	) -> typing.List[typing.Tuple[int, int]]:
+	) -> typing.List[subsequence.pattern.MirrorSpec]:
 
 		"""
 		Validate and normalise a list of mirror destinations.
 
-		Each entry is a 2-element sequence ``(device_idx, channel)`` — tuple,
-		list, or any 2-iterable.  ``channel`` is expressed in the user's
-		channel-numbering convention (1-16 by default, 0-15 when
-		``zero_indexed_channels=True``).  This method converts the channel
-		to canonical 0-indexed form and rejects malformed entries.
+		Each entry is a 2- or 3-element sequence — ``(device_idx, channel)`` or
+		``(device_idx, channel, drum_note_map)`` — as a tuple, list, or any such
+		iterable.  ``channel`` is expressed in the user's channel-numbering
+		convention (1-16 by default, 0-15 when ``zero_indexed_channels=True``);
+		this method converts it to canonical 0-indexed form and rejects
+		malformed entries.  The optional ``drum_note_map`` is preserved verbatim
+		so the sequencer can re-resolve mirrored drum names per device.
 
 		String device names are NOT supported here; users wanting a named
 		device should pass the integer index returned from ``midi_output()``.
 
 		If ``primary=(device, channel)`` is supplied (canonical 0-indexed
-		form), a mirror entry equal to it triggers a ``logger.warning`` —
-		this is almost always a user error (every event would double-fire
-		on the same destination).  Skipped when ``primary`` is ``None``,
-		since the runtime API call site supplies its own check.
+		form), a mirror entry whose ``(device, channel)`` matches it triggers a
+		``logger.warning`` — this is almost always a user error (every event
+		would double-fire on the same destination).  The optional map is ignored
+		for this comparison.  Skipped when ``primary`` is ``None``, since the
+		runtime API call site supplies its own check.
 		"""
 
 		if mirrors is None:
 			return []
 
-		resolved: typing.List[typing.Tuple[int, int]] = []
+		resolved: typing.List[subsequence.pattern.MirrorSpec] = []
 
 		for entry in mirrors:
 
-			# Accept any 2-element iterable (tuple, list, etc.) — config files
-			# and JSON sources naturally produce lists.  Validate shape at
+			# Accept any 2- or 3-element iterable (tuple, list, etc.) — config
+			# files and JSON sources naturally produce lists.  Validate shape at
 			# decoration time so bad inputs surface here instead of producing
 			# inscrutable failures inside the sequencer.
 			try:
 				items = list(entry)
 			except TypeError:
-				raise ValueError(f"Mirror entry must be a (device, channel) pair, got {entry!r}")
+				raise ValueError(f"Mirror entry must be a (device, channel[, drum_note_map]) tuple — got {entry!r}")
 
-			if len(items) != 2:
-				raise ValueError(f"Mirror entry must have exactly 2 elements (device, channel), got {entry!r}")
+			if len(items) not in (2, 3):
+				raise ValueError(f"Mirror entry must have 2 or 3 elements (device, channel[, drum_note_map]) — got {entry!r}")
 
-			device, channel = items
+			device = items[0]
+			channel = items[1]
+			drum_map = items[2] if len(items) == 3 else None
 
 			if not isinstance(device, int) or isinstance(device, bool):
-				raise ValueError(f"Mirror device must be an integer index, got {type(device).__name__} ({device!r})")
+				raise ValueError(f"Mirror device must be an integer index — got {type(device).__name__} ({device!r})")
 
-			resolved_entry = (device, self._resolve_channel(channel))
+			if not isinstance(channel, int) or isinstance(channel, bool):
+				raise ValueError(f"Mirror channel must be an integer — got {type(channel).__name__} ({channel!r})")
 
-			if primary is not None and resolved_entry == primary:
+			if drum_map is not None and not isinstance(drum_map, dict):
+				raise ValueError(f"Mirror drum_note_map must be a dict or None — got {type(drum_map).__name__} ({drum_map!r})")
+
+			resolved_channel = self._resolve_channel(channel)
+
+			if primary is not None and (device, resolved_channel) == primary:
 				logger.warning(
-					f"Mirror destination {resolved_entry} matches the pattern's primary destination "
+					f"Mirror destination {(device, resolved_channel)} matches the pattern's primary destination "
 					f"— every event will double-fire on this (device, channel).  This is almost "
 					f"certainly unintended."
 				)
 
+			resolved_entry: subsequence.pattern.MirrorSpec = (
+				(device, resolved_channel)
+				if drum_map is None
+				else (device, resolved_channel, drum_map)
+			)
 			resolved.append(resolved_entry)
 
 		return resolved
@@ -2360,15 +2376,16 @@ class Composition:
 		del self._running_patterns[name]
 		logger.info(f"Unregistered pattern: {name}")
 
-	def mirror (self, name: str, device: int, channel: int) -> None:
+	def mirror (self, name: str, device: int, channel: int, drum_note_map: typing.Optional[typing.Dict[str, int]] = None) -> None:
 
 		"""
 		Add a mirror destination to a running pattern.
 
 		Every note, CC, pitch bend, NRPN/RPN, program change, SysEx, and drone
 		event the pattern emits will also be sent to ``(device, channel)``,
-		starting from the next cycle rebuild.  Idempotent — calling with the
-		same destination twice does not double-fan.
+		starting from the next cycle rebuild.  Idempotent on ``(device, channel)``
+		— calling with the same destination twice does not double-fan; calling
+		again with a different ``drum_note_map`` re-points it in place.
 
 		Parameters:
 			name: Function name of the pattern to mirror.
@@ -2376,6 +2393,10 @@ class Composition:
 				``midi_output()``; 0 = primary device).
 			channel: MIDI channel using this composition's numbering convention
 				(1-16 by default; 0-15 if ``zero_indexed_channels=True``).
+			drum_note_map: Optional per-destination drum map.  When set, mirrored
+				drum hits are re-resolved by name through it, so a named voice
+				lands on this device's own note number — see the README
+				"MIDI mirroring" section.
 
 		Bandwidth: each mirror adds another full copy of the pattern's events.
 		See the README "MIDI mirroring" section for the tradeoffs.
@@ -2385,22 +2406,30 @@ class Composition:
 			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
 
 		resolved_channel = self._resolve_channel(channel)
-		entry = (device, resolved_channel)
+		prefix = (device, resolved_channel)
+		entry: subsequence.pattern.MirrorSpec = prefix if drum_note_map is None else (device, resolved_channel, drum_note_map)
 
 		pattern = self._running_patterns[name]
 
-		# Mirror-to-self check: comparing against the live pattern's resolved
-		# (device, channel).  Unlike the decorator path this is always concrete.
-		if entry == (pattern.device, pattern.channel):
+		# Mirror-to-self check: comparing the (device, channel) prefix against the
+		# live pattern's resolved destination.  Unlike the decorator path this is
+		# always concrete.
+		if prefix == (pattern.device, pattern.channel):
 			logger.warning(
-				f"Mirror destination {entry} matches '{name}'s primary destination "
+				f"Mirror destination {prefix} matches '{name}'s primary destination "
 				f"— every event will double-fire on this (device, channel).  This is almost "
 				f"certainly unintended."
 			)
 
-		if entry not in pattern.mirrors:
+		# Idempotent on (device, channel): replace any existing entry for the same
+		# destination (so its map can be re-pointed), else append.
+		existing_index = next((idx for idx, e in enumerate(pattern.mirrors) if (e[0], e[1]) == prefix), None)
+		if existing_index is None:
 			pattern.mirrors.append(entry)
 			logger.info(f"Mirror added: {name} -> device={device}, channel={resolved_channel}")
+		elif pattern.mirrors[existing_index] != entry:
+			pattern.mirrors[existing_index] = entry
+			logger.info(f"Mirror updated: {name} -> device={device}, channel={resolved_channel}")
 		else:
 			logger.debug(f"Mirror already present on {name}: device={device}, channel={resolved_channel}")
 
@@ -2409,20 +2438,22 @@ class Composition:
 		"""
 		Remove a single mirror destination from a running pattern.
 
-		Idempotent: silently does nothing if the destination is not currently
-		mirrored.  The change applies on the next cycle rebuild.
+		Matches on ``(device, channel)`` only — any attached ``drum_note_map`` is
+		ignored.  Idempotent: silently does nothing if the destination is not
+		currently mirrored.  The change applies on the next cycle rebuild.
 		"""
 
 		if name not in self._running_patterns:
 			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
 
 		resolved_channel = self._resolve_channel(channel)
-		entry = (device, resolved_channel)
+		prefix = (device, resolved_channel)
 
 		pattern = self._running_patterns[name]
 
-		if entry in pattern.mirrors:
-			pattern.mirrors.remove(entry)
+		filtered = [e for e in pattern.mirrors if (e[0], e[1]) != prefix]
+		if len(filtered) != len(pattern.mirrors):
+			pattern.mirrors[:] = filtered
 			logger.info(f"Mirror removed: {name} -> device={device}, channel={resolved_channel}")
 		else:
 			logger.debug(f"unmirror() no-op on {name}: device={device}, channel={resolved_channel} not in mirrors")
@@ -2630,7 +2661,7 @@ class Composition:
 		reschedule_lookahead: float = 1,
 		voice_leading: bool = False,
 		device: subsequence.midi_utils.DeviceId = None,
-		mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]] = None,
+		mirrors: typing.Optional[typing.Iterable[subsequence.pattern.MirrorSpec]] = None,
 	) -> typing.Callable:
 
 		"""
@@ -2763,7 +2794,7 @@ class Composition:
 		reschedule_lookahead: float = 1,
 		voice_leading: bool = False,
 		device: subsequence.midi_utils.DeviceId = None,
-		mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]] = None,
+		mirrors: typing.Optional[typing.Iterable[subsequence.pattern.MirrorSpec]] = None,
 	) -> None:
 
 		"""
@@ -2856,7 +2887,7 @@ class Composition:
 		nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		chord: bool = False,
 		device: subsequence.midi_utils.DeviceId = None,
-		mirrors: typing.Optional[typing.List[typing.Tuple[int, int]]] = None,
+		mirrors: typing.Optional[typing.Iterable[subsequence.pattern.MirrorSpec]] = None,
 	) -> None:
 
 		"""

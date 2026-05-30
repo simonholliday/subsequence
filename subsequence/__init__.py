@@ -103,6 +103,10 @@ Integration:
 - **Latency compensation.** Declare each output device's physical
   latency (``latency_ms=``); Subsequence delays the faster devices so
   a mix of hardware and slower software instruments sound together.
+- **MIDI mirroring with per-device drum maps.** Fan a pattern out to
+  extra ``(device, channel)`` destinations; an entry can carry its own
+  ``drum_note_map`` so one named drum hit re-resolves to the right voice
+  on each device — a DRM1 and a General MIDI sampler alike.
 - **Hardware control.** CC input mapping from knobs/faders to
   ``composition.data``; patterns read and write the same dict via
   ``p.data`` for both external data access and cross-pattern
