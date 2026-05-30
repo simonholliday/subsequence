@@ -629,27 +629,37 @@ def test_resolve_mirrors_rejects_non_dict_map () -> None:
 			pass
 
 
-def test_mirror_pitch_helper () -> None:
+def test_destination_pitch_helper () -> None:
 
-	"""``_mirror_pitch`` covers every branch: primary, hit, miss, no-name, no-map."""
+	"""``_destination_pitch`` covers every branch incl. drop (None) and primary_unmapped."""
 
 	named = subsequence.pattern.Note(pitch=44, velocity=100, duration=6, channel=0, origin="hi_hat_closed")
 	unnamed = subsequence.pattern.Note(pitch=44, velocity=100, duration=6, channel=0, origin=None)
 	other = subsequence.pattern.Note(pitch=44, velocity=100, duration=6, channel=0, origin="clap")
+	unmapped = subsequence.pattern.Note(pitch=49, velocity=100, duration=6, channel=0, origin="crash", primary_unmapped=True)
 
 	with_map = subsequence.sequencer._MirrorTarget(1, 5, {"hi_hat_closed": 42})
+	crash_map = subsequence.sequencer._MirrorTarget(1, 5, {"crash": 49})
 	no_map = subsequence.sequencer._MirrorTarget(1, 5, None)
 
-	# Primary always uses the already-resolved pitch.
-	assert subsequence.sequencer._mirror_pitch(named, with_map, primary=True) == 44
+	dp = subsequence.sequencer._destination_pitch
+
+	# Primary uses the already-resolved pitch.
+	assert dp(named, with_map, primary=True) == 44
 	# Mirror + map + matching name → re-resolved.
-	assert subsequence.sequencer._mirror_pitch(named, with_map, primary=False) == 42
-	# Mirror + map + name absent → fall back to the number.
-	assert subsequence.sequencer._mirror_pitch(other, with_map, primary=False) == 44
-	# Mirror + map + no origin → fall back.
-	assert subsequence.sequencer._mirror_pitch(unnamed, with_map, primary=False) == 44
-	# Mirror + no map → fall back (legacy 2-tuple behaviour).
-	assert subsequence.sequencer._mirror_pitch(named, no_map, primary=False) == 44
+	assert dp(named, with_map, primary=False) == 42
+	# Mirror + map + name absent → DROP (not a wrong number).
+	assert dp(other, with_map, primary=False) is None
+	# Mirror + map + no origin → copy the literal pitch.
+	assert dp(unnamed, with_map, primary=False) == 44
+	# Mirror + no map (2-tuple) → copy the literal pitch.
+	assert dp(named, no_map, primary=False) == 44
+	# primary_unmapped: primary and 2-tuple mirrors drop it; only a mirror whose
+	# map contains the name voices it.
+	assert dp(unmapped, crash_map, primary=True) is None
+	assert dp(unmapped, no_map, primary=False) is None
+	assert dp(unmapped, crash_map, primary=False) == 49
+	assert dp(unmapped, with_map, primary=False) is None	# mirror lacks "crash" → drop
 
 
 @pytest.mark.asyncio
@@ -674,9 +684,9 @@ async def test_symbolic_mirror_fans_out_per_device_map (patch_midi: None) -> Non
 
 
 @pytest.mark.asyncio
-async def test_symbolic_mirror_falls_back_when_name_absent (patch_midi: None) -> None:
+async def test_symbolic_mirror_drops_when_name_absent (patch_midi: None) -> None:
 
-	"""A name absent from the mirror's map copies the primary's number."""
+	"""A name absent from the mirror's map is dropped on the mirror (not a wrong note)."""
 
 	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
 	pattern = subsequence.pattern.Pattern(channel=0, length=4, device=0, mirrors=[(1, 5, {"hi_hat_closed": 42})])
@@ -687,8 +697,53 @@ async def test_symbolic_mirror_falls_back_when_name_absent (patch_midi: None) ->
 	note_ons = [e for e in sequencer.event_queue if e.message_type == 'note_on']
 	by_device = {e.device: e for e in note_ons}
 
-	assert by_device[0].note == 44
-	assert by_device[1].note == 44		# fallback — copy the number
+	assert by_device[0].note == 44		# primary plays it
+	assert 1 not in by_device			# mirror has no voice for "clap" → silent
+
+
+@pytest.mark.asyncio
+async def test_symbolic_mirror_drop_logs_debug (patch_midi: None, caplog: pytest.LogCaptureFixture) -> None:
+
+	"""A per-mirror drop is surfaced at debug level — the diagnostic for a voice
+	the primary plays but a mirror's map lacks (the build-time warning only
+	covers a name absent from *every* destination)."""
+
+	import logging
+
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+	pattern = subsequence.pattern.Pattern(channel=0, length=4, device=0, mirrors=[(1, 5, {"hi_hat_closed": 42})])
+	pattern.add_note(position=0, pitch=44, velocity=100, duration=12, origin="clap")  # absent from the mirror map
+
+	with caplog.at_level(logging.DEBUG):
+		await sequencer.schedule_pattern(pattern, start_pulse=0)
+
+	assert any("clap" in r.message and "no voice" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_symbolic_mirror_crash_authored_on_primary_plays_only_on_mirror (patch_midi: None) -> None:
+
+	"""End-to-end (builder → schedule): a voice the primary lacks but a mirror maps is
+	silent on the primary and sounds on the mirror — the faithful-core scenario.
+
+	Also exercises the other direction: the kick (absent from this mirror's map)
+	is dropped on the mirror.
+	"""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4, device=0, mirrors=[(1, 5, {"kick": 36, "crash": 49})])
+	builder = subsequence.pattern_builder.PatternBuilder(pattern=pattern, cycle=0, drum_note_map={"kick": 36}, default_grid=16)
+	builder.note("kick", beat=0)
+	builder.note("crash", beat=0)	# DRM1-like primary has no crash; the GM-like mirror does
+
+	sequencer = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=120)
+	await sequencer.schedule_pattern(pattern, start_pulse=0)
+
+	note_ons = [e for e in sequencer.event_queue if e.message_type == 'note_on']
+	primary = sorted(e.note for e in note_ons if e.device == 0)
+	mirror = sorted(e.note for e in note_ons if e.device == 1)
+
+	assert primary == [36]			# kick only — the crash has no primary voice
+	assert mirror == [36, 49]		# the mirror plays both the kick and the crash
 
 
 @pytest.mark.asyncio

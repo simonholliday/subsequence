@@ -29,7 +29,8 @@ for the voices the DRM1 genuinely has (kick, snare, clap, hi-hats).  These
 shared GM names are what let the DRM1 take part in symbolic mirroring (each
 device re-resolves a drum name through its own map).  GM names for instruments
 the DRM1 lacks (toms, ride/crash cymbals, shakers, cowbell and other latin/aux
-percussion) are intentionally NOT aliased — address those by their native
+percussion) are intentionally NOT aliased — naming one anyway is dropped with
+a one-time warning (never a wrong voice); address those by their native
 ``drum_1`` / ``drum_2`` / ``multi`` names.  Canonical GM names come from
 `pymididefs.drums <https://github.com/simonholliday/PyMidiDefs>`_ (``GM_DRUM_MAP``).
 """

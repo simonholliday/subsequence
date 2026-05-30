@@ -46,6 +46,7 @@ class PatternAlgorithmicMixin:
 			duration: float,
 		) -> "subsequence.pattern_builder.PatternBuilder": ...
 		def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int: ...
+		def _resolve_pitch_lenient (self, pitch: typing.Union[int, str]) -> typing.Optional[int]: ...
 		def _has_pitch_at_beat (self, pitch: typing.Union[int, str], beat: float) -> bool: ...
 
 	def _resolve_velocity (self, velocity: typing.Union[int, typing.Tuple[int, int]], rng: typing.Optional[random.Random] = None) -> int:
@@ -1410,7 +1411,14 @@ class PatternAlgorithmicMixin:
 		if grid is None:
 			grid = self._default_grid
 
-		midi_pitch = self._resolve_pitch(pitch) if pitch is not None else None
+		if pitch is None:
+			midi_pitch = None
+		else:
+			midi_pitch = self._resolve_pitch_lenient(pitch)
+			if midi_pitch is None:
+				# Named voice this device lacks (already warned once): there are
+				# no such notes to thin, so this is a no-op rather than an error.
+				return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 		# Build the per-step drop-priority weights.
 		#
@@ -1571,7 +1579,14 @@ class PatternAlgorithmicMixin:
 		if grid is None:
 			grid = self._default_grid
 
-		midi_pitch = self._resolve_pitch(pitch) if pitch is not None else None
+		if pitch is None:
+			midi_pitch = None
+		else:
+			midi_pitch = self._resolve_pitch_lenient(pitch)
+			if midi_pitch is None:
+				# Named voice this device lacks (already warned once): nothing
+				# matches, so leave the pattern unchanged rather than raising.
+				return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 		ease_fn = subsequence.easing.get_easing(shape)
 
 		# Build zone set for steps mask (zone-based, matching thin()'s approach).
@@ -1709,7 +1724,11 @@ class PatternAlgorithmicMixin:
 		if not pitches:
 			raise ValueError("pitches list cannot be empty")
 
-		resolved = [self._resolve_pitch(p) if isinstance(p, str) else p for p in pitches]
+		resolved_opt = [self._resolve_pitch_lenient(p) if isinstance(p, str) else p for p in pitches]
+		resolved = [r for r in resolved_opt if r is not None]
+		if not resolved:
+			# Every seed name was a voice this device lacks (each warned once).
+			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 		n = steps if steps is not None else len(resolved)
 
 		# Stable key derived from the seed identity.
@@ -1797,7 +1816,11 @@ class PatternAlgorithmicMixin:
 		if not seed:
 			raise ValueError("seed list cannot be empty")
 
-		resolved = [self._resolve_pitch(p) if isinstance(p, str) else p for p in seed]
+		resolved_opt = [self._resolve_pitch_lenient(p) if isinstance(p, str) else p for p in seed]
+		resolved = [r for r in resolved_opt if r is not None]
+		if not resolved:
+			# Every seed name was a voice this device lacks (each warned once).
+			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 		# Seeded RNG derived from the seed content (not from self.rng) so the
 		# tree structure is always the same regardless of the pattern's own seed.

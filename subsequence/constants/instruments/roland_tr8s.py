@@ -44,7 +44,8 @@ for the matching TR-8S voices, a *faithful* subset only, covering the voices
 the machine genuinely has.  This lets GM-named patterns play on the TR-8S and
 lets it take part in symbolic mirroring (each device re-resolves a shared drum
 name through its own map).  Voices the TR-8S lacks (cowbell, tambourine,
-congas, splash/Chinese cymbals, …) are intentionally not aliased.  Canonical
+congas, splash/Chinese cymbals, …) are intentionally not aliased — naming one
+anyway is dropped with a one-time warning (never a wrong voice).  Canonical
 GM names come from `pymididefs.drums <https://github.com/simonholliday/PyMidiDefs>`_
 (``GM_DRUM_MAP``).
 

@@ -2,6 +2,8 @@
 
 import typing
 
+import pytest
+
 import subsequence.constants
 import subsequence.constants.durations
 import subsequence.pattern
@@ -26,6 +28,90 @@ def _make_builder (
 		data=data if data is not None else {},
 	)
 	return pattern, builder
+
+
+def _drum_builder (
+	drum_note_map: dict,
+	length: float = 4,
+	cycle: int = 0,
+) -> typing.Tuple[subsequence.pattern.Pattern, subsequence.pattern_builder.PatternBuilder]:
+
+	"""A Pattern/PatternBuilder pair carrying a ``drum_note_map`` (for name tests)."""
+
+	default_grid = round(length / subsequence.constants.durations.SIXTEENTH)
+	pattern = subsequence.pattern.Pattern(channel=0, length=length)
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern=pattern,
+		cycle=cycle,
+		default_grid=default_grid,
+		drum_note_map=drum_note_map,
+		data={},
+	)
+	return pattern, builder
+
+
+# ── Unified lenient drum-name resolution (thin / ratchet / evolve / branch) ──
+#
+# A voice the device's map lacks is dropped (warned once), never raised — the
+# same rule the step-note methods use.  A name with no map at all still raises.
+
+def test_thin_unknown_pitch_is_noop (caplog: pytest.LogCaptureFixture) -> None:
+
+	"""thin() targeting a voice the map lacks is a no-op, not an error."""
+
+	import logging
+
+	pattern, builder = _drum_builder({"kick": 36})
+	builder.hit_steps("kick", [0, 4, 8, 12], velocity=100)
+	before = sum(len(s.notes) for s in pattern.steps.values())
+
+	with caplog.at_level(logging.WARNING):
+		builder.thin("cymbal", "uniform", amount=1.0)
+
+	after = sum(len(s.notes) for s in pattern.steps.values())
+	assert after == before
+	assert any("cymbal" in r.message for r in caplog.records)
+
+
+def test_ratchet_unknown_pitch_is_noop () -> None:
+
+	"""ratchet() targeting a voice the map lacks leaves the pattern unchanged."""
+
+	pattern, builder = _drum_builder({"kick": 36})
+	builder.hit_steps("kick", [0, 4, 8, 12], velocity=100)
+	before = sum(len(s.notes) for s in pattern.steps.values())
+
+	builder.ratchet(4, pitch="cymbal")
+
+	after = sum(len(s.notes) for s in pattern.steps.values())
+	assert after == before
+
+
+def test_evolve_drops_unknown_seed_names () -> None:
+
+	"""evolve() drops seed names the map lacks; an all-unknown seed is a no-op."""
+
+	pattern, builder = _drum_builder({"kick": 36})
+	builder.evolve(["kick", "cymbal"], drift=0.0, spacing=0.5)
+	pitches = {n.pitch for s in pattern.steps.values() for n in s.notes}
+	assert pitches == {36}
+
+	pattern2, builder2 = _drum_builder({"kick": 36})
+	builder2.evolve(["cymbal", "triangle"], spacing=0.5)
+	assert pattern2.steps == {}
+
+
+def test_branch_drops_unknown_seed_names () -> None:
+
+	"""branch() drops seed names the map lacks; an all-unknown seed is a no-op."""
+
+	pattern, builder = _drum_builder({"kick": 36, "snare": 38})
+	builder.branch(["kick", "snare"], depth=1, path=0, spacing=0.5)
+	assert sum(len(s.notes) for s in pattern.steps.values()) > 0
+
+	pattern2, builder2 = _drum_builder({"kick": 36})
+	builder2.branch(["cymbal"], spacing=0.5)
+	assert pattern2.steps == {}
 
 
 # ---------------------------------------------------------------------------

@@ -247,17 +247,23 @@ def test_drum_note_map_resolves_strings () -> None:
 	assert notes_at_1[0].pitch == 38
 
 
-def test_drum_note_map_missing_raises () -> None:
+def test_unknown_drum_name_warns_and_drops (caplog: pytest.LogCaptureFixture) -> None:
 
 	"""
-	An unknown string pitch should raise a clear error.
+	An unknown drum name mapped by no destination is dropped and warned once,
+	not raised — faithful-core device maps legitimately lack voices.
 	"""
+
+	import logging
 
 	drum_map = {"kick": 36}
 	pattern, builder = _make_builder(drum_note_map=drum_map)
 
-	with pytest.raises(ValueError, match="Unknown drum name"):
+	with caplog.at_level(logging.WARNING):
 		builder.note("cymbal", beat=0)
+
+	assert pattern.steps == {}	# nothing placed
+	assert any("cymbal" in r.message and "dropped" in r.message for r in caplog.records)
 
 
 def test_string_pitch_without_map_raises () -> None:
@@ -322,6 +328,74 @@ def test_add_note_origin_passthrough () -> None:
 
 	assert pattern.steps[0].notes[0].origin == "hi_hat_closed"
 	assert pattern.steps[6].notes[0].origin is None
+
+
+def test_note_primary_unmapped_when_only_mirror_has_it () -> None:
+
+	"""A name absent from the primary map but present in a mirror's is placed as primary_unmapped."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4, mirrors=[(1, 5, {"crash": 49})])
+	builder = subsequence.pattern_builder.PatternBuilder(pattern=pattern, cycle=0, drum_note_map={"kick": 36}, default_grid=16)
+
+	builder.note("crash", beat=0)
+
+	note = pattern.steps[0].notes[0]
+	assert note.origin == "crash"
+	assert note.primary_unmapped is True
+	assert note.pitch == 49	# placeholder from the mirror map — used only by transforms/display
+
+
+def test_note_on_unknown_drum_warns_and_drops (caplog: pytest.LogCaptureFixture) -> None:
+
+	"""A drone / note_on for a voice this device's map lacks is dropped and
+	warned once — not raised — matching the step-note methods (unified rule)."""
+
+	import logging
+
+	pattern, builder = _make_builder(drum_note_map={"kick": 36})
+
+	with caplog.at_level(logging.WARNING):
+		builder.note_on("cymbal", beat=0)
+
+	assert pattern.raw_note_events == []
+	assert any("cymbal" in r.message and "dropped" in r.message for r in caplog.records)
+
+
+def test_note_on_unknown_drum_without_map_raises () -> None:
+
+	"""With no drum_note_map at all, a string pitch is still a configuration error."""
+
+	pattern, builder = _make_builder(drum_note_map=None)
+
+	with pytest.raises(ValueError, match="requires a drum_note_map"):
+		builder.note_on("kick", beat=0)
+
+
+def test_arpeggio_drops_unknown_voice_keeps_known (caplog: pytest.LogCaptureFixture) -> None:
+
+	"""arpeggio drops voices the map lacks (warned once) and keeps the rest."""
+
+	import logging
+
+	pattern, builder = _make_builder(drum_note_map={"kick": 36})
+
+	with caplog.at_level(logging.WARNING):
+		builder.arpeggio(["kick", "cymbal"], spacing=0.5, duration=0.25)
+
+	pitches = {n.pitch for step in pattern.steps.values() for n in step.notes}
+	assert pitches == {36}
+	assert any("cymbal" in r.message for r in caplog.records)
+
+
+def test_arpeggio_all_unknown_is_noop () -> None:
+
+	"""If every arpeggio voice is unmapped, nothing is placed (no error)."""
+
+	pattern, builder = _make_builder(drum_note_map={"kick": 36})
+
+	builder.arpeggio(["cymbal", "triangle"], spacing=0.5)
+
+	assert pattern.steps == {}
 
 
 def test_note_on_adds_raw_event () -> None:

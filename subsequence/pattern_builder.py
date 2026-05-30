@@ -160,8 +160,17 @@ class PatternBuilder(
 		return self._default_grid
 
 	def _has_pitch_at_beat (self, pitch: typing.Union[int, str], beat: float) -> bool:
-		"""Helper to check if a pitch is already sounding at a specific beat."""
-		midi_pitch = self._resolve_pitch(pitch)
+		"""Helper to check if a pitch is already sounding at a specific beat.
+
+		Tolerant of unmappable drum names: a name absent from this pattern's
+		``drum_note_map`` can't already be sounding here, so it returns False
+		(the placement itself handles the drop/warn) rather than raising."""
+		if isinstance(pitch, str):
+			if self._drum_note_map is None or pitch not in self._drum_note_map:
+				return False
+			midi_pitch = self._drum_note_map[pitch]
+		else:
+			midi_pitch = pitch
 		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
 		if pulse in self._pattern.steps:
 			return any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes)
@@ -227,7 +236,14 @@ class PatternBuilder(
 	def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int:
 
 		"""
-		Resolve a pitch value to a MIDI note number.
+		Resolve a pitch value to a MIDI note number (strict).
+
+		Raises on an unknown drum name — the strict counterpart of
+		:meth:`_resolve_pitch_lenient`.  Note-placement and transform methods use
+		the lenient variant, so a device may legitimately lack a voice others
+		have; this strict primitive is retained for parity with the sibling
+		``_resolve_cc`` / ``_resolve_nrpn`` / ``_resolve_rpn`` name resolvers,
+		where an unknown name is always a configuration error.
 		"""
 
 		if isinstance(pitch, int):
@@ -240,6 +256,116 @@ class PatternBuilder(
 			raise ValueError(f"Unknown drum name '{pitch}' - not found in drum_note_map")
 
 		return self._drum_note_map[pitch]
+
+	def _resolve_hit_pitch (self, pitch: typing.Union[int, str]) -> typing.Optional[typing.Tuple[int, typing.Optional[str], bool]]:
+
+		"""Resolve a step-note pitch for placement, leniently for named drums.
+
+		Returns ``(midi_pitch, origin, primary_unmapped)``, or ``None`` to drop
+		the hit entirely.
+
+		Unlike :meth:`_resolve_pitch`, an unknown drum *name* does not raise:
+		faithful-core device maps legitimately lack voices other devices have,
+		so a name a device can't voice is dropped rather than crashing the
+		pattern.  The cases:
+
+		- Integer pitch → ``(pitch, None, False)``.
+		- String in this pattern's ``drum_note_map`` → ``(note, name, False)``.
+		- String absent here but present in a mirror's map →
+		  ``(placeholder, name, True)``: the primary can't voice it, but a
+		  symbolic mirror can (the placeholder pitch is used only by transforms
+		  and display, never for playback — see ``Note.primary_unmapped``).
+		- String absent everywhere → warn once and return ``None`` (drop).
+		- String with **no** ``drum_note_map`` at all → still a configuration
+		  error; raises (you forgot the map, this is not a capability gap).
+		"""
+
+		if isinstance(pitch, int):
+			return (pitch, None, False)
+
+		if self._drum_note_map is None:
+			raise ValueError(f"String pitch '{pitch}' requires a drum_note_map, but none was provided")
+
+		if pitch in self._drum_note_map:
+			return (self._drum_note_map[pitch], pitch, False)
+
+		mirror_pitch = self._first_mirror_pitch(pitch)
+		if mirror_pitch is not None:
+			return (mirror_pitch, pitch, True)
+
+		self._warn_unknown_drum(pitch)
+		return None
+
+	def _first_mirror_pitch (self, name: str) -> typing.Optional[int]:
+
+		"""Return the first mirror ``drum_note_map`` value for *name*, or None.
+
+		Lets a named hit absent from the primary map still be placed (as a
+		``primary_unmapped`` Note) when a symbolic (3-tuple) mirror can voice it.
+		"""
+
+		for entry in getattr(self._pattern, 'mirrors', []):
+			if len(entry) == 3 and entry[2] is not None and name in entry[2]:
+				return typing.cast(int, entry[2][name])
+		return None
+
+	def _warn_unknown_drum (self, name: str, include_mirrors: bool = True) -> None:
+
+		"""Warn once (per pattern, per name) that a drum name maps to nothing.
+
+		Deduplicated via the Pattern's ``_warned_drum_names`` set so the per-bar
+		rebuild does not spam; a hot-reload builds a fresh Pattern and
+		re-surfaces the warning.
+
+		``include_mirrors`` tailors the wording: step-note placement checks the
+		mirror maps too (the name maps to *no* device), whereas the methods that
+		resolve against the primary map only — drones, ``arpeggio``, ``evolve``,
+		``branch``, and the ``thin``/``ratchet`` pitch filter — report just this
+		device.
+		"""
+
+		warned = getattr(self._pattern, '_warned_drum_names', None)
+		if warned is not None:
+			if name in warned:
+				return
+			warned.add(name)
+
+		fn = getattr(self._pattern, '_builder_fn', None)
+		label = getattr(fn, '__name__', None)
+		where = f"pattern '{label}'" if label else f"device {self._pattern.device} channel {self._pattern.channel}"
+		if include_mirrors:
+			scope  = f"the drum_note_map for {where} or any of its mirror destinations"
+			reason = "no device maps this voice"
+		else:
+			scope  = f"the drum_note_map for {where}"
+			reason = "this device has no such voice"
+		logger.warning(f"Drum name '{name}' is not in {scope} — the note is dropped ({reason}). Check the spelling, or add it to a map.")
+
+	def _resolve_pitch_lenient (self, pitch: typing.Union[int, str]) -> typing.Optional[int]:
+
+		"""Resolve a pitch against this pattern's own ``drum_note_map``, leniently.
+
+		Like :meth:`_resolve_pitch`, but an unknown drum *name* (a map is present
+		yet lacks the voice) is **dropped** — warned once, returns ``None`` —
+		instead of raising, so a device may legitimately lack a voice that other
+		devices have.  Used by the methods that do NOT carry the drum name to
+		mirror destinations (``note_on``/``note_off``/``drone``, ``arpeggio``,
+		``evolve``, ``branch``, and the ``thin``/``ratchet`` pitch filter), so
+		resolution is against the primary map only.  A string with **no**
+		``drum_note_map`` at all is still a configuration error and raises.
+		"""
+
+		if isinstance(pitch, int):
+			return pitch
+
+		if self._drum_note_map is None:
+			raise ValueError(f"String pitch '{pitch}' requires a drum_note_map, but none was provided")
+
+		if pitch in self._drum_note_map:
+			return self._drum_note_map[pitch]
+
+		self._warn_unknown_drum(pitch, include_mirrors=False)
+		return None
 
 	def _resolve_cc (self, control: typing.Union[int, str]) -> int:
 
@@ -304,6 +430,13 @@ class PatternBuilder(
 		"""
 		Place a single MIDI note at a specific beat position.
 
+		A drum name is carried through to the mirror fan-out so each device can
+		re-resolve it through its own ``drum_note_map``.  A name no destination
+		maps (not in the pattern's own map nor any mirror's) is dropped and
+		warned once — it does not raise — so device maps can legitimately lack
+		voices others have.  (A string pitch with **no** ``drum_note_map`` at all
+		is still a configuration error and raises.)
+
 		Parameters:
 			pitch: MIDI note number (0-127) or a drum name string from
 				the pattern's `drum_note_map`.
@@ -321,11 +454,14 @@ class PatternBuilder(
 			```
 		"""
 
-		# Capture the drum name (if any) before it is resolved to a number, so
-		# mirror destinations can re-resolve it through their own drum_note_map.
-		origin = pitch if isinstance(pitch, str) else None
+		# Resolve leniently: a named drum the target can't voice is dropped (and
+		# warned once) rather than raising, and the drum name is carried so each
+		# destination can re-resolve it through its own drum_note_map.
+		resolution = self._resolve_hit_pitch(pitch)
+		if resolution is None:
+			return self	# unknown drum name, mapped by no destination — dropped
+		midi_pitch, origin, primary_unmapped = resolution
 
-		midi_pitch = self._resolve_pitch(pitch)
 		resolved_velocity = self._resolve_velocity(velocity)
 
 		# Negative beat values wrap to the end of the pattern.
@@ -337,7 +473,8 @@ class PatternBuilder(
 			pitch = midi_pitch,
 			velocity = resolved_velocity,
 			duration_beats = duration,
-			origin = origin
+			origin = origin,
+			primary_unmapped = primary_unmapped
 		)
 		return self
 
@@ -353,9 +490,16 @@ class PatternBuilder(
 			beat: The beat position (0.0 is the start).
 			velocity: MIDI velocity (0-127, default 100), or a
 				``(low, high)`` tuple for a single random draw.
+
+		A drum name this device's ``drum_note_map`` lacks is dropped (warned
+		once) rather than raising — consistent with the step-note methods.  A
+		string pitch with no ``drum_note_map`` at all is still a configuration
+		error and raises.
 		"""
 
-		midi_pitch = self._resolve_pitch(pitch)
+		midi_pitch = self._resolve_pitch_lenient(pitch)
+		if midi_pitch is None:
+			return self	# drum name this device can't voice — dropped (warned once)
 		resolved_velocity = self._resolve_velocity(velocity)
 		if beat < 0:
 			beat = self._pattern.length + beat
@@ -376,9 +520,14 @@ class PatternBuilder(
 		Parameters:
 			pitch: MIDI note number (0-127) or a drum name string.
 			beat: The beat position (0.0 is the start).
+
+		A drum name this device's ``drum_note_map`` lacks is dropped (warned
+		once) rather than raising; with no ``drum_note_map`` at all it raises.
 		"""
 
-		midi_pitch = self._resolve_pitch(pitch)
+		midi_pitch = self._resolve_pitch_lenient(pitch)
+		if midi_pitch is None:
+			return self	# nothing to silence — this device can't voice the name
 		if beat < 0:
 			beat = self._pattern.length + beat
 
@@ -657,7 +806,12 @@ class PatternBuilder(
 		Cycle through a list of pitches at regular beat intervals.
 
 		Parameters:
-			pitches: List of MIDI note numbers or note name strings (e.g. ``"C4"``).
+			pitches: List of MIDI note numbers (e.g. ``60``), or drum-name strings
+				when the pattern has a ``drum_note_map``.  For pitched note
+				*names* use the integer constants in
+				``subsequence.constants.midi_notes`` (e.g. ``notes.C4``).  A name
+				the map lacks is dropped (warned once); a string with no map at
+				all still raises.
 			spacing: Time between each note in beats (default 0.25 = 16th note).
 			velocity: MIDI velocity for all notes (default 100), or a
 			          ``(low, high)`` tuple for a fresh random draw per note.
@@ -692,7 +846,9 @@ class PatternBuilder(
 		if spacing <= 0:
 			raise ValueError("Spacing must be positive")
 
-		resolved = [self._resolve_pitch(p) for p in pitches]
+		resolved = [r for r in (self._resolve_pitch_lenient(p) for p in pitches) if r is not None]
+		if not resolved:
+			return self	# every named voice was dropped (this device lacks them all)
 
 		if direction == "up":
 			pass  # already in ascending order as supplied

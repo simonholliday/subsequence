@@ -29,6 +29,7 @@ class Note:
 	duration: int
 	channel: int
 	origin: typing.Optional[str] = None		# Original drum-name string (if the pitch was named), kept so mirror destinations can re-resolve it through their own drum_note_map.  None for numeric/pitched notes.
+	primary_unmapped: bool = False			# True when origin was NOT in the pattern's own (primary) drum_note_map — the primary device has no such voice, so it stays silent; only mirror destinations whose maps contain origin sound it.  pitch then holds a placeholder (a mirror's value) used only by transforms/display, never for playback.
 
 
 @dataclasses.dataclass
@@ -130,8 +131,13 @@ class Pattern:
 		self.osc_events: typing.List[OscEvent] = []
 		self.raw_note_events: typing.List[RawNoteEvent] = []
 
+		# Drum names already warned about (absent from every destination map)
+		# so the per-cycle rebuild warns once, not every bar.  A hot-reload
+		# builds a fresh Pattern, which resets this — re-surfacing the warning.
+		self._warned_drum_names: typing.Set[str] = set()
 
-	def add_note (self, position: int, pitch: int, velocity: int, duration: int, origin: typing.Optional[str] = None) -> None:
+
+	def add_note (self, position: int, pitch: int, velocity: int, duration: int, origin: typing.Optional[str] = None, primary_unmapped: bool = False) -> None:
 
 		"""
 		Add a note to the pattern at a specific pulse position.
@@ -140,6 +146,11 @@ class Pattern:
 		(e.g. ``"hi_hat_closed"``), or ``None`` for numeric pitches.  It is
 		carried on the Note so mirror destinations can re-resolve the name
 		through their own ``drum_note_map`` — see ``Sequencer.schedule_pattern``.
+
+		``primary_unmapped`` marks a named hit whose ``origin`` is absent from
+		this pattern's own ``drum_note_map`` but present in a mirror's — the
+		primary device can't voice it, so it stays silent and only the mapping
+		mirror(s) sound it.
 		"""
 
 		if position not in self.steps:
@@ -150,7 +161,8 @@ class Pattern:
 			velocity = velocity,
 			duration = duration,
 			channel = self.channel,
-			origin = origin
+			origin = origin,
+			primary_unmapped = primary_unmapped
 		)
 
 		self.steps[position].notes.append(note)
@@ -179,13 +191,13 @@ class Pattern:
 					duration = note_duration
 				)
 
-	def add_note_beats (self, beat_position: float, pitch: int, velocity: int, duration_beats: float, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE, origin: typing.Optional[str] = None) -> None:
+	def add_note_beats (self, beat_position: float, pitch: int, velocity: int, duration_beats: float, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE, origin: typing.Optional[str] = None, primary_unmapped: bool = False) -> None:
 
 		"""
 		Add a note to the pattern at a beat position.
 
-		``origin`` is the original drum-name string (or ``None``); it is
-		forwarded to ``add_note`` so the resulting Note carries it.
+		``origin`` and ``primary_unmapped`` are forwarded to ``add_note`` so
+		the resulting Note carries the drum name and its primary-map status.
 		"""
 
 		if beat_position < 0:
@@ -208,7 +220,8 @@ class Pattern:
 			pitch = pitch,
 			velocity = velocity,
 			duration = duration,
-			origin = origin
+			origin = origin,
+			primary_unmapped = primary_unmapped
 		)
 
 

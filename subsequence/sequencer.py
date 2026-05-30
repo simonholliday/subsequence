@@ -180,30 +180,37 @@ def _to_target (entry: typing.Sequence[typing.Any]) -> _MirrorTarget:
 	return _MirrorTarget(entry[0], entry[1], drum_map)
 
 
-def _mirror_pitch (note: typing.Any, target: _MirrorTarget, primary: bool) -> int:
+def _destination_pitch (note: typing.Any, target: _MirrorTarget, primary: bool) -> typing.Optional[int]:
 
-	"""Return the MIDI note number to emit for *note* at *target*.
+	"""Return the MIDI note to emit for *note* at *target*, or None to drop it.
 
-	The primary destination always uses the note's already-resolved pitch.  A
-	mirror with its own ``drum_note_map`` re-resolves the note's drum name
-	(``note.origin``) to that device's number.  If there is no map, no name, or
-	the name is absent from the map, it falls back to the resolved pitch — the
-	exact legacy copy-the-number behaviour, so 2-tuple mirrors and pitched
-	notes are unaffected.
+	Drum names are resolved per destination: a destination that has no voice for
+	the name stays silent (returns None) rather than sounding a wrong number.
+
+	- A ``primary_unmapped`` note (its ``origin`` was absent from the pattern's
+	  own map) has no real primary pitch — only a mirror whose map contains the
+	  name voices it; the primary and raw (map-less) mirrors return None.
+	- Otherwise the primary and raw 2-tuple mirrors copy ``note.pitch``; a
+	  symbolic (map-bearing) mirror re-resolves ``note.origin`` through its own
+	  map, dropping a named voice it lacks and copying an origin-less literal
+	  pitch.
 	"""
 
-	if primary:
+	if note.primary_unmapped:
+		# No real primary note exists; only a mapping mirror can sound it.
+		if primary or target.drum_note_map is None:
+			return None
+		if note.origin is not None and note.origin in target.drum_note_map:
+			return target.drum_note_map[note.origin]
+		return None
+
+	if primary or target.drum_note_map is None:
 		return typing.cast(int, note.pitch)
 
-	drum_map = target.drum_note_map
-
-	if drum_map is not None and note.origin is not None:
-		if note.origin in drum_map:
-			return drum_map[note.origin]
-		# Name present on the note and a map exists, but the map lacks it: the
-		# mirror cannot honour this voice, so the primary's number is copied.
-		# This is the one misconfiguration the feature invites (DEBUG, opt-in).
-		logger.debug(f"Mirror drum_note_map has no entry for {note.origin!r} — copying primary note {note.pitch} to device {target.device}")
+	if note.origin is not None:
+		if note.origin in target.drum_note_map:
+			return target.drum_note_map[note.origin]
+		return None   # a named voice this device lacks → silent (not a wrong note)
 
 	return typing.cast(int, note.pitch)
 
@@ -862,13 +869,30 @@ class Sequencer:
 
 					for i, target in enumerate(destinations):
 
+						# Resolve the drum name for this destination; None means the
+						# destination has no voice for it, so it stays silent (no
+						# note_on AND no note_off — nothing can hang).
+						note_value = _destination_pitch(note, target, primary = (i == 0))
+						if note_value is None:
+							# A mirror carrying its own map that lacks this named
+							# voice drops it here by design (faithful-core: silence,
+							# never a wrong note).  Surface it at debug level so
+							# "why is the clap missing on the sampler?" is answerable
+							# without guessing — the build-time warning only covers a
+							# name absent from *every* destination.
+							if i != 0 and note.origin is not None and target.drum_note_map is not None:
+								logger.debug(
+									"Mirror device %d channel %d has no voice for drum '%s' — dropped for this destination",
+									target.device, target.channel, note.origin,
+								)
+							continue
+
 						# Primary preserves the Note's own channel (so polyphonic
 						# tuning's per-voice channel rotation lands correctly).
 						# Mirrors collapse onto the mirror's pinned channel and
 						# re-resolve the drum name through their own map.
 						note_channel = note.channel if i == 0 else target.channel
 						note_device = pattern.device if i == 0 else target.device
-						note_value = _mirror_pitch(note, target, primary = (i == 0))
 
 						on_event = MidiEvent(
 							pulse = abs_pulse,
