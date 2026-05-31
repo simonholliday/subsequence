@@ -8,8 +8,10 @@ import typing
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import subsequence
+import subsequence.chords
 import subsequence.composition
 import subsequence.groove
+import subsequence.harmonic_rhythm
 import subsequence.intervals
 import subsequence.melodic_state
 import subsequence.midi_utils
@@ -27,6 +29,8 @@ functions_to_document: typing.List[typing.Callable] = [
 	subsequence.intervals.register_scale,
 	subsequence.intervals.scale_notes,
 	subsequence.midi_utils.bank_select,
+	subsequence.harmonic_rhythm.between,
+	subsequence.chords.parse_chord,
 ]
 
 

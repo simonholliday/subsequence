@@ -16,6 +16,7 @@ import subsequence.mini_notation
 import subsequence.conductor
 import subsequence.pattern_algorithmic
 import subsequence.pattern_midi
+import subsequence.progression
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ class PatternBuilder(
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info.
 
@@ -138,6 +139,9 @@ class PatternBuilder(
 				order; when two patterns share the same ``length``,
 				a writer defined earlier in source is guaranteed to
 				run before a reader defined later in the same cycle.
+			key: The composition's key (e.g. ``"C"``), used by ``p.progression()``
+				to generate chords from a graph style.  ``None`` when the composition
+				has no key set.
 		"""
 
 		self._pattern = pattern
@@ -152,6 +156,7 @@ class PatternBuilder(
 		self._tweaks: typing.Dict[str, typing.Any] = tweaks or {}
 		self._default_grid: int = default_grid
 		self.data: typing.Dict[str, typing.Any] = data if data is not None else {}
+		self.key: typing.Optional[str] = key  # composition key, for p.progression() chord generation
 		self._tuning_applied: bool = False  # set by apply_tuning() to prevent double-apply
 
 	@property
@@ -886,10 +891,31 @@ class PatternBuilder(
 			i += 1
 		return self
 
-	def chord (self, chord_obj: typing.Any, root: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None, detached: typing.Optional[float] = None) -> "PatternBuilder":
+	def _warn_positioned_articulation (self, method: str, beat: float) -> None:
+
+		"""Warn (once per pattern) that ``sustain``/``detached`` ring from the pattern
+		length, not from ``beat``.
+
+		``chord``/``strum`` size ``sustain``/``detached`` against the whole pattern (the
+		one-chord-fills-the-bar model).  With a non-zero ``beat`` — e.g. placing several
+		chords across a progression — that almost always rings the chord far past its
+		slot, so we flag it.  Deduped on the pattern so a hot-reloading builder warns once.
+		"""
+
+		if self._pattern._warned_positioned_articulation:
+			return
+		self._pattern._warned_positioned_articulation = True
+		logger.warning(
+			"%s(beat=%g, …) was called with sustain= or detached= set — those size the ring "
+			"from the pattern length, not from beat, so the chord can sustain past its slot.  "
+			"For a positioned chord (e.g. over a progression) set duration= explicitly instead.",
+			method, beat,
+		)
+
+	def chord (self, chord_obj: typing.Any, root: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
 
 		"""
-		Place a chord at the start of the pattern.
+		Place a chord at ``beat`` (the start of the pattern by default).
 
 		Note: If the pattern was registered with `voice_leading=True`,
 		this method automatically chooses the best inversion.
@@ -920,6 +946,10 @@ class PatternBuilder(
 				declarative polyphony-safety margin so the chord always
 				releases before the next chord begins.  Mutually exclusive
 				with ``sustain`` and ``legato``.
+			beat: Beat offset to place the chord at (default 0.0 = the start of the
+				pattern).  ``sustain`` and ``detached`` still measure their ring from the
+				pattern length, not from ``beat`` — when placing several positioned chords
+				(e.g. over a progression) set ``duration`` explicitly instead.
 
 		Example::
 
@@ -935,6 +965,9 @@ class PatternBuilder(
 		if set_count > 1:
 			raise ValueError("sustain=, legato=, and detached= are mutually exclusive — use one or the other")
 
+		if beat != 0.0 and (sustain or detached is not None):
+			self._warn_positioned_articulation("chord", beat)
+
 		pitches = chord_obj.tones(root=root, inversion=inversion, count=count)
 
 		if sustain:
@@ -946,7 +979,7 @@ class PatternBuilder(
 
 		for pitch in pitches:
 			self._pattern.add_note_beats(
-				beat_position = 0.0,
+				beat_position = beat,
 				pitch = pitch,
 				velocity = self._resolve_velocity(velocity),
 				duration_beats = duration
@@ -956,13 +989,13 @@ class PatternBuilder(
 			self.legato(legato)
 		return self
 
-	def strum (self, chord_obj: typing.Any, root: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, offset: float = 0.05, direction: str = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None) -> "PatternBuilder":
+	def strum (self, chord_obj: typing.Any, root: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, offset: float = 0.05, direction: str = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
 
 		"""
 		Play a chord with a small time offset between each note (strum effect).
 
 		Works exactly like ``chord()`` but staggers the notes instead of
-		playing them simultaneously. The first note always lands on beat 0;
+		playing them simultaneously. The first note lands on ``beat`` (0 by default);
 		subsequent notes are delayed by ``offset`` beats each.
 
 		Parameters:
@@ -981,6 +1014,9 @@ class PatternBuilder(
 				the chord's natural size).
 			offset: Time in beats between each note onset (default 0.05).
 			direction: ``"up"`` for low-to-high, ``"down"`` for high-to-low.
+			beat: Beat offset for the first note (default 0.0); the stagger is added
+				on top.  ``sustain``/``detached`` ring from the pattern length, not from
+				``beat`` — set ``duration`` explicitly when placing positioned strums.
 			legato: If given, calls ``p.legato(ratio)`` after placing the
 				chord, stretching each note to fill ``ratio`` of the gap to
 				the next note. Mutually exclusive with ``sustain`` and
@@ -1012,6 +1048,9 @@ class PatternBuilder(
 		if set_count > 1:
 			raise ValueError("sustain=, legato=, and detached= are mutually exclusive — use one or the other")
 
+		if beat != 0.0 and (sustain or detached is not None):
+			self._warn_positioned_articulation("strum", beat)
+
 		if offset <= 0:
 			raise ValueError("offset must be positive")
 
@@ -1031,11 +1070,60 @@ class PatternBuilder(
 				raise ValueError(f"detached ({detached}) plus the strum stagger exceeds the pattern length ({self._pattern.length:g} beats) — reduce detached, offset, or count")
 
 		for i, pitch in enumerate(pitches):
-			self.note(pitch=pitch, beat=i * offset, velocity=velocity, duration=duration)
+			self.note(pitch=pitch, beat=beat + i * offset, velocity=velocity, duration=duration)
 
 		if legato is not None:
 			self.legato(legato)
 		return self
+
+	def progression (self, source: subsequence.progression.ProgressionSource, harmonic_rhythm: subsequence.progression.HarmonicRhythmSpec, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> subsequence.progression.ChordTimeline:
+
+		"""Realise a chord progression across the pattern, returning it to place yourself.
+
+		Returns a :class:`~subsequence.progression.ChordTimeline` — an iterable of
+		``(chord, start, length)`` events laying a progression end-to-end across the
+		pattern's length, each chord given a length drawn from *harmonic_rhythm* (the
+		musical term for how often the chords change).  You loop over it and play each
+		chord however you like — block, strummed, or arpeggiated::
+
+			for chord, start, length in p.progression("phrygian_minor",
+					harmonic_rhythm=between(WHOLE, 3 * WHOLE, step=WHOLE), seed=7):
+				p.strum(chord, root=48, beat=start, duration=length - 0.25, offset=0.04, count=4)
+
+		For a one-call block-chord part with no loop, use ``composition.chords()``.
+
+		Parameters:
+			source: A built-in chord-graph style name (e.g. ``"phrygian_minor"``) to
+				*generate* a progression, or an explicit list of chords — ``Chord``
+				objects or names like ``["Cm7", "Dbmaj7", "Abmaj7"]`` — cycled to fill
+				the pattern.
+			harmonic_rhythm: How long each chord lasts, in beats.  One of: a single
+				number (static); a list of lengths (a shaped rhythm such as
+				``[WHOLE, HALF, HALF]``, cycled per chord); or ``between(low, high,
+				step=...)`` for a bounded, optionally-quantised random length.
+			key: Key for generating from a style (e.g. ``"C"``); defaults to the
+				composition's key.  Ignored when *source* is an explicit chord list.
+			seed: If given, the progression is realised from a fresh ``Random(seed)``
+				so it is identical on every cycle (a fixed phrase).  When omitted, the
+				pattern's own RNG is used, so it can vary per cycle (still reproducible
+				under a composition seed).  (Most generative methods seed via
+				``rng=random.Random(...)``; ``progression`` / ``chords`` take a plain
+				``seed=`` int instead.)
+
+		Returns:
+			A ``ChordTimeline`` you can iterate as ``(chord, start, length)`` tuples
+			(or read via ``.events`` / ``print()``).
+		"""
+
+		rng = random.Random(seed) if seed is not None else self.rng
+		resolved_key = key if key is not None else self.key
+		return subsequence.progression.realize(
+			source = source,
+			harmonic_rhythm = harmonic_rhythm,
+			key = resolved_key,
+			length = float(self._pattern.length),
+			rng = rng,
+		)
 
 	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0) -> "PatternBuilder":
 
@@ -1466,24 +1554,23 @@ class PatternBuilder(
 				note.duration = new_duration
 		return self
 
-	def staccato (self, ratio: float = 0.5) -> "PatternBuilder":
+	def staccato (self, beats: float = 0.5) -> "PatternBuilder":
 
 		"""
-		Set all note durations to a fixed proportion of a beat.
+		Set all note durations to a fixed length in beats.
 
 		This overrides any existing note durations, acting as a global
-		'gate time' relative to the beat.
+		'gate time' relative to the beat (1.0 = a quarter note).
 
 		Parameters:
-			ratio: Duration in beats (relative to a quarter note).
-				0.5 = Eighth note duration
-				0.25 = Sixteenth note duration
+			beats: Fixed note duration in beats (relative to a quarter note).
+				0.5 = eighth-note length, 0.25 = sixteenth-note length.  Must be positive.
 		"""
 
-		if ratio <= 0:
-			raise ValueError("Staccato ratio must be positive")
+		if beats <= 0:
+			raise ValueError("Staccato duration (beats) must be positive")
 
-		duration_pulses = int(ratio * subsequence.constants.MIDI_QUARTER_NOTE)
+		duration_pulses = int(beats * subsequence.constants.MIDI_QUARTER_NOTE)
 		duration_pulses = max(1, duration_pulses)
 
 		for step in self._pattern.steps.values():

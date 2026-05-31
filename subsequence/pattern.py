@@ -136,6 +136,10 @@ class Pattern:
 		# builds a fresh Pattern, which resets this — re-surfacing the warning.
 		self._warned_drum_names: typing.Set[str] = set()
 
+		# Likewise warn once if a positioned chord/strum (beat != 0) uses sustain=/detached=,
+		# which size their ring from the pattern length rather than from beat.
+		self._warned_positioned_articulation: bool = False
+
 
 	def add_note (self, position: int, pitch: int, velocity: int, duration: int, origin: typing.Optional[str] = None, primary_unmapped: bool = False) -> None:
 

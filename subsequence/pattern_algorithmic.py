@@ -533,9 +533,11 @@ class PatternAlgorithmicMixin:
 
 			if callable(velocity):
 				vel = int(velocity(i))
-			elif isinstance(velocity, tuple) and len(velocity) == 2:
+			elif isinstance(velocity, tuple):
+				if len(velocity) != 2:
+					raise ValueError(f"ghost_fill velocity tuple must be (low, high); for a per-step sequence use a list, got {velocity!r}")
 				vel = rng.randint(int(velocity[0]), int(velocity[1]))
-			elif isinstance(velocity, (list, tuple)):
+			elif isinstance(velocity, list):
 				vel = int(velocity[i % len(velocity)])
 			else:
 				vel = int(typing.cast(typing.Union[int, float], velocity))

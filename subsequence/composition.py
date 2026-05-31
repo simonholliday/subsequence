@@ -15,6 +15,7 @@ import typing
 import subsequence.chord_graphs
 import subsequence.constants
 import subsequence.constants.durations
+import subsequence.constants.velocity
 import subsequence.display
 import subsequence.harmonic_state
 import subsequence.keystroke
@@ -23,6 +24,7 @@ import subsequence.live_server
 import subsequence.osc
 import subsequence.pattern
 import subsequence.pattern_builder
+import subsequence.progression
 import subsequence.sequencer
 import subsequence.voicings
 import subsequence.web_ui
@@ -2919,6 +2921,120 @@ class Composition:
 
 		self._pending_patterns.append(pending)
 
+	def chords (
+		self,
+		*,
+		channel: int,
+		progression: subsequence.progression.ProgressionSource,
+		harmonic_rhythm: subsequence.progression.HarmonicRhythmSpec,
+		bars: typing.Optional[float] = None,
+		beats: typing.Optional[float] = None,
+		voicing: subsequence.progression.VoicingSpec = (3, 4),
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
+		detached: typing.Optional[float] = None,
+		root: int = 60,
+		key: typing.Optional[str] = None,
+		seed: typing.Optional[int] = None,
+		device: subsequence.midi_utils.DeviceId = None,
+		mirrors: typing.Optional[typing.Iterable[subsequence.pattern.MirrorSpec]] = None,
+	) -> subsequence.progression.ChordTimeline:
+
+		"""Declare a self-contained chord part: a progression at a chosen harmonic rhythm.
+
+		The one-call form of ``p.progression()`` — it registers a pattern on
+		*channel* that plays *progression* across *bars* (or *beats*), each chord
+		lasting a length drawn from *harmonic_rhythm* (the musical term for how often
+		the chords change).  It needs no ``composition.harmony()`` call and, with an
+		explicit chord list or a ``key=``, no composition key either — so a
+		drums-plus-one-chord-part sketch stays simple.
+
+		The progression is realised once, up front, and the same timeline plays every
+		cycle (a stable phrase).  That timeline is returned so you can see exactly what
+		was chosen — ``print(comp.chords(...))``.
+
+		Parameters:
+			channel: MIDI channel for the chord part.
+			progression: A chord-graph style name to generate from, or an explicit list
+				of chords (``Chord`` objects or names like ``["Cm7", "Dbmaj7"]``).
+			harmonic_rhythm: How long each chord lasts — a number, a list of lengths,
+				or ``between(low, high, step=...)``.  See ``p.progression()``.
+			bars / beats: Length of the part (one is required).  ``bars`` uses the
+				composition's time signature.
+			voicing: Notes per chord — an int, or a ``(low, high)`` range (e.g. ``(3, 4)``).
+			velocity: MIDI velocity, or a ``(low, high)`` tuple for per-voice humanisation.
+			detached: Beats of silence before each next chord (``duration = length - detached``).
+			root: MIDI root the voicings are centred on (e.g. 48 = C3).
+			key: Key for a generated progression; defaults to the composition key.
+			seed: Seed for the (otherwise fixed) realisation; defaults to the
+				composition seed, so the part is reproducible.
+			device: Optional output-device override.
+			mirrors: Optional additional ``(device, channel)`` destinations.
+
+		Returns:
+			The realised :class:`~subsequence.progression.ChordTimeline`.
+		"""
+
+		beat_length, default_grid = self._resolve_length(beats, bars, None, None, beats_per_bar=self.time_signature[0])
+		resolved_channel = self._resolve_channel(channel)
+		resolved_key = key if key is not None else self.key
+
+		rng = random.Random(seed if seed is not None else self._seed)
+		timeline = subsequence.progression.realize(
+			source = progression,
+			harmonic_rhythm = harmonic_rhythm,
+			key = resolved_key,
+			length = beat_length,
+			rng = rng,
+		)
+
+		captured_root = root
+		captured_velocity = velocity
+		captured_detached = detached
+		captured_voicing = voicing
+
+		def chords_builder (p: subsequence.pattern_builder.PatternBuilder) -> None:
+
+			"""Replay the realised timeline as block chords each cycle (voicing per chord)."""
+
+			for chord, start, length in timeline:
+				ring = length - captured_detached if (captured_detached and captured_detached < length) else length
+				voices = subsequence.progression.resolve_voices(captured_voicing, p.rng)
+				p.chord(chord, root=captured_root, beat=start, duration=ring, count=voices, velocity=captured_velocity)
+
+		# Unique, stable name so multiple chord parts don't collide in _running_patterns.
+		chords_builder.__name__ = f"chords@ch{resolved_channel}"
+
+		primary: typing.Optional[typing.Tuple[int, int]]
+		if isinstance(device, str):
+			primary = None
+		else:
+			primary = (device if device is not None else 0, resolved_channel)
+		resolved_mirrors = self._resolve_mirrors(mirrors, primary=primary)
+
+		self._declared_names.add(chords_builder.__name__)
+
+		if self._is_live and chords_builder.__name__ in self._running_patterns:
+			running = self._running_patterns[chords_builder.__name__]
+			running._builder_fn = chords_builder
+			running._wants_chord = False
+			logger.info(f"Hot-swapped chords: {chords_builder.__name__}")
+			return timeline
+
+		pending = _PendingPattern(
+			builder_fn = chords_builder,
+			channel = resolved_channel,
+			length = beat_length,
+			default_grid = default_grid,
+			drum_note_map = None,
+			reschedule_lookahead = 1,
+			voice_leading = False,
+			mirrors = resolved_mirrors,
+			device = 0 if (device is None or isinstance(device, str)) else device,
+			raw_device = device,
+		)
+		self._pending_patterns.append(pending)
+		return timeline
+
 	def trigger (
 		self,
 		fn: typing.Callable,
@@ -3545,7 +3661,8 @@ class Composition:
 					rng = self._rng,
 					tweaks = self._tweaks,
 					default_grid = self._default_grid,
-					data = composition_ref.data
+					data = composition_ref.data,
+					key = composition_ref.key
 				)
 
 				try:

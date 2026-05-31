@@ -34,6 +34,7 @@ Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes
   - [Chord inversions and voice leading](#chord-inversions-and-voice-leading)
   - [Harmony and chord graphs](#harmony-and-chord-graphs)
   - [Frozen progressions](#frozen-progressions)
+  - [Chord parts: progressions with a harmonic rhythm](#chord-parts-progressions-with-a-harmonic-rhythm)
 - **5. Live Performance & Tools**
   - [Seed and deterministic randomness](#seed-and-deterministic-randomness)
   - [Terminal display](#terminal-display)
@@ -1384,6 +1385,72 @@ def bass (p, chord):
 - If a section is longer than its progression (more bars than chords), the extra bars fall through to live generation.
 - NIR history is restored at the start of each frozen replay so every re-entry begins with the same harmonic context as when the progression was originally generated.
 - `freeze()` can be called before or after `form()`.
+
+### Chord parts: progressions with a harmonic rhythm
+
+The harmony engine above hands every pattern the *current* chord, changing on a fixed clock. Sometimes you instead want **one self-contained chord part** — a known progression played on a single synth, where the chords are deliberately *not* all the same length. How long each chord lasts — how often the harmony changes — is called the **harmonic rhythm**, and `comp.chords()` lets you declare it directly.
+
+```python
+import subsequence
+import subsequence.constants.durations as dur
+from subsequence import between
+
+comp = subsequence.Composition(bpm=120, key="C")
+
+# A dark, modal chord part on the Sequential Take 5, over 32 bars.
+comp.chords(
+	channel = 3,
+	bars = 32,
+	progression = "phrygian_minor",                                       # generate from a chord graph…
+	harmonic_rhythm = between(dur.WHOLE, 3 * dur.WHOLE, step=dur.WHOLE),   # …each chord 1, 2, or 3 whole notes
+	voicing = (3, 4),                                                      # 3- or 4-note voicings
+	detached = 1,                                                          # release 1 beat before the next chord
+	root = 48,                                                             # centre the voicings on C3
+	seed = 7,                                                              # a fixed, reproducible phrase
+)
+
+comp.play()
+```
+
+**Harmonic rhythm** — the `harmonic_rhythm=` argument takes three shapes:
+
+| Form | Meaning |
+| --- | --- |
+| `dur.WHOLE` | **Static** — every chord the same length. |
+| `[dur.WHOLE, dur.HALF, dur.HALF]` | **Shaped** — a repeating sequence of lengths ("long, short, short"), cycled per chord. |
+| `between(dur.WHOLE, 3 * dur.WHOLE, step=dur.WHOLE)` | **Irregular** — a random length within the range, snapped to `step`. |
+
+**The progression** can be generated from any [built-in chord graph](#built-in-chord-graphs) (`"phrygian_minor"`, `"aeolian_minor"`, `"lydian_major"`, …) or given explicitly as a list — `Chord` objects, or names parsed by `parse_chord`: `progression=["Cm7", "Dbmaj7", "Abmaj7", "Gm7"]`. An explicit list (or a `key=`) means the part needs no composition-wide key, so a drums-plus-one-chord-part sketch stays simple.
+
+`comp.chords()` returns a **`ChordTimeline`** — print it to see exactly what the engine chose:
+
+```
+>>> print(comp.chords(channel=3, bars=8, progression="phrygian_minor",
+...                    harmonic_rhythm=between(dur.WHOLE, 3*dur.WHOLE, step=dur.WHOLE), seed=7))
+ChordTimeline — 6 chords over 32 beats
+    0.00 …   8.00   Cm       (8 beats)
+    8.00 …  16.00   Gm       (8 beats)
+   16.00 …  20.00   C#m      (4 beats)
+   20.00 …  24.00   Cm       (4 beats)
+   24.00 …  28.00   Fm       (4 beats)
+   28.00 …  32.00   Gm       (4 beats)
+```
+
+**Placing the chords yourself.** `comp.chords()` plays *block* chords. When you want them strummed, arpeggiated, or mixed with other material, drop to `p.progression()` — it hands you the realised chords as `(chord, start, length)` and you place each with whatever verb you like. The chord verbs `p.chord()` and `p.strum()` take a `beat=`, so they can land anywhere in the bar:
+
+```python
+@comp.pattern(channel=3, bars=32)
+def keys (p):
+	for chord, start, length in p.progression("phrygian_minor",
+			harmonic_rhythm=between(dur.WHOLE, 3 * dur.WHOLE, step=dur.WHOLE), seed=7):
+		p.strum(chord, root=48, beat=start, duration=length - 0.25,
+		        offset=0.04, count=4, velocity=(70, 90))   # rolled chords, each released 0.25 beats early
+	# p can keep going — a bass root under each chord, a counter-melody, …
+```
+
+`p.progression()` *realises* the progression but places nothing itself — the verb in the loop does. Swap `p.strum` for `p.chord`, `p.broken_chord`, or `p.arpeggio(chord.tones(...), …)` to change the articulation; every parameter of those methods is yours to use. (`comp.chords()` is exactly this loop wrapped up for the plain block-chord case.)
+
+**Fixed or breathing.** `comp.chords()` realises its phrase once, so it repeats identically. `p.progression()` realises on each rebuild, so omitting `seed=` lets the lengths breathe from cycle to cycle (still reproducible under the composition's own `seed=`); pass `seed=` for a fixed phrase. Velocity humanises per voice via the usual `velocity=(low, high)` convention.
 
 ## 5. Live Performance & Tools
 

@@ -67,6 +67,12 @@ Composition tools:
   continuation after small steps, reversal after large leaps, chord-tone
   weighting, range gravity, and pitch-diversity penalty.  History persists
   across bar rebuilds for natural phrase continuity.
+- **Chord parts.** ``comp.chords()`` and ``p.progression()`` play a chord
+  progression — generated from a chord-graph style or given explicitly — at a
+  declared *harmonic rhythm*: a fixed length, a shaped ``[WHOLE, HALF, HALF]``
+  sequence, or ``between(WHOLE, 3 * WHOLE, step=WHOLE)`` for chords of varying,
+  quantized length.  Voicing density, ``detached`` articulation, and a seed for
+  a fixed phrase are all declarative.
 - **Expression.** CC messages/ramps, pitch bend, note-correlated
   bend/portamento/slide, program changes, SysEx, and OSC output - all
   from within patterns.
@@ -156,21 +162,28 @@ Community and Feedback:
 - **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
 - **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
 
-Package-level exports: ``Composition``, ``Groove``, ``MelodicState``, ``Tuning``, ``register_scale``, ``scale_notes``, ``bank_select``.
+Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``between``, ``ChordTimeline``, ``parse_chord``, ``register_scale``, ``scale_notes``, ``bank_select``.
 """
 
+import subsequence.chords
 import subsequence.composition
 import subsequence.groove
+import subsequence.harmonic_rhythm
 import subsequence.intervals
 import subsequence.melodic_state
 import subsequence.midi_utils
+import subsequence.progression
 import subsequence.tuning
 
 
 Composition = subsequence.composition.Composition
+Chord = subsequence.chords.Chord
 Groove = subsequence.groove.Groove
 MelodicState = subsequence.melodic_state.MelodicState
 Tuning = subsequence.tuning.Tuning
+between = subsequence.harmonic_rhythm.between
+ChordTimeline = subsequence.progression.ChordTimeline
+parse_chord = subsequence.chords.parse_chord
 register_scale = subsequence.intervals.register_scale
 scale_notes = subsequence.intervals.scale_notes
 bank_select = subsequence.midi_utils.bank_select

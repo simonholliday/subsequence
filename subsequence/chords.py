@@ -249,3 +249,72 @@ class Chord:
 		suffix = CHORD_SUFFIX.get(self.quality, "")
 
 		return f"{root_name}{suffix}"
+
+
+# Quality suffixes accepted by parse_chord(), including common alternates.  The
+# canonical suffixes (the values of CHORD_SUFFIX) all round-trip, so a chord's
+# own name() always re-parses to the same chord.
+_SUFFIX_TO_QUALITY: typing.Dict[str, str] = {
+	"": "major",
+	"maj": "major",
+	"M": "major",
+	"m": "minor",
+	"min": "minor",
+	"-": "minor",
+	"dim": "diminished",
+	"o": "diminished",
+	"°": "diminished",
+	"aug": "augmented",
+	"+": "augmented",
+	"7": "dominant_7th",
+	"dom7": "dominant_7th",
+	"maj7": "major_7th",
+	"M7": "major_7th",
+	"m7": "minor_7th",
+	"min7": "minor_7th",
+	"-7": "minor_7th",
+	"m7b5": "half_diminished_7th",
+	"ø": "half_diminished_7th",
+	"halfdim": "half_diminished_7th",
+	"sus2": "sus2",
+	"sus4": "sus4",
+	"sus": "sus4",
+}
+
+
+def parse_chord (name: str) -> Chord:
+
+	"""Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a :class:`Chord`.
+
+	The name is a root note (``A``–``G`` with an optional ``#`` or ``b``) followed
+	by a quality suffix: ``""`` major, ``m`` minor, ``dim`` diminished,
+	``+``/``aug`` augmented, ``7`` dominant 7th, ``maj7`` major 7th, ``m7`` minor
+	7th, ``m7b5``/``ø`` half-diminished 7th, ``sus2``, ``sus4``.  A few common
+	alternates (``min``, ``-``, ``M7``, …) are accepted too.
+
+	Raises ``ValueError`` for anything it can't read, so a typo surfaces at the
+	call site rather than as a silently wrong chord.
+
+	Example:
+		```python
+		parse_chord("Cm7")    # → Chord(root_pc=0, quality="minor_7th")
+		parse_chord("Dbmaj7") # → Chord(root_pc=1, quality="major_7th")
+		parse_chord("F#")     # → Chord(root_pc=6, quality="major")
+		```
+	"""
+
+	stripped = name.strip()
+	if not stripped or stripped[0] not in "ABCDEFG":
+		raise ValueError(f"Cannot parse chord name {name!r} — expected a root like 'C', 'F#', 'Bb' then a quality, e.g. 'Cm7'")
+
+	split = 2 if (len(stripped) > 1 and stripped[1] in "#b") else 1
+	root_name = stripped[:split]
+	suffix = stripped[split:]
+
+	if root_name not in NOTE_NAME_TO_PC:
+		raise ValueError(f"Cannot parse chord name {name!r} — unknown root {root_name!r}")
+	if suffix not in _SUFFIX_TO_QUALITY:
+		known = ", ".join(repr(key) for key in sorted(_SUFFIX_TO_QUALITY) if key)
+		raise ValueError(f"Cannot parse chord name {name!r} — unknown quality {suffix!r}. Known suffixes: {known}")
+
+	return Chord(root_pc=NOTE_NAME_TO_PC[root_name], quality=_SUFFIX_TO_QUALITY[suffix])
