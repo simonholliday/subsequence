@@ -81,19 +81,24 @@ class PatternMidiMixin:
 		Parameters:
 			control: MIDI CC number (0–127), or a string name resolved
 				via the pattern's ``cc_name_map``.
-			value: CC value (0–127).
+			value: CC value (0–127); out-of-range values are clamped.
 			beat: Beat position within the pattern.
 		"""
 
 		cc_num: int = self._resolve_cc(control)
 		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
 
+		# Clamp to the 7-bit CC range like every sibling (cc_ramp / program_change
+		# / pitch_bend) so a computed out-of-range value is corrected here rather
+		# than silently dropped and logged when mido rejects it at dispatch time.
+		clamped_value = max(0, min(127, int(round(value))))
+
 		self._pattern.cc_events.append(
 			subsequence.pattern.CcEvent(
 				pulse = pulse,
 				message_type = 'control_change',
 				control = cc_num,
-				value = value
+				value = clamped_value
 			)
 		)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
@@ -857,7 +862,6 @@ class PatternMidiMixin:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 		sorted_positions = sorted(self._pattern.steps.keys())
-		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
 
 		# Resolve note index (supports negative indexing)
 		position = sorted_positions[note]
@@ -941,7 +945,6 @@ class PatternMidiMixin:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 		sorted_positions = sorted(self._pattern.steps.keys())
-		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
 		n = len(sorted_positions)
 
 		def _lowest_pitch (pos: int) -> int:
@@ -1062,11 +1065,15 @@ class PatternMidiMixin:
 			for idx in notes:
 				flagged.add(sorted_positions[idx])
 		else:
-			# steps is not None
-			step_pulses = total_pulses // self._default_grid
+			# steps is not None.  Resolve each grid step to the SAME pulse the
+			# placement methods use — int(step * (length / grid) * PPQ) — so the
+			# flag lands on the note even when the grid doesn't divide the bar
+			# evenly.  Floored uniform spacing (total_pulses // grid) drifts out of
+			# alignment on non-divisor grids, silently flagging nothing.
+			step_beats = self._pattern.length / self._default_grid
 			flagged = set()
 			for s in (steps or []):
-				flagged.add(s * step_pulses)
+				flagged.add(int(s * step_beats * subsequence.constants.MIDI_QUARTER_NOTE))
 
 		def _lowest_pitch (pos: int) -> int:
 			return min(note.pitch for note in self._pattern.steps[pos].notes)

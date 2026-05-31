@@ -193,8 +193,9 @@ async def test_trigger_builder_exception_is_logged (patch_midi: None) -> None:
 
 	await asyncio.sleep(0.01)
 
-	# The pattern was never added to the event queue due to the exception
-	# This is the expected behavior (silent pattern)
+	# The builder raised, so the pattern produced no events (it's silent) and the
+	# trigger did not crash the composition.
+	assert composition._sequencer.event_queue == []
 
 	await composition._sequencer.stop()
 
@@ -212,8 +213,11 @@ async def test_trigger_before_playback_is_safe (patch_midi: None) -> None:
 	def builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		p.note(60, beat=0, velocity=100, duration=0.5)
 
-	# Trigger without calling play() - should not crash
+	# Trigger without calling play() - should not crash, and should not leak
+	# events into the queue before the sequencer is running.
 	composition.trigger(builder, channel=1)
+
+	assert composition._sequencer.event_queue == []
 
 
 @pytest.mark.asyncio

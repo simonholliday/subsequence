@@ -189,23 +189,26 @@ p.hit_steps("snare_1", range(16), velocity=velocities)
 
 ### Euclidean
 
-Euclid's algorithm for computing greatest common divisors dates to 300 BC. In 2003, Bjorklund applied it to distribute neutron accelerator pulses as evenly as possible, and Toussaint (2005) showed the resulting patterns match traditional rhythms from around the world - West African bell patterns, Cuban clave, Turkish aksak. `p.euclidean(pitch, pulses, steps)` distributes `pulses` hits as evenly as possible across a `steps`-step grid. Two numbers in, a rhythm out.
+Euclid's algorithm for computing greatest common divisors dates to 300 BC. In 2003, Bjorklund applied it to distribute neutron accelerator pulses as evenly as possible, and Toussaint (2005) showed the resulting patterns match traditional rhythms from around the world - West African bell patterns, Cuban clave, Turkish aksak. `p.euclidean(pitch, pulses)` distributes `pulses` hits as evenly as possible across the pattern's sixteenth-note grid — so a 4-beat pattern is 16 steps, a 3-beat pattern 12. Set the grid by the pattern's length (the decorator's `beats=`/`steps=`); the call itself takes just the pitch and the number of hits.
 
 ```python
-p.euclidean("kick_1", pulses=5, steps=16, velocity=100) # tresillo / bossa clave
-p.euclidean("hi_hat_closed", pulses=7, steps=12, velocity=70) # 7-against-12
+# On a 4-beat pattern (16 sixteenths): 5 evenly-spread hits — tresillo / bossa clave
+p.euclidean("kick_1", pulses=5, velocity=100)
+
+# On a 3-beat pattern (12 sixteenths): 7 hits — 7-against-12
+p.euclidean("hi_hat_closed", pulses=7, velocity=70)
 ```
 
 ### Bresenham
 
-Jack Bresenham developed his line-drawing algorithm at IBM in 1962 for pen plotters - distributing pixels along a line using only integer arithmetic. Where Euclidean rhythms maximise evenness, Bresenham distributes points along a slope, producing subtly different spacings. `p.bresenham(pitch, pulses, steps)` places hits with Bresenham spacing. `p.bresenham_poly(parts, steps)` goes further, distributing multiple voices simultaneously with `no_overlap` collision avoidance - interlocking patterns from a single call.
+Jack Bresenham developed his line-drawing algorithm at IBM in 1962 for pen plotters - distributing pixels along a line using only integer arithmetic. Where Euclidean rhythms maximise evenness, Bresenham distributes points along a slope, producing subtly different spacings. `p.bresenham(pitch, pulses)` places hits with Bresenham spacing across the pattern's grid. `p.bresenham_poly(parts, grid=…)` goes further, distributing multiple voices simultaneously with `no_overlap` collision avoidance - interlocking patterns from a single call.
 
 ```python
 p.bresenham_poly({
 	"kick_1":        0.4,
 	"snare_1":       0.25,
 	"hi_hat_closed": 0.7,
-}, steps=16, no_overlap=True)
+}, grid=16, no_overlap=True)
 ```
 
 ### Ghost fill
@@ -279,7 +282,7 @@ p.cellular_1d("hi_hat_closed", rule=110, velocity=70) # Rule 110: complex / stru
 
 ### Markov
 
-Andrey Markov introduced his probability chains in 1906 to analyse letter sequences in Pushkin's *Eugene Onegin* - proving that dependent random events could still obey the law of large numbers. The model became foundational to information theory, speech recognition, and algorithmic composition (Hiller and Isaacson's *Illiac Suite*, 1957 - one of the first computer-generated scores). `p.markov(pitches, transitions, step, velocity)` walks a weighted transition graph where each note influences only the next - local coherence without global structure. The transition weights define the style: tight weights produce stepwise motion, loose weights produce leaps.
+Andrey Markov introduced his probability chains in 1906 to analyse letter sequences in Pushkin's *Eugene Onegin* - proving that dependent random events could still obey the law of large numbers. The model became foundational to information theory, speech recognition, and algorithmic composition (Hiller and Isaacson's *Illiac Suite*, 1957 - one of the first computer-generated scores). `p.markov(transitions, pitch_map, spacing, velocity)` walks a weighted transition graph (where `transitions` maps each state to a list of `(next_state, weight)` pairs and `pitch_map` maps each state to a MIDI note) where each note influences only the next - local coherence without global structure. The transition weights define the style: tight weights produce stepwise motion, loose weights produce leaps.
 
 ```python
 import subsequence
@@ -287,13 +290,16 @@ import subsequence.constants.midi_notes as notes
 
 # C major: one octave from middle C (C4–B4)
 scale = subsequence.scale_notes("C", "ionian", low=notes.C4, high=notes.B4)
-transitions = {i: {i: 3, i-1: 1, i+1: 1} for i in range(len(scale))}
-p.markov(scale, transitions, spacing=0.25, velocity=(60, 100))
+
+# One state per scale degree → its MIDI note; each degree prefers to stay or step by one.
+pitch_map = {str(i): pitch for i, pitch in enumerate(scale)}
+transitions = {str(i): [(str(i), 3), (str(max(0, i-1)), 1), (str(min(len(scale)-1, i+1)), 1)] for i in range(len(scale))}
+p.markov(transitions, pitch_map, spacing=0.25, velocity=(60, 100))
 ```
 
 ### L-system
 
-Aristid Lindenmayer invented L-systems in 1968 to model the branching growth of algae and plants. A simple rewriting rule ("replace A with AB, replace B with A") applied repeatedly produces Fibonacci-length strings; more complex rules generate fractal trees, ferns, and Koch curves. Unlike sequential grammars, L-systems apply all rules in parallel - every cell grows simultaneously. `p.lsystem(axiom, rules, generations, step, velocity)` expands an L-system string then interprets it as rhythm or melody. The result is self-similar: successive generations produce related patterns at increasing density. Stochastic rules (weighted alternatives) add controlled variation.
+Aristid Lindenmayer invented L-systems in 1968 to model the branching growth of algae and plants. A simple rewriting rule ("replace A with AB, replace B with A") applied repeatedly produces Fibonacci-length strings; more complex rules generate fractal trees, ferns, and Koch curves. Unlike sequential grammars, L-systems apply all rules in parallel - every cell grows simultaneously. `p.lsystem(pitch_map, axiom, rules, generations, spacing, velocity)` expands an L-system string then interprets it as rhythm or melody. The result is self-similar: successive generations produce related patterns at increasing density. Stochastic rules (weighted alternatives) add controlled variation.
 
 ```python
 p.lsystem(axiom="X", rules={"X": "FX", "F": "FF"}, generations=4, spacing=0.25, velocity=80)
@@ -436,7 +442,7 @@ Unlike chord NIR, melody NIR operates on **absolute MIDI pitch differences** (no
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `state` | - | A `MelodicState` instance (required) |
-| `step` | `0.25` | Time between note onsets in beats (0.25 = 16th note) |
+| `spacing` | `0.25` | Time between note onsets in beats (0.25 = 16th note) |
 | `velocity` | `90` | Fixed int or `(low, high)` tuple for random range per step |
 | `duration` | `0.2` | Note duration in beats |
 | `chord_tones` | `None` | MIDI notes that are chord tones this bar |

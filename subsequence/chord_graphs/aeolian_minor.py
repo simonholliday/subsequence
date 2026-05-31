@@ -99,6 +99,15 @@ class AeolianMinor (subsequence.chord_graphs.ChordGraph):
 		graph.add_transition(mediant, submediant, WEIGHT_COMMON)
 		graph.add_transition(mediant, subdominant, WEIGHT_WEAK)
 
+		# Reach the diatonic chords that previously had only outgoing edges, as
+		# occasional colour:
+		#   i  → bIII — the relative major, a staple minor-key move.
+		#   iv → ii°  — predominant into the supertonic dim (which then goes to V).
+		#   iv → vii° — predominant into the harmonic-minor leading-tone triad (→ i).
+		graph.add_transition(tonic, mediant, WEIGHT_WEAK)
+		graph.add_transition(subdominant, supertonic_dim, WEIGHT_WEAK)
+		graph.add_transition(subdominant, leading_dim, WEIGHT_WEAK)
+
 		# --- Optional dominant seventh ---
 		if self.include_dominant_7th:
 			dominant_7th = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="dominant_7th")
@@ -128,6 +137,10 @@ class AeolianMinor (subsequence.chord_graphs.ChordGraph):
 
 		diatonic.add(subsequence.chords.Chord(root_pc=dominant_pc, quality="major"))
 		diatonic.add(subsequence.chords.Chord(root_pc=flat_two_pc, quality="major"))
+
+		# Harmonic-minor leading-tone triad vii° — now reachable in the graph, so
+		# list it as a diatonic candidate for gravity weighting too.
+		diatonic.add(subsequence.chords.Chord(root_pc=(key_pc + 11) % 12, quality="diminished"))
 
 		dominant_7th = subsequence.chords.Chord(root_pc=dominant_pc, quality="dominant_7th")
 		diatonic.add(dominant_7th)

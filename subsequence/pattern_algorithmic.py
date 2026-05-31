@@ -104,6 +104,9 @@ class PatternAlgorithmicMixin:
 		``self.note()``, giving each placed note a fresh random velocity.
 		"""
 
+		if not sequence:
+			return	# nothing to place (e.g. a pattern shorter than one step)
+
 		step_duration = self._pattern.length / len(sequence)
 
 		for i, hit_value in enumerate(sequence):
@@ -819,11 +822,7 @@ class PatternAlgorithmicMixin:
 			pitch = state.choose_next(chord_tones, self.rng)
 
 			if pitch is not None:
-				vel = (
-					self.rng.randint(velocity[0], velocity[1])
-					if isinstance(velocity, tuple)
-					else velocity
-				)
+				vel = self._resolve_velocity(velocity)
 				self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
 
 			beat += spacing
@@ -917,11 +916,7 @@ class PatternAlgorithmicMixin:
 
 		for symbol in symbols:
 			if symbol in pitch_map:
-				vel = (
-					self.rng.randint(velocity[0], velocity[1])
-					if isinstance(velocity, tuple)
-					else int(velocity)
-				)
+				vel = self._resolve_velocity(velocity)
 				self.note(
 					pitch=pitch_map[symbol],
 					beat=beat,
@@ -993,6 +988,12 @@ class PatternAlgorithmicMixin:
 			for i, val in enumerate(sequence):
 				if dropout > 0 and rng.random() < dropout:
 					continue
+
+				# Honour no_overlap against whichever voice this step would place.
+				active_pitch = pitch if val == 0 else pitch_b
+				if no_overlap and self._has_pitch_at_beat(active_pitch, i * step_dur):
+					continue
+
 				if val == 0:
 					self.note(pitch=pitch, beat=i * step_dur, velocity=velocity, duration=duration)
 				else:
@@ -1057,11 +1058,7 @@ class PatternAlgorithmicMixin:
 		beat = 0.0
 
 		for idx in symbols:
-			vel = (
-				self.rng.randint(velocity[0], velocity[1])
-				if isinstance(velocity, tuple)
-				else int(velocity)
-			)
+			vel = self._resolve_velocity(velocity)
 			self.note(pitch=pitches[idx], beat=beat, velocity=vel, duration=duration)
 			beat += auto_step
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
@@ -1099,11 +1096,7 @@ class PatternAlgorithmicMixin:
 		beats = subsequence.sequence_utils.fibonacci_rhythm(steps, self._pattern.length)
 
 		for beat in beats:
-			vel = (
-				self.rng.randint(velocity[0], velocity[1])
-				if isinstance(velocity, tuple)
-				else int(velocity)
-			)
+			vel = self._resolve_velocity(velocity)
 			self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
@@ -1269,6 +1262,8 @@ class PatternAlgorithmicMixin:
 					continue
 				if dropout > 0 and rng.random() < dropout:
 					continue
+				if no_overlap and self._has_pitch_at_beat(pitch, i * step_dur):
+					continue
 				vel = int(midi_vel_lo + conc * (midi_vel_hi - midi_vel_lo))
 				self.note(pitch=pitch, beat=i * step_dur, velocity=vel, duration=duration)
 		else:
@@ -1329,11 +1324,7 @@ class PatternAlgorithmicMixin:
 		beat = 0.0
 
 		for idx in indices:
-			vel = (
-				rng.randint(velocity[0], velocity[1])
-				if isinstance(velocity, tuple)
-				else int(velocity)
-			)
+			vel = self._resolve_velocity(velocity, rng)
 			self.note(pitch=pitches[idx], beat=beat, velocity=vel, duration=duration)
 			beat += spacing
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
@@ -1731,10 +1722,20 @@ class PatternAlgorithmicMixin:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 		n = steps if steps is not None else len(resolved)
 
-		# Stable key derived from the seed identity.
-		data_key = "_evolve_" + str(id(pitches))
+		# Stable key derived from the seed *content* (not object identity).  The
+		# documented idiom passes a fresh list literal every cycle; keying on
+		# ``id(pitches)`` gave that literal a new address each cycle, so the
+		# buffer re-seeded every cycle (drift never accumulated) and a dict key
+		# leaked per cycle.  Content keying makes the buffer persist so the walk
+		# actually evolves, and scoping by the owning pattern's builder name keeps
+		# two patterns' identical seeds from sharing one walk.  ``resolved`` (the
+		# post-lenient ints) and ``n`` are folded in so a changed step count or a
+		# seed whose unknown names were dropped still keys stably.
+		builder_fn = getattr(self._pattern, '_builder_fn', None)
+		scope = getattr(builder_fn, '__name__', '') if builder_fn is not None else ''
+		data_key = f"_evolve_{scope}_{n}_{tuple(resolved)}"
 
-		# Initialise or reset buffer on cycle 0.
+		# Initialise or reset the buffer on cycle 0.
 		if data_key not in self.data or self.cycle == 0:
 			self.data[data_key] = [resolved[i % len(resolved)] for i in range(n)]
 
@@ -1748,11 +1749,7 @@ class PatternAlgorithmicMixin:
 
 		# Place notes.
 		for i, pitch in enumerate(buffer):
-			vel = (
-				self.rng.randint(velocity[0], velocity[1])
-				if isinstance(velocity, tuple)
-				else int(velocity)
-			)
+			vel = self._resolve_velocity(velocity)
 			self.note(pitch=pitch, beat=i * spacing, velocity=vel, duration=duration)
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
@@ -1869,11 +1866,7 @@ class PatternAlgorithmicMixin:
 
 		# Place notes.
 		for i, pitch in enumerate(sequence):
-			vel = (
-				self.rng.randint(velocity[0], velocity[1])
-				if isinstance(velocity, tuple)
-				else int(velocity)
-			)
+			vel = self._resolve_velocity(velocity)
 			self.note(pitch=pitch, beat=i * spacing, velocity=vel, duration=duration)
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)

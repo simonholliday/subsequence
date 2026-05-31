@@ -66,6 +66,14 @@ class DiatonicMajor (subsequence.chord_graphs.ChordGraph):
 
 		graph.add_transition(leading, tonic, WEIGHT_STRONG)
 
+		# Make the two remaining diatonic triads reachable as occasional colour —
+		# they were defined with resolving edges but nothing led into them:
+		#   vi → iii  — the descending-thirds sequence (I–V–vi–iii–IV).
+		#   IV → vii° — predominant into the leading-tone triad (a dominant
+		#               substitute), which then resolves via its vii° → I edge.
+		graph.add_transition(submediant, mediant, WEIGHT_WEAK)
+		graph.add_transition(subdominant, leading, WEIGHT_WEAK)
+
 		if self.include_dominant_7th:
 			# Decision path: optional dominant seventh color for stronger cadences.
 			dominant_7th = subsequence.chords.Chord(root_pc=dominant.root_pc, quality="dominant_7th")

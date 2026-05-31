@@ -366,6 +366,12 @@ class Sequencer:
 		self._max_device_latency_ms: float = 0.0
 		self._pending_sends: typing.Set[asyncio.TimerHandle] = set()
 
+		# Strong references to fire-and-forget bar/beat/event tasks.  Without
+		# retaining them asyncio holds only a weak reference and the task can be
+		# garbage-collected mid-flight; the done-callback also surfaces exceptions
+		# that a bare create_task would otherwise swallow until GC.
+		self._background_tasks: typing.Set[asyncio.Task] = set()
+
 		self.queue_lock = asyncio.Lock()
 		self.pattern_lock = asyncio.Lock()
 		self.reschedule_queue: typing.List[typing.Tuple[int, int, ScheduledPattern]] = []
@@ -606,7 +612,7 @@ class Sequencer:
 		if bars <= 0:
 			raise ValueError("Transition bars must be positive")
 
-		total_pulses = bars * self.pulses_per_beat * 4
+		total_pulses = bars * self.pulses_per_beat * self.time_signature[0]
 
 		self._bpm_transition = BpmTransition(
 			start_bpm=self.current_bpm,
@@ -826,6 +832,31 @@ class Sequencer:
 
 		event.sequence = next(self._event_counter)
 		heapq.heappush(self.event_queue, event)
+
+
+	def _spawn (self, coro: typing.Coroutine) -> None:
+
+		"""Fire-and-forget *coro* on the event loop, tracked and exception-safe.
+
+		Retains a strong reference until the task completes (so it cannot be
+		collected mid-flight) and surfaces any exception via the done-callback —
+		a bare ``asyncio.create_task`` drops both, silently losing a raising bar
+		or beat callback.
+		"""
+
+		task = asyncio.create_task(coro)
+		self._background_tasks.add(task)
+		task.add_done_callback(self._reap_background_task)
+
+
+	def _reap_background_task (self, task: "asyncio.Task") -> None:
+
+		"""Done-callback: drop the reference and log any exception."""
+
+		self._background_tasks.discard(task)
+
+		if not task.cancelled() and task.exception() is not None:
+			logger.error("Background task failed", exc_info=task.exception())
 
 
 	async def schedule_pattern (self, pattern: PatternLike, start_pulse: int) -> None:
@@ -1141,6 +1172,14 @@ class Sequencer:
 		self._output_devices.close_all()
 		self._input_devices.close_all()
 
+		# Leave the Ableton Link session cleanly if one was active, rather than
+		# letting the socket linger in the session until process exit.
+		if self._link_clock is not None:
+			try:
+				self._link_clock.disable()
+			except Exception:
+				logger.exception("Failed to disable Ableton Link clock")
+
 		self._midi_input_queue = None
 		self._input_loop = None
 
@@ -1203,9 +1242,9 @@ class Sequencer:
 				return
 
 			for cb in self.callbacks:
-				asyncio.create_task(cb(self.current_bar))
+				self._spawn(cb(self.current_bar))
 
-			asyncio.create_task(self.events.emit_async("bar", self.current_bar))
+			self._spawn(self.events.emit_async("bar", self.current_bar))
 
 
 	def _check_beat_change (self, pulse: int, pulses_per_beat: int) -> None:
@@ -1216,7 +1255,7 @@ class Sequencer:
 
 		if beat_in_bar != self.current_beat:
 			self.current_beat = beat_in_bar
-			asyncio.create_task(self.events.emit_async("beat", self.current_beat))
+			self._spawn(self.events.emit_async("beat", self.current_beat))
 
 
 	async def _advance_pulse (self) -> None:
@@ -1518,7 +1557,7 @@ class Sequencer:
 			scheduled_pattern.next_reschedule_pulse = scheduled_pattern.cycle_start_pulse + new_length_pulses - new_lookahead_pulses
 
 			await self.schedule_pattern(scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse)
-			asyncio.create_task(self.events.emit_async("pattern_reschedule", scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse))
+			self._spawn(self.events.emit_async("pattern_reschedule", scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse))
 
 		async with self.pattern_lock:
 			for scheduled_pattern in to_reschedule:

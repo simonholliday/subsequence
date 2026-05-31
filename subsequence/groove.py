@@ -222,7 +222,10 @@ def apply_groove (
 		grid_index = round(old_pulse / grid_pulses)
 		ideal_pulse = grid_index * grid_pulses
 
-		# Only affect notes close to a grid position
+		# Only groove notes that sit close to a grid position; notes deliberately
+		# placed between grid lines (flams, pushes) keep both their timing AND
+		# velocity.  The window is ±25% of a cell (half_grid * 0.5) — narrow on
+		# purpose, so off-grid expression survives a quantised groove.
 		if abs(old_pulse - ideal_pulse) > half_grid * 0.5:
 			new_pulse = old_pulse
 		else:
@@ -231,12 +234,13 @@ def apply_groove (
 			new_pulse = int(round(ideal_pulse + offset_pulses))
 			new_pulse = max(0, new_pulse)
 
-		# Apply velocity scaling if present
-		if groove.velocities and num_velocities > 0:
-			vel_slot = grid_index % num_velocities
-			# Blend between 1.0 (no effect) and the groove's scale (full effect)
-			vel_scale = 1.0 + (groove.velocities[vel_slot] - 1.0) * strength
-			step = _scale_step_velocity(step, vel_scale)
+			# Velocity scaling applies only to grooved (on-grid) notes, for the
+			# same reason — an off-grid note shouldn't pick up a slot's accent.
+			if groove.velocities and num_velocities > 0:
+				vel_slot = grid_index % num_velocities
+				# Blend between 1.0 (no effect) and the groove's scale (full effect)
+				vel_scale = 1.0 + (groove.velocities[vel_slot] - 1.0) * strength
+				step = _scale_step_velocity(step, vel_scale)
 
 		if new_pulse not in new_steps:
 			new_steps[new_pulse] = subsequence.pattern.Step()

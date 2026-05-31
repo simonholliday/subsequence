@@ -218,7 +218,7 @@ class PatternBuilder(
 
 		return self._tweaks.get(name, default)
 
-	def set_length (self, length: float) -> None:
+	def set_length (self, length: float) -> "PatternBuilder":
 
 		"""
 		Dynamically change the length of the pattern.
@@ -229,9 +229,12 @@ class PatternBuilder(
 
 		Parameters:
 			length: New pattern length in beats (e.g., 4.0 for a bar).
+
+		Returns ``self`` for fluent chaining.
 		"""
 
 		self._pattern.length = length
+		return self
 
 	def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int:
 
@@ -466,7 +469,7 @@ class PatternBuilder(
 
 		# Negative beat values wrap to the end of the pattern.
 		if beat < 0:
-			beat = self._pattern.length + beat
+			beat = beat % self._pattern.length	# wrap from the end (any magnitude)
 
 		self._pattern.add_note_beats(
 			beat_position = beat,
@@ -502,7 +505,7 @@ class PatternBuilder(
 			return self	# drum name this device can't voice — dropped (warned once)
 		resolved_velocity = self._resolve_velocity(velocity)
 		if beat < 0:
-			beat = self._pattern.length + beat
+			beat = beat % self._pattern.length	# wrap from the end (any magnitude)
 
 		self._pattern.add_raw_note_beats(
 			message_type = 'note_on',
@@ -529,7 +532,7 @@ class PatternBuilder(
 		if midi_pitch is None:
 			return self	# nothing to silence — this device can't voice the name
 		if beat < 0:
-			beat = self._pattern.length + beat
+			beat = beat % self._pattern.length	# wrap from the end (any magnitude)
 
 		self._pattern.add_raw_note_beats(
 			message_type = 'note_off',
@@ -938,6 +941,8 @@ class PatternBuilder(
 			duration = float(self._pattern.length)
 		elif detached is not None:
 			duration = float(self._pattern.length) - detached
+			if duration <= 0:
+				raise ValueError(f"detached ({detached}) must be less than the pattern length ({self._pattern.length:g} beats) so the chord keeps a positive duration")
 
 		for pitch in pitches:
 			self._pattern.add_note_beats(
@@ -1022,6 +1027,8 @@ class PatternBuilder(
 			duration = float(self._pattern.length)
 		elif detached is not None:
 			duration = float(self._pattern.length) - detached - (len(pitches) - 1) * offset
+			if duration <= 0:
+				raise ValueError(f"detached ({detached}) plus the strum stagger exceeds the pattern length ({self._pattern.length:g} beats) — reduce detached, offset, or count")
 
 		for i, pitch in enumerate(pitches):
 			self.note(pitch=pitch, beat=i * offset, velocity=velocity, duration=duration)

@@ -424,7 +424,9 @@ def perlin_1d (x: float, seed: int = 0) -> float:
 
 	value = d0 + fade * (d1 - d0)
 
-	# Normalize from roughly [-0.5, 0.5] to [0, 1]
+	# Shift and clamp into [0, 1].  In practice the output occupies only the
+	# middle of that range (roughly [0.22, 0.77]) and rarely nears the extremes,
+	# so rescale with map_value / scale_clamp if you need the full 0–1 span.
 	return max(0.0, min(1.0, value + 0.5))
 
 
@@ -491,7 +493,9 @@ def perlin_2d (x: float, y: float, seed: int = 0) -> float:
 	# Interpolate along y
 	value = ix0 + fadey * (ix1 - ix0)
 
-	# Normalize from roughly [-1.0, 1.0] to [0.0, 1.0]
+	# Shift and clamp into [0, 1].  In practice the output occupies only the
+	# middle of that range (roughly [0.23, 0.82]); rescale with map_value /
+	# scale_clamp if you need the full 0–1 span.
 	return max(0.0, min(1.0, (value + 1.0) / 2.0))
 
 
@@ -744,7 +748,7 @@ def lsystem_expand (
 		expanded = subsequence.sequence_utils.lsystem_expand(
 		    axiom="A", rules={"A": "AB", "B": "A"}, generations=6
 		)
-		# expanded is "ABAABABAABAABABAABABA..." (length 13)
+		# expanded is "ABAABABAABAABABAABABA" (length 21, the gen-6 Fibonacci word)
 
 		# Stochastic — different output each bar
 		expanded = subsequence.sequence_utils.lsystem_expand(
@@ -789,6 +793,41 @@ def lsystem_expand (
 	return current
 
 
+_ca_1d_cache: typing.Dict[typing.Tuple[int, int, int], typing.Tuple[int, typing.List[int]]] = {}
+
+
+def _ca_1d_initial_state (steps: int, seed: int) -> typing.List[int]:
+
+	"""Build the generation-0 row for an elementary CA (``seed=1`` → centre cell)."""
+
+	state = [0] * steps
+
+	if seed == 1:
+		state[steps // 2] = 1
+	else:
+		for i in range(min(steps, seed.bit_length())):
+			if seed & (1 << i):
+				state[i] = 1
+
+	return state
+
+
+def _ca_1d_step (state: typing.List[int], rule: int, steps: int) -> typing.List[int]:
+
+	"""Advance an elementary-CA row by one generation (toroidal neighbourhood)."""
+
+	new_state = [0] * steps
+
+	for i in range(steps):
+		left = state[(i - 1) % steps]
+		center = state[i]
+		right = state[(i + 1) % steps]
+		neighborhood = (left << 2) | (center << 1) | right
+		new_state[i] = (rule >> neighborhood) & 1
+
+	return new_state
+
+
 def generate_cellular_automaton_1d (steps: int, rule: int = 30, generation: int = 0, seed: int = 1) -> typing.List[int]:
 
 	"""Generate a binary sequence using an elementary cellular automaton.
@@ -824,24 +863,25 @@ def generate_cellular_automaton_1d (steps: int, rule: int = 30, generation: int 
 	if steps <= 0:
 		return []
 
-	state = [0] * steps
+	# Memoise the evolution: the common idiom drives `generation` from `p.cycle`,
+	# advancing one generation per bar, so without a cache each bar re-ran every
+	# prior generation from scratch (cost growing without bound over a long set).
+	# The cache holds the latest (generation, state) per (steps, rule, seed) and
+	# advances incrementally; a request for an earlier generation than cached
+	# recomputes from the initial state.  Correct because the CA is Markovian —
+	# generation N+1 depends only on generation N.
+	cache_key = (steps, rule, seed)
+	cached = _ca_1d_cache.get(cache_key)
 
-	if seed == 1:
-		state[steps // 2] = 1
+	if cached is not None and cached[0] <= generation:
+		current_gen, state = cached[0], list(cached[1])
 	else:
-		for i in range(min(steps, seed.bit_length())):
-			if seed & (1 << i):
-				state[i] = 1
+		current_gen, state = 0, _ca_1d_initial_state(steps, seed)
 
-	for _ in range(generation):
-		new_state = [0] * steps
-		for i in range(steps):
-			left = state[(i - 1) % steps]
-			center = state[i]
-			right = state[(i + 1) % steps]
-			neighborhood = (left << 2) | (center << 1) | right
-			new_state[i] = (rule >> neighborhood) & 1
-		state = new_state
+	for _ in range(current_gen, generation):
+		state = _ca_1d_step(state, rule, steps)
+
+	_ca_1d_cache[cache_key] = (generation, list(state))
 
 	return state
 
@@ -887,6 +927,48 @@ def _parse_life_rule (rule: str) -> typing.Tuple[typing.Set[int], typing.Set[int
 			raise ValueError(f"Invalid Life rule: {rule!r} — neighbour count {n} exceeds maximum of 8")
 
 	return birth_set, survival_set
+
+
+_ca_2d_cache: typing.Dict[typing.Tuple[int, int, str, int, float], typing.Tuple[int, typing.List[typing.List[int]]]] = {}
+
+
+def _ca_2d_initial_grid (rows: int, cols: int, seed: int, density: float) -> typing.List[typing.List[int]]:
+
+	"""Build the generation-0 grid for an int-seeded 2D CA."""
+
+	if seed == 1:
+		grid = [[0] * cols for _ in range(rows)]
+		grid[rows // 2][cols // 2] = 1
+		return grid
+
+	rng = random.Random(seed)
+	return [[1 if rng.random() < density else 0 for _ in range(cols)] for _ in range(rows)]
+
+
+def _ca_2d_step (grid: typing.List[typing.List[int]], rows: int, cols: int, birth_set: typing.Set[int], survival_set: typing.Set[int]) -> typing.List[typing.List[int]]:
+
+	"""Advance a Life-like 2D grid by one generation (toroidal Moore neighbourhood)."""
+
+	new_grid = [[0] * cols for _ in range(rows)]
+
+	for r in range(rows):
+		for c in range(cols):
+			neighbours = 0
+
+			for dr in (-1, 0, 1):
+				for dc in (-1, 0, 1):
+					if dr == 0 and dc == 0:
+						continue
+					neighbours += grid[(r + dr) % rows][(c + dc) % cols]
+
+			alive = grid[r][c]
+
+			if alive:
+				new_grid[r][c] = 1 if neighbours in survival_set else 0
+			else:
+				new_grid[r][c] = 1 if neighbours in birth_set else 0
+
+	return new_grid
 
 
 def generate_cellular_automaton_2d (
@@ -936,38 +1018,27 @@ def generate_cellular_automaton_2d (
 
 	birth_set, survival_set = _parse_life_rule(rule)
 
-	# Build initial grid.
+	# Memoise int-seeded evolutions incrementally, like the 1D version, so a
+	# `generation`-per-bar idiom doesn't re-run every prior generation each call.
+	# A list seed (an explicit one-off starting grid) is not cached.
+	cache_key: typing.Optional[typing.Tuple[int, int, str, int, float]] = None
+
 	if isinstance(seed, list):
+		current_gen = 0
 		grid = [[int(bool(seed[r][c])) for c in range(cols)] for r in range(rows)]
-	elif seed == 1:
-		grid = [[0] * cols for _ in range(rows)]
-		grid[rows // 2][cols // 2] = 1
 	else:
-		rng = random.Random(seed)
-		grid = [[1 if rng.random() < density else 0 for _ in range(cols)] for _ in range(rows)]
+		cache_key = (rows, cols, rule, seed, density)
+		cached = _ca_2d_cache.get(cache_key)
+		if cached is not None and cached[0] <= generation:
+			current_gen, grid = cached[0], [row[:] for row in cached[1]]
+		else:
+			current_gen, grid = 0, _ca_2d_initial_grid(rows, cols, seed, density)
 
-	# Evolve for the requested number of generations.
-	for _ in range(generation):
-		new_grid = [[0] * cols for _ in range(rows)]
+	for _ in range(current_gen, generation):
+		grid = _ca_2d_step(grid, rows, cols, birth_set, survival_set)
 
-		for r in range(rows):
-			for c in range(cols):
-				neighbours = 0
-
-				for dr in (-1, 0, 1):
-					for dc in (-1, 0, 1):
-						if dr == 0 and dc == 0:
-							continue
-						neighbours += grid[(r + dr) % rows][(c + dc) % cols]
-
-				alive = grid[r][c]
-
-				if alive:
-					new_grid[r][c] = 1 if neighbours in survival_set else 0
-				else:
-					new_grid[r][c] = 1 if neighbours in birth_set else 0
-
-		grid = new_grid
+	if cache_key is not None:
+		_ca_2d_cache[cache_key] = (generation, [row[:] for row in grid])
 
 	return grid
 
@@ -1059,7 +1130,7 @@ def fibonacci_rhythm (steps: int, length: float = 4.0) -> typing.List[float]:
 	"""
 	Generate beat positions spaced by the golden ratio (Fibonacci spiral).
 
-	Uses the golden angle method: ``position_i = (i * φ) mod length``, where
+	Uses the golden angle method: ``position_i = frac(i * φ) * length``, where
 	``φ = (1 + √5) / 2 ≈ 1.618``.  The result is sorted into ascending order.
 	This distributes events with the maximum possible spread — analogous to
 	how sunflower seeds are arranged — producing a quasi-random but
@@ -1085,7 +1156,12 @@ def fibonacci_rhythm (steps: int, length: float = 4.0) -> typing.List[float]:
 		return []
 
 	phi = (1.0 + math.sqrt(5.0)) / 2.0
-	positions = sorted((i * phi) % length for i in range(steps))
+
+	# Take the *fractional* part of i·φ to get a low-discrepancy point in [0, 1),
+	# then scale to the span.  Applying ``% length`` directly to ``i·φ`` (φ ≈ 1.618,
+	# typically < length) does not equidistribute — it clusters two notes near the
+	# start — so the fractional part is what produces the documented sunflower spread.
+	positions = sorted(((i * phi) % 1.0) * length for i in range(steps))
 	return positions
 
 

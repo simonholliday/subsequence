@@ -63,39 +63,6 @@ INTERVAL_DEFINITIONS: typing.Dict[str, typing.List[int]] = {
 }
 
 
-MAJOR_DIATONIC_TRIADS: typing.List[typing.List[int]] = [
-	[0, 4, 7],
-	[0, 3, 7],
-	[0, 3, 7],
-	[0, 4, 7],
-	[0, 4, 7],
-	[0, 3, 7],
-	[0, 3, 6],
-]
-
-
-MAJOR_DIATONIC_SEVENTHS: typing.List[typing.List[int]] = [
-	[0, 4, 7, 11],
-	[0, 3, 7, 10],
-	[0, 3, 7, 10],
-	[0, 4, 7, 11],
-	[0, 4, 7, 10],
-	[0, 3, 7, 10],
-	[0, 3, 6, 10],
-]
-
-
-MINOR_DIATONIC_TRIADS: typing.List[typing.List[int]] = [
-	[0, 3, 7],
-	[0, 3, 6],
-	[0, 4, 7],
-	[0, 3, 7],
-	[0, 3, 7],
-	[0, 4, 7],
-	[0, 4, 7],
-]
-
-
 # ---------------------------------------------------------------------------
 # Diatonic chord quality constants.
 #
@@ -267,7 +234,7 @@ def scale_notes (
 
 		# Misalignment: key="E" but low=C4 — first note is C, not E
 		subsequence.scale_notes("E", "minor", low=60, count=4)
-		# → [60, 62, 64, 67]  (C D E G — all in E natural minor, but starts on C)
+		# → [60, 62, 64, 66]  (C D E F# — all in E natural minor, but starts on C)
 
 		# Fix: derive key name from root_pitch so low is always in the scale
 		root_pitch = 64  # E4

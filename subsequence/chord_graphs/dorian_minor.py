@@ -78,6 +78,7 @@ class DorianMinor (subsequence.chord_graphs.ChordGraph):
 		# --- Subdominant departures (beyond → tonic) ---
 		graph.add_transition(subdominant, natural_dominant, WEIGHT_COMMON)
 		graph.add_transition(subdominant, subtonic, WEIGHT_WEAK)
+		graph.add_transition(subdominant, submediant_dim, WEIGHT_WEAK)	# IV → vi° (passing dim; vi° resolves to v / i)
 
 		# --- Natural dominant (v) departures ---
 		graph.add_transition(natural_dominant, tonic, WEIGHT_MEDIUM)

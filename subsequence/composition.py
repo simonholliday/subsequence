@@ -712,6 +712,10 @@ class Composition:
 		self._harmony_reschedule_lookahead: float = 1
 		self._section_progressions: typing.Dict[str, Progression] = {}
 		self._pending_patterns: typing.List[_PendingPattern] = []
+		# Names of patterns declared by the most recent live-reload exec (added by
+		# pattern()/layer() as they run); the deletion diff in _apply_source_async
+		# tears down any running pattern absent from this set.
+		self._declared_names: typing.Set[str] = set()
 		self._pending_scheduled: typing.List[_PendingScheduled] = []
 		self._form_state: typing.Optional[subsequence.form_state.FormState] = None
 		self._builder_bar: int = 0
@@ -738,6 +742,8 @@ class Composition:
 		self._osc_server: typing.Optional[subsequence.osc.OscServer] = None
 		self.conductor = subsequence.conductor.Conductor()
 		self._web_ui_enabled: bool = False
+		self._web_ui_http_host: str = "127.0.0.1"
+		self._web_ui_ws_host: str = "127.0.0.1"
 		self._web_ui_server: typing.Optional[subsequence.web_ui.WebUI] = None
 		self._link_quantum: typing.Optional[float] = None
 
@@ -1319,9 +1325,10 @@ class Composition:
 		Called on every ``"bar"`` event by the sequencer when hotkeys are
 		enabled.  Handles both immediate (``quantize=0``) and quantized actions.
 
-		Immediate actions are executed directly from the keystroke listener
-		thread (not here).  This method only processes quantized actions that
-		were deferred to a bar boundary.
+		Both kinds run here, on the bar-event callback (the event loop): the
+		keystroke listener thread only enqueues keypresses (``drain()``), it
+		never executes actions.  Immediate (``quantize=0``) bindings fire as soon
+		as the key is drained; quantized ones wait for their next boundary.
 
 		Args:
 		    bar: The current global bar number from the sequencer.
@@ -1503,17 +1510,23 @@ class Composition:
 		else:
 			self._display = None
 
-	def web_ui (self) -> None:
+	def web_ui (self, http_host: str = "127.0.0.1", ws_host: str = "127.0.0.1") -> None:
 
 		"""
 		Enable the realtime Web UI Dashboard.
 
-		When enabled, Subsequence instantiates a WebSocket server that broadcasts 
-		the current state, signals, and active patterns (with high-res timing and note data) 
-		to any connected browser clients.
+		When enabled, Subsequence instantiates a WebSocket server that broadcasts
+		the current state, signals, and active patterns (with high-res timing and
+		note data) to any connected browser clients.
+
+		Both servers bind to localhost by default.  Pass ``http_host`` / ``ws_host``
+		(e.g. "0.0.0.0") to opt into LAN exposure — the dashboard is read-only but
+		broadcasts full composition state, so only do so on a trusted network.
 		"""
 
 		self._web_ui_enabled = True
+		self._web_ui_http_host = http_host
+		self._web_ui_ws_host = ws_host
 
 	def midi_input (self, device: str, clock_follow: bool = False, name: typing.Optional[str] = None) -> None:
 
@@ -2101,27 +2114,29 @@ class Composition:
 		* ``LiveReloader._reload_async`` directly (already on the loop).
 		"""
 
+		# Track which patterns the source declares this exec.  pattern() and
+		# layer() add their (resolved) names to _declared_names as they run, so
+		# this covers decorated patterns AND layer()/merged patterns — the latter
+		# have no module-level callable to match against by name, which is why the
+		# old namespace-based diff tore layers down on every reload.
+		self._declared_names = set()
+
 		# Bail before any state mutation if exec raises — propagates to
 		# the caller (load_patterns re-raises; LiveReloader catches + logs).
 		exec(compiled, namespace)
 
 		# Graduate newly-decorated patterns from _pending_patterns into
 		# _running_patterns so they start firing on the next reschedule.
-		# Patterns that hot-swapped via the decorator path don't appear
+		# Patterns that hot-swapped via the decorator/layer path don't appear
 		# in _pending_patterns and don't need this step.
 		await self._activate_new_pending_patterns()
 
-		# Detect deletions: anything currently running but not declared in
-		# the just-exec'd namespace has been removed by the user and should
-		# be torn down.  Decorators do NOT remove from _running_patterns
-		# when a function disappears from the source.
-		declared = {
-			name for name, obj in namespace.items()
-			if callable(obj) and name in self._running_patterns
-		}
-
+		# Detect deletions: anything currently running but NOT declared by the
+		# just-exec'd source has been removed by the user and should be torn
+		# down.  Decorators/layer() do NOT remove from _running_patterns when a
+		# definition disappears from the source.
 		for name in list(self._running_patterns.keys()):
-			if name not in declared:
+			if name not in self._declared_names:
 				self.unregister(name)
 
 	def _build_live_namespace (self) -> typing.Dict[str, typing.Any]:
@@ -2156,25 +2171,30 @@ class Composition:
 			"subsequence":  subsequence,
 		}
 
-	def osc (self, receive_port: int = 9000, send_port: int = 9001, send_host: str = "127.0.0.1") -> None:
+	def osc (self, receive_port: int = 9000, send_port: int = 9001, send_host: str = "127.0.0.1", receive_host: str = "0.0.0.0") -> None:
 
 		"""
 		Enable bi-directional Open Sound Control (OSC).
 
-		Subsequence will listen for commands (like `/bpm` or `/mute`) and 
+		Subsequence will listen for commands (like `/bpm` or `/mute`) and
 		broadcast its internal state (like `/chord` or `/bar`) over UDP.
 
 		Parameters:
 			receive_port: Port to listen for incoming OSC messages (default 9000).
 			send_port: Port to send state updates to (default 9001).
 			send_host: The IP address to send updates to (default "127.0.0.1").
+			receive_host: Interface to listen on (default "0.0.0.0" — all
+				interfaces, so external OSC controllers on the LAN can reach it).
+				The listener can change tempo, mute patterns, and write data, so on
+				an untrusted network restrict it with ``receive_host="127.0.0.1"``.
 		"""
 
 		self._osc_server = subsequence.osc.OscServer(
 			self,
 			receive_port = receive_port,
 			send_port = send_port,
-			send_host = send_host
+			send_host = send_host,
+			receive_host = receive_host
 		)
 
 	def osc_map (self, address: str, handler: typing.Callable) -> None:
@@ -2603,7 +2623,8 @@ class Composition:
 		bars: typing.Optional[float],
 		steps: typing.Optional[float],
 		unit: typing.Optional[float],
-		default: float = 4.0
+		default: float = 4.0,
+		beats_per_bar: int = 4,
 	) -> typing.Tuple[float, int]:
 
 		"""
@@ -2640,7 +2661,7 @@ class Composition:
 			return steps * unit, int(steps)
 
 		if bars is not None:
-			raw = bars * 4
+			raw = bars * beats_per_bar
 		elif beats is not None:
 			raw = beats
 		else:
@@ -2684,7 +2705,7 @@ class Composition:
 				``zero_indexed_channels=False`` on the ``Composition`` to use
 				1-based numbering (1-16) instead.
 			beats: Duration in beats (quarter notes). ``beats=4`` = 1 bar.
-			bars: Duration in bars (4 beats each, assumes 4/4). ``bars=2`` = 8 beats.
+			bars: Duration in bars (uses the composition's time signature — 4 beats each in 4/4). ``bars=2`` = 8 beats.
 			steps: Step count for step mode. Requires ``unit=``.
 			unit: Duration of one step in beats (e.g. ``dur.SIXTEENTH``).
 				Requires ``steps=``.
@@ -2725,7 +2746,7 @@ class Composition:
 
 		channel = self._resolve_channel(channel)
 
-		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit)
+		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, beats_per_bar=self.time_signature[0])
 
 		# Resolve device string name to index if possible now; otherwise store
 		# the raw DeviceId and resolve it in _run() once all devices are open.
@@ -2748,6 +2769,10 @@ class Composition:
 			Wrap the builder function and register it as a pending pattern.
 			During live sessions, hot-swap an existing pattern's builder instead.
 			"""
+
+			# Record this declaration so the live-reload deletion diff knows the
+			# pattern is still present in the source (see _apply_source_async).
+			self._declared_names.add(fn.__name__)
 
 			# Hot-swap: if we're live and a pattern with this name exists, replace its builder.
 			if self._is_live and fn.__name__ in self._running_patterns:
@@ -2810,7 +2835,7 @@ class Composition:
 			builder_fns: One or more pattern builder functions.
 			channel: MIDI channel (0-15, or 1-16 with ``zero_indexed_channels=False``).
 			beats: Duration in beats (quarter notes).
-			bars: Duration in bars (4 beats each, assumes 4/4).
+			bars: Duration in bars (uses the composition's time signature — 4 beats each in 4/4).
 			steps: Step count for step mode. Requires ``unit=``.
 			unit: Duration of one step in beats. Requires ``steps=``.
 			drum_note_map: Optional mapping for drum instruments.
@@ -2823,7 +2848,7 @@ class Composition:
 				to duplicate every event onto.  See ``pattern()`` for details.
 		"""
 
-		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit)
+		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, beats_per_bar=self.time_signature[0])
 
 		# Resolve channel up-front so the mirror-to-self check has the canonical
 		# primary form to compare against.
@@ -2856,6 +2881,27 @@ class Composition:
 				for fn in builder_fns:
 					fn(p)
 
+		# Give the merged builder a stable, unique name derived from its
+		# components so multiple layer() calls don't all register under
+		# "merged_builder" and collide in _running_patterns (which made
+		# mute/tweak/unregister/live_info reach only the LAST layer).  "+" can't
+		# appear in a Python identifier, so this never clashes with a real
+		# pattern function's name.
+		merged_builder.__name__ = "+".join(fn.__name__ for fn in builder_fns) or "layer"
+
+		# Record the declaration for the live-reload deletion diff, and hot-swap
+		# in place when this layer is already running so a reload picks up edits
+		# to the component functions without losing the pattern's cycle count,
+		# tweaks, or mirrors (mirrors the pattern() decorator's hot-swap).
+		self._declared_names.add(merged_builder.__name__)
+
+		if self._is_live and merged_builder.__name__ in self._running_patterns:
+			running = self._running_patterns[merged_builder.__name__]
+			running._builder_fn = merged_builder
+			running._wants_chord = wants_chord
+			logger.info(f"Hot-swapped layer: {merged_builder.__name__}")
+			return
+
 		pending = _PendingPattern(
 			builder_fn = merged_builder,
 			channel = resolved_channel,  # already resolved to 0-indexed above
@@ -2867,7 +2913,7 @@ class Composition:
 			reschedule_lookahead = reschedule_lookahead,
 			voice_leading = voice_leading,
 			mirrors = resolved_mirrors,
-				device = 0 if (device is None or isinstance(device, str)) else device,
+			device = 0 if (device is None or isinstance(device, str)) else device,
 			raw_device = device,
 		)
 
@@ -2909,7 +2955,7 @@ class Composition:
 			fn: The pattern builder function (same signature as ``@comp.pattern``).
 			channel: MIDI channel (0-15, or 1-16 with ``zero_indexed_channels=False``).
 			beats: Duration in beats (quarter notes, default 1).
-			bars: Duration in bars (4 beats each, assumes 4/4).
+			bars: Duration in bars (uses the composition's time signature — 4 beats each in 4/4).
 			steps: Step count for step mode. Requires ``unit=``.
 			unit: Duration of one step in beats. Requires ``steps=``.
 			quantize: Snap the trigger to a beat boundary: ``0`` = immediate (default),
@@ -2954,7 +3000,7 @@ class Composition:
 		# Resolve channel numbering
 		resolved_channel = self._resolve_channel(channel)
 
-		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, default=1.0)
+		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, default=1.0, beats_per_bar=self.time_signature[0])
 
 		# Resolve device index — for trigger() this is always concrete by call time,
 		# so the mirror-to-self check has the full primary tuple available.
@@ -3377,30 +3423,53 @@ class Composition:
 			# If not active, KeystrokeListener.start() already logged a warning.
 
 		if self._web_ui_enabled and not self._sequencer.render_mode:
-			self._web_ui_server = subsequence.web_ui.WebUI(self)
+			self._web_ui_server = subsequence.web_ui.WebUI(self, http_host=self._web_ui_http_host, ws_host=self._web_ui_ws_host)
 			self._web_ui_server.start()
 
-		await run_until_stopped(self._sequencer)
+		try:
+			await run_until_stopped(self._sequencer)
+		finally:
+			# Tear down every service even if run_until_stopped (or an earlier
+			# stop) raised, and guard each individually, so one failure can't
+			# strand the rest — most importantly the keystroke listener's
+			# terminal restore.
+			if self._web_ui_server is not None:
+				try:
+					self._web_ui_server.stop()
+				except Exception:
+					logger.exception("Error stopping web UI")
 
-		if self._web_ui_server is not None:
-			self._web_ui_server.stop()
+			if self._live_server is not None:
+				try:
+					await self._live_server.stop()
+				except Exception:
+					logger.exception("Error stopping live server")
 
-		if self._live_server is not None:
-			await self._live_server.stop()
+			if self._live_reloader is not None:
+				try:
+					self._live_reloader.stop()
+				except Exception:
+					logger.exception("Error stopping live reloader")
 
-		if self._live_reloader is not None:
-			self._live_reloader.stop()
+			if self._osc_server is not None:
+				try:
+					await self._osc_server.stop()
+				except Exception:
+					logger.exception("Error stopping OSC server")
+				self._sequencer.osc_server = None
 
-		if self._osc_server is not None:
-			await self._osc_server.stop()
-			self._sequencer.osc_server = None
+			if self._display is not None:
+				try:
+					self._display.stop()
+				except Exception:
+					logger.exception("Error stopping display")
 
-		if self._display is not None:
-			self._display.stop()
-
-		if self._keystroke_listener is not None:
-			self._keystroke_listener.stop()
-			self._keystroke_listener = None
+			if self._keystroke_listener is not None:
+				try:
+					self._keystroke_listener.stop()
+				except Exception:
+					logger.exception("Error stopping keystroke listener")
+				self._keystroke_listener = None
 
 	def _build_pattern_from_pending (self, pending: _PendingPattern, rng: typing.Optional[random.Random] = None) -> subsequence.pattern.Pattern:
 

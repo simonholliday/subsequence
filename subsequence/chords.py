@@ -15,7 +15,7 @@ Module-level helpers:
   used by `harmony.py`, `pattern_builder.quantize()`, and `chord_graphs.validate_key_name()`.
 
 Chord qualities: `"major"`, `"minor"`, `"diminished"`, `"augmented"`, `"dominant_7th"`,
-`"major_7th"`, `"minor_7th"`, `"half_diminished_7th"`
+`"major_7th"`, `"minor_7th"`, `"half_diminished_7th"`, `"sus2"`, `"sus4"`
 """
 
 import dataclasses

@@ -86,6 +86,13 @@ class LydianMajor (subsequence.chord_graphs.ChordGraph):
 		graph.add_transition(sharp_four_dim, dominant, WEIGHT_MEDIUM)
 		graph.add_transition(sharp_four_dim, tonic, WEIGHT_WEAK)
 
+		# Make the two diatonic chords that had only outgoing edges reachable, as
+		# occasional colour:
+		#   I → #iv° — passing into the signature raised-4 dim (→ V / I).
+		#   V → vii  — into the minor leading-tone triad, which resolves vii → I.
+		graph.add_transition(tonic, sharp_four_dim, WEIGHT_WEAK)
+		graph.add_transition(dominant, leading, WEIGHT_WEAK)
+
 		if self.include_dominant_7th:
 			dominant_7th = subsequence.chords.Chord(root_pc=dominant.root_pc, quality="dominant_7th")
 

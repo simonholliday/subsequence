@@ -52,7 +52,7 @@ class OscServer:
 		self._receive_host = receive_host
 		self._send_port = send_port
 		self._send_host = send_host
-		
+
 		self._server: typing.Optional[typing.Any] = None
 		self._transport: typing.Optional[asyncio.BaseTransport] = None
 		self._client: typing.Optional[pythonosc.udp_client.SimpleUDPClient] = None
@@ -153,5 +153,5 @@ class OscServer:
 					except (ValueError, TypeError):
 						logger.warning(f"OSC /data: failed to cast {val} to numeric for key {key}")
 						return
-            
+
 			self._composition.data[key] = val

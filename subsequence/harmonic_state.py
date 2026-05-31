@@ -179,7 +179,8 @@ class HarmonicState:
 		score = 1.0
 
 		# --- Rule A: Reversal (Gap Fill) ---
-		# If previous was a Large Leap (> 4 semitones like P4, P5, m6), expect direction change.
+		# If the previous step was a large leap (> 4 on the 0–6 pitch-class
+		# shortest-path scale, where a tritone is 6), expect a direction change.
 		if prev_interval > 4:
 			# Expect change in direction
 			if target_direction != prev_direction and target_direction != 0:
