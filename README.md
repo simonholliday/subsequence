@@ -680,7 +680,7 @@ class ArpPattern (subsequence.pattern.Pattern):
         self.steps = {}
         chord   = self.harmonic_state.get_current_chord()
         pitches = chord.tones(root=notes.C4, count=4)  # 4 tones up from middle C
-        self.add_arpeggio_beats(pitches, step_beats=0.25, velocity=90)
+        self.add_arpeggio_beats(pitches, spacing_beats=0.25, velocity=90)
 
     def on_reschedule (self) -> None:
         self._build()
@@ -1068,7 +1068,7 @@ def guitar (p, chord):
 
 ### Broken chords
 
-`p.broken_chord()` generates the required chord tones and sequences them sequentially according to an `order` map. It delegates internally to `p.arpeggio()`.
+`p.broken_chord()` generates the required chord tones and sequences them sequentially according to an `order` map. It delegates internally to `p.arpeggio()`, and like it accepts `beat`/`span` to place the figure within one slot of a progression.
 
 ```python
 @composition.pattern(channel=1, beats=4)
@@ -1149,14 +1149,13 @@ def chords (p, chord):
 
 Each pattern tracks voice leading independently - a bass line and a pad can voice-lead at their own pace.
 
-**What `chord.tones()` returns with voice leading active:** when `voice_leading=True`, `chord.tones(root=...)` returns the notes of the chosen inversion - the voicing closest to the previous chord - not root position. The `inversion` parameter is ignored; the engine picks the inversion automatically. This matters for arpeggios: if you pass the result of `chord.tones()` to `p.arpeggio()`, the notes will already be in the voice-led order, not ascending from the root.
+**What `chord.tones()` returns with voice leading active:** when `voice_leading=True`, `chord.tones(root=...)` returns the notes of the chosen inversion - the voicing closest to the previous chord - not root position. The `inversion` parameter is ignored; the engine picks the inversion automatically. This matters for arpeggios: whether you hand `p.arpeggio()` a chord directly (`p.arpeggio(chord, root=...)`) or the result of `chord.tones()`, the notes are already in the voice-led order, not ascending from the root.
 
 ```python
 @composition.pattern(channel=1, beats=4, voice_leading=True, chord=True)
 def arp (p, chord):
-    # Returns voice-led inversion, not necessarily root position
-    tones = chord.tones(root=notes.E3, count=4)
-    p.arpeggio(tones, spacing=0.25, velocity=90)
+    # Arpeggiate the chord directly — voiced (and voice-led) just like p.chord()
+    p.arpeggio(chord, root=notes.E3, count=4, spacing=0.25, velocity=90)
 ```
 
 If you want root-position notes regardless of voice leading, call `chord.tones()` on the underlying `Chord` object directly from `subsequence.chords` - or sort the tones before passing them to the arpeggio.
@@ -1188,11 +1187,10 @@ def pad (p, chord):
 
 @composition.pattern(channel=1, beats=4)
 def arp (p, chord):
-    tones = chord.tones(root=notes.E4, count=5)  # 5 tones cycling up from E4
-    p.arpeggio(tones, spacing=0.25, velocity=90)
+    p.arpeggio(chord, root=notes.E4, count=5, spacing=0.25, velocity=90)  # 5 tones cycling up from E4
 ```
 
-`count` works with `inversion` - the extended notes continue upward from the inverted voicing.
+`count` works with `inversion` - the extended notes continue upward from the inverted voicing. (You can still pass a pre-built list of pitches instead of a chord — `p.arpeggio([60, 64, 67, 72], …)` — for scale fragments or custom voicings.)
 
 ### Harmony and chord graphs
 
@@ -1448,7 +1446,7 @@ def keys (p):
 	# p can keep going — a bass root under each chord, a counter-melody, …
 ```
 
-`p.progression()` *realises* the progression but places nothing itself — the verb in the loop does. Swap `p.strum` for `p.chord`, `p.broken_chord`, or `p.arpeggio(chord.tones(...), …)` to change the articulation; every parameter of those methods is yours to use. (`comp.chords()` is exactly this loop wrapped up for the plain block-chord case.)
+`p.progression()` *realises* the progression but places nothing itself — the verb in the loop does. Swap `p.strum` for `p.chord`, `p.broken_chord`, or `p.arpeggio(chord, root=…, beat=start, span=length, …)` to change the articulation; every parameter of those methods is yours to use. (`comp.chords()` is exactly this loop wrapped up for the plain block-chord case.)
 
 **Fixed or breathing.** `comp.chords()` realises its phrase once, so it repeats identically. `p.progression()` realises on each rebuild, so omitting `seed=` lets the lengths breathe from cycle to cycle (still reproducible under the composition's own `seed=`); pass `seed=` for a fixed phrase. Velocity humanises per voice via the usual `velocity=(low, high)` convention.
 
@@ -2548,11 +2546,11 @@ def bass (p, chord):
 ```python
 import subsequence.constants.midi_notes as notes
 
-chord = [notes.C4, notes.E4, notes.G4]  # C major triad
-p.arpeggio(chord, spacing=0.25)                     # "up" (default): C E G C E G …
-p.arpeggio(chord, spacing=0.25, direction="down")    # descend: G E C G E C …
-p.arpeggio(chord, spacing=0.25, direction="up_down") # ping-pong: C E G E C E …
-p.arpeggio(chord, spacing=0.25, direction="random")  # shuffled once per call
+triad = [notes.C4, notes.E4, notes.G4]  # an explicit pitch list (a chord works too: p.arpeggio(chord, root=...))
+p.arpeggio(triad, spacing=0.25)                     # "up" (default): C E G C E G …
+p.arpeggio(triad, spacing=0.25, direction="down")    # descend: G E C G E C …
+p.arpeggio(triad, spacing=0.25, direction="up_down") # ping-pong: C E G E C E …
+p.arpeggio(triad, spacing=0.25, direction="random")  # shuffled once per call
 ```
 
 The `"random"` direction uses `p.rng` by default (deterministic when a seed is set). Pass a custom `rng` for independent streams.

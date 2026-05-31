@@ -68,12 +68,12 @@ The musician's 'palette' for creating musical content.
 |---|---|
 | `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
 | `apply_tuning(tuning, bend_range, channels, reference_note) -> 'PatternBuilder'` | Apply a microtonal tuning to this pattern via pitch bend injection. |
-| `arpeggio(pitches, spacing, velocity, duration, direction, rng) -> 'PatternBuilder'` | Cycle through a list of pitches at regular beat intervals. |
+| `arpeggio(notes, root, velocity, count, inversion, beat, span, spacing, duration, direction, rng) -> 'PatternBuilder'` | Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time at regular beat intervals. |
 | `bend(note, amount, start, end, shape, resolution) -> 'subsequence.pattern_builder.PatternBuilder'` | Bend a specific note by index. |
 | `branch(seed, depth, path, mutation, velocity, duration, spacing) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melodic variation by navigating a fractal tree of transforms. |
 | `bresenham(pitch, pulses, velocity, duration, dropout, no_overlap, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a rhythm using the Bresenham line algorithm. |
 | `bresenham_poly(parts, velocity, duration, grid, dropout, no_overlap, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Distribute multiple drum voices across the pattern using weighted Bresenham. |
-| `broken_chord(chord_obj, root, order, spacing, velocity, duration, inversion) -> 'PatternBuilder'` | Play a chord as an arpeggio in a specific or random order. |
+| `broken_chord(chord_obj, root, order, spacing, velocity, duration, inversion, beat, span) -> 'PatternBuilder'` | Play a chord as an arpeggio in a specific or random order. |
 | `build_ghost_bias(grid, bias) -> List[float]` | Build probability weights for ghost notes or other generative functions. |
 | `c *(property)*` | Alias for self.conductor. |
 | `cc(control, value, beat) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a single CC message at a beat position. |

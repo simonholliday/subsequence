@@ -167,10 +167,21 @@ def test_sequence_list_velocity_still_works () -> None:
 def test_arpeggio_accepts_tuple_velocity () -> None:
 
 	pattern, builder = _make_builder(seed=1, length=4)
-	builder.arpeggio(pitches=[60, 64, 67], spacing=0.5, velocity=(70, 100))
+	builder.arpeggio(notes=[60, 64, 67], spacing=0.5, velocity=(70, 100))
 	all_notes = [n for step in pattern.steps.values() for n in step.notes]
 	velocities = [n.velocity for n in all_notes]
 	assert all(70 <= v <= 100 for v in velocities)
+
+
+def test_arpeggio_chord_form_accepts_tuple_velocity () -> None:
+
+	pattern, builder = _make_builder(seed=1, length=4)
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+	builder.arpeggio(chord, root=60, spacing=0.5, velocity=(70, 100))
+	all_notes = [n for step in pattern.steps.values() for n in step.notes]
+	velocities = [n.velocity for n in all_notes]
+	assert all(70 <= v <= 100 for v in velocities)
+	assert len(set(velocities)) > 1
 
 
 def test_euclidean_accepts_tuple_velocity () -> None:

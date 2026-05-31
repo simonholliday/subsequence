@@ -802,61 +802,110 @@ class PatternBuilder(
 
 	def arpeggio (
 		self,
-		pitches: typing.Union[typing.List[int], typing.List[str]],
-		spacing: float = 0.25,
+		notes: typing.Any,
+		root: typing.Optional[int] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+		count: typing.Optional[int] = None,
+		inversion: int = 0,
+		beat: float = 0.0,
+		span: typing.Optional[float] = None,
+		spacing: float = 0.25,
 		duration: typing.Optional[float] = None,
 		direction: str = "up",
 		rng: typing.Optional[random.Random] = None
 	) -> "PatternBuilder":
 
 		"""
-		Cycle through a list of pitches at regular beat intervals.
+		Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time
+		at regular beat intervals.
+
+		Like ``chord()`` and ``strum()``, the first argument can be a chord — the
+		``chord`` passed to your pattern function, or any chord from
+		``p.progression()`` — and ``root`` / ``count`` / ``inversion`` voice it
+		exactly as they do.  So "play this as a chord, a strum, or an arpeggio" is a
+		one-word verb swap::
+
+			for chord, start, length in p.progression("phrygian_minor", harmonic_rhythm=...):
+				p.arpeggio(chord, root=48, beat=start, span=length, spacing=0.25, count=4)
+
+		Pass a list of pitches instead to arpeggiate something that isn't a chord (a
+		scale fragment, a custom voicing).  Unlike a held ``chord()``, an arpeggio is
+		a stream of single notes, so it has no ``sustain`` / ``legato`` / ``detached``
+		— use ``duration`` for how long each note rings and ``span`` for how much of
+		the bar the figure fills.
 
 		Parameters:
-			pitches: List of MIDI note numbers (e.g. ``60``), or drum-name strings
-				when the pattern has a ``drum_note_map``.  For pitched note
-				*names* use the integer constants in
-				``subsequence.constants.midi_notes`` (e.g. ``notes.C4``).  A name
-				the map lacks is dropped (warned once); a string with no map at
-				all still raises.
+			notes: A chord to arpeggiate (anything with a ``.tones()`` method — the
+				pattern's ``chord``, or a chord from ``p.progression()``), or a list
+				of MIDI note numbers (e.g. ``60``) / drum-name strings when the
+				pattern has a ``drum_note_map``.  For pitched note *names* use the
+				integer constants in ``subsequence.constants.midi_notes`` (e.g.
+				``notes.C4``).  In the list form, a drum name the map lacks is
+				dropped (warned once); a string with no map at all still raises.
+			root: MIDI root note for the chord form (e.g. 48), exactly as ``chord()``.
+				Required for a chord; not used for a plain pitch list.
+			velocity: MIDI velocity for all notes (default 100 — arpeggios sit in the
+				melodic-line velocity bucket, not the softened-chord bucket; pass
+				``velocity=90`` to match ``chord()``), or a ``(low, high)`` tuple for
+				a fresh random draw per note.
+			count: Number of voices for the chord form (cycles tones into higher
+				octaves if larger than the chord's natural size).  Chord form only.
+			inversion: Chord inversion for the chord form (ignored when voice leading
+				is on).  Chord form only.
+			beat: Beat to start the figure at (default 0.0 = the start of the
+				pattern).  Use it to place an arpeggio over one progression chord.
+			span: How many beats the figure fills, starting at ``beat`` (default: to
+				the end of the pattern).  Pass the chord's ``length`` from a
+				progression loop to confine the arpeggio to its slot.
 			spacing: Time between each note in beats (default 0.25 = 16th note).
-			velocity: MIDI velocity for all notes (default 100), or a
-			          ``(low, high)`` tuple for a fresh random draw per note.
-			duration: Note duration in beats. Defaults to ``spacing`` (each note
-			          fills its slot exactly).
-			direction: Order in which pitches are cycled:
+			duration: Note duration in beats.  Defaults to ``spacing`` (each note
+				fills its slot exactly).
+			direction: Order in which the notes are cycled:
 
-			    - ``"up"`` — lowest to highest, then wrap (default).
-			    - ``"down"`` — highest to lowest, then wrap.
-			    - ``"up_down"`` — ascend then descend (ping-pong), cycling.
-			    - ``"random"`` — shuffled once per call using *rng*.
+				- ``"up"`` — lowest to highest, then wrap (default).
+				- ``"down"`` — highest to lowest, then wrap.
+				- ``"up_down"`` — ascend then descend (ping-pong), cycling.
+				- ``"random"`` — shuffled once per call using *rng*.
 
 			rng: Random number generator used when ``direction="random"``.
-			     Defaults to ``self.rng`` (the pattern's seeded RNG).
+				Defaults to ``self.rng`` (the pattern's seeded RNG).
 
 		Example:
 			```python
-			# Ascending arpeggio (default)
-			p.arpeggio(chord.tones(60), spacing=0.25)
+			# Arpeggiate the pattern's current chord, four voices ascending
+			p.arpeggio(chord, root=60, count=4, spacing=0.25)
 
-			# Ping-pong: C E G E C E G E ...
+			# A plain list of pitches — ping-pong: C E G E C E G E ...
 			p.arpeggio([60, 64, 67], spacing=0.25, direction="up_down")
 
-			# Descending with humanised velocity
-			p.arpeggio([60, 64, 67], spacing=0.25, direction="down", velocity=(60, 95))
+			# One chord of a progression, confined to its slot, humanised
+			p.arpeggio(chord, root=48, beat=start, span=length, velocity=(60, 95))
 			```
 		"""
 
-		if not pitches:
-			raise ValueError("Pitches list cannot be empty")
+		if beat < 0:
+			raise ValueError("arpeggio beat must be >= 0 — use a positive start within the pattern")
 
 		if spacing <= 0:
 			raise ValueError("Spacing must be positive")
 
-		resolved = [r for r in (self._resolve_pitch_lenient(p) for p in pitches) if r is not None]
-		if not resolved:
-			return self	# every named voice was dropped (this device lacks them all)
+		# Resolve the first argument into a concrete pitch list.  A chord-like object
+		# (it has .tones()) is voiced via root/count/inversion exactly as chord() does;
+		# anything else is treated as an explicit list of pitches (today's behaviour).
+		resolved: typing.List[int]
+
+		if hasattr(notes, "tones"):
+			if root is None:
+				raise ValueError("arpeggio(<chord>, …) needs a root — e.g. arpeggio(chord, root=48); pass a root MIDI note, or hand a list of pitches instead")
+			resolved = notes.tones(root=root, inversion=inversion, count=count)
+		else:
+			if root is not None or count is not None or inversion != 0:
+				raise ValueError("arpeggio root=, count=, and inversion= only apply to the chord form — arpeggio(chord, root=48, count=4); with a plain pitch list, drop them")
+			if not notes:
+				raise ValueError("Pitches list cannot be empty")
+			resolved = [r for r in (self._resolve_pitch_lenient(p) for p in notes) if r is not None]
+			if not resolved:
+				return self	# every named voice was dropped (this device lacks them all)
 
 		if direction == "up":
 			pass  # already in ascending order as supplied
@@ -876,18 +925,31 @@ class PatternBuilder(
 		if duration is None:
 			duration = spacing
 
+		# Window the figure to [beat, beat + span), clamped to the pattern end so a
+		# positioned arpeggio (e.g. one chord of a progression) stays in its slot.
+		pattern_length = float(self._pattern.length)
+
+		if span is None:
+			end = pattern_length
+		else:
+			if span <= 0:
+				raise ValueError(f"span must be positive, got {span:g}")
+			end = beat + span
+
+		end = min(end, pattern_length)
+
 		# Place notes one at a time via self.note() so a (low, high)
 		# velocity tuple produces a fresh random draw per arp note.
-		beat = 0.0
+		position = beat
 		i = 0
-		while beat < self._pattern.length:
+		while position < end:
 			self.note(
 				pitch = resolved[i % len(resolved)],
-				beat = beat,
+				beat = position,
 				velocity = velocity,
 				duration = duration,
 			)
-			beat += spacing
+			position += spacing
 			i += 1
 		return self
 
@@ -1125,7 +1187,7 @@ class PatternBuilder(
 			rng = rng,
 		)
 
-	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0) -> "PatternBuilder":
+	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0, beat: float = 0.0, span: typing.Optional[float] = None) -> "PatternBuilder":
 
 		"""
 		Play a chord as an arpeggio in a specific or random order.
@@ -1147,6 +1209,10 @@ class PatternBuilder(
 				``(low, high)`` tuple for a fresh random draw per note.
 			duration: Note duration in beats. Defaults to ``spacing``.
 			inversion: Specific chord inversion (ignored if voice leading is on).
+			beat: Beat to start the broken chord at (default 0.0).
+			span: How many beats to fill from ``beat`` (default: to the end of the
+				pattern).  Like ``arpeggio()``, use it to place a broken chord over
+				one chord of a progression.
 
 		Example::
 
@@ -1170,7 +1236,7 @@ class PatternBuilder(
 		tones = chord_obj.tones(root=root, inversion=inversion, count=required_count)
 		pitches = [tones[i] for i in order]
 
-		self.arpeggio(pitches=pitches, spacing=spacing, velocity=velocity, duration=duration, direction="up")
+		self.arpeggio(notes=pitches, spacing=spacing, velocity=velocity, duration=duration, direction="up", beat=beat, span=span)
 		return self
 
 	def swing (self, amount: float = 57.0, grid: float = 0.25, strength: float = 1.0) -> "PatternBuilder":

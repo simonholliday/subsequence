@@ -670,6 +670,215 @@ def test_arpeggio_invalid_step_raises () -> None:
 		builder.arpeggio([60, 64, 67], spacing=-1)
 
 
+def test_arpeggio_positional_list_unchanged () -> None:
+
+	"""A positional pitch list (no ``notes=`` keyword) behaves exactly as before the rename."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.arpeggio([60, 64, 67], spacing=0.5, velocity=90)
+
+	positions = sorted(pattern.steps.keys())
+	pitches = [pattern.steps[pos].notes[0].pitch for pos in positions]
+
+	assert pitches == [60, 64, 67, 60, 64, 67, 60, 64]
+
+
+def test_arpeggio_chord_form_matches_tones () -> None:
+
+	"""Arpeggiating a chord cycles its tones — identical to passing chord.tones() as a list."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+	builder.arpeggio(chord, root=60, spacing=0.5)
+
+	positions = sorted(pattern.steps.keys())
+	pitches = [pattern.steps[pos].notes[0].pitch for pos in positions]
+
+	assert pitches == [60, 64, 67, 60, 64, 67, 60, 64]
+
+
+def test_arpeggio_chord_form_count_voices () -> None:
+
+	"""count= voices the chord like chord(); the cycle matches chord.tones(count=...)."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+	builder.arpeggio(chord, root=60, count=4, spacing=0.5)
+
+	expected = chord.tones(root=60, count=4)
+
+	positions = sorted(pattern.steps.keys())
+	pitches = [pattern.steps[pos].notes[0].pitch for pos in positions]
+
+	assert pitches == expected + expected
+
+
+def test_arpeggio_chord_form_inversion () -> None:
+
+	"""inversion= is applied to the chord form, matching chord.tones(inversion=...)."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+	builder.arpeggio(chord, root=60, inversion=1, spacing=0.5)
+
+	expected = chord.tones(root=60, inversion=1)
+
+	positions = sorted(pattern.steps.keys())
+	first_three = [pattern.steps[pos].notes[0].pitch for pos in positions[:3]]
+
+	assert first_three == expected[:3]
+
+
+def test_arpeggio_chord_form_direction_down () -> None:
+
+	"""direction='down' on a chord starts from the highest tone."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+	builder.arpeggio(chord, root=60, spacing=0.5, direction="down")
+
+	positions = sorted(pattern.steps.keys())
+	first_pitch = pattern.steps[positions[0]].notes[0].pitch
+
+	assert first_pitch == 67
+
+
+def test_arpeggio_duck_typed_accepts_non_chord_with_tones () -> None:
+
+	"""Any object with a .tones() method routes through the chord branch.
+
+	Guards the duck-typing decision: the chord injected into a pattern is an
+	_InjectedChord, not a subsequence.chords.Chord, so an isinstance() gate would
+	silently break the verb swap.
+	"""
+
+	class _StandIn:
+
+		def tones (self, root: int, inversion: int = 0, count: typing.Optional[int] = None) -> typing.List[int]:
+			return [root, root + 4, root + 7]
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.arpeggio(_StandIn(), root=60, spacing=0.5)
+
+	positions = sorted(pattern.steps.keys())
+	pitches = [pattern.steps[pos].notes[0].pitch for pos in positions]
+
+	assert pitches == [60, 64, 67, 60, 64, 67, 60, 64]
+
+
+def test_arpeggio_beat_offsets_start () -> None:
+
+	"""beat= shifts the figure's start; nothing is placed before it."""
+
+	pattern, builder = _make_builder(length=4)
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+
+	builder.arpeggio([60, 64, 67], beat=1.0, spacing=0.5)
+
+	positions = sorted(pattern.steps.keys())
+
+	assert positions[0] == int(1.0 * ppq)
+	assert all(pos >= int(1.0 * ppq) for pos in positions)
+	assert sum(len(step.notes) for step in pattern.steps.values()) == 6
+
+
+def test_arpeggio_span_bounds_window () -> None:
+
+	"""span= confines the figure to [beat, beat + span)."""
+
+	pattern, builder = _make_builder(length=4)
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+
+	builder.arpeggio([60, 64, 67], beat=1.0, span=1.0, spacing=0.5, duration=0.25)
+
+	positions = sorted(pattern.steps.keys())
+
+	assert positions == [int(1.0 * ppq), int(1.5 * ppq)]
+
+
+def test_arpeggio_span_clamps_to_pattern_end () -> None:
+
+	"""A span that overshoots the bar is clamped — nothing is written past the end."""
+
+	pattern, builder = _make_builder(length=4)
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+
+	builder.arpeggio([60, 64, 67], beat=3.0, span=10.0, spacing=0.5)
+
+	positions = sorted(pattern.steps.keys())
+
+	assert positions
+	assert max(positions) < int(4.0 * ppq)
+
+
+def test_arpeggio_start_beyond_length_places_nothing () -> None:
+
+	"""A start at or past the pattern end places nothing (the slot is outside the bar)."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.arpeggio([60, 64, 67], beat=4.0, spacing=0.5)
+
+	assert sum(len(step.notes) for step in pattern.steps.values()) == 0
+
+
+def test_arpeggio_span_non_positive_raises () -> None:
+
+	"""A zero or negative span is a misuse and raises."""
+
+	pattern, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="span must be positive"):
+		builder.arpeggio([60, 64, 67], span=0, spacing=0.5)
+
+	with pytest.raises(ValueError, match="span must be positive"):
+		builder.arpeggio([60, 64, 67], span=-2, spacing=0.5)
+
+
+def test_arpeggio_negative_beat_raises () -> None:
+
+	"""A negative start beat raises rather than wrapping into a wall of notes."""
+
+	pattern, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="beat must be >= 0"):
+		builder.arpeggio([60, 64, 67], beat=-1.0, spacing=0.5)
+
+
+def test_arpeggio_chord_without_root_raises () -> None:
+
+	"""The chord form needs a root, just like chord()/strum()."""
+
+	pattern, builder = _make_builder(length=4)
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	with pytest.raises(ValueError, match="needs a root"):
+		builder.arpeggio(chord, spacing=0.5)
+
+
+def test_arpeggio_list_with_chord_args_raises () -> None:
+
+	"""root=/count=/inversion= only make sense for the chord form — a list with them raises."""
+
+	pattern, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="only apply to the chord form"):
+		builder.arpeggio([60, 64, 67], root=48, spacing=0.5)
+
+	with pytest.raises(ValueError, match="only apply to the chord form"):
+		builder.arpeggio([60, 64, 67], count=4, spacing=0.5)
+
+	with pytest.raises(ValueError, match="only apply to the chord form"):
+		builder.arpeggio([60, 64, 67], inversion=1, spacing=0.5)
+
+
 # --- Phase 4: Step-Based Hits ---
 
 
@@ -2016,6 +2225,24 @@ def test_broken_chord_negative_index_raises () -> None:
 
 	with pytest.raises(ValueError, match="non-negative integers"):
 		builder.broken_chord(chord, root=60, order=[0, -1])
+
+
+def test_broken_chord_positioned_with_span () -> None:
+
+	"""broken_chord forwards beat/span to arpeggio — the figure stays within [beat, beat + span)."""
+
+	pattern, builder = _make_builder(length=4)
+	ppq = subsequence.constants.MIDI_QUARTER_NOTE
+	chord = subsequence.chords.Chord(root_pc=0, quality="major")
+
+	builder.broken_chord(chord, root=60, order=[2, 0, 1], beat=1.0, span=1.0, spacing=0.5)
+
+	positions = sorted(pattern.steps.keys())
+	assert positions == [int(1.0 * ppq), int(1.5 * ppq)]
+
+	# tones [60, 64, 67] reordered by [2, 0, 1] -> [67, 60, 64], cycled
+	pitches = [pattern.steps[pos].notes[0].pitch for pos in positions]
+	assert pitches == [67, 60]
 
 
 # --- p.param() ---
