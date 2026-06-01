@@ -51,10 +51,6 @@ include = ["subsequence*"]
 [tool.setuptools.package-data]
 subsequence = ["py.typed"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
-
 [tool.ruff]
 line-length = 120
 indent-width = 4
