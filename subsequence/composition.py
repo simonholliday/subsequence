@@ -220,7 +220,7 @@ class _InjectedChord:
 
 		if self._voice_leading_state is not None:
 			base = self._voice_leading_state.next(intervals, midi_root)
-			if count is not None and count > len(base):
+			if count is not None:
 				n = len(base)
 				base_intervals = [p - base[0] for p in base]
 				return [base[0] + base_intervals[i % n] + 12 * (i // n) for i in range(count)]
@@ -363,7 +363,7 @@ async def schedule_harmonic_clock (
 	)
 
 
-def _make_safe_callback (fn: typing.Callable, accepts_context: bool = False) -> typing.Callable[[int], None]:
+def _make_safe_callback (fn: typing.Callable, accepts_context: bool = False, start_cycle: int = 0) -> typing.Callable[[int], None]:
 
 	"""Wrap a user function as a fire-and-forget callback that never blocks the clock.
 
@@ -371,8 +371,8 @@ def _make_safe_callback (fn: typing.Callable, accepts_context: bool = False) -> 
 	whose ``cycle`` field increments on every invocation.
 	"""
 
-	is_async = asyncio.iscoroutinefunction(fn)
-	cycle_count: typing.List[int] = [0]  # mutable cell so the closure can mutate it
+	is_async = inspect.iscoroutinefunction(fn)
+	cycle_count: typing.List[int] = [start_cycle]  # mutable cell so the closure can mutate it
 
 	async def _execute (cycle: int) -> None:
 
@@ -391,7 +391,7 @@ def _make_safe_callback (fn: typing.Callable, accepts_context: bool = False) -> 
 				await loop.run_in_executor(None, call)
 
 		except Exception as exc:
-			logger.warning(f"Scheduled task {fn.__name__!r} failed: {exc}")
+			logger.warning(f"Scheduled task {getattr(fn, '__name__', repr(fn))!r} failed: {exc}")
 
 	def wrapper (pulse: int) -> None:
 
@@ -1743,8 +1743,8 @@ class Composition:
 			cc: MIDI Control Change number (0–127).
 			key: The ``composition.data`` key to write.
 			channel: If given, only respond to CC messages on this channel.
-				Uses the same numbering convention as ``pattern()`` (0-15
-				by default, or 1-16 with ``zero_indexed_channels=False``).
+				Uses the same numbering convention as ``pattern()`` (1-16
+				by default, or 0-15 with ``zero_indexed_channels=True``).
 				``None`` matches any channel (default).
 			min_val: Scaled minimum — written when CC value is 0 (default 0.0).
 			max_val: Scaled maximum — written when CC value is 127 (default 1.0).
@@ -1934,6 +1934,13 @@ class Composition:
 		This allows you to connect to a running composition using the
 		`subsequence.live_client` REPL and hot-swap pattern code or
 		modify variables in real-time.
+
+		Security:
+			The server executes arbitrary Python in this process — it is **not** a
+			sandbox.  It binds to localhost only and is opt-in, but any process on
+			the same machine that can reach the port gains full code execution here.
+			Do not enable it on shared or multi-user hosts, and never expose the
+			port to a network.
 
 		Parameters:
 			port: The TCP port to listen on (default 5555).
@@ -2212,7 +2219,7 @@ class Composition:
 
 		Example::
 
-			composition.osc("/control")
+			composition.osc()
 
 			def on_intensity (address, value):
 				composition.data["intensity"] = float(value)
@@ -2261,6 +2268,10 @@ class Composition:
 			# Accelerate to 140 BPM over the next 8 bars with a smooth S-curve
 			comp.target_bpm(140, bars=8, shape="ease_in_out")
 			```
+
+		Note:
+			Ignored while Ableton Link is active — the shared session tempo is
+			authoritative.  Use ``set_bpm()`` to propose a tempo to the Link network.
 		"""
 
 		self._sequencer.set_target_bpm(bpm, bars, shape)
@@ -2643,8 +2654,9 @@ class Composition:
 		- ``steps`` cannot be combined with ``beats`` or ``bars``.
 
 		Returns:
-			(beat_length, default_grid) — beat_length in beats (quarter notes),
-			default_grid in 16th-note steps.
+			(beat_length, default_grid) — beat_length in beats (quarter notes);
+			default_grid the number of grid steps (16th-notes in beat mode, or the
+			explicit ``steps`` value directly in step mode).
 		"""
 
 		if beats is not None and bars is not None:
@@ -2700,10 +2712,9 @@ class Composition:
 		  directly to steps.
 
 		Parameters:
-			channel: MIDI channel. By default uses 0-based numbering (0-15)
-				matching the raw MIDI protocol. Set
-				``zero_indexed_channels=False`` on the ``Composition`` to use
-				1-based numbering (1-16) instead.
+			channel: MIDI channel. By default uses 1-based numbering (1-16).
+				Set ``zero_indexed_channels=True`` on the ``Composition`` to use
+				0-based numbering (0-15), matching the raw MIDI protocol, instead.
 			beats: Duration in beats (quarter notes). ``beats=4`` = 1 bar.
 			bars: Duration in bars (uses the composition's time signature — 4 beats each in 4/4). ``bars=2`` = 8 beats.
 			steps: Step count for step mode. Requires ``step_duration=``.
@@ -2832,7 +2843,7 @@ class Composition:
 
 		Parameters:
 			builder_fns: One or more pattern builder functions.
-			channel: MIDI channel (0-15, or 1-16 with ``zero_indexed_channels=False``).
+			channel: MIDI channel (1-16, or 0-15 with ``zero_indexed_channels=True``).
 			beats: Duration in beats (quarter notes).
 			bars: Duration in bars (uses the composition's time signature — 4 beats each in 4/4).
 			steps: Step count for step mode. Requires ``step_duration=``.
@@ -2955,7 +2966,7 @@ class Composition:
 				of chords (``Chord`` objects or names like ``["Cm7", "Dbmaj7"]``).
 			harmonic_rhythm: How long each chord lasts — a number, a list of lengths,
 				or ``between(low, high, step=...)``.  See ``p.progression()``.
-			bars / beats: Length of the part (one is required).  ``bars`` uses the
+			bars / beats: Length of the part (defaults to 4 beats if neither is given).  ``bars`` uses the
 				composition's time signature.
 			voicing: Notes per chord — an int, or a ``(low, high)`` range (e.g. ``(3, 4)``).
 			velocity: MIDI velocity, or a ``(low, high)`` tuple for per-voice humanisation.
@@ -3065,7 +3076,7 @@ class Composition:
 
 		Parameters:
 			fn: The pattern builder function (same signature as ``@comp.pattern``).
-			channel: MIDI channel (0-15, or 1-16 with ``zero_indexed_channels=False``).
+			channel: MIDI channel (1-16, or 0-15 with ``zero_indexed_channels=True``).
 			beats: Duration in beats (quarter notes, default 1).
 			bars: Duration in bars (uses the composition's time signature — 4 beats each in 4/4).
 			steps: Step count for step mode. Requires ``step_duration=``.
@@ -3434,7 +3445,7 @@ class Composition:
 
 		if initial_tasks:
 
-			names = ", ".join(t.fn.__name__ for t in initial_tasks)
+			names = ", ".join(getattr(t.fn, '__name__', repr(t.fn)) for t in initial_tasks)
 			logger.info(f"Waiting for initial scheduled {'function' if len(initial_tasks) == 1 else 'functions'} before start: {names}")
 
 			async def _run_initial (fn: typing.Callable) -> None:
@@ -3443,21 +3454,29 @@ class Composition:
 				ctx = ScheduleContext(cycle=0)
 
 				try:
-					if asyncio.iscoroutinefunction(fn):
+					if inspect.iscoroutinefunction(fn):
 						await (fn(ctx) if accepts_ctx else fn())
 					else:
 						loop = asyncio.get_running_loop()
 						call = (lambda: fn(ctx)) if accepts_ctx else fn
 						await loop.run_in_executor(None, call)
 				except Exception as exc:
-					logger.warning(f"Initial run of {fn.__name__!r} failed: {exc}")
+					logger.warning(f"Initial run of {getattr(fn, '__name__', repr(fn))!r} failed: {exc}")
 
 			await asyncio.gather(*[_run_initial(t.fn) for t in initial_tasks])
 
 		for pending_task in self._pending_scheduled:
 
 			accepts_ctx = _fn_has_parameter(pending_task.fn, "p")
-			wrapped = _make_safe_callback(pending_task.fn, accepts_context=accepts_ctx)
+
+			# A wait_for_initial task already ran once as cycle 0 (the blocking
+			# pre-roll above), so its repeating wrapper starts at cycle 1 — keeping
+			# ScheduleContext.cycle monotonic across the initial and repeating runs.
+			wrapped = _make_safe_callback(
+				pending_task.fn,
+				accepts_context = accepts_ctx,
+				start_cycle = 1 if pending_task.wait_for_initial else 0,
+			)
 
 			# wait_for_initial=True implies defer — no point firing at pulse 0
 			# after the blocking run just completed.  defer=True skips the
@@ -3639,6 +3658,7 @@ class Composition:
 				self.steps = {}
 				self.cc_events = []
 				self.osc_events = []
+				self.raw_note_events = []
 				current_cycle = self._cycle_count
 				self._cycle_count += 1
 

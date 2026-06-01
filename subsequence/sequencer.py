@@ -544,7 +544,7 @@ class Sequencer:
 		By default the sequencer busy-waits for the final sub-millisecond of each
 		pulse interval to minimise clock jitter.  Call this to revert to pure
 		``asyncio.sleep()`` — lower CPU usage at the cost of higher jitter (typically
-		±0.5–2 ms on Linux vs ±50–200 μs with spin-wait enabled).
+		±0.5–2 ms on Linux vs ~3–4 μs with spin-wait enabled (see the README clock-accuracy benchmark)).
 
 		Can also be set at construction time: ``Sequencer(spin_wait=False)``.
 		"""
@@ -600,10 +600,19 @@ class Sequencer:
 			       callable that maps [0, 1] → [0, 1].  Defaults to ``"linear"``.
 			       ``"ease_in_out"`` or ``"s_curve"`` are recommended for natural-
 			       sounding tempo changes.  See :mod:`subsequence.easing`.
+
+		Note:
+			When Ableton Link is active the shared network tempo is authoritative,
+			so a local ramp cannot be honoured — this call is ignored.  Use
+			``set_bpm()`` to propose a new tempo to the Link session instead.
 		"""
 
 		if self.clock_follow and self.running:
 			logger.info("BPM is controlled by external clock - set_target_bpm() ignored")
+			return
+
+		if self._link_clock is not None and self.running:
+			logger.info("Tempo is controlled by the Ableton Link session - set_target_bpm() ramp ignored; use set_bpm() to propose a new Link tempo")
 			return
 
 		if target_bpm <= 0:
@@ -1512,10 +1521,16 @@ class Sequencer:
 		if to_fire:
 			# Decision path: composition-level callbacks fire before pattern rebuilds.
 			for scheduled_callback in to_fire:
-				result = scheduled_callback.callback(pulse)
+				try:
+					result = scheduled_callback.callback(pulse)
 
-				if asyncio.iscoroutine(result):
-					await result
+					if asyncio.iscoroutine(result):
+						await result
+
+				except Exception:
+					# Isolate a misbehaving callback so the rest still fire and
+					# get rescheduled below — one bad callback must not stall the clock.
+					logger.exception("Scheduled callback failed during reschedule (pulse %d) - continuing", pulse)
 
 		async with self.callback_lock:
 			for scheduled_callback in to_fire:

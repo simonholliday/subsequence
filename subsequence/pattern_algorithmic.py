@@ -663,7 +663,8 @@ class PatternAlgorithmicMixin:
 			      explicit ``list[list[int]]`` (rows × cols) for a custom start.
 			density: Fill probability for ``initial_state="random"`` (0.0–1.0).
 			seed: RNG seed (an int) for the ``"random"`` initial grid, so it
-			      reproduces.
+			      reproduces.  Ignored for ``"center"`` or an explicit grid (a
+			      warning is emitted if passed there).
 			rng: Random generator for the probability thinning.  Defaults to
 			     ``self.rng``.
 
@@ -692,6 +693,14 @@ class PatternAlgorithmicMixin:
 			grid_seed = seed if isinstance(seed, int) and seed != 1 else rng.randint(2, 2_147_483_646)
 		else:
 			raise ValueError(f"cellular_2d(): initial_state must be \"center\", \"random\", or a grid — got {initial_state!r}")
+
+		if seed is not None and initial_state != "random":
+			warnings.warn(
+				f"cellular_2d(): seed= only affects initial_state=\"random\" and is ignored for "
+				f"initial_state={initial_state!r} — pass initial_state=\"random\" to seed the grid",
+				UserWarning,
+				stacklevel = 2,
+			)
 
 		cols = self._default_grid
 		rows = len(pitches)
@@ -733,7 +742,7 @@ class PatternAlgorithmicMixin:
 		"""Generate a sequence by walking a first-order Markov chain.
 
 		Builds a :class:`~subsequence.weighted_graph.WeightedGraph` from
-		``transitions`` and walks it, placing one note per ``step`` beats.
+		``transitions`` and walks it, placing one note per ``spacing`` beats.
 		The probability of each next state depends only on the current one -
 		use this to generate basslines, melodies, or rhythm motifs that have
 		stylistic coherence without being perfectly repetitive.
@@ -798,7 +807,8 @@ class PatternAlgorithmicMixin:
 		for _ in range(n_steps):
 
 			if state in pitch_map:
-				self.note(pitch=pitch_map[state], beat=beat, velocity=velocity, duration=duration)
+				vel = self._resolve_velocity(velocity, rng)
+				self.note(pitch=pitch_map[state], beat=beat, velocity=vel, duration=duration)
 
 			state = graph.choose_next(state, rng)
 			beat += spacing

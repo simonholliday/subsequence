@@ -70,6 +70,21 @@ def test_between_rejects_bad_bounds () -> None:
 		subsequence.harmonic_rhythm.between(8.0, 4.0)
 
 
+def test_between_step_larger_than_range_stays_within_bounds () -> None:
+
+	"""When no whole step-multiple fits in [low, high], resolve() clamps to the bounds.
+
+	Regression: between(2, 3, step=4) forced a multiple (4.0) past the high bound,
+	contradicting the spec's "never strays past its bounds" contract.
+	"""
+
+	rng = random.Random(0)
+	spec = subsequence.harmonic_rhythm.between(2.0, 3.0, step=4.0)
+
+	for _ in range(50):
+		assert 2.0 <= spec.resolve(rng) <= 3.0
+
+
 # ── realize(): laying a progression out in time (chord, start, length only) ───
 
 def test_realize_fills_and_trims_to_length () -> None:
@@ -104,6 +119,18 @@ def test_realize_is_deterministic_under_seed () -> None:
 def test_realize_style_requires_a_key () -> None:
 	with pytest.raises(ValueError):
 		subsequence.progression.realize("phrygian_minor", WHOLE, None, 16.0, random.Random(0))
+
+
+def test_realize_invalid_key_raises_valueerror () -> None:
+
+	"""An unrecognised key name surfaces a friendly ValueError, not a raw KeyError.
+
+	Regression: HarmonicState indexed NOTE_NAME_TO_PC directly, leaking
+	KeyError('H') through the p.progression() / realize() path.
+	"""
+
+	with pytest.raises(ValueError):
+		subsequence.progression.realize("phrygian_minor", WHOLE, "H", 16.0, random.Random(0))
 
 
 def test_realize_phrygian_chords_are_in_key () -> None:

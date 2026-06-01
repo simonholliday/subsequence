@@ -126,7 +126,7 @@ class HarmonicState:
 			raise ValueError("Root diversity must be between 0 and 1")
 
 		self.key_name = key_name
-		self.key_root_pc = subsequence.chords.NOTE_NAME_TO_PC[key_name]
+		self.key_root_pc = subsequence.chords.key_name_to_pc(key_name)
 		self.key_gravity_blend = key_gravity_blend
 		self.nir_strength = nir_strength
 		self.root_diversity = root_diversity

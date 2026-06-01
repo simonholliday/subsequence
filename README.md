@@ -155,7 +155,7 @@ The first three entries below (`perlin_1d`, `logistic_map`, `pink_noise`) are st
 
 Ken Perlin invented gradient noise in 1983 to generate natural-looking textures for the film *Tron* - he later won an Academy Award for the technique. His insight was that pure randomness looks artificial, but smoothly interpolated randomness looks organic. `perlin_1d(x, seed)` produces values where neighbours are correlated - it drifts like wind, not dice. Use it for velocity curves, pitch bend, density envelopes, or any parameter that should evolve continuously. `perlin_1d_sequence()` returns a list for per-step modulation; `perlin_2d()` adds a second axis (e.g. bar × step position).
 
-`p.grid` is the number of 16th-note steps in this pattern - `16` for a 4-beat bar (`beats=4`), `32` for two bars. In step mode (`steps=N, unit=dur.SIXTEENTH`), `p.grid` equals `N` directly.
+`p.grid` is the number of 16th-note steps in this pattern - `16` for a 4-beat bar (`beats=4`), `32` for two bars. In step mode (`steps=N, step_duration=dur.SIXTEENTH`), `p.grid` equals `N` directly.
 
 ```python
 import subsequence.sequence_utils
@@ -342,7 +342,7 @@ Fibonacci described his sequence in 1202 to model rabbit populations, but the go
 @composition.pattern(channel=1, beats=4)
 def hi_hats (p):
 	# 11 hits with golden-ratio spacing across 4 beats
-	p.fibonacci("hi_hat_closed", steps=11, velocity=(60, 90))
+	p.fibonacci("hi_hat_closed", count=11, velocity=(60, 90))
 ```
 
 ### Lorenz attractor
@@ -597,7 +597,7 @@ def melody (p):
 # hit_steps() and sequence() automatically use 6 grid slots.
 import subsequence.constants.durations as dur
 
-@composition.pattern(channel=1, steps=6, unit=dur.SIXTEENTH)
+@composition.pattern(channel=1, steps=6, step_duration=dur.SIXTEENTH)
 def riff (p, chord):
     root = chord.root_note(notes.E4)  # root voice around E4
     p.sequence(steps=[0, 1, 3, 5], pitches=[root+12, root, root, root])
@@ -1020,9 +1020,9 @@ def bass(p):
     p.note(root, velocity=100)
 
 @composition.pattern(channel=2, beats=4)   # same length - guaranteed same-cycle read
-def pad(p):
+def pad(p, chord):
     root = p.data.get("bass_root", notes.C3) # current-cycle value, because bass ran first
-    p.chord(root=root, velocity=60)
+    p.chord(chord, root=root, velocity=60)
 ```
 
 If the two patterns have **different lengths** they reschedule at different moments, so the reader sees the writer's value from its most recent rebuild - at most one bar old. This one-bar latency is musically natural for slowly-changing state (like a 4-bar bass phrase influencing a 1-bar arp), but use matching lengths when you need immediate reaction.
@@ -1069,16 +1069,16 @@ Inversion 0 is root position, 1 is first inversion, 2 is second, and so on. Valu
 
 ### Strummed chords
 
-`p.strum()` works exactly like `p.chord()` but staggers the notes with a small time offset between each one - like strumming a guitar. The first note always lands on the beat; subsequent notes are delayed by `offset` beats each.
+`p.strum()` works exactly like `p.chord()` but staggers the notes with a small time offset between each one - like strumming a guitar. The first note always lands on the beat; subsequent notes are delayed by `spacing` beats each.
 
 ```python
 @composition.pattern(channel=1, beats=4)
 def guitar (p, chord):
     # Gentle upward strum (low to high)
-    p.strum(chord, root=notes.E3, velocity=85, offset=0.06)
+    p.strum(chord, root=notes.E3, velocity=85, spacing=0.06)
 
     # Fast downward strum (high to low)
-    p.strum(chord, root=notes.E3, direction="down", offset=0.03)
+    p.strum(chord, root=notes.E3, direction="down", spacing=0.03)
 ```
 
 ### Broken chords
@@ -1109,7 +1109,7 @@ def pad (p, chord):
 
 @composition.pattern(channel=1, beats=4)
 def guitar (p, chord):
-    p.strum(chord, root=notes.E3, velocity=85, offset=0.06, legato=0.95)
+    p.strum(chord, root=notes.E3, velocity=85, spacing=0.06, legato=0.95)
 ```
 
 ### Detached chords
@@ -1126,7 +1126,7 @@ def pad (p, chord):
 def guitar (p, chord):
     # Last strum note ends 0.25 beats before next chord; earlier notes
     # end proportionally sooner — releases staggered like the placements.
-    p.strum(chord, root=notes.E3, velocity=85, count=5, offset=0.1, detached=0.25)
+    p.strum(chord, root=notes.E3, velocity=85, count=5, spacing=0.1, detached=0.25)
 ```
 
 `sustain=True`, `legato=`, and `detached=` are mutually exclusive — passing more than one raises a `ValueError`.
@@ -1457,7 +1457,7 @@ def keys (p):
 	for chord, start, length in p.progression("phrygian_minor",
 			harmonic_rhythm=between(dur.WHOLE, 3 * dur.WHOLE, step=dur.WHOLE), seed=7):
 		p.strum(chord, root=48, beat=start, duration=length - 0.25,
-		        offset=0.04, count=4, velocity=(70, 90))   # rolled chords, each released 0.25 beats early
+		        spacing=0.04, count=4, velocity=(70, 90))   # rolled chords, each released 0.25 beats early
 	# p can keep going — a bass root under each chord, a counter-melody, …
 ```
 
@@ -1519,7 +1519,7 @@ All require an explicit `rng` parameter - use `p.rng` in pattern builders:
 
 ```python
 # Wandering hi-hat velocity
-walk = subsequence.sequence_utils.random_walk(16, low=50, high=110, spacing=15, rng=p.rng)
+walk = subsequence.sequence_utils.random_walk(16, low=50, high=110, step=15, rng=p.rng)
 for i, vel in enumerate(walk):
     p.hit_steps("hh_closed", [i], velocity=vel)
 
@@ -1684,6 +1684,8 @@ composition.live()      # start on localhost:5555
 composition.display()
 composition.play()
 ```
+
+> **Security:** the eval server executes arbitrary Python in your composition's process — it is **not** a sandbox. It binds to `localhost` only and is opt-in, but any process that can reach the port on your machine gains full code execution. Don't enable it on shared or multi-user hosts, never expose the port to a network, and only accept code from senders you trust.
 
 ### Connect with the REPL client
 
@@ -1946,9 +1948,11 @@ Map hardware knobs, faders, and expression pedals directly to `composition.data`
 import subsequence.constants.midi_notes as notes
 
 composition.midi_input("Arturia KeyStep")   # open the input port
+```
 
 If `channel` is omitted, the mapping listens on **all** incoming channels; if provided, only that channel is accepted (using the same numbering convention as `@composition.pattern(channel=...)`).
 
+```python
 composition.cc_map(74, "filter_cutoff")          # CC 74 → 0.0–1.0 in composition.data
 composition.cc_map(7,  "volume", min_val=0, max_val=127)   # custom range
 composition.cc_map(1,  "density", channel=1)     # channel-filtered
@@ -2420,7 +2424,7 @@ State is stored in `p.data` and resets when `cycle == 0`, so restarts are always
 def melody (p):
     p.evolve(
         pitches=[60, 62, 64, 67],   # seed sequence and mutation pool
-        steps=8,                     # loop length (cycles the seed if shorter)
+        length=8,                    # loop length (cycles the seed if shorter)
         drift=0.08,                  # 8% chance each step mutates per cycle
         velocity=(70, 100),
         duration=0.3,
@@ -2432,7 +2436,7 @@ def melody (p):
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `pitches` | - | Seed sequence. Initial buffer and mutation pool. |
-| `steps` | `len(pitches)` | Loop length. Cycles the seed if `steps > len(pitches)`. |
+| `length` | `len(pitches)` | Loop length. Cycles the seed if `length > len(pitches)`. |
 | `drift` | `0.0` | Per-step mutation probability per cycle (0.0 = locked, 1.0 = fully random). |
 | `velocity` | `80` | MIDI velocity, or `(low, high)` tuple for per-step random range. |
 | `duration` | `0.2` | Note duration in beats. |
@@ -2448,7 +2452,7 @@ def melody (p):
 @composition.pattern(channel=1, beats=4)
 def melody (p):
     p.branch(
-        seed=[60, 64, 67, 72],   # the trunk - original motif
+        pitches=[60, 64, 67, 72],# the trunk - original motif
         depth=3,                  # 2^3 = 8 unique variations
         path=p.cycle,             # advance through the tree each bar
         mutation=0.05,            # small random substitution on top
@@ -2460,7 +2464,7 @@ def melody (p):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `seed` | - | Original pitch sequence. All variations are derived from this. |
+| `pitches` | - | Original pitch sequence. All variations are derived from this. |
 | `depth` | `2` | Branching levels. `2 ** depth` unique variations available. |
 | `path` | `0` | Which variation to play. `path=p.cycle` auto-advances. Wraps modulo `2 ** depth`. |
 | `mutation` | `0.0` | Probability of random substitution from `seed` pool after branching. |
@@ -2594,6 +2598,8 @@ Start the OSC server before calling `play()`:
 composition.osc(receive_port=9000, send_port=9001, send_host="127.0.0.1")
 composition.play()
 ```
+
+> **Note:** the OSC server listens on all network interfaces (`receive_host="0.0.0.0"`) by default, so any machine on your LAN can send it messages. On an untrusted network, restrict it to loopback with `composition.osc(receive_host="127.0.0.1", …)`.
 
 ### Receiving (Control)
 
@@ -2759,7 +2765,7 @@ composition.trigger(
 
 # With chord context (if harmony is active)
 composition.trigger(
-    lambda p: p.arpeggio(p.chord.tones(root=notes.C4), spacing=dur.SIXTEENTH),
+    lambda p, chord: p.arpeggio(chord.tones(root=notes.C4), spacing=dur.SIXTEENTH),
     channel=1,
     quantize=dur.WHOLE,
     chord=True  # inject current chord
@@ -2774,7 +2780,7 @@ Triggered patterns use the same `PatternBuilder` API as `@composition.pattern` d
 - `quantize=dur.SIXTEENTH` - snap to next 16th note
 - Any float in beats works directly
 
-### `composition.trigger(fn, channel, beats=1, bars=None, steps=None, unit=None, quantize=0, drum_note_map=None, chord=False)`
+### `composition.trigger(fn, channel, beats=1, bars=None, steps=None, step_duration=None, quantize=0, drum_note_map=None, chord=False)`
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -2782,15 +2788,15 @@ Triggered patterns use the same `PatternBuilder` API as `@composition.pattern` d
 | `channel` | - | MIDI channel (1-16 by default, or 0-15 with `zero_indexed_channels=True`) |
 | `beats` | `1` | Duration in beats (quarter notes). |
 | `bars` | `None` | Duration in bars (4 beats, assumes 4/4). Alternative to `beats=`. |
-| `steps` | `None` | Step count for step mode. Requires `unit=`. |
-| `unit` | `None` | Duration of one step in beats (e.g. `dur.SIXTEENTH`). Requires `steps=`. |
+| `steps` | `None` | Step count for step mode. Requires `step_duration=`. |
+| `step_duration` | `None` | Duration of one step in beats (e.g. `dur.SIXTEENTH`). Requires `steps=`. |
 | `quantize` | `0` | Snap to beat boundary: `0` = immediate, or a float in beats (use `dur.*` constants) |
 | `drum_note_map` | `None` | Optional drum name mapping |
 | `chord` | `False` | If `True`, the builder receives the current chord as a second parameter |
 
 Triggered patterns are thread-safe - call from OSC handlers, scheduled callbacks, or custom threads. If playback hasn't started yet (before `play()` is called), `trigger()` is a no-op and logs a warning.
 
-### `composition.layer(*builder_fns, channel, beats=4, bars=None, steps=None, unit=None, drum_note_map=None, reschedule_lookahead=1, voice_leading=False)`
+### `composition.layer(*builder_fns, channel, beats=4, bars=None, steps=None, step_duration=None, drum_note_map=None, reschedule_lookahead=1, voice_leading=False)`
 
 Merge multiple builder functions into a single pattern. Each function receives its own `PatternBuilder` and their notes are combined into one MIDI stream. Use this to decompose a complex pattern into reusable parts:
 
@@ -2807,7 +2813,7 @@ def hats(p):
 composition.layer(kick, snare, hats, channel=10, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 ```
 
-All three functions run on the same cycle length and MIDI channel - equivalent to putting everything in one function, but easier to swap pieces in and out. The `beats=`, `bars=`, `steps=`, and `unit=` parameters work identically to `@composition.pattern`.
+All three functions run on the same cycle length and MIDI channel - equivalent to putting everything in one function, but easier to swap pieces in and out. The `beats=`, `bars=`, `steps=`, and `step_duration=` parameters work identically to `@composition.pattern`.
 
 ### Polyrhythms
 
@@ -2970,7 +2976,7 @@ Demonstrates [`composition.load_patterns(source)`](#loading-patterns-from-a-stri
 ### Rhythm & Pattern
 - `subsequence.pattern_builder` provides the `PatternBuilder` with high-level musical methods.
 - `subsequence.motif` provides a small Motif helper that can render into a Pattern.
-- `subsequence.groove` provides `Groove` templates (per-step timing/velocity feel). Swing is a type of groove - `p.swing(amount)` is a shortcut for the common case. For full control: `Groove.swing(percent)` for percentage-based swing; `Groove.from_agr(path)` to import timing and velocity from an Ableton `.agr` file (note: the Groove Pool blend controls in the file are not imported - use `strength=` when applying to partially blend the effect); or construct `Groove(offsets=..., velocities=...)` directly for a custom feel. Applied via `p.groove(template, strength=1.0)` - `strength` (0.0-1.0) blends the groove's timing and velocity proportionally, equivalent to Ableton's TimingAmount and VelocityAmount dials.
+- `subsequence.groove` provides `Groove` templates (per-step timing/velocity feel). Swing is a type of groove - `p.swing(percent)` is a shortcut for the common case. For full control: `Groove.swing(percent)` for percentage-based swing; `Groove.from_agr(path)` to import timing and velocity from an Ableton `.agr` file (note: the Groove Pool blend controls in the file are not imported - use `strength=` when applying to partially blend the effect); or construct `Groove(offsets=..., velocities=...)` directly for a custom feel. Applied via `p.groove(template, strength=1.0)` - `strength` (0.0-1.0) blends the groove's timing and velocity proportionally, equivalent to Ableton's TimingAmount and VelocityAmount dials.
 - `subsequence.sequence_utils` provides the low-level functions underlying the [Algorithmic generators](#algorithmic-generators): `perlin_1d(x, seed)`, `perlin_2d(x, y, seed)`, `perlin_1d_sequence(start, step, count, seed)`, `logistic_map(r, steps, x0=0.5)`, `pink_noise(steps, sources=16, seed=0)`, `generate_euclidean_sequence(steps, pulses)`, `generate_bresenham_sequence(steps, pulses)`, `generate_bresenham_sequence_weighted(parts, steps)` (underlies `p.bresenham_poly()` - pass a `parts` dict of pitch→weight and voices interlock with optional `no_overlap`), `generate_cellular_automaton_1d(steps, rule, generation, seed)`, `generate_cellular_automaton_2d(rows, cols, rule, generation, seed, density)`, `lsystem_expand(axiom, rules, generations, rng=None)`, `thue_morse(n)`, `de_bruijn(k, n)`, `fibonacci_rhythm(steps, length)`, `lorenz_attractor(steps, ...)`, `reaction_diffusion_1d(width, steps, feed_rate, kill_rate)`, `self_avoiding_walk(n, low, high, rng)`. Also provides probability gating (`probability_gate`), random walk (`random_walk`), weighted choice (`weighted_choice`), and scale/clamp helpers.
 - `subsequence.mini_notation` parses a compact string syntax for step-sequencer patterns.
 - `subsequence.easing` provides easing/transition curve functions used by `conductor.line()`, `target_bpm()`, `cc_ramp()`, and `pitch_bend_ramp()`. Pass `shape=` to any of these to control how a value moves over time. Built-in shapes: `"linear"` (default), `"ease_in"`, `"ease_out"`, `"ease_in_out"` (Hermite smoothstep), `"exponential"` (cubic, good for filter sweeps), `"logarithmic"` (cubic, good for volume fades), `"s_curve"` (Perlin smootherstep - smoother than `"ease_in_out"` for long transitions). Callable shapes are also accepted for custom curves. Also provides **`EasedValue`** - a lightweight stateful helper that smoothly interpolates between discrete data updates (e.g. API poll results, sensor readings) so patterns hear a continuous eased value rather than a hard jump on each fetch cycle. Create one instance per field at module level, call `.update(value)` in your scheduled task, and call `.get(progress)` in your pattern.
@@ -2981,14 +2987,13 @@ Demonstrates [`composition.load_patterns(source)`](#loading-patterns-from-a-stri
 - `subsequence.chord_graphs` contains chord transition graphs. Each is a `ChordGraph` subclass with `build()` and `gravity_sets()` methods. Built-in styles: `"diatonic_major"`, `"turnaround"`, `"aeolian_minor"`, `"phrygian_minor"`, `"lydian_major"`, `"dorian_minor"`, `"suspended"`, `"chromatic_mediant"`, `"mixolydian"`, `"whole_tone"`, `"diminished"`.
 - `subsequence.harmonic_state` holds the shared chord/key state for multiple patterns.
 - `subsequence.voicings` provides chord inversions and voice leading. `invert_chord()` rotates intervals; `VoiceLeadingState` picks the closest inversion to the previous chord automatically.
-- `subsequence.markov_chain` provides a generic weighted Markov chain utility.
 - `subsequence.melodic_state` provides `MelodicState` - the persistent melodic context for `p.melody()`. Tracks pitch history across bar rebuilds and applies NIR scoring (Reversal, Process, Closure, Proximity) to absolute MIDI pitches. Constructor params: `key`, `mode`, `low`, `high`, `nir_strength`, `chord_weight`, `rest_probability`, `pitch_diversity`. Exported from the top-level package as `subsequence.MelodicState`.
 - `subsequence.weighted_graph` provides a generic weighted directed graph used for transitions. Used internally by `composition.form()` (section transitions), the harmony engine (chord progressions), and `p.markov()` (Markov-chain melody/bassline generation).
 
 ### MIDI Data
 - `subsequence.constants.durations` provides beat-based duration constants. Import as `import subsequence.constants.durations as dur` and write `length = 9 * dur.SIXTEENTH` or `step = dur.DOTTED_EIGHTH` instead of raw floats. Constants: `THIRTYSECOND`, `SIXTEENTH`, `DOTTED_SIXTEENTH`, `TRIPLET_EIGHTH`, `EIGHTH`, `DOTTED_EIGHTH`, `TRIPLET_QUARTER`, `QUARTER`, `DOTTED_QUARTER`, `HALF`, `DOTTED_HALF`, `WHOLE`.
 - `subsequence.constants.velocity` provides MIDI velocity constants. `DEFAULT_VELOCITY = 100` (most notes), `DEFAULT_CHORD_VELOCITY = 90` (harmonic content), `VELOCITY_SHAPE_LOW = 64` and `VELOCITY_SHAPE_HIGH = 127` (velocity shaping boundaries), `MIN_VELOCITY = 0`, `MAX_VELOCITY = 127`.
-- `subsequence.constants.gm_drums` provides the General MIDI Level 1 drum note map. `GM_DRUM_MAP` can be passed as `drum_note_map`; individual constants like `KICK_1` are also available.
+- `subsequence.constants.instruments.gm_drums` provides the General MIDI Level 1 drum note map. `GM_DRUM_MAP` can be passed as `drum_note_map`; individual constants like `KICK_1` are also available.
 - `subsequence.constants.instruments.gm_instruments` provides all 128 General MIDI Level 1 instrument program numbers. `GM_INSTRUMENT_MAP` for string lookup, `GM_INSTRUMENT_NAMES` for display, `GM_FAMILIES` for family ranges, and individual constants like `VIOLIN`, `FLUTE`, etc.
 - `subsequence.constants.midi_notes` provides named MIDI note constants C_NEG1–G9 (MIDI 0–127). Import as `import subsequence.constants.midi_notes as notes`. Convention: `C4 = 60` (Middle C, MMA standard). Naturals: `C4`, `D4`, … `B4`. Sharps: `CS4` (C♯4), `DS4`, `FS4`, `GS4`, `AS4`. Also provides `note_to_name(60) → "C4"` and `name_to_note("Db4") → 61`. Use instead of raw integers: `root = notes.E2` (40), `p.note(notes.A4)` (69).
 - `subsequence.constants.instruments.gm_cc` provides named MIDI CC constants (0–127). Import as `import subsequence.constants.instruments.gm_cc as gm_cc`. Constants: `FILTER_CUTOFF` (74), `SUSTAIN_PEDAL` (64), `MODULATION_WHEEL` (1), `VOLUME` (7), `PAN` (10), `ALL_NOTES_OFF` (123), etc. `GM_CC_MAP` dict for string lookup — pass to `cc_name_map=` on `@composition.pattern()` to enable string-based CC names in `p.cc()` and `p.cc_ramp()`.

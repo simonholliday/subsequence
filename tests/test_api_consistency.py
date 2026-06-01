@@ -166,6 +166,20 @@ def test_cellular_2d_grid_via_initial_state () -> None:
 	assert pitches == {36}
 
 
+def test_cellular_2d_seed_with_center_warns () -> None:
+
+	"""Passing seed= with a non-random initial_state warns that the seed is ignored.
+
+	Regression: cellular_2d(pitches, seed=7) at the default initial_state="center"
+	silently dropped the seed — a footgun once the old int-or-grid seed= was removed.
+	"""
+
+	_, builder = _make_builder()
+
+	with pytest.warns(UserWarning, match="seed="):
+		builder.cellular_2d([36, 38, 42], velocity=100, generation=0, seed=7)
+
+
 # ── P2: the one approved sound change — broken_chord is a chord voice, so its
 #    default velocity is the softer chord bucket (90), matching chord()/strum(). ──
 

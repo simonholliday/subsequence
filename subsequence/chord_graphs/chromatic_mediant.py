@@ -18,9 +18,9 @@ class ChromaticMediant (subsequence.chord_graphs.ChordGraph):
 
 	"""Chromatic third-related harmony - roots move by major or minor thirds.
 
-	Most transitions connect chords whose roots are a major or minor third
-	apart (the predominant motion; a few are chromatic or fourth-related),
-	creating dramatic, colorful shifts that sound both surprising
+	Many transitions connect chords whose roots are a major or minor third
+	apart (the characteristic motion); others are chromatic, fourth-, or
+	fifth-related, creating dramatic, colorful shifts that sound both surprising
 	and connected through shared common tones. No dominant-tonic or
 	subdominant-tonic functional motion is used.
 

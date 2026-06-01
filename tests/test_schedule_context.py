@@ -61,6 +61,37 @@ def test_make_safe_callback_context_increments () -> None:
 	assert sorted(received) == [0, 1, 2]
 
 
+def test_make_safe_callback_start_cycle_offset () -> None:
+
+	"""start_cycle seeds the cycle counter so cycles stay monotonic after a pre-roll.
+
+	Regression: a wait_for_initial task runs once as cycle 0 (blocking pre-roll),
+	then its repeating wrapper must start at cycle 1 — previously it restarted at 0,
+	yielding a non-monotonic 0, 0, 1, 2… contradicting ScheduleContext's docstring.
+	"""
+
+	import asyncio
+
+	received: list = []
+
+	def my_task (p: subsequence.composition.ScheduleContext) -> None:
+		received.append(p.cycle)
+
+	wrapped = subsequence.composition._make_safe_callback(my_task, accepts_context=True, start_cycle=1)
+
+	async def run () -> None:
+
+		for _ in range(3):
+			wrapped(0)
+
+		for _ in range(10):
+			await asyncio.sleep(0)
+
+	asyncio.run(run())
+
+	assert sorted(received) == [1, 2, 3]
+
+
 def test_make_safe_callback_no_context_flag () -> None:
 
 	"""When accepts_context=False the function is called with zero args."""

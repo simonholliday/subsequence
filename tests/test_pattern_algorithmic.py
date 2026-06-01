@@ -1,5 +1,6 @@
 """Tests for PatternAlgorithmicMixin — evolve() and branch() methods."""
 
+import random
 import typing
 
 import pytest
@@ -374,6 +375,34 @@ def test_ratchet_velocity_linear_shaping () -> None:
 	# t values: 0/3, 1/3, 2/3, 3/3 → multipliers: 0.5, 0.667, 0.833, 1.0
 	assert velocities[0] == round(100 * 0.5)
 	assert velocities[3] == 100
+
+
+def test_markov_velocity_tuple_is_seed_reproducible () -> None:
+
+	"""markov() with a velocity range reproduces from seed=, independent of self.rng.
+
+	Regression: velocity was resolved against the builder's own ``self.rng`` rather
+	than the ``seed=``/``rng=``-resolved generator, so seeded velocities drifted
+	while pitches stayed fixed.
+	"""
+
+	transitions = {"a": [("b", 1.0)], "b": [("a", 1.0)]}
+	pitch_map = {"a": 60, "b": 64}
+
+	def run (self_rng_seed: int) -> list:
+
+		pattern, builder = _make_builder(length=4)
+		builder.rng = random.Random(self_rng_seed)  # distinct per-pattern generator
+		builder.markov(transitions, pitch_map, velocity=(40, 120), spacing=0.5, start="a", seed=42)
+
+		return [(pulse, n.pitch, n.velocity) for pulse, step in sorted(pattern.steps.items()) for n in step.notes]
+
+	# Same seed=42 → identical pitches AND velocities, even though self.rng differs.
+	result_a = run(1)
+	result_b = run(99)
+
+	assert result_a == result_b
+	assert len(result_a) == 8
 
 
 def test_ratchet_pitch_filter_leaves_other_notes_unchanged () -> None:

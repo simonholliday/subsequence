@@ -613,7 +613,7 @@ class PatternMidiMixin:
 					pulse = pulse,
 					message_type = 'control_change',
 					control = 0,
-					value = max(0, min(127, bank_msb)),
+					value = max(0, min(127, int(round(bank_msb)))),
 				)
 			)
 
@@ -623,7 +623,7 @@ class PatternMidiMixin:
 					pulse = pulse,
 					message_type = 'control_change',
 					control = 32,
-					value = max(0, min(127, bank_lsb)),
+					value = max(0, min(127, int(round(bank_lsb)))),
 				)
 			)
 
@@ -631,7 +631,7 @@ class PatternMidiMixin:
 			subsequence.pattern.CcEvent(
 				pulse = pulse,
 				message_type = 'program_change',
-				value = max(0, min(127, program)),
+				value = max(0, min(127, int(round(program)))),
 			)
 		)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)

@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import threading
 import typing
 
@@ -170,7 +171,7 @@ async def test_initial_runs_sync_fn_before_patterns () -> None:
 
 	# Simulate what _run() does: gather initial tasks.
 	async def _run_initial (fn: typing.Callable) -> None:
-		if asyncio.iscoroutinefunction(fn):
+		if inspect.iscoroutinefunction(fn):
 			await fn()
 		else:
 			await asyncio.get_running_loop().run_in_executor(None, fn)
@@ -197,7 +198,7 @@ async def test_initial_runs_async_fn_before_patterns () -> None:
 		order.append("initial")
 
 	async def _run_initial (fn: typing.Callable) -> None:
-		if asyncio.iscoroutinefunction(fn):
+		if inspect.iscoroutinefunction(fn):
 			await fn()
 		else:
 			await asyncio.get_running_loop().run_in_executor(None, fn)
@@ -223,7 +224,7 @@ async def test_initial_failure_does_not_raise () -> None:
 
 	async def _run_initial (fn: typing.Callable) -> None:
 		try:
-			if asyncio.iscoroutinefunction(fn):
+			if inspect.iscoroutinefunction(fn):
 				await fn()
 			else:
 				await asyncio.get_running_loop().run_in_executor(None, fn)

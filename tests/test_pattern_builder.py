@@ -12,7 +12,7 @@ import subsequence.pattern
 import subsequence.pattern_builder
 
 
-def _make_builder (channel: int = 0, length: float = 4, drum_note_map: dict = None, default_grid: int = None) -> tuple:
+def _make_builder (channel: int = 0, length: float = 4, drum_note_map: typing.Optional[dict] = None, default_grid: typing.Optional[int] = None) -> tuple:
 
 	"""
 	Create a Pattern and PatternBuilder pair for testing.

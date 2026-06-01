@@ -145,3 +145,21 @@ def test_set_bpm_does_not_delegate_when_not_running (patch_midi: None) -> None:
 
 	mock_link_clock.request_tempo.assert_not_called()
 	assert seq.current_bpm == 140.0  # updated locally
+
+
+def test_set_target_bpm_ignored_under_link (patch_midi: None) -> None:
+
+	"""A tempo ramp is a no-op under Ableton Link — the network tempo is authoritative."""
+
+	comp = _make_composition(patch_midi)
+	seq = comp._sequencer
+
+	mock_link_clock = unittest.mock.Mock()
+	seq._link_clock = mock_link_clock
+	seq.running = True  # simulate active playback under Link
+
+	seq.set_target_bpm(160.0, bars=8)
+
+	# No local ramp is created, and Link is not asked to ramp.
+	assert seq._bpm_transition is None
+	mock_link_clock.request_tempo.assert_not_called()

@@ -148,7 +148,7 @@ def test_gm_map_is_superset_of_pure_spec () -> None:
 
 	assert gm.GM_DRUM_MAP["kick"] == 36
 	assert "kick" not in pymididefs.drums.GM_DRUM_MAP	# pure spec is one name per note
-	assert len(pymididefs.drums.GM_DRUM_MAP) == 61
+	assert len(gm.GM_DRUM_MAP) > len(pymididefs.drums.GM_DRUM_MAP)	# aliases merged on top of the clean spec
 
 
 def test_tr8s_primary_aliases () -> None:

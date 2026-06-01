@@ -46,8 +46,9 @@ class HarmonicRhythm:
 		"""Draw one chord length in beats from this spec.
 
 		With a ``step``, the length is a whole multiple of it snapped *inside*
-		``[low, high]`` (so a quantised rhythm never strays past its bounds).
-		Without one, the draw is continuous and uniform.
+		``[low, high]`` (so a quantised rhythm never strays past its bounds).  If
+		no whole multiple fits within the bounds, the nearest in-range length is
+		used.  Without a ``step``, the draw is continuous and uniform.
 		"""
 
 		if self.step:
@@ -57,7 +58,12 @@ class HarmonicRhythm:
 			hi = math.floor(self.high / self.step + 1e-9)
 			if hi < lo:
 				hi = lo
-			return float(rng.randint(lo, hi) * self.step)
+			length = rng.randint(lo, hi) * self.step
+
+			# Honour the bounds over the grid: when no whole multiple fits inside
+			# [low, high] (e.g. between(2, 3, step=4)), clamp to the nearest edge so
+			# the result never strays past the bounds the musician asked for.
+			return float(min(self.high, max(self.low, length)))
 
 		return float(rng.uniform(self.low, self.high))
 

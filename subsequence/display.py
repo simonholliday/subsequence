@@ -587,7 +587,7 @@ class Display:
 		# Conductor signals (when any are registered).
 		conductor = comp.conductor
 		if conductor.signal_names:
-			beat = comp.builder_bar * 4
+			beat = comp.builder_bar * comp.sequencer.time_signature[0]
 			for name in conductor.signal_names:
 				value = conductor.get(name, beat)
 				parts.append(f"{name.title()}: {value:.2f}")

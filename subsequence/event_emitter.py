@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import typing
 
 
@@ -56,7 +57,7 @@ class EventEmitter:
 
 		for callback in self._listeners[event_name]:
 
-			if asyncio.iscoroutinefunction(callback):
+			if inspect.iscoroutinefunction(callback):
 				raise ValueError("Async callback encountered in emit_sync")
 
 			callback(*args, **kwargs)
@@ -75,7 +76,7 @@ class EventEmitter:
 
 		for callback in self._listeners[event_name]:
 
-			if asyncio.iscoroutinefunction(callback):
+			if inspect.iscoroutinefunction(callback):
 				tasks.append(callback(*args, **kwargs))
 
 			else:

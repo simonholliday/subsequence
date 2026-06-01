@@ -6,10 +6,12 @@ import unittest.mock
 import pytest
 
 import subsequence
+import subsequence.chords
 import subsequence.composition
 import subsequence.harmonic_state
 import subsequence.pattern
 import subsequence.sequencer
+import subsequence.voicings
 
 
 def test_composition_creates_sequencer (patch_midi: None) -> None:
@@ -98,9 +100,9 @@ def test_harmony_drops_current_chord_on_graph_switch (patch_midi: None) -> None:
 	transitions = composition._harmonic_state.graph.get_transitions(new_current)
 	assert len(transitions) > 0
 
-	# Step should work (not stuck).
+	# Step should work (not stuck) — it returns a usable chord.
 	result = composition._harmonic_state.step()
-	assert result != new_current or len(transitions) > 0
+	assert result is not None
 
 
 def test_pattern_decorator_registers_pending (patch_midi: None) -> None:
@@ -187,6 +189,39 @@ def test_build_pattern_rebuilds_on_reschedule (patch_midi: None) -> None:
 	assert call_count[0] == 2
 
 
+def test_drone_raw_events_do_not_accumulate_across_cycles (patch_midi: None) -> None:
+
+	"""An unconditional drone must place exactly one raw note_on per cycle.
+
+	Regression: ``_rebuild()`` clears ``steps``/``cc_events``/``osc_events`` each
+	cycle, but ``raw_note_events`` was omitted — so drones (and ``note_on`` /
+	``note_off``) accumulated and re-fired on every reschedule instead of once.
+	"""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=125, key="C")
+
+	def drone_builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
+		p.drone(60)
+
+	pending = subsequence.composition._PendingPattern(
+		builder_fn = drone_builder,
+		channel = 1,
+		length = 4,
+		drum_note_map = None,
+		reschedule_lookahead = 1,
+		default_grid = 16
+	)
+
+	pattern = composition._build_pattern_from_pending(pending)
+
+	assert len(pattern.raw_note_events) == 1
+
+	# Five reschedules must not grow the buffer — one drone per cycle, not six.
+	for _ in range(5):
+		pattern.on_reschedule()
+		assert len(pattern.raw_note_events) == 1
+
+
 def test_builder_exception_produces_silent_pattern (patch_midi: None) -> None:
 
 	"""A builder that raises should produce an empty (silent) pattern, not crash."""
@@ -214,6 +249,23 @@ def test_builder_exception_produces_silent_pattern (patch_midi: None) -> None:
 	# Rebuilding should also not crash.
 	pattern.on_reschedule()
 	assert len(pattern.steps) == 0
+
+
+def test_injected_chord_tones_truncates_count_under_voice_leading () -> None:
+
+	"""_InjectedChord.tones(count=N) yields exactly N notes even with voice leading.
+
+	Regression: under voice leading, count < chord size returned the full voiced
+	chord instead of truncating to count (the non-voice-led path always honoured count).
+	"""
+
+	chord = subsequence.chords.Chord(0, "major")           # 3 tones
+	vl_state = subsequence.voicings.VoiceLeadingState()
+	injected = subsequence.composition._InjectedChord(chord, vl_state)
+
+	assert len(injected.tones(60, count=2)) == 2           # truncates (previously returned 3)
+	assert len(injected.tones(60, count=3)) == 3
+	assert len(injected.tones(60, count=6)) == 6           # cycles up into octaves
 
 
 def test_builder_cycle_injection (patch_midi: None) -> None:
@@ -830,7 +882,7 @@ def test_param_reads_tweak_on_rebuild (patch_midi: None) -> None:
 
 def test_pattern_unit_sets_beat_length (patch_midi: None) -> None:
 
-	"""beats=6, unit=SIXTEENTH should produce a pattern with 1.5 beats."""
+	"""beats=6, step_duration=SIXTEENTH should produce a pattern with 1.5 beats."""
 
 	import subsequence.constants.durations as dur
 
@@ -847,7 +899,7 @@ def test_pattern_unit_sets_beat_length (patch_midi: None) -> None:
 
 def test_pattern_unit_sets_default_grid (patch_midi: None) -> None:
 
-	"""beats=6, unit=SIXTEENTH should set default_grid to 6."""
+	"""beats=6, step_duration=SIXTEENTH should set default_grid to 6."""
 
 	import subsequence.constants.durations as dur
 
@@ -879,7 +931,7 @@ def test_pattern_no_unit_defaults_to_sixteenth_grid (patch_midi: None) -> None:
 
 def test_pattern_unit_triplet_grid (patch_midi: None) -> None:
 
-	"""beats=4, unit=TRIPLET_EIGHTH should produce default_grid=4."""
+	"""beats=4, step_duration=TRIPLET_EIGHTH should produce default_grid=4."""
 
 	import subsequence.constants.durations as dur
 
@@ -1329,9 +1381,10 @@ async def test_unbound_section_calls_step (patch_midi: None) -> None:
 	)
 	cb = captured[0]
 
+	history_len_before = len(hs.history)
 	cb(0)
-	# step() must have been called — chord should have changed.
-	assert hs.current_chord is not initial_chord or len(hs.history) > 0
+	# step() must have been called — it records the played chord in history.
+	assert len(hs.history) > history_len_before
 
 
 @pytest.mark.asyncio
@@ -1401,9 +1454,9 @@ async def test_exhausted_progression_falls_through_to_live (patch_midi: None) ->
 	cb(0)   # plays chord_a from frozen progression
 	assert hs.current_chord is chord_a
 
-	chord_after_frozen = hs.current_chord
+	history_len_before = len(hs.history)
 	cb(24)  # exhausted — should call step(), advancing the engine
-	assert hs.current_chord is not chord_after_frozen or len(hs.history) > 1
+	assert len(hs.history) > history_len_before
 
 
 @pytest.mark.asyncio
@@ -1629,7 +1682,7 @@ def test_resolve_length_beats_eight (patch_midi: None) -> None:
 
 def test_pattern_steps_unit (patch_midi: None) -> None:
 
-	"""steps=6, unit=SIXTEENTH should give beat_length=1.5 and default_grid=6."""
+	"""steps=6, step_duration=SIXTEENTH should give beat_length=1.5 and default_grid=6."""
 
 	import subsequence.constants.durations as dur
 
@@ -1646,7 +1699,7 @@ def test_pattern_steps_unit (patch_midi: None) -> None:
 
 def test_steps_without_unit_raises (patch_midi: None) -> None:
 
-	"""steps= without unit= should raise ValueError."""
+	"""steps= without step_duration= should raise ValueError."""
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
@@ -1659,7 +1712,7 @@ def test_steps_without_unit_raises (patch_midi: None) -> None:
 
 def test_unit_without_steps_raises (patch_midi: None) -> None:
 
-	"""unit= without steps= should raise ValueError."""
+	"""step_duration= without steps= should raise ValueError."""
 
 	import subsequence.constants.durations as dur
 

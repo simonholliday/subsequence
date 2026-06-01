@@ -14,7 +14,7 @@ import subsequence.pattern
 import subsequence.pattern_builder
 
 
-def _make_builder (channel: int = 0, length: float = 4, drum_note_map: dict = None, default_grid: int = None, seed: int = 0) -> tuple:
+def _make_builder (channel: int = 0, length: float = 4, drum_note_map: typing.Optional[dict] = None, default_grid: typing.Optional[int] = None, seed: int = 0) -> tuple:
 
 	"""Mirror of the fixture in tests/test_pattern_builder.py."""
 
@@ -52,6 +52,27 @@ def test_resolve_velocity_tuple_draws_from_range () -> None:
 	for _ in range(20):
 		v = builder._resolve_velocity((60, 90))
 		assert 60 <= v <= 90
+
+
+def test_resolve_velocity_tuple_consumes_exactly_one_draw () -> None:
+
+	"""A (low, high) range advances the RNG by exactly one ``randint`` draw.
+
+	This is the load-bearing reproducibility invariant — if it ever drew twice (or
+	differently), every seeded composition downstream would shift bit-for-bit.  A
+	range-membership check alone would not catch a two-draw regression.
+	"""
+
+	_, builder = _make_builder()
+
+	rng_resolve = random.Random(12345)
+	rng_direct = random.Random(12345)
+
+	result = builder._resolve_velocity((40, 80), rng_resolve)
+	expected = rng_direct.randint(40, 80)
+
+	assert result == expected                                # same value as a single randint
+	assert rng_resolve.getstate() == rng_direct.getstate()   # …and exactly one draw of it
 
 
 def test_resolve_velocity_tuple_uses_explicit_rng () -> None:
