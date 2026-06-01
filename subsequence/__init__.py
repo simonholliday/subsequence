@@ -93,8 +93,11 @@ Composition tools:
   rotation so simultaneous notes can carry independent pitch bends
   without MPE. Compatible with any standard MIDI synthesiser.
 - **Randomness tools.** Weighted choice, no-repeat shuffle, random
-  walk, probability gates. Deterministic seeding (``seed=42``) makes
-  every decision repeatable.
+  walk, probability gates. Deterministic seeding makes every decision
+  repeatable: set it composition-wide (``seed=42``) or per generator
+  (``seed=`` on any generator, with ``rng=`` for an explicit instance —
+  precedence ``rng`` > ``seed`` > the pattern's ``p.rng``). See the
+  README "Conventions" section for the API's shared vocabulary.
 - **Pattern transforms.** Legato, detached, staccato, reverse,
   double/half-time, shift, transpose, invert, randomize, and conditional
   ``p.every()``.

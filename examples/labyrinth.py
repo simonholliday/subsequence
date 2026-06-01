@@ -220,7 +220,7 @@ if CHAIN_SEQ:
 	# Merge both pitch pools into one combined set (removing duplicates).
 	CHAINED_PITCHES = sorted(set(SEQ1_PITCHES + SEQ2_PITCHES))
 
-	@composition.pattern(channel=CHANNEL, steps=SEQ1_LENGTH + SEQ2_LENGTH, unit=SEQ1_UNIT)
+	@composition.pattern(channel=CHANNEL, steps=SEQ1_LENGTH + SEQ2_LENGTH, step_duration=SEQ1_UNIT)
 	def chained (p):
 
 		corrupt  = p.signal("SEQ1_CORRUPT")
@@ -253,7 +253,7 @@ else:
 	# With SEQ1_LENGTH=7 and SEQ2_LENGTH=5 using EIGHTH notes, the full pattern
 	# repeats every LCM(7,5)=35 eighth notes (8.75 bars at 4/4).
 
-	@composition.pattern(channel=CHANNEL, steps=SEQ1_LENGTH, unit=SEQ1_UNIT)
+	@composition.pattern(channel=CHANNEL, steps=SEQ1_LENGTH, step_duration=SEQ1_UNIT)
 	def seq1 (p):
 
 		# Read the current value of each Conductor LFO signal.
@@ -288,7 +288,7 @@ else:
 			vel = round(p.rng.uniform(0.65, 1.0) * vel_ceiling)
 			p.hit_steps(pitch, [step], velocity=max(1, vel), duration=SEQ1_UNIT * 0.85)
 
-	@composition.pattern(channel=CHANNEL, steps=SEQ2_LENGTH, unit=SEQ2_UNIT)
+	@composition.pattern(channel=CHANNEL, steps=SEQ2_LENGTH, step_duration=SEQ2_UNIT)
 	def seq2 (p):
 		"""SEQ2: mirrors SEQ1 logic (see comments there) but reads SEQ2_CORRUPT
 		and uses the opposite trig_mix polarity - SEQ2 is loudest when the

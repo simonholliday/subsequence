@@ -886,9 +886,6 @@ def generate_cellular_automaton_1d (steps: int, rule: int = 30, generation: int 
 	return state
 
 
-generate_cellular_automaton = generate_cellular_automaton_1d
-
-
 def _parse_life_rule (rule: str) -> typing.Tuple[typing.Set[int], typing.Set[int]]:
 
 	"""Parse a Life-like rule string in Birth/Survival notation.

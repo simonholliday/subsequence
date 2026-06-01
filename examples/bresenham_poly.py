@@ -88,9 +88,9 @@ def drums (p):
 
 		# Cellular ghost kicks emerge at progress 0.5 - Rule 30 structured chaos
 		if t >= 0.5:
-			ca_dropout = 1.0 - (0.1 + 0.2 * ease(min(1.0, (t - 0.5) / 0.5), "ease_in"))
+			ca_probability = 0.1 + 0.2 * ease(min(1.0, (t - 0.5) / 0.5), "ease_in")
 			p.cellular_1d("kick_1", rule=30, velocity=35,
-				no_overlap=True, dropout=ca_dropout)
+				no_overlap=True, probability=ca_probability)
 
 		# Hats begin to appear at progress 0.75 - just a whisper
 		if t >= 0.75:
@@ -118,9 +118,9 @@ def drums (p):
 		p.hit_steps("kick_1", [0, 4, 8, 12], velocity=kick_vel)
 
 		# Kick ghosts: CA layer thickens through section
-		ca_dropout = 1.0 - (0.3 + 0.2 * ease(t, "ease_in"))
+		ca_probability = 0.3 + 0.2 * ease(t, "ease_in")
 		p.cellular_1d("kick_1", rule=30, velocity=38,
-			no_overlap=True, dropout=ca_dropout)
+			no_overlap=True, probability=ca_probability)
 
 		# Kick ghost fill: enters at progress 0.25, density builds
 		if t >= 0.25:
@@ -173,7 +173,7 @@ def drums (p):
 
 		# Kick ghosts: maximum layers (CA + probability fill)
 		p.cellular_1d("kick_1", rule=30, velocity=38,
-			no_overlap=True, dropout=0.35)
+			no_overlap=True, probability=0.65)
 
 		gf_density = 0.20 * (0.6 + ghost_wander * 0.4)
 		p.ghost_fill("kick_1", density=gf_density,
@@ -197,7 +197,7 @@ def drums (p):
 
 		# CA hat texture: Sierpinski-like patterns
 		p.cellular_1d("hi_hat_closed", rule=90, velocity=40,
-			no_overlap=True, dropout=0.45)
+			no_overlap=True, probability=0.55)
 
 		# Toms: Perlin-driven sweeps - high, mid, low interlock
 		tom_d = 0.25 * (0.4 + tom_swell * 0.6)

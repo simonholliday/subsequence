@@ -836,7 +836,7 @@ def test_pattern_unit_sets_beat_length (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=1, steps=6, unit=dur.SIXTEENTH)
+	@composition.pattern(channel=1, steps=6, step_duration=dur.SIXTEENTH)
 	def my_pattern (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		pass
 
@@ -853,7 +853,7 @@ def test_pattern_unit_sets_default_grid (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=1, steps=6, unit=dur.SIXTEENTH)
+	@composition.pattern(channel=1, steps=6, step_duration=dur.SIXTEENTH)
 	def my_pattern (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		pass
 
@@ -885,7 +885,7 @@ def test_pattern_unit_triplet_grid (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=1, steps=4, unit=dur.TRIPLET_EIGHTH)
+	@composition.pattern(channel=1, steps=4, step_duration=dur.TRIPLET_EIGHTH)
 	def my_pattern (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		pass
 
@@ -906,7 +906,7 @@ def test_layer_unit_sets_beat_length (patch_midi: None) -> None:
 	def kick (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		pass
 
-	composition.layer(kick, channel=10, steps=8, unit=dur.SIXTEENTH)
+	composition.layer(kick, channel=10, steps=8, step_duration=dur.SIXTEENTH)
 
 	pending = composition._pending_patterns[0]
 
@@ -1635,7 +1635,7 @@ def test_pattern_steps_unit (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	@composition.pattern(channel=1, steps=6, unit=dur.SIXTEENTH)
+	@composition.pattern(channel=1, steps=6, step_duration=dur.SIXTEENTH)
 	def my_pattern (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 		pass
 
@@ -1650,7 +1650,7 @@ def test_steps_without_unit_raises (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	with pytest.raises(ValueError, match="steps= requires unit="):
+	with pytest.raises(ValueError, match="steps= requires step_duration="):
 
 		@composition.pattern(channel=1, steps=6)
 		def my_pattern (p: "subsequence.pattern_builder.PatternBuilder") -> None:
@@ -1665,9 +1665,9 @@ def test_unit_without_steps_raises (patch_midi: None) -> None:
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	with pytest.raises(ValueError, match="unit= requires steps="):
+	with pytest.raises(ValueError, match="step_duration= requires steps="):
 
-		@composition.pattern(channel=1, beats=4, unit=dur.SIXTEENTH)
+		@composition.pattern(channel=1, beats=4, step_duration=dur.SIXTEENTH)
 		def my_pattern (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 			pass
 
@@ -1682,7 +1682,7 @@ def test_steps_with_beats_raises (patch_midi: None) -> None:
 
 	with pytest.raises(ValueError, match="steps= cannot be combined"):
 
-		@composition.pattern(channel=1, steps=6, beats=4, unit=dur.SIXTEENTH)
+		@composition.pattern(channel=1, steps=6, beats=4, step_duration=dur.SIXTEENTH)
 		def my_pattern (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 			pass
 

@@ -104,9 +104,9 @@ def drums (p):
 		kick_vel = round(62 + 18 * ease(t, "ease_in"))
 		p.hit_steps("kick_1", [0, 8], velocity=kick_vel)
 
-		# Cellular whisper - high dropout, evolving from bar 1
-		ca_dropout = 1.0 - (0.05 + 0.08 * ease(t, "ease_in"))
-		p.cellular_1d("kick_1", rule=30, velocity=28, no_overlap=True, dropout=ca_dropout)
+		# Cellular whisper - low play-chance, evolving from bar 1
+		ca_probability = 0.05 + 0.08 * ease(t, "ease_in")
+		p.cellular_1d("kick_1", rule=30, velocity=28, no_overlap=True, probability=ca_probability)
 
 		# Side stick - Perlin-gated, only appears when noise allows
 		if ghost_wander > 0.65 and t >= 0.4:
@@ -138,8 +138,8 @@ def drums (p):
 			p.hit_steps("kick_1", [0, 4, 8, 12], velocity=kick_vel)
 
 		# Cellular ghost kicks - evolving texture underneath
-		ca_dropout = 1.0 - (0.08 + 0.15 * ease(t, "ease_in"))
-		p.cellular_1d("kick_1", rule=30, velocity=28, no_overlap=True, dropout=ca_dropout)
+		ca_probability = 0.08 + 0.15 * ease(t, "ease_in")
+		p.cellular_1d("kick_1", rule=30, velocity=28, no_overlap=True, probability=ca_probability)
 
 		# Snare enters at progress 0.3
 		if t >= 0.3:
@@ -175,8 +175,8 @@ def drums (p):
 		p.hit_steps("kick_1", [0, 4, 8, 12], velocity=kick_vel)
 
 		# Kick ghosts: CA layer, Perlin-breathing density
-		ca_dropout = 1.0 - (0.20 + 0.20 * ghost_wander)
-		p.cellular_1d("kick_1", rule=30, velocity=34, no_overlap=True, dropout=ca_dropout)
+		ca_probability = 0.20 + 0.20 * ghost_wander
+		p.cellular_1d("kick_1", rule=30, velocity=34, no_overlap=True, probability=ca_probability)
 
 		# Kick ghost fill: sixteenths bias, enters at 0.15
 		if t >= 0.15:
@@ -245,7 +245,7 @@ def drums (p):
 		p.hit_steps("kick_1", [0, 4, 8, 12], velocity=112)
 
 		# Maximum kick ghost layering: CA + probability fill
-		p.cellular_1d("kick_1", rule=30, velocity=40, no_overlap=True, dropout=0.26)
+		p.cellular_1d("kick_1", rule=30, velocity=40, no_overlap=True, probability=0.74)
 		gf_d = 0.22 * (0.5 + ghost_wander * 0.5)
 		p.ghost_fill("kick_1", density=gf_d, velocity=(28, 48), bias="sixteenths", no_overlap=True)
 
@@ -264,7 +264,7 @@ def drums (p):
 			velocity={"hi_hat_closed": 72, "hi_hat_open": 86}, )
 
 		# CA hat fractal texture - Rule 90 Sierpinski patterns
-		p.cellular_1d("hi_hat_closed", rule=90, velocity=42, no_overlap=True, dropout=0.36)
+		p.cellular_1d("hi_hat_closed", rule=90, velocity=42, no_overlap=True, probability=0.64)
 
 		# Tom cascades
 		tom_d = 0.28 * (0.3 + tom_swell * 0.7)
@@ -312,7 +312,7 @@ def drums (p):
 		p.euclidean("kick_1", pulses=pulse_count, velocity=round(92 + 20 * kick_morph))
 
 		# Kick CA: Rule 110 - Turing-complete, complex
-		p.cellular_1d("kick_1", rule=110, velocity=44, no_overlap=True, dropout=0.20)
+		p.cellular_1d("kick_1", rule=110, velocity=44, no_overlap=True, probability=0.80)
 
 		# Snare anchor + dense offbeat ghosts
 		p.hit_steps("snare_1", [4, 12], velocity=102)
@@ -320,7 +320,7 @@ def drums (p):
 			velocity=(26, 55), bias="offbeat", no_overlap=True)
 
 		# Hats: CA Rule 110 - intricate, unpredictable, structured
-		p.cellular_1d("hi_hat_closed", rule=110, velocity=round(50 + 24 * hat_feel), dropout=0.16)
+		p.cellular_1d("hi_hat_closed", rule=110, velocity=round(50 + 24 * hat_feel), probability=0.84)
 
 		# Open hat accents when Perlin allows
 		if hat_feel > 0.4:
@@ -340,7 +340,7 @@ def drums (p):
 
 		# Ride: CA chaos layer when spark is high
 		if chaos_spark > 0.42:
-			p.cellular_1d("ride_1", rule=30, velocity=round(38 + 30 * chaos_spark), dropout=0.42)
+			p.cellular_1d("ride_1", rule=30, velocity=round(38 + 30 * chaos_spark), probability=0.58)
 
 	# ═══════════════════════════════════════════════════════════════
 	#  DISSOLVE
@@ -391,7 +391,7 @@ def drums (p):
 
 		# CA whisper returns near the end - echoing the void
 		if t >= 0.7:
-			p.cellular_1d("kick_1", rule=30, velocity=18, no_overlap=True, dropout=0.90)
+			p.cellular_1d("kick_1", rule=30, velocity=18, no_overlap=True, probability=0.10)
 
 		# Pedal hat wash in final 2 bars
 		if p.section.bar >= p.section.bars - 2:
@@ -412,7 +412,7 @@ def drums (p):
 		p.ghost_fill("kick_1", density=0.32, velocity=(34, 55), bias="uniform", no_overlap=True)
 		p.ghost_fill("snare_1", density=0.22, velocity=(28, 48), bias="offbeat", no_overlap=True)
 		if section != "fracture":  # fracture already has ride
-			p.cellular_1d("ride_1", rule=30, velocity=46, dropout=0.48)
+			p.cellular_1d("ride_1", rule=30, velocity=46, probability=0.52)
 
 	# ── Groove template (optional) ────────────────────────────────
 	# Uncomment to add swing feel from the .agr groove file:

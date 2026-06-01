@@ -326,7 +326,7 @@ if seq1_triggers:
 
 	if SEQ1_ASSIGN_OSC1:
 
-		@composition.pattern(channel=VCO1_CHANNEL, steps=seq1_cycle, unit=dur.QUARTER)
+		@composition.pattern(channel=VCO1_CHANNEL, steps=seq1_cycle, step_duration=dur.QUARTER)
 		def vco1 (p):
 			# p.signal() reads the current value of a Conductor LFO - a slowly
 			# changing parameter that evolves over time (see VELOCITY_SWELL above).
@@ -352,7 +352,7 @@ if seq1_triggers:
 
 	if SEQ1_ASSIGN_SUB1:
 
-		@composition.pattern(channel=VCO1_SUB1_CHANNEL, steps=seq1_cycle, unit=dur.QUARTER)
+		@composition.pattern(channel=VCO1_SUB1_CHANNEL, steps=seq1_cycle, step_duration=dur.QUARTER)
 		def vco1_sub1 (p):
 			vel = round(p.signal("VELOCITY_SWELL"))
 			for trigger_idx, tick in enumerate(seq1_triggers):
@@ -370,7 +370,7 @@ if seq1_triggers:
 
 	if SEQ1_ASSIGN_SUB2:
 
-		@composition.pattern(channel=VCO1_SUB2_CHANNEL, steps=seq1_cycle, unit=dur.QUARTER)
+		@composition.pattern(channel=VCO1_SUB2_CHANNEL, steps=seq1_cycle, step_duration=dur.QUARTER)
 		def vco1_sub2 (p):
 			# Same structure as vco1_sub1 - see comments there.
 			vel = round(p.signal("VELOCITY_SWELL"))
@@ -391,7 +391,7 @@ if seq2_triggers:
 
 	if SEQ2_ASSIGN_OSC2:
 
-		@composition.pattern(channel=VCO2_CHANNEL, steps=seq2_cycle, unit=dur.QUARTER)
+		@composition.pattern(channel=VCO2_CHANNEL, steps=seq2_cycle, step_duration=dur.QUARTER)
 		def vco2 (p):
 			vel = round(p.signal("VELOCITY_SWELL"))
 			for trigger_idx, tick in enumerate(seq2_triggers):
@@ -403,7 +403,7 @@ if seq2_triggers:
 
 	if SEQ2_ASSIGN_SUB1:
 
-		@composition.pattern(channel=VCO2_SUB1_CHANNEL, steps=seq2_cycle, unit=dur.QUARTER)
+		@composition.pattern(channel=VCO2_SUB1_CHANNEL, steps=seq2_cycle, step_duration=dur.QUARTER)
 		def vco2_sub1 (p):
 			vel = round(p.signal("VELOCITY_SWELL"))
 			for trigger_idx, tick in enumerate(seq2_triggers):
@@ -416,7 +416,7 @@ if seq2_triggers:
 
 	if SEQ2_ASSIGN_SUB2:
 
-		@composition.pattern(channel=VCO2_SUB2_CHANNEL, steps=seq2_cycle, unit=dur.QUARTER)
+		@composition.pattern(channel=VCO2_SUB2_CHANNEL, steps=seq2_cycle, step_duration=dur.QUARTER)
 		def vco2_sub2 (p):
 			vel = round(p.signal("VELOCITY_SWELL"))
 			for trigger_idx, tick in enumerate(seq2_triggers):

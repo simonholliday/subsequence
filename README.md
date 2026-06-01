@@ -25,6 +25,7 @@ Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes
   - [Algorithmic generators](#algorithmic-generators)
   - [Melody generation](#melody-generation)
 - **3. The Core APIs**
+  - [Conventions](#conventions)
   - [Composition API](#composition-api)
   - [Direct Pattern API](#direct-pattern-api)
   - [Mini-notation](#mini-notation)
@@ -449,6 +450,20 @@ Unlike chord NIR, melody NIR operates on **absolute MIDI pitch differences** (no
 | `chord_tones` | `None` | MIDI notes that are chord tones this bar |
 
 ## 3. The Core APIs
+
+### Conventions
+
+Subsequence aims for *learn one verb, predict the rest*. A handful of conventions hold across the whole API, so once you know them you rarely need to reach for the manual:
+
+- **Verbs share a common front.** The note-placing chord verbs (`chord`, `strum`, `arpeggio`, `broken_chord`) speak the same vocabulary — a chord (or a list of pitches), `root`, `velocity`, `count`, `inversion`, `beat` — so swapping one for another is usually a one-word change. The tail diverges only where the gesture genuinely differs (a strum has `spacing`, an arpeggio has `span`).
+- **`(low, high)` means one random draw.** Wherever `velocity=` accepts a tuple, `velocity=(60, 90)` draws once per note from that range; a plain int is fixed.
+- **Determinism has one friendly knob: `seed=`.** Every generator takes `seed=` (an int) for a reproducible take, plus an advanced `rng=` (a `random.Random`) for when you want to control or share the generator directly. Precedence is `rng=` > `seed=` > the pattern's own `p.rng`. See [Seed and deterministic randomness](#seed-and-deterministic-randomness).
+- **`probability` is the chance a note _plays_** (1.0 = certain), everywhere a placement is gated. The one exception is the `dropout()` transform — it *removes* notes, so its `probability` is the chance a note is dropped; the verb name carries the direction. Three neighbours stay distinct: `density` (fill fraction), `amount` (thinning depth), and `percent` (swing angle).
+- **Units.** Times are in **beats** at the API (`beat=`, `spacing=`, `duration=`); the clock runs at 24 PPQN internally; step methods (`hit_steps`, `sequence`, the decorator's `steps=`) count **grid steps**. Pick a non-quarter grid with `steps=` + `step_duration=` on the pattern decorator.
+- **Velocity buckets** (all named in `subsequence.constants.velocity`): single notes/hits **100**, chords **90**, generative lines **80**, cellular automata **60**, ghost layers **35**.
+- **Lenient names, strict numbers.** A drum/voice *name* the device lacks is dropped with a one-time warning (the rest of the pattern still plays); an unmapped CC/NRPN/RPN name *raises*, because a wrong control number is a real mistake.
+- **Builders chain, accessors don't.** Methods that *place* or *transform* return the builder (`p.euclidean(...).swing(...)`); methods that *read* return plain data.
+- **`notes=` on `arpeggio` is intentional** — an arpeggio accepts either a chord or an explicit list of pitches, so its first argument is named for the general case.
 
 ### Composition API
 
@@ -1476,6 +1491,18 @@ def drums (p):
 ```
 
 `p.rng` is always available, even without a seed - in that case it's a fresh unseeded `random.Random`.
+
+Every generator also takes the determinism knobs directly, so you can fix a single take without seeding the whole composition:
+
+```python
+# A reproducible fill on just this generator (everything else still varies):
+p.euclidean("kick", pulses=5, seed=7)
+
+# Or control/share the generator instance directly with rng= (it wins over seed=):
+p.arpeggio(chord, root=48, rng=random.Random(7))
+```
+
+`seed=` is an int; `rng=` is a `random.Random`; precedence is `rng=` > `seed=` > `p.rng`. A few generators are honest about their limits: **`lorenz`** is fully deterministic and varies by its initial conditions (`x0=`), not a seed; **`fibonacci`**, **`de_bruijn`**, and **`branch`** have a fixed structure, so their `seed=` only changes the velocity draws (and, for `branch`, the optional mutation layer).
 
 ### Stochastic utilities
 

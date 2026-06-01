@@ -3,7 +3,6 @@ import random
 import typing
 
 import pymididefs.rpn
-
 import subsequence.chords
 import subsequence.constants
 import subsequence.constants.velocity
@@ -614,7 +613,7 @@ class PatternBuilder(
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 		return self
 
-	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		Place short hits at specific step (grid) positions.
@@ -642,8 +641,7 @@ class PatternBuilder(
 			```
 		"""
 
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		if grid is None:
 			grid = self._default_grid
@@ -659,7 +657,7 @@ class PatternBuilder(
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 		return self
 
-	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = 100, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = 100, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		A multi-parameter step sequencer.
@@ -683,8 +681,7 @@ class PatternBuilder(
 		if not steps:
 			raise ValueError("steps list cannot be empty")
 
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		if grid is None:
 			grid = self._default_grid
@@ -710,7 +707,7 @@ class PatternBuilder(
 			self.note(pitch=pitches_list[i], beat=beat, velocity=velocities_list[i], duration=durations_list[i])
 		return self
 
-	def seq (self, notation: str, pitch: typing.Union[str, int, None] = None, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
+	def seq (self, notation: str, pitch: typing.Union[str, int, None] = None, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		Build a pattern using an expressive string-based 'mini-notation'.
@@ -745,12 +742,14 @@ class PatternBuilder(
 			```
 		"""
 
+		rng = self._rng_from(seed, rng)
+
 		events = subsequence.mini_notation.parse(notation, total_duration=float(self._pattern.length))
 
 		for event in events:
 
 			# Apply probability before placing the note.
-			if event.probability < 1.0 and self.rng.random() >= event.probability:
+			if event.probability < 1.0 and rng.random() >= event.probability:
 				continue
 
 			current_pitch = pitch
@@ -812,6 +811,7 @@ class PatternBuilder(
 		spacing: float = 0.25,
 		duration: typing.Optional[float] = None,
 		direction: str = "up",
+		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None
 	) -> "PatternBuilder":
 
@@ -915,8 +915,7 @@ class PatternBuilder(
 			if len(resolved) > 1:
 				resolved = resolved + list(reversed(resolved[1:-1]))
 		elif direction == "random":
-			if rng is None:
-				rng = self.rng
+			rng = self._rng_from(seed, rng)
 			resolved = list(resolved)
 			rng.shuffle(resolved)
 		else:
@@ -1051,14 +1050,14 @@ class PatternBuilder(
 			self.legato(legato)
 		return self
 
-	def strum (self, chord_obj: typing.Any, root: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, offset: float = 0.05, direction: str = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
+	def strum (self, chord_obj: typing.Any, root: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, spacing: float = 0.05, direction: str = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
 
 		"""
 		Play a chord with a small time offset between each note (strum effect).
 
 		Works exactly like ``chord()`` but staggers the notes instead of
 		playing them simultaneously. The first note lands on ``beat`` (0 by default);
-		subsequent notes are delayed by ``offset`` beats each.
+		subsequent notes are delayed by ``spacing`` beats each.
 
 		Parameters:
 			chord_obj: The chord to play (usually the ``chord`` parameter
@@ -1074,7 +1073,7 @@ class PatternBuilder(
 			inversion: Specific chord inversion (ignored if voice leading is on).
 			count: Number of notes to play (cycles tones if higher than
 				the chord's natural size).
-			offset: Time in beats between each note onset (default 0.05).
+			spacing: Time in beats between each note onset (default 0.05).
 			direction: ``"up"`` for low-to-high, ``"down"`` for high-to-low.
 			beat: Beat offset for the first note (default 0.0); the stagger is added
 				on top.  ``sustain``/``detached`` ring from the pattern length, not from
@@ -1084,7 +1083,7 @@ class PatternBuilder(
 				the next note. Mutually exclusive with ``sustain`` and
 				``detached``.
 			detached: If given, every strum note rings with a uniform
-				duration of ``pattern.length - detached - (count - 1) * offset``.
+				duration of ``pattern.length - detached - (count - 1) * spacing``.
 				The last note ends exactly ``detached`` beats before the
 				next cycle; earlier notes end proportionally sooner, so
 				releases are staggered in the same shape as the placements
@@ -1096,14 +1095,14 @@ class PatternBuilder(
 		Example::
 
 			# Gentle upward strum with legato
-			p.strum(chord, root=52, velocity=85, offset=0.06, legato=0.95)
+			p.strum(chord, root=52, velocity=85, spacing=0.06, legato=0.95)
 
 			# Fast downward strum
-			p.strum(chord, root=52, direction="down", offset=0.03)
+			p.strum(chord, root=52, direction="down", spacing=0.03)
 
 			# Five-voice strum with a 0.25-beat safety gap before the
 			# next chord — won't exhaust polyphony on a 5-voice synth.
-			p.strum(chord, root=48, count=5, offset=0.1, detached=0.25)
+			p.strum(chord, root=48, count=5, spacing=0.1, detached=0.25)
 		"""
 
 		set_count = (1 if sustain else 0) + (1 if legato is not None else 0) + (1 if detached is not None else 0)
@@ -1113,8 +1112,8 @@ class PatternBuilder(
 		if beat != 0.0 and (sustain or detached is not None):
 			self._warn_positioned_articulation("strum", beat)
 
-		if offset <= 0:
-			raise ValueError("offset must be positive")
+		if spacing <= 0:
+			raise ValueError("spacing must be positive")
 
 		if direction not in ("up", "down"):
 			raise ValueError(f"direction must be 'up' or 'down', got '{direction}'")
@@ -1127,18 +1126,18 @@ class PatternBuilder(
 		if sustain:
 			duration = float(self._pattern.length)
 		elif detached is not None:
-			duration = float(self._pattern.length) - detached - (len(pitches) - 1) * offset
+			duration = float(self._pattern.length) - detached - (len(pitches) - 1) * spacing
 			if duration <= 0:
-				raise ValueError(f"detached ({detached}) plus the strum stagger exceeds the pattern length ({self._pattern.length:g} beats) — reduce detached, offset, or count")
+				raise ValueError(f"detached ({detached}) plus the strum stagger exceeds the pattern length ({self._pattern.length:g} beats) — reduce detached, spacing, or count")
 
 		for i, pitch in enumerate(pitches):
-			self.note(pitch=pitch, beat=beat + i * offset, velocity=velocity, duration=duration)
+			self.note(pitch=pitch, beat=beat + i * spacing, velocity=velocity, duration=duration)
 
 		if legato is not None:
 			self.legato(legato)
 		return self
 
-	def progression (self, source: subsequence.progression.ProgressionSource, harmonic_rhythm: subsequence.progression.HarmonicRhythmSpec, key: typing.Optional[str] = None, seed: typing.Optional[int] = None) -> subsequence.progression.ChordTimeline:
+	def progression (self, source: subsequence.progression.ProgressionSource, harmonic_rhythm: subsequence.progression.HarmonicRhythmSpec, key: typing.Optional[str] = None, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> subsequence.progression.ChordTimeline:
 
 		"""Realise a chord progression across the pattern, returning it to place yourself.
 
@@ -1150,7 +1149,7 @@ class PatternBuilder(
 
 			for chord, start, length in p.progression("phrygian_minor",
 					harmonic_rhythm=between(WHOLE, 3 * WHOLE, step=WHOLE), seed=7):
-				p.strum(chord, root=48, beat=start, duration=length - 0.25, offset=0.04, count=4)
+				p.strum(chord, root=48, beat=start, duration=length - 0.25, spacing=0.04, count=4)
 
 		For a one-call block-chord part with no loop, use ``composition.chords()``.
 
@@ -1168,16 +1167,14 @@ class PatternBuilder(
 			seed: If given, the progression is realised from a fresh ``Random(seed)``
 				so it is identical on every cycle (a fixed phrase).  When omitted, the
 				pattern's own RNG is used, so it can vary per cycle (still reproducible
-				under a composition seed).  (Most generative methods seed via
-				``rng=random.Random(...)``; ``progression`` / ``chords`` take a plain
-				``seed=`` int instead.)
+				under a composition seed).
 
 		Returns:
 			A ``ChordTimeline`` you can iterate as ``(chord, start, length)`` tuples
 			(or read via ``.events`` / ``print()``).
 		"""
 
-		rng = random.Random(seed) if seed is not None else self.rng
+		rng = self._rng_from(seed, rng)
 		resolved_key = key if key is not None else self.key
 		return subsequence.progression.realize(
 			source = source,
@@ -1187,7 +1184,7 @@ class PatternBuilder(
 			rng = rng,
 		)
 
-	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0, beat: float = 0.0, span: typing.Optional[float] = None) -> "PatternBuilder":
+	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0, beat: float = 0.0, span: typing.Optional[float] = None) -> "PatternBuilder":
 
 		"""
 		Play a chord as an arpeggio in a specific or random order.
@@ -1205,8 +1202,10 @@ class PatternBuilder(
 			root: MIDI root note (e.g., 60 for Middle C).
 			order: List of indices into the chord tones array, dictating playback order.
 			spacing: Time between each note in beats (default 0.25 = 16th note).
-			velocity: MIDI velocity for all notes (default 100), or a
-				``(low, high)`` tuple for a fresh random draw per note.
+			velocity: MIDI velocity for all notes (default 90 — broken_chord is a
+				chord voice, so it sits in the softer chord velocity bucket like
+				``chord()`` and ``strum()``), or a ``(low, high)`` tuple for a
+				fresh random draw per note.
 			duration: Note duration in beats. Defaults to ``spacing``.
 			inversion: Specific chord inversion (ignored if voice leading is on).
 			beat: Beat to start the broken chord at (default 0.0).
@@ -1239,12 +1238,12 @@ class PatternBuilder(
 		self.arpeggio(notes=pitches, spacing=spacing, velocity=velocity, duration=duration, direction="up", beat=beat, span=span)
 		return self
 
-	def swing (self, amount: float = 57.0, grid: float = 0.25, strength: float = 1.0) -> "PatternBuilder":
+	def swing (self, percent: float = 57.0, grid: float = 0.25, strength: float = 1.0) -> "PatternBuilder":
 
 		"""
 		Apply swing feel to all notes in the pattern.
 
-		A shortcut for ``p.groove(Groove.swing(amount, grid), strength)``. Swing is a
+		A shortcut for ``p.groove(Groove.swing(percent, grid), strength)``. Swing is a
 		groove where every other grid note is delayed - the simplest way to
 		give a mechanical pattern a pushed, human feel.
 
@@ -1252,11 +1251,11 @@ class PatternBuilder(
 		(a gentle shuffle). 67% is classic triplet swing.
 
 		Parameters:
-			amount: Swing amount as a percentage (50-75 is the useful range).
+			percent: Swing amount as a percentage (50-75 is the useful range).
 				50 = straight, 57 = moderate shuffle, 67 ≈ triplet swing.
 			grid: Grid size in beats (0.25 = 16th notes, 0.5 = 8th notes).
 			strength: How much swing to apply (0.0-1.0). 0.0 = no effect,
-				1.0 = full swing at the given amount. Useful for dialling
+				1.0 = full swing at the given percent. Useful for dialling
 				back the feel without changing the swing percentage.
 
 		Example::
@@ -1266,7 +1265,7 @@ class PatternBuilder(
 			p.swing(57, strength=0.5)  # half-strength — subtler feel
 		"""
 
-		self.groove(subsequence.groove.Groove.swing(percent=amount, grid=grid), strength=strength)
+		self.groove(subsequence.groove.Groove.swing(percent=percent, grid=grid), strength=strength)
 		return self
 
 
@@ -1319,7 +1318,7 @@ class PatternBuilder(
 	# in position. They operate on self._pattern.steps (the pulse-position
 	# dict) and can be chained in any order.
 
-	def dropout (self, probability: float, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def dropout (self, probability: float, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		Randomly remove notes from the pattern.
@@ -1330,8 +1329,7 @@ class PatternBuilder(
 			probability: The chance (0.0 to 1.0) of any given note being removed.
 		"""
 
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		positions_to_remove = []
 
@@ -1517,6 +1515,7 @@ class PatternBuilder(
 		self,
 		timing: float = 0.03,
 		velocity: float = 0.0,
+		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None
 	) -> "PatternBuilder":
 
@@ -1559,8 +1558,7 @@ class PatternBuilder(
 				(seeded when the composition has a seed).
 		"""
 
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		max_timing_pulses = timing * subsequence.constants.MIDI_QUARTER_NOTE
 		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
@@ -1694,7 +1692,7 @@ class PatternBuilder(
 				note.duration = new_duration
 		return self
 
-	def quantize (self, key: str, mode: str = "ionian", strength: float = 1.0) -> "PatternBuilder":
+	def quantize (self, key: str, mode: str = "ionian", strength: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		Snap all notes in the pattern to the nearest pitch in a scale.
@@ -1730,12 +1728,14 @@ class PatternBuilder(
 			```
 		"""
 
+		rng = self._rng_from(seed, rng)
+
 		key_pc = subsequence.chords.key_name_to_pc(key)
 		scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)
 
 		for step in self._pattern.steps.values():
 			for note in step.notes:
-				if strength >= 1.0 or self.rng.random() < strength:
+				if strength >= 1.0 or rng.random() < strength:
 					note.pitch = subsequence.intervals.quantize_pitch(note.pitch, scale_pcs)
 		return self
 

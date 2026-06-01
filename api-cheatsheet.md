@@ -27,7 +27,7 @@ The top-level controller for a musical piece.
 | `hotkey(key, action, quantize, label) -> None` | Register a single-key shortcut that fires during playback. |
 | `hotkeys(enabled) -> None` | Enable or disable the global hotkey listener. |
 | `is_clock_following *(property)*` | True if either the primary or any additional device is following external clock. |
-| `layer(*builder_fns, channel, beats, bars, steps, unit, drum_note_map, cc_name_map, nrpn_name_map, reschedule_lookahead, voice_leading, device, mirrors) -> None` | Combine multiple functions into a single MIDI pattern. |
+| `layer(*builder_fns, channel, beats, bars, steps, step_duration, drum_note_map, cc_name_map, nrpn_name_map, reschedule_lookahead, voice_leading, device, mirrors) -> None` | Combine multiple functions into a single MIDI pattern. |
 | `link(quantum) -> 'Composition'` | Enable Ableton Link tempo and phase synchronisation. |
 | `live(port) -> None` | Enable the live coding eval server. |
 | `live_info() -> Dict[str, Any]` | Return a dictionary containing the current state of the composition. |
@@ -39,7 +39,7 @@ The top-level controller for a musical piece.
 | `on_event(event_name, callback) -> None` | Register a callback for a sequencer event (e.g., "bar", "start", "stop"). |
 | `osc(receive_port, send_port, send_host, receive_host) -> None` | Enable bi-directional Open Sound Control (OSC). |
 | `osc_map(address, handler) -> None` | Register a custom OSC handler. |
-| `pattern(channel, beats, bars, steps, unit, drum_note_map, cc_name_map, nrpn_name_map, reschedule_lookahead, voice_leading, device, mirrors) -> Callable` | Register a function as a repeating MIDI pattern. |
+| `pattern(channel, beats, bars, steps, step_duration, drum_note_map, cc_name_map, nrpn_name_map, reschedule_lookahead, voice_leading, device, mirrors) -> Callable` | Register a function as a repeating MIDI pattern. |
 | `play() -> None` | Start the composition. |
 | `render(bars, filename, max_minutes) -> None` | Render the composition to a MIDI file without real-time playback. |
 | `running_patterns *(property)*` | The currently active patterns, keyed by name. |
@@ -49,7 +49,7 @@ The top-level controller for a musical piece.
 | `sequencer *(property)*` | The underlying ``Sequencer`` instance. |
 | `set_bpm(bpm) -> None` | Instantly change the tempo. |
 | `target_bpm(bpm, bars, shape) -> None` | Smoothly ramp the tempo to a target value over a number of bars. |
-| `trigger(fn, channel, beats, bars, steps, unit, quantize, drum_note_map, cc_name_map, nrpn_name_map, chord, device, mirrors) -> None` | Trigger a one-shot pattern immediately or on a quantized boundary. |
+| `trigger(fn, channel, beats, bars, steps, step_duration, quantize, drum_note_map, cc_name_map, nrpn_name_map, chord, device, mirrors) -> None` | Trigger a one-shot pattern immediately or on a quantized boundary. |
 | `tuning(source, cents, ratios, equal, bend_range, channels, reference_note, exclude_drums) -> None` | Set a global microtonal tuning for the composition. |
 | `tweak(name, **kwargs) -> None` | Override parameters for a running pattern. |
 | `unmirror(name, device, channel) -> None` | Remove a single mirror destination from a running pattern. |
@@ -68,44 +68,43 @@ The musician's 'palette' for creating musical content.
 |---|---|
 | `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
 | `apply_tuning(tuning, bend_range, channels, reference_note) -> 'PatternBuilder'` | Apply a microtonal tuning to this pattern via pitch bend injection. |
-| `arpeggio(notes, root, velocity, count, inversion, beat, span, spacing, duration, direction, rng) -> 'PatternBuilder'` | Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time at regular beat intervals. |
+| `arpeggio(notes, root, velocity, count, inversion, beat, span, spacing, duration, direction, seed, rng) -> 'PatternBuilder'` | Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time at regular beat intervals. |
 | `bend(note, amount, start, end, shape, resolution) -> 'subsequence.pattern_builder.PatternBuilder'` | Bend a specific note by index. |
-| `branch(seed, depth, path, mutation, velocity, duration, spacing) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melodic variation by navigating a fractal tree of transforms. |
-| `bresenham(pitch, pulses, velocity, duration, dropout, no_overlap, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a rhythm using the Bresenham line algorithm. |
-| `bresenham_poly(parts, velocity, duration, grid, dropout, no_overlap, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Distribute multiple drum voices across the pattern using weighted Bresenham. |
+| `branch(pitches, depth, path, mutation, velocity, duration, spacing, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melodic variation by navigating a fractal tree of transforms. |
+| `bresenham(pitch, pulses, velocity, duration, probability, no_overlap, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a rhythm using the Bresenham line algorithm. |
+| `bresenham_poly(parts, velocity, duration, grid, probability, no_overlap, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Distribute multiple drum voices across the pattern using weighted Bresenham. |
 | `broken_chord(chord_obj, root, order, spacing, velocity, duration, inversion, beat, span) -> 'PatternBuilder'` | Play a chord as an arpeggio in a specific or random order. |
 | `build_ghost_bias(grid, bias) -> List[float]` | Build probability weights for ghost notes or other generative functions. |
 | `c *(property)*` | Alias for self.conductor. |
 | `cc(control, value, beat) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a single CC message at a beat position. |
 | `cc_ramp(control, start, end, beat_start, beat_end, resolution, shape) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate a CC value over a beat range. |
-| `cellular(pitch, rule, generation, velocity, duration, no_overlap, dropout, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate an evolving rhythm using a 1D cellular automaton. |
-| `cellular_1d(pitch, rule, generation, velocity, duration, no_overlap, dropout, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate an evolving rhythm using a 1D cellular automaton. |
-| `cellular_2d(pitches, rule, generation, velocity, duration, no_overlap, dropout, seed, density, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate polyphonic patterns using a 2D Life-like cellular automaton. |
+| `cellular_1d(pitch, rule, generation, velocity, duration, no_overlap, probability, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate an evolving rhythm using a 1D cellular automaton. |
+| `cellular_2d(pitches, rule, generation, velocity, duration, no_overlap, probability, initial_state, density, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate polyphonic patterns using a 2D Life-like cellular automaton. |
 | `chord(chord_obj, root, velocity, sustain, duration, inversion, count, legato, detached, beat) -> 'PatternBuilder'` | Place a chord at ``beat`` (the start of the pattern by default). |
-| `de_bruijn(pitches, window, spacing, velocity, duration) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melody that exhaustively traverses all pitch subsequences. |
+| `de_bruijn(pitches, window, spacing, velocity, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melody that exhaustively traverses all pitch subsequences. |
 | `detached(beats) -> 'PatternBuilder'` | Shorten note durations so a guaranteed silence precedes the next onset. |
 | `double_time() -> 'PatternBuilder'` | Compress all notes into the first half of the pattern, doubling the speed. |
 | `drone(pitch, beat, velocity) -> 'PatternBuilder'` | A musical alias for `note_on`. Places a raw Note On event without a duration, typically used for sustained notes that span multiple cycles. Must be silenced later using `drone_off()`. |
 | `drone_off(pitch) -> 'PatternBuilder'` | A musical alias for `note_off`. Places a raw Note Off event at beat 0.0. Used to stop a sequence started by `drone()`. |
-| `dropout(probability, rng) -> 'PatternBuilder'` | Randomly remove notes from the pattern. |
+| `dropout(probability, seed, rng) -> 'PatternBuilder'` | Randomly remove notes from the pattern. |
 | `duck_map(steps, floor, grid) -> List[float]` | Build a per-step velocity multiplier list for sidechain-style ducking. |
-| `euclidean(pitch, pulses, velocity, duration, dropout, no_overlap, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a Euclidean rhythm. |
+| `euclidean(pitch, pulses, velocity, duration, probability, no_overlap, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a Euclidean rhythm. |
 | `every(n, fn) -> 'PatternBuilder'` | Apply a transformation every Nth cycle. |
-| `evolve(pitches, steps, drift, velocity, duration, spacing) -> 'subsequence.pattern_builder.PatternBuilder'` | Loop a pitch sequence that gradually mutates each cycle. |
-| `fibonacci(pitch, steps, velocity, duration) -> 'subsequence.pattern_builder.PatternBuilder'` | Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing). |
+| `evolve(pitches, length, drift, velocity, duration, spacing, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Loop a pitch sequence that gradually mutates each cycle. |
+| `fibonacci(pitch, count, velocity, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing). |
 | `fill(pitch, spacing, velocity, duration) -> 'PatternBuilder'` | Fill the pattern with a note repeating at a fixed beat interval. |
-| `ghost_fill(pitch, density, velocity, bias, no_overlap, grid, duration, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Fill the pattern with probability-biased ghost notes. |
+| `ghost_fill(pitch, density, velocity, bias, no_overlap, grid, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Fill the pattern with probability-biased ghost notes. |
 | `grid *(property)*` | Number of grid slots in this pattern (e.g. 16 for a 4-beat sixteenth-note pattern). |
 | `groove(template, strength) -> 'PatternBuilder'` | Apply a groove template to all notes in the pattern. |
 | `half_time() -> 'PatternBuilder'` | Expand all notes by factor of 2, halving the speed. Notes that fall outside the pattern length are removed. |
 | `hit(pitch, beats, velocity, duration) -> 'PatternBuilder'` | Place multiple short 'hits' at a list of beat positions. |
-| `hit_steps(pitch, steps, velocity, duration, grid, probability, rng) -> 'PatternBuilder'` | Place short hits at specific step (grid) positions. |
+| `hit_steps(pitch, steps, velocity, duration, grid, probability, seed, rng) -> 'PatternBuilder'` | Place short hits at specific step (grid) positions. |
 | `invert(pivot) -> 'PatternBuilder'` | Invert all pitches around a pivot note. |
 | `legato(ratio) -> 'PatternBuilder'` | Adjust note durations to fill the gap until the next note. |
 | `lorenz(pitches, spacing, velocity, duration, dt, sigma, rho, beta, x0, y0, z0, mapping) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a note sequence driven by the Lorenz strange attractor. |
-| `lsystem(pitch_map, axiom, rules, generations, spacing, velocity, duration) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a note sequence using L-system string rewriting. |
-| `markov(transitions, pitch_map, velocity, duration, spacing, start) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a sequence by walking a first-order Markov chain. |
-| `melody(state, spacing, velocity, duration, chord_tones) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melodic line by querying a persistent :class:`~subsequence.melodic_state.MelodicState`. |
+| `lsystem(pitch_map, axiom, rules, generations, spacing, velocity, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a note sequence using L-system string rewriting. |
+| `markov(transitions, pitch_map, velocity, duration, spacing, start, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a sequence by walking a first-order Markov chain. |
+| `melody(state, spacing, velocity, duration, chord_tones, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melodic line by querying a persistent :class:`~subsequence.melodic_state.MelodicState`. |
 | `note(pitch, beat, velocity, duration) -> 'PatternBuilder'` | Place a single MIDI note at a specific beat position. |
 | `note_off(pitch, beat) -> 'PatternBuilder'` | Place an explicit Note Off event to silence a drone. |
 | `note_on(pitch, beat, velocity) -> 'PatternBuilder'` | Place an explicit Note On event without a duration. Useful for drones or infinite sustains. Must be paired with a `note_off()` later to silence the note. |
@@ -119,29 +118,29 @@ The musician's 'palette' for creating musical content.
 | `pitch_bend_ramp(start, end, beat_start, beat_end, resolution, shape) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate pitch bend over a beat range. |
 | `portamento(time, shape, resolution, bend_range, wrap) -> 'subsequence.pattern_builder.PatternBuilder'` | Glide between all consecutive notes using pitch bend. |
 | `program_change(program, beat, bank_msb, bank_lsb) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a Program Change message, optionally preceded by bank select. |
-| `progression(source, harmonic_rhythm, key, seed) -> subsequence.progression.ChordTimeline` | Realise a chord progression across the pattern, returning it to place yourself. |
-| `quantize(key, mode, strength) -> 'PatternBuilder'` | Snap all notes in the pattern to the nearest pitch in a scale. |
-| `randomize(timing, velocity, rng) -> 'PatternBuilder'` | Add random variations to note timing and velocity. |
-| `ratchet(subdivisions, pitch, probability, velocity_start, velocity_end, shape, gate, steps, grid, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Subdivide existing notes into rapid repeated hits (rolls/ratchets). |
-| `reaction_diffusion(pitch, threshold, velocity, duration, feed_rate, kill_rate, steps, no_overlap, dropout, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation. |
+| `progression(source, harmonic_rhythm, key, seed, rng) -> subsequence.progression.ChordTimeline` | Realise a chord progression across the pattern, returning it to place yourself. |
+| `quantize(key, mode, strength, seed, rng) -> 'PatternBuilder'` | Snap all notes in the pattern to the nearest pitch in a scale. |
+| `randomize(timing, velocity, seed, rng) -> 'PatternBuilder'` | Add random variations to note timing and velocity. |
+| `ratchet(subdivisions, pitch, probability, velocity_start, velocity_end, shape, gate, steps, grid, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Subdivide existing notes into rapid repeated hits (rolls/ratchets). |
+| `reaction_diffusion(pitch, threshold, velocity, duration, feed_rate, kill_rate, steps, no_overlap, probability, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation. |
 | `reverse() -> 'PatternBuilder'` | Flip the pattern backwards in time. |
 | `rpn(parameter, value, beat, fine, null_reset) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a single RPN parameter write at a beat position. |
 | `rpn_ramp(parameter, start, end, beat_start, beat_end, resolution, shape, fine, null_reset) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate an RPN value over a beat range. |
 | `scale_velocities(factors, grid) -> 'PatternBuilder'` | Scale note velocities by a per-step multiplier list. |
-| `self_avoiding_walk(pitches, spacing, velocity, duration, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melody using a self-avoiding random walk. |
-| `seq(notation, pitch, velocity) -> 'PatternBuilder'` | Build a pattern using an expressive string-based 'mini-notation'. |
-| `sequence(steps, pitches, velocities, durations, grid, probability, rng) -> 'PatternBuilder'` | A multi-parameter step sequencer. |
+| `self_avoiding_walk(pitches, spacing, velocity, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melody using a self-avoiding random walk. |
+| `seq(notation, pitch, velocity, seed, rng) -> 'PatternBuilder'` | Build a pattern using an expressive string-based 'mini-notation'. |
+| `sequence(steps, pitches, velocities, durations, grid, probability, seed, rng) -> 'PatternBuilder'` | A multi-parameter step sequencer. |
 | `set_length(length) -> 'PatternBuilder'` | Dynamically change the length of the pattern. |
 | `shift(steps, grid) -> 'PatternBuilder'` | Rotate the pattern by a number of grid steps. |
 | `signal(name) -> float` | Read a conductor signal at the current bar. |
 | `silence(beat) -> 'PatternBuilder'` | Sends an 'All Notes Off' (CC 123) and 'All Sound Off' (CC 120) message on the pattern's channel to immediately silence any ringing notes or drones. |
 | `slide(notes, steps, time, shape, resolution, bend_range, wrap, extend) -> 'subsequence.pattern_builder.PatternBuilder'` | TB-303-style selective slide into specific notes. |
 | `staccato(beats) -> 'PatternBuilder'` | Set all note durations to a fixed length in beats. |
-| `strum(chord_obj, root, velocity, sustain, duration, inversion, count, offset, direction, legato, detached, beat) -> 'PatternBuilder'` | Play a chord with a small time offset between each note (strum effect). |
-| `swing(amount, grid, strength) -> 'PatternBuilder'` | Apply swing feel to all notes in the pattern. |
+| `strum(chord_obj, root, velocity, sustain, duration, inversion, count, spacing, direction, legato, detached, beat) -> 'PatternBuilder'` | Play a chord with a small time offset between each note (strum effect). |
+| `swing(percent, grid, strength) -> 'PatternBuilder'` | Apply swing feel to all notes in the pattern. |
 | `sysex(data, beat) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a System Exclusive (SysEx) message at a beat position. |
-| `thin(pitch, strategy, amount, grid, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Remove notes from the pattern based on their rhythmic position. |
-| `thue_morse(pitch, velocity, duration, pitch_b, velocity_b, no_overlap, dropout, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Place notes using the Thue-Morse aperiodic binary sequence. |
+| `thin(pitch, strategy, amount, grid, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Remove notes from the pattern based on their rhythmic position. |
+| `thue_morse(pitch, velocity, duration, pitch_b, velocity_b, no_overlap, probability, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Place notes using the Thue-Morse aperiodic binary sequence. |
 | `transpose(semitones) -> 'PatternBuilder'` | Shift all note pitches up or down. |
 | `velocity_ramp(low, high, shape, grid) -> List[int]` | Build a per-step velocity list that ramps from *low* to *high*. |
 | `velocity_shape(low, high) -> 'PatternBuilder'` | Apply organic velocity variation to all notes in the pattern. |
@@ -191,7 +190,6 @@ Functions for generating and transforming sequences.
 | `fibonacci_rhythm(steps, length) -> List[float]` | Generate beat positions spaced by the golden ratio (Fibonacci spiral). |
 | `generate_bresenham_sequence(steps, pulses) -> List[int]` | Generate a rhythm using Bresenham's line algorithm. |
 | `generate_bresenham_sequence_weighted(steps, weights) -> List[int]` | Generate a sequence that distributes weighted indices across steps. |
-| `generate_cellular_automaton(steps, rule, generation, seed) -> List[int]` | Generate a binary sequence using an elementary cellular automaton. |
 | `generate_cellular_automaton_1d(steps, rule, generation, seed) -> List[int]` | Generate a binary sequence using an elementary cellular automaton. |
 | `generate_cellular_automaton_2d(rows, cols, rule, generation, seed, density) -> List[List[int]]` | Generate a 2D cellular automaton grid using Life-like rules. |
 | `generate_euclidean_sequence(steps, pulses) -> List[int]` | Generate a Euclidean rhythm using Bjorklund's algorithm. |

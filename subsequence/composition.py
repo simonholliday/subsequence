@@ -11,7 +11,6 @@ import re
 import signal
 import types
 import typing
-
 import subsequence.chord_graphs
 import subsequence.constants
 import subsequence.constants.durations
@@ -2624,7 +2623,7 @@ class Composition:
 		beats: typing.Optional[float],
 		bars: typing.Optional[float],
 		steps: typing.Optional[float],
-		unit: typing.Optional[float],
+		step_duration: typing.Optional[float],
 		default: float = 4.0,
 		beats_per_bar: int = 4,
 	) -> typing.Tuple[float, int]:
@@ -2633,14 +2632,14 @@ class Composition:
 		Resolve the beat_length and default_grid from the duration parameters.
 
 		Two modes:
-		- **Duration mode** (no ``unit``): specify ``beats=`` or ``bars=``.
+		- **Duration mode** (no ``step_duration``): specify ``beats=`` or ``bars=``.
 		  ``beats=4`` = 4 quarter notes; ``bars=2`` = 8 beats.
-		- **Step mode** (with ``unit``): specify ``steps=`` and ``unit=``.
-		  ``steps=6, unit=dur.SIXTEENTH`` = 6 sixteenth notes = 1.5 beats.
+		- **Step mode** (with ``step_duration``): specify ``steps=`` and ``step_duration=``.
+		  ``steps=6, step_duration=dur.SIXTEENTH`` = 6 sixteenth notes = 1.5 beats.
 
 		Constraints:
 		- ``beats`` and ``bars`` are mutually exclusive.
-		- ``steps`` requires ``unit``; ``unit`` requires ``steps``.
+		- ``steps`` requires ``step_duration``; ``step_duration`` requires ``steps``.
 		- ``steps`` cannot be combined with ``beats`` or ``bars``.
 
 		Returns:
@@ -2654,13 +2653,13 @@ class Composition:
 		if steps is not None and (beats is not None or bars is not None):
 			raise ValueError("steps= cannot be combined with beats= or bars=")
 
-		if unit is not None and steps is None:
-			raise ValueError("unit= requires steps= (e.g. steps=6, unit=dur.SIXTEENTH)")
+		if step_duration is not None and steps is None:
+			raise ValueError("step_duration= requires steps= (e.g. steps=6, step_duration=dur.SIXTEENTH)")
 
 		if steps is not None:
-			if unit is None:
-				raise ValueError("steps= requires unit= (e.g. unit=dur.SIXTEENTH)")
-			return steps * unit, int(steps)
+			if step_duration is None:
+				raise ValueError("steps= requires step_duration= (e.g. step_duration=dur.SIXTEENTH)")
+			return steps * step_duration, int(steps)
 
 		if bars is not None:
 			raw = bars * beats_per_bar
@@ -2677,8 +2676,7 @@ class Composition:
 		beats: typing.Optional[float] = None,
 		bars: typing.Optional[float] = None,
 		steps: typing.Optional[float] = None,
-		unit: typing.Optional[float] = None,
-		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+		step_duration: typing.Optional[float] = None,		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
@@ -2697,7 +2695,7 @@ class Composition:
 
 		- **Duration mode** (default): use ``beats=`` or ``bars=``.
 		  The grid defaults to sixteenth-note resolution.
-		- **Step mode**: use ``steps=`` paired with ``unit=``.
+		- **Step mode**: use ``steps=`` paired with ``step_duration=``.
 		  The grid equals the step count, so ``p.hit_steps()`` indices map
 		  directly to steps.
 
@@ -2708,8 +2706,8 @@ class Composition:
 				1-based numbering (1-16) instead.
 			beats: Duration in beats (quarter notes). ``beats=4`` = 1 bar.
 			bars: Duration in bars (uses the composition's time signature — 4 beats each in 4/4). ``bars=2`` = 8 beats.
-			steps: Step count for step mode. Requires ``unit=``.
-			unit: Duration of one step in beats (e.g. ``dur.SIXTEENTH``).
+			steps: Step count for step mode. Requires ``step_duration=``.
+			step_duration: Duration of one step in beats (e.g. ``dur.SIXTEENTH``).
 				Requires ``steps=``.
 			drum_note_map: Optional mapping for drum instruments.
 			cc_name_map: Optional mapping of CC names to MIDI CC numbers.
@@ -2740,7 +2738,7 @@ class Composition:
 			def long_phrase (p):
 				...
 
-			@comp.pattern(channel=1, steps=6, unit=dur.SIXTEENTH)
+			@comp.pattern(channel=1, steps=6, step_duration=dur.SIXTEENTH)
 			def riff (p):
 				p.sequence(steps=[0, 1, 3, 5], pitches=60)
 			```
@@ -2748,7 +2746,7 @@ class Composition:
 
 		channel = self._resolve_channel(channel)
 
-		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, beats_per_bar=self.time_signature[0])
+		beat_length, default_grid = self._resolve_length(beats, bars, steps, step_duration, beats_per_bar=self.time_signature[0])
 
 		# Resolve device string name to index if possible now; otherwise store
 		# the raw DeviceId and resolve it in _run() once all devices are open.
@@ -2814,8 +2812,7 @@ class Composition:
 		beats: typing.Optional[float] = None,
 		bars: typing.Optional[float] = None,
 		steps: typing.Optional[float] = None,
-		unit: typing.Optional[float] = None,
-		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+		step_duration: typing.Optional[float] = None,		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
@@ -2831,15 +2828,15 @@ class Composition:
 		building blocks (e.g., a 'kick' function and a 'snare' function).
 
 		See ``pattern()`` for the full description of ``beats``, ``bars``,
-		``steps``, and ``unit``.
+		``steps``, and ``step_duration``.
 
 		Parameters:
 			builder_fns: One or more pattern builder functions.
 			channel: MIDI channel (0-15, or 1-16 with ``zero_indexed_channels=False``).
 			beats: Duration in beats (quarter notes).
 			bars: Duration in bars (uses the composition's time signature — 4 beats each in 4/4).
-			steps: Step count for step mode. Requires ``unit=``.
-			unit: Duration of one step in beats. Requires ``steps=``.
+			steps: Step count for step mode. Requires ``step_duration=``.
+			step_duration: Duration of one step in beats. Requires ``steps=``.
 			drum_note_map: Optional mapping for drum instruments.
 			cc_name_map: Optional mapping of CC names to MIDI CC numbers.
 			nrpn_name_map: Optional mapping of NRPN parameter names to 14-bit
@@ -2850,7 +2847,7 @@ class Composition:
 				to duplicate every event onto.  See ``pattern()`` for details.
 		"""
 
-		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, beats_per_bar=self.time_signature[0])
+		beat_length, default_grid = self._resolve_length(beats, bars, steps, step_duration, beats_per_bar=self.time_signature[0])
 
 		# Resolve channel up-front so the mirror-to-self check has the canonical
 		# primary form to compare against.
@@ -3042,8 +3039,7 @@ class Composition:
 		beats: typing.Optional[float] = None,
 		bars: typing.Optional[float] = None,
 		steps: typing.Optional[float] = None,
-		unit: typing.Optional[float] = None,
-		quantize: float = 0,
+		step_duration: typing.Optional[float] = None,		quantize: float = 0,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None,
@@ -3065,15 +3061,15 @@ class Composition:
 		``p.euclidean()``, ``p.arpeggio()``, and so on.
 
 		See ``pattern()`` for the full description of ``beats``, ``bars``,
-		``steps``, and ``unit``. Default is 1 beat.
+		``steps``, and ``step_duration``. Default is 1 beat.
 
 		Parameters:
 			fn: The pattern builder function (same signature as ``@comp.pattern``).
 			channel: MIDI channel (0-15, or 1-16 with ``zero_indexed_channels=False``).
 			beats: Duration in beats (quarter notes, default 1).
 			bars: Duration in bars (uses the composition's time signature — 4 beats each in 4/4).
-			steps: Step count for step mode. Requires ``unit=``.
-			unit: Duration of one step in beats. Requires ``steps=``.
+			steps: Step count for step mode. Requires ``step_duration=``.
+			step_duration: Duration of one step in beats. Requires ``steps=``.
 			quantize: Snap the trigger to a beat boundary: ``0`` = immediate (default),
 				``1`` = next beat (quarter note), ``4`` = next bar. Use ``dur.*``
 				constants from ``subsequence.constants.durations``.
@@ -3116,7 +3112,7 @@ class Composition:
 		# Resolve channel numbering
 		resolved_channel = self._resolve_channel(channel)
 
-		beat_length, default_grid = self._resolve_length(beats, bars, steps, unit, default=1.0, beats_per_bar=self.time_signature[0])
+		beat_length, default_grid = self._resolve_length(beats, bars, steps, step_duration, default=1.0, beats_per_bar=self.time_signature[0])
 
 		# Resolve device index — for trigger() this is always concrete by call time,
 		# so the mirror-to-self check has the full primary tuple available.

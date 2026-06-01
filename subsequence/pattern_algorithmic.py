@@ -6,7 +6,7 @@ is inherited by ``PatternBuilder`` in ``pattern_builder.py``.
 
 import random
 import typing
-
+import warnings
 import subsequence.constants
 import subsequence.constants.velocity
 import subsequence.easing
@@ -49,6 +49,29 @@ class PatternAlgorithmicMixin:
 		def _resolve_pitch_lenient (self, pitch: typing.Union[int, str]) -> typing.Optional[int]: ...
 		def _has_pitch_at_beat (self, pitch: typing.Union[int, str], beat: float) -> bool: ...
 
+	def _rng_from (self, seed: typing.Optional[int], rng: typing.Optional[random.Random]) -> random.Random:
+
+		"""Resolve the effective random generator for a generative call.
+
+		Determinism has one friendly knob — ``seed=`` (an int) — and one advanced
+		form — ``rng=`` (a ``random.Random`` instance).  Precedence, most explicit
+		first:
+
+			1. ``rng=`` — an explicit generator you supplied (wins; warns if ``seed=`` was also given).
+			2. ``seed=`` — a fresh ``random.Random(seed)``, fixed for this call.
+			3. ``self.rng`` — the pattern's own generator (the default; reproducible under the composition seed).
+		"""
+
+		if rng is not None:
+			if seed is not None:
+				warnings.warn("seed= and rng= were both given — rng= wins; pass only one", stacklevel=3)
+			return rng
+
+		if seed is not None:
+			return random.Random(seed)
+
+		return self.rng
+
 	def _resolve_velocity (self, velocity: typing.Union[int, typing.Tuple[int, int]], rng: typing.Optional[random.Random] = None) -> int:
 
 		"""Resolve a velocity argument to a single integer.
@@ -90,7 +113,7 @@ class PatternAlgorithmicMixin:
 		pitch: typing.Union[int, str],
 		velocity: typing.Union[int, typing.Tuple[int, int]],
 		duration: float,
-		dropout: float,
+		probability: float,
 		rng: random.Random,
 		no_overlap: bool = False
 	) -> None:
@@ -99,7 +122,7 @@ class PatternAlgorithmicMixin:
 
 		Shared implementation for ``euclidean()`` and ``bresenham()``.
 		Each active step (1) is placed as a note; steps are evenly spaced
-		across the pattern length. Zeros and dropout-gated steps are skipped.
+		across the pattern length. Zeros and probability-gated steps are skipped.
 		A ``(low, high)`` ``velocity`` tuple is resolved per hit by
 		``self.note()``, giving each placed note a fresh random velocity.
 		"""
@@ -114,7 +137,7 @@ class PatternAlgorithmicMixin:
 			if hit_value == 0:
 				continue
 
-			if dropout > 0 and rng.random() < dropout:
+			if probability < 1.0 and rng.random() < (1.0 - probability):
 				continue
 
 			if no_overlap and self._has_pitch_at_beat(pitch, i * step_duration):
@@ -122,7 +145,7 @@ class PatternAlgorithmicMixin:
 
 			self.note(pitch=pitch, beat=i * step_duration, velocity=velocity, duration=duration)
 
-	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
+	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: float = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Generate a Euclidean rhythm.
@@ -137,7 +160,8 @@ class PatternAlgorithmicMixin:
 			velocity: MIDI velocity, or a ``(low, high)`` tuple for a
 				fresh random draw per hit.
 			duration: Note duration.
-			dropout: Probability (0.0 to 1.0) of skipping each pulse.
+			probability: Chance (0.0–1.0) that each pulse plays — 1.0 places them all, lower thins the rhythm.
+			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.  ``rng=`` is the advanced form.
 			no_overlap: If True, skip steps where a note of the same pitch
 				already exists. Useful for layering ghost notes around
 				hand-placed anchors.
@@ -148,16 +172,14 @@ class PatternAlgorithmicMixin:
 			p.euclidean("kick", pulses=3)
 			```
 		"""
-
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		steps = int(self._pattern.length * 4)
 		sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=steps, pulses=pulses)
-		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap)
+		self._place_rhythm_sequence(sequence, pitch, velocity, duration, probability, rng, no_overlap=no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, dropout: float = 0.0, no_overlap: bool = False, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
+	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: float = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Generate a rhythm using the Bresenham line algorithm.
@@ -171,18 +193,17 @@ class PatternAlgorithmicMixin:
 			velocity: MIDI velocity, or a ``(low, high)`` tuple for a
 				fresh random draw per hit.
 			duration: Note duration.
-			dropout: Probability (0.0 to 1.0) of skipping each pulse.
+			probability: Chance (0.0–1.0) that each pulse plays — 1.0 places them all, lower thins the rhythm.
+			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.  ``rng=`` is the advanced form.
 			no_overlap: If True, skip steps where a note of the same pitch
 				already exists. Useful for layering ghost notes around
 				hand-placed anchors.
 		"""
-
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		steps = int(self._pattern.length * 4)
 		sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=steps, pulses=pulses)
-		self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap)
+		self._place_rhythm_sequence(sequence, pitch, velocity, duration, probability, rng, no_overlap=no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	def bresenham_poly (
@@ -191,10 +212,10 @@ class PatternAlgorithmicMixin:
 		velocity: typing.Union[int, typing.Dict[typing.Union[int, str], int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		duration: float = 0.1,
 		grid: typing.Optional[int] = None,
-		dropout: float = 0.0,
+		probability: float = 1.0,
 		no_overlap: bool = False,
-		rng: typing.Optional[random.Random] = None,
-	) -> "subsequence.pattern_builder.PatternBuilder":
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Distribute multiple drum voices across the pattern using weighted Bresenham.
@@ -217,10 +238,11 @@ class PatternAlgorithmicMixin:
 			duration: Note duration in beats (default 0.1).
 			grid: Number of steps to divide the pattern into. Defaults to the
 				pattern's standard sixteenth-note grid (``length * 4``).
-			dropout: Probability (0.0–1.0) of randomly skipping each placed hit.
+			probability: Chance (0.0–1.0) that each hit plays — 1.0 places them all, lower thins.
+			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.
 			no_overlap: If True, skip steps where a note of the same pitch already
 				exists. Useful for layering ghost notes around hand-placed anchors.
-			rng: Optional random generator (overrides the pattern's seed).
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -273,9 +295,7 @@ class PatternAlgorithmicMixin:
 
 		if any(w < 0 for w in parts.values()):
 			raise ValueError("All density weights must be non-negative")
-
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		if grid is None:
 			grid = self._default_grid
@@ -301,7 +321,7 @@ class PatternAlgorithmicMixin:
 			if voice_idx == rest_index:
 				continue
 
-			if dropout > 0 and rng.random() < dropout:
+			if probability < 1.0 and rng.random() < (1.0 - probability):
 				continue
 
 			pitch = voice_names[voice_idx]
@@ -431,11 +451,12 @@ class PatternAlgorithmicMixin:
 			typing.Tuple[int, int],
 			typing.Sequence[typing.Union[int, float]],
 			typing.Callable[[int], typing.Union[int, float]]
-		] = 35,
+		] = subsequence.constants.velocity.GHOST_FILL_VELOCITY,
 		bias: typing.Union[str, typing.List[float]] = "uniform",
 		no_overlap: bool = True,
 		grid: typing.Optional[int] = None,
 		duration: float = 0.1,
+		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
@@ -500,8 +521,7 @@ class PatternAlgorithmicMixin:
 			```
 		"""
 
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		if grid is None:
 			grid = self._default_grid
@@ -550,12 +570,12 @@ class PatternAlgorithmicMixin:
 		pitch: typing.Union[int, str],
 		rule: int = 30,
 		generation: typing.Optional[int] = None,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 60,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
 		duration: float = 0.1,
 		no_overlap: bool = False,
-		dropout: float = 0.0,
-		rng: typing.Optional[random.Random] = None,
-	) -> "subsequence.pattern_builder.PatternBuilder":
+		probability: float = 1.0,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate an evolving rhythm using a 1D cellular automaton.
 
@@ -577,8 +597,9 @@ class PatternAlgorithmicMixin:
 				fresh random draw per hit.
 			duration: Note duration in beats.
 			no_overlap: If True, skip where same pitch already exists.
-			dropout: Probability (0.0–1.0) of skipping each hit.
-			rng: Random generator for dropout.
+			probability: Chance (0.0–1.0) that each hit plays — 1.0 places them all, lower thins.
+			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -589,9 +610,7 @@ class PatternAlgorithmicMixin:
 
 		if generation is None:
 			generation = self.cycle
-
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		steps = self._default_grid
 		sequence = subsequence.sequence_utils.generate_cellular_automaton_1d(
@@ -599,25 +618,23 @@ class PatternAlgorithmicMixin:
 		)
 
 		self._place_rhythm_sequence(
-			sequence, pitch, velocity, duration, dropout, rng, no_overlap=no_overlap
+			sequence, pitch, velocity, duration, probability, rng, no_overlap=no_overlap
 		)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
-
-	cellular = cellular_1d
 
 	def cellular_2d (
 		self,
 		pitches: typing.List[typing.Union[int, str]],
 		rule: str = "B368/S245",
 		generation: typing.Optional[int] = None,
-		velocity: typing.Union[int, typing.List[int]] = 60,
+		velocity: typing.Union[int, typing.List[int]] = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
 		duration: float = 0.1,
 		no_overlap: bool = False,
-		dropout: float = 0.0,
-		seed: typing.Union[int, typing.List[typing.List[int]]] = 1,
+		probability: float = 1.0,
+		initial_state: typing.Union[str, typing.List[typing.List[int]]] = "center",
 		density: float = 0.5,
-		rng: typing.Optional[random.Random] = None,
-	) -> "subsequence.pattern_builder.PatternBuilder":
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate polyphonic patterns using a 2D Life-like cellular automaton.
 
@@ -639,18 +656,21 @@ class PatternAlgorithmicMixin:
 			          value per row.
 			duration: Note duration in beats.
 			no_overlap: If True, skip notes where same pitch already exists.
-			dropout: Probability (0.0–1.0) of skipping each live cell.
-			seed: Initial grid state.  ``1`` places a single live cell at
-			      the centre.  Any other ``int`` uses a seeded RNG with
-			      *density*.  A ``list[list[int]]`` provides an explicit
-			      rows × cols grid.
-			density: Fill probability when *seed* is a random int (0.0–1.0).
-			rng: Random generator for dropout.  Uses ``self.rng`` if None.
+			probability: Chance (0.0–1.0) that each live cell plays — 1.0 places them all, lower thins.
+			initial_state: The generation-0 grid.  ``"center"`` (default) lights a
+			      single cell at the centre; ``"random"`` fills cells with probability
+			      *density* (seed it with *seed* for a reproducible fill); or pass an
+			      explicit ``list[list[int]]`` (rows × cols) for a custom start.
+			density: Fill probability for ``initial_state="random"`` (0.0–1.0).
+			seed: RNG seed (an int) for the ``"random"`` initial grid, so it
+			      reproduces.
+			rng: Random generator for the probability thinning.  Defaults to
+			     ``self.rng``.
 
 		Example:
 			```python
 			pitches = [36, 38, 42, 46]  # kick, snare, hihat, open hihat
-			p.cellular_2d(pitches, rule="B3/S23", seed=7, density=0.3)
+			p.cellular_2d(pitches, rule="B3/S23", initial_state="random", seed=7, density=0.3)
 			```
 		"""
 
@@ -660,6 +680,19 @@ class PatternAlgorithmicMixin:
 		if rng is None:
 			rng = self.rng
 
+		# Translate (initial_state, seed) into the underlying generator's seed arg,
+		# which stays int-or-grid: 1 = single centre cell, any other int = an
+		# RNG-seeded fill at *density*, a grid = an explicit starting state.
+		grid_seed: typing.Union[int, typing.List[typing.List[int]]]
+		if isinstance(initial_state, list):
+			grid_seed = initial_state
+		elif initial_state == "center":
+			grid_seed = 1
+		elif initial_state == "random":
+			grid_seed = seed if isinstance(seed, int) and seed != 1 else rng.randint(2, 2_147_483_646)
+		else:
+			raise ValueError(f"cellular_2d(): initial_state must be \"center\", \"random\", or a grid — got {initial_state!r}")
+
 		cols = self._default_grid
 		rows = len(pitches)
 
@@ -668,7 +701,7 @@ class PatternAlgorithmicMixin:
 			cols=cols,
 			rule=rule,
 			generation=generation,
-			seed=seed,
+			seed=grid_seed,
 			density=density,
 		)
 
@@ -681,7 +714,7 @@ class PatternAlgorithmicMixin:
 				row_velocity = int(velocity)
 
 			self._place_rhythm_sequence(
-				grid[row_idx], pitch, row_velocity, duration, dropout, rng, no_overlap=no_overlap
+				grid[row_idx], pitch, row_velocity, duration, probability, rng, no_overlap=no_overlap
 			)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
@@ -693,6 +726,8 @@ class PatternAlgorithmicMixin:
 		duration: float = 0.1,
 		spacing: float = 0.25,
 		start: typing.Optional[str] = None,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate a sequence by walking a first-order Markov chain.
@@ -738,6 +773,8 @@ class PatternAlgorithmicMixin:
 			```
 		"""
 
+		rng = self._rng_from(seed, rng)
+
 		if not transitions:
 			raise ValueError("transitions dict cannot be empty")
 
@@ -763,7 +800,7 @@ class PatternAlgorithmicMixin:
 			if state in pitch_map:
 				self.note(pitch=pitch_map[state], beat=beat, velocity=velocity, duration=duration)
 
-			state = graph.choose_next(state, self.rng)
+			state = graph.choose_next(state, rng)
 			beat += spacing
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
@@ -774,6 +811,8 @@ class PatternAlgorithmicMixin:
 		velocity: typing.Union[int, typing.Tuple[int, int]] = 90,
 		duration: float = 0.2,
 		chord_tones: typing.Optional[typing.List[int]] = None,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate a melodic line by querying a persistent :class:`~subsequence.melodic_state.MelodicState`.
@@ -816,15 +855,17 @@ class PatternAlgorithmicMixin:
 			```
 		"""
 
+		rng = self._rng_from(seed, rng)
+
 		n_steps = int(self._pattern.length / spacing)
 		beat = 0.0
 
 		for _ in range(n_steps):
 
-			pitch = state.choose_next(chord_tones, self.rng)
+			pitch = state.choose_next(chord_tones, rng)
 
 			if pitch is not None:
-				vel = self._resolve_velocity(velocity)
+				vel = self._resolve_velocity(velocity, rng)
 				self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
 
 			beat += spacing
@@ -837,8 +878,10 @@ class PatternAlgorithmicMixin:
 		rules: typing.Dict[str, typing.Union[str, typing.List[typing.Tuple[str, float]]]],
 		generations: int = 3,
 		spacing: typing.Optional[float] = None,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate a note sequence using L-system string rewriting.
@@ -896,11 +939,13 @@ class PatternAlgorithmicMixin:
 			```
 		"""
 
+		rng = self._rng_from(seed, rng)
+
 		expanded = subsequence.sequence_utils.lsystem_expand(
 			axiom=axiom,
 			rules=rules,
 			generations=generations,
-			rng=self.rng,
+			rng=rng,
 		)
 
 		if not expanded:
@@ -918,7 +963,7 @@ class PatternAlgorithmicMixin:
 
 		for symbol in symbols:
 			if symbol in pitch_map:
-				vel = self._resolve_velocity(velocity)
+				vel = self._resolve_velocity(velocity, rng)
 				self.note(
 					pitch=pitch_map[symbol],
 					beat=beat,
@@ -936,9 +981,9 @@ class PatternAlgorithmicMixin:
 		pitch_b: typing.Optional[typing.Union[int, str]] = None,
 		velocity_b: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
 		no_overlap: bool = False,
-		dropout: float = 0.0,
-		rng: typing.Optional[random.Random] = None,
-	) -> "subsequence.pattern_builder.PatternBuilder":
+		probability: float = 1.0,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Place notes using the Thue-Morse aperiodic binary sequence.
 
@@ -963,8 +1008,9 @@ class PatternAlgorithmicMixin:
 			velocity_b: Velocity for ``pitch_b`` (int or ``(low, high)``
 			    tuple).  Defaults to ``velocity``.
 			no_overlap: Skip steps where ``pitch`` is already sounding.
-			dropout: Probability [0.0–1.0] of randomly skipping any active step.
-			rng: Random number generator.  Defaults to ``self.rng``.
+			probability: Chance (0.0–1.0) that each active step plays — 1.0 places them all, lower thins.
+			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -975,20 +1021,18 @@ class PatternAlgorithmicMixin:
 			p.thue_morse("kick_1", pitch_b="snare_1", velocity=100)
 			```
 		"""
-
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		sequence = subsequence.sequence_utils.thue_morse(self._default_grid)
 
 		if pitch_b is None:
-			self._place_rhythm_sequence(sequence, pitch, velocity, duration, dropout, rng, no_overlap)
+			self._place_rhythm_sequence(sequence, pitch, velocity, duration, probability, rng, no_overlap)
 		else:
 			if velocity_b is None:
 				velocity_b = velocity
 			step_dur = self._pattern.length / len(sequence)
 			for i, val in enumerate(sequence):
-				if dropout > 0 and rng.random() < dropout:
+				if probability < 1.0 and rng.random() < (1.0 - probability):
 					continue
 
 				# Honour no_overlap against whichever voice this step would place.
@@ -1007,8 +1051,10 @@ class PatternAlgorithmicMixin:
 		pitches: typing.List[typing.Union[int, str]],
 		window: int = 2,
 		spacing: typing.Optional[float] = None,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate a melody that exhaustively traverses all pitch subsequences.
@@ -1040,6 +1086,8 @@ class PatternAlgorithmicMixin:
 			```
 		"""
 
+		rng = self._rng_from(seed, rng)
+
 		if not pitches:
 			raise ValueError("pitches list cannot be empty")
 
@@ -1060,7 +1108,7 @@ class PatternAlgorithmicMixin:
 		beat = 0.0
 
 		for idx in symbols:
-			vel = self._resolve_velocity(velocity)
+			vel = self._resolve_velocity(velocity, rng)
 			self.note(pitch=pitches[idx], beat=beat, velocity=vel, duration=duration)
 			beat += auto_step
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
@@ -1068,15 +1116,16 @@ class PatternAlgorithmicMixin:
 	def fibonacci (
 		self,
 		pitch: typing.Union[int, str],
-		steps: int,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		count: int,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
-	) -> "subsequence.pattern_builder.PatternBuilder":
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing).
 
 		Uses the golden angle method - ``position_i = (i × φ) mod bar_length`` -
-		to distribute ``steps`` events across the bar.  The result is sorted
+		to distribute ``count`` events across the bar.  The result is sorted
 		into ascending time order.  Unlike a Euclidean rhythm (maximally even
 		spacing on a fixed grid), Fibonacci timing is irrational and places
 		events off-grid in a way that sounds organic and avoids metronomic
@@ -1084,21 +1133,23 @@ class PatternAlgorithmicMixin:
 
 		Parameters:
 			pitch: MIDI note number or drum name.
-			steps: Number of notes to place.
+			count: Number of notes to place.
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
 			duration: Note duration in beats.
 
 		Example:
 			```python
 			# 11 hi-hat hits with golden-ratio spacing
-			p.fibonacci("hi_hat_closed", steps=11, velocity=(60, 90))
+			p.fibonacci("hi_hat_closed", count=11, velocity=(60, 90))
 			```
 		"""
 
-		beats = subsequence.sequence_utils.fibonacci_rhythm(steps, self._pattern.length)
+		rng = self._rng_from(seed, rng)
+
+		beats = subsequence.sequence_utils.fibonacci_rhythm(count, self._pattern.length)
 
 		for beat in beats:
-			vel = self._resolve_velocity(velocity)
+			vel = self._resolve_velocity(velocity, rng)
 			self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
@@ -1106,7 +1157,7 @@ class PatternAlgorithmicMixin:
 		self,
 		pitches: typing.List[typing.Union[int, str]],
 		spacing: float = 0.25,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		dt: float = 0.01,
 		sigma: float = 10.0,
@@ -1194,15 +1245,15 @@ class PatternAlgorithmicMixin:
 		self,
 		pitch: typing.Union[int, str],
 		threshold: float = 0.5,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.1,
 		feed_rate: float = 0.055,
 		kill_rate: float = 0.062,
 		steps: int = 1000,
 		no_overlap: bool = False,
-		dropout: float = 0.0,
-		rng: typing.Optional[random.Random] = None,
-	) -> "subsequence.pattern_builder.PatternBuilder":
+		probability: float = 1.0,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation.
 
@@ -1233,8 +1284,9 @@ class PatternAlgorithmicMixin:
 			steps: Number of simulation iterations.  More = more developed
 			    pattern.  Default 1000.
 			no_overlap: Skip steps where ``pitch`` is already sounding.
-			dropout: Probability [0.0–1.0] of randomly skipping any active step.
-			rng: Random number generator.  Defaults to ``self.rng``.
+			probability: Chance (0.0–1.0) that each active step plays — 1.0 places them all, lower thins.
+			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -1242,9 +1294,7 @@ class PatternAlgorithmicMixin:
 			p.reaction_diffusion("kick_1", threshold=0.4, feed_rate=0.037, kill_rate=0.060)
 			```
 		"""
-
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		concentrations = subsequence.sequence_utils.reaction_diffusion_1d(
 			width=self._default_grid,
@@ -1262,22 +1312,23 @@ class PatternAlgorithmicMixin:
 			for i, (hit, conc) in enumerate(zip(sequence, concentrations)):
 				if hit == 0:
 					continue
-				if dropout > 0 and rng.random() < dropout:
+				if probability < 1.0 and rng.random() < (1.0 - probability):
 					continue
 				if no_overlap and self._has_pitch_at_beat(pitch, i * step_dur):
 					continue
 				vel = int(midi_vel_lo + conc * (midi_vel_hi - midi_vel_lo))
 				self.note(pitch=pitch, beat=i * step_dur, velocity=vel, duration=duration)
 		else:
-			self._place_rhythm_sequence(sequence, pitch, int(velocity), duration, dropout, rng, no_overlap)
+			self._place_rhythm_sequence(sequence, pitch, int(velocity), duration, probability, rng, no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	def self_avoiding_walk (
 		self,
 		pitches: typing.List[typing.Union[int, str]],
 		spacing: float = 0.25,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
+		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
@@ -1309,8 +1360,7 @@ class PatternAlgorithmicMixin:
 			```
 		"""
 
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		if not pitches:
 			raise ValueError("pitches list cannot be empty")
@@ -1337,6 +1387,7 @@ class PatternAlgorithmicMixin:
 		strategy: typing.Union[str, typing.List[float]] = "strength",
 		amount: float = 0.5,
 		grid: typing.Optional[int] = None,
+		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
@@ -1398,8 +1449,7 @@ class PatternAlgorithmicMixin:
 			p.thin(strategy="strength", amount=sparseness)
 		"""
 
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		if grid is None:
 			grid = self._default_grid
@@ -1499,6 +1549,7 @@ class PatternAlgorithmicMixin:
 		gate: float = 0.5,
 		steps: typing.Optional[typing.List[int]] = None,
 		grid: typing.Optional[int] = None,
+		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
@@ -1566,8 +1617,7 @@ class PatternAlgorithmicMixin:
 			```
 		"""
 
-		if rng is None:
-			rng = self.rng
+		rng = self._rng_from(seed, rng)
 
 		if grid is None:
 			grid = self._default_grid
@@ -1624,7 +1674,7 @@ class PatternAlgorithmicMixin:
 			for note in targets:
 
 				# Probability gate — failed notes are kept unchanged.
-				if probability < 1.0 and rng.random() >= probability:
+				if probability < 1.0 and rng.random() < (1.0 - probability):
 					if pulse not in new_steps:
 						new_steps[pulse] = subsequence.pattern.Step()
 					new_steps[pulse].notes.append(note)
@@ -1668,37 +1718,38 @@ class PatternAlgorithmicMixin:
 	def evolve (
 		self,
 		pitches: typing.List[typing.Union[int, str]],
-		steps: typing.Optional[int] = None,
+		length: typing.Optional[int] = None,
 		drift: float = 0.0,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		spacing: float = 0.25,
-	) -> "subsequence.pattern_builder.PatternBuilder":
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Loop a pitch sequence that gradually mutates each cycle.
 
-		On cycle 0, the sequence is locked to the seed ``pitches`` (truncated to
-		``steps`` if provided).  Each subsequent cycle, every step has a ``drift``
+		On cycle 0, the sequence is locked to the initial ``pitches`` (truncated to
+		``length`` if provided).  Each subsequent cycle, every step has a ``drift``
 		probability of being replaced by a randomly-chosen value from the pool.
 		When ``drift=0.0`` the loop never changes; when ``drift=1.0`` every step
 		is redrawn every cycle.
 
-		State is stored in ``p.data`` under a key derived from the seed, so the
+		State is stored in ``p.data`` under a key derived from the pitch content, so the
 		buffer persists across pattern rebuilds.  The buffer is reset whenever
 		``cycle == 0`` so restarts produce deterministic output.
 
 		Combine with ``p.quantize()`` to keep drifted pitches in key:
 
 		```python
-		p.evolve([60, 64, 67, 72], steps=8, drift=0.12)
+		p.evolve([60, 64, 67, 72], length=8, drift=0.12)
 		p.quantize("C", "minor")
 		```
 
 		Parameters:
-			pitches: Seed pitch pool.  The initial buffer is built from the first
-			    ``steps`` values (cycling if shorter than ``steps``).  Mutation
+			pitches: Initial pitch pool.  The initial buffer is built from the first
+			    ``length`` values (cycling if shorter than ``length``).  Mutation
 			    also draws replacements from this pool.
-			steps: Number of steps in the loop.  Defaults to ``len(pitches)``.
+			length: Number of steps in the loop.  Defaults to ``len(pitches)``.
 			drift: Per-step mutation probability each cycle (0.0–1.0).
 			    ``0.0`` = locked loop, ``1.0`` = fully random each cycle.
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per step.
@@ -1708,11 +1759,13 @@ class PatternAlgorithmicMixin:
 		Example:
 			```python
 			# 8-step loop that slowly diverges from its seed
-			p.evolve([60, 62, 64, 65, 67, 69], steps=8, drift=0.1,
+			p.evolve([60, 62, 64, 65, 67, 69], length=8, drift=0.1,
 			         velocity=(70, 100), spacing=0.5)
 			p.quantize("C", "dorian")
 			```
 		"""
+
+		rng = self._rng_from(seed, rng)
 
 		if not pitches:
 			raise ValueError("pitches list cannot be empty")
@@ -1722,7 +1775,7 @@ class PatternAlgorithmicMixin:
 		if not resolved:
 			# Every seed name was a voice this device lacks (each warned once).
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
-		n = steps if steps is not None else len(resolved)
+		n = length if length is not None else len(resolved)
 
 		# Stable key derived from the seed *content* (not object identity).  The
 		# documented idiom passes a fresh list literal every cycle; keying on
@@ -1746,34 +1799,36 @@ class PatternAlgorithmicMixin:
 		# Mutate the buffer in place for this cycle (skipped on cycle 0 — seed plays first).
 		if self.cycle > 0 and drift > 0.0:
 			for i in range(n):
-				if self.rng.random() < drift:
-					buffer[i] = self.rng.choice(resolved)
+				if rng.random() < drift:
+					buffer[i] = rng.choice(resolved)
 
 		# Place notes.
 		for i, pitch in enumerate(buffer):
-			vel = self._resolve_velocity(velocity)
+			vel = self._resolve_velocity(velocity, rng)
 			self.note(pitch=pitch, beat=i * spacing, velocity=vel, duration=duration)
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	def branch (
 		self,
-		seed: typing.List[typing.Union[int, str]],
+		pitches: typing.List[typing.Union[int, str]],
 		depth: int = 2,
 		path: int = 0,
 		mutation: float = 0.0,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 80,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		spacing: float = 0.25,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate a melodic variation by navigating a fractal tree of transforms.
 
-		The seed sequence is the "trunk".  At each branch level, two musical
-		transforms are assigned deterministically (seeded by the original
+		The ``pitches`` sequence is the "trunk".  At each branch level, two musical
+		transforms are assigned deterministically (derived from the original
 		sequence), and the ``path`` index selects left or right at each level.
 		After ``depth`` levels the result is a variation that is always
-		structurally related to the seed.
+		structurally related to the input ``pitches``.
 
 		Use ``path=p.cycle`` to step through all ``2 ** depth`` variations in
 		order; the index wraps automatically.
@@ -1781,23 +1836,23 @@ class PatternAlgorithmicMixin:
 		**Transforms** (assigned deterministically per level):
 
 		- *Retrograde* — reverse the sequence.
-		- *Invert* — mirror each pitch around the seed's first note.
+		- *Invert* — mirror each pitch around the first note.
 		- *Transpose* — shift all pitches by the interval between the first
-		  two seed notes.
+		  two notes.
 		- *Rotate* — shift the starting position by one step.
 		- *Scale intervals* — multiply intervals from the first note by 0.5
 		  (compress) or 2.0 (expand), rounded to the nearest semitone.
 
 		An optional ``mutation`` layer randomly substitutes individual notes
-		with other seed pitches on top of the deterministic branching.
+		with other input pitches on top of the deterministic branching.
 
 		Parameters:
-			seed: Original pitch sequence.  All variations are derived from this.
+			pitches: Original pitch sequence.  All variations are derived from this.
 			depth: Branching levels.  ``2 ** depth`` unique variations are
 			    available before the path wraps.
 			path: Which variation to play (0-based).  ``path=p.cycle`` advances
 			    automatically.  Values wrap modulo ``2 ** depth``.
-			mutation: Probability that any step is replaced by a random seed
+			mutation: Probability that any step is replaced by a random input
 			    pitch after branching (0.0 = none, 1.0 = fully random).
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per step.
 			duration: Note duration in beats.
@@ -1812,16 +1867,18 @@ class PatternAlgorithmicMixin:
 			```
 		"""
 
-		if not seed:
-			raise ValueError("seed list cannot be empty")
+		rng = self._rng_from(seed, rng)
 
-		resolved_opt = [self._resolve_pitch_lenient(p) if isinstance(p, str) else p for p in seed]
+		if not pitches:
+			raise ValueError("pitches list cannot be empty")
+
+		resolved_opt = [self._resolve_pitch_lenient(p) if isinstance(p, str) else p for p in pitches]
 		resolved = [r for r in resolved_opt if r is not None]
 		if not resolved:
 			# Every seed name was a voice this device lacks (each warned once).
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-		# Seeded RNG derived from the seed content (not from self.rng) so the
+		# Tree RNG derived from the pitch content (not self.rng or the seed= arg) so the
 		# tree structure is always the same regardless of the pattern's own seed.
 		branch_rng = random.Random(hash(tuple(resolved)))
 
@@ -1863,12 +1920,12 @@ class PatternAlgorithmicMixin:
 		# Optional random mutation on top of deterministic branching.
 		if mutation > 0.0:
 			for i in range(len(sequence)):
-				if self.rng.random() < mutation:
-					sequence[i] = self.rng.choice(resolved)
+				if rng.random() < mutation:
+					sequence[i] = rng.choice(resolved)
 
 		# Place notes.
 		for i, pitch in enumerate(sequence):
-			vel = self._resolve_velocity(velocity)
+			vel = self._resolve_velocity(velocity, rng)
 			self.note(pitch=pitch, beat=i * spacing, velocity=vel, duration=duration)
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)

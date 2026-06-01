@@ -181,7 +181,7 @@ def test_progression_loop_with_strum_places_notes () -> None:
 	pattern, builder = _builder(length=16.0)
 
 	for chord, start, length in builder.progression([subsequence.chords.Chord(0, "minor")], harmonic_rhythm=WHOLE, seed=1):
-		builder.strum(chord, root=48, beat=start, duration=length - 0.25, offset=0.1, count=3)
+		builder.strum(chord, root=48, beat=start, duration=length - 0.25, spacing=0.1, count=3)
 
 	# 4 chords × 3 staggered voices.
 	assert sum(len(step.notes) for step in pattern.steps.values()) == 12
@@ -219,7 +219,7 @@ def test_chord_beat_defaults_to_start () -> None:
 def test_strum_beat_offsets_the_stagger () -> None:
 	pattern, builder = _builder(length=16.0)
 
-	builder.strum(subsequence.chords.Chord(0, "minor"), root=48, beat=4.0, offset=0.5, count=3, duration=1.0)
+	builder.strum(subsequence.chords.Chord(0, "minor"), root=48, beat=4.0, spacing=0.5, count=3, duration=1.0)
 
 	# First note on beat 4, then +0.5 each.
 	assert int(4.0 * PPQ) in pattern.steps

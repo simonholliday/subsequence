@@ -142,7 +142,7 @@ def test_strum_accepts_tuple_velocity_per_voice () -> None:
 
 	pattern, builder = _make_builder(seed=1)
 	chord = subsequence.chords.Chord(root_pc=0, quality="major")
-	builder.strum(chord, root=60, velocity=(60, 100), offset=0.1, count=4)
+	builder.strum(chord, root=60, velocity=(60, 100), spacing=0.1, count=4)
 	all_notes = [n for step in pattern.steps.values() for n in step.notes]
 	velocities = [n.velocity for n in all_notes]
 	assert all(60 <= v <= 100 for v in velocities)

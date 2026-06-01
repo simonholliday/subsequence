@@ -150,7 +150,7 @@ def test_evolve_steps_truncates_seed () -> None:
 	"""steps=2 should produce exactly 2 notes from a longer seed."""
 	seed = [60, 62, 64, 67]
 	pattern, builder = _make_builder(cycle=0)
-	builder.evolve(seed, steps=2, drift=0.0, spacing=0.25)
+	builder.evolve(seed, length=2, drift=0.0, spacing=0.25)
 
 	count = sum(len(step.notes) for step in pattern.steps.values())
 	assert count == 2
@@ -160,7 +160,7 @@ def test_evolve_steps_extends_seed () -> None:
 	"""steps=6 with a 4-note seed should cycle and produce 6 notes."""
 	seed = [60, 62, 64, 67]
 	pattern, builder = _make_builder(length=8, cycle=0)
-	builder.evolve(seed, steps=6, drift=0.0, spacing=0.5)
+	builder.evolve(seed, length=6, drift=0.0, spacing=0.5)
 
 	count = sum(len(step.notes) for step in pattern.steps.values())
 	assert count == 6

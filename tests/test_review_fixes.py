@@ -93,7 +93,7 @@ def test_evolve_buffer_key_is_content_stable_across_cycles () -> None:
 	# A fresh seed literal every cycle (the documented idiom).
 	for cycle in range(4):
 		_, builder = _builder(cycle=cycle, data=shared)
-		builder.evolve([60, 62, 64, 67], steps=4, drift=0.2, spacing=0.5)
+		builder.evolve([60, 62, 64, 67], length=4, drift=0.2, spacing=0.5)
 
 	evolve_keys = [k for k in shared if k.startswith("_evolve_")]
 
@@ -131,7 +131,7 @@ def test_strum_detached_exceeding_length_raises_clear_error () -> None:
 	_, builder = _builder(length=4.0)
 
 	with pytest.raises(ValueError, match="detached"):
-		builder.strum(_FakeChord(), root=60, detached=5.0, offset=0.1)
+		builder.strum(_FakeChord(), root=60, detached=5.0, spacing=0.1)
 
 
 # ── Low: negative beats wrap from the end at any magnitude ───────────────────

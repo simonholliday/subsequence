@@ -1067,7 +1067,7 @@ def test_euclidean_with_rng_deterministic () -> None:
 			rng = random.Random(seed)
 		)
 
-		builder.euclidean(60, pulses=8, dropout=0.3)
+		builder.euclidean(60, pulses=8, probability=0.7)
 
 		return set(pattern.steps.keys())
 
@@ -1093,7 +1093,7 @@ def test_bresenham_with_rng_deterministic () -> None:
 			rng = random.Random(seed)
 		)
 
-		builder.bresenham(60, pulses=8, dropout=0.3)
+		builder.bresenham(60, pulses=8, probability=0.7)
 
 		return set(pattern.steps.keys())
 
@@ -1859,13 +1859,13 @@ def test_sequence_repeat_logs_warning (caplog) -> None:
 
 def test_strum_places_notes_with_offset () -> None:
 
-	"""Strum with offset=0.1 should place notes at beats 0.0, 0.1, 0.2."""
+	"""Strum with spacing=0.1 should place notes at beats 0.0, 0.1, 0.2."""
 
 	pattern, builder = _make_builder(length=4)
 
 	chord = subsequence.chords.Chord(root_pc=4, quality="major")
 
-	builder.strum(chord, root=52, velocity=90, offset=0.1)
+	builder.strum(chord, root=52, velocity=90, spacing=0.1)
 
 	ppq = subsequence.constants.MIDI_QUARTER_NOTE
 
@@ -1898,7 +1898,7 @@ def test_strum_direction_down () -> None:
 
 	chord = subsequence.chords.Chord(root_pc=4, quality="major")
 
-	builder.strum(chord, root=52, velocity=90, offset=0.1, direction="down")
+	builder.strum(chord, root=52, velocity=90, spacing=0.1, direction="down")
 
 	positions = sorted(pattern.steps.keys())
 
@@ -1917,7 +1917,7 @@ def test_strum_with_count () -> None:
 
 	chord = subsequence.chords.Chord(root_pc=0, quality="major")
 
-	builder.strum(chord, root=60, velocity=90, offset=0.1, count=5)
+	builder.strum(chord, root=60, velocity=90, spacing=0.1, count=5)
 
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
 
@@ -1932,7 +1932,7 @@ def test_strum_default_direction_is_up () -> None:
 
 	chord = subsequence.chords.Chord(root_pc=4, quality="major")
 
-	builder.strum(chord, root=52, velocity=90, offset=0.1)
+	builder.strum(chord, root=52, velocity=90, spacing=0.1)
 
 	positions = sorted(pattern.steps.keys())
 
@@ -1944,17 +1944,17 @@ def test_strum_default_direction_is_up () -> None:
 
 def test_strum_invalid_offset () -> None:
 
-	"""offset=0 and offset<0 should raise ValueError."""
+	"""spacing=0 and offset<0 should raise ValueError."""
 
 	pattern, builder = _make_builder(length=4)
 
 	chord = subsequence.chords.Chord(root_pc=0, quality="major")
 
-	with pytest.raises(ValueError, match="offset must be positive"):
-		builder.strum(chord, root=60, offset=0)
+	with pytest.raises(ValueError, match="spacing must be positive"):
+		builder.strum(chord, root=60, spacing=0)
 
-	with pytest.raises(ValueError, match="offset must be positive"):
-		builder.strum(chord, root=60, offset=-0.1)
+	with pytest.raises(ValueError, match="spacing must be positive"):
+		builder.strum(chord, root=60, spacing=-0.1)
 
 
 def test_strum_invalid_direction () -> None:
@@ -2028,7 +2028,7 @@ def test_strum_legato_reshapes_durations () -> None:
 
 	chord = subsequence.chords.Chord(root_pc=0, quality="major")
 
-	builder.strum(chord, root=60, velocity=90, offset=0.1, legato=0.9)
+	builder.strum(chord, root=60, velocity=90, spacing=0.1, legato=0.9)
 
 	# Each note is at a different pulse position due to strum offset;
 	# legato stretches each to fill the gap to the next. Verify that
@@ -2120,7 +2120,7 @@ def test_strum_detached_uniform_duration_with_stagger () -> None:
 
 	chord = subsequence.chords.Chord(root_pc=0, quality="major")  # 3 tones
 
-	builder.strum(chord, root=60, velocity=90, offset=0.1, detached=0.25)
+	builder.strum(chord, root=60, velocity=90, spacing=0.1, detached=0.25)
 
 	# duration = 4.0 - 0.25 - (3 - 1) * 0.1 = 3.55 beats = 85 pulses
 	expected_duration = int(3.55 * subsequence.constants.MIDI_QUARTER_NOTE)
@@ -2140,7 +2140,7 @@ def test_strum_detached_last_note_ends_before_cycle_boundary () -> None:
 
 	chord = subsequence.chords.Chord(root_pc=0, quality="major")  # 3 tones
 
-	builder.strum(chord, root=60, velocity=90, offset=0.1, count=5, detached=0.25)
+	builder.strum(chord, root=60, velocity=90, spacing=0.1, count=5, detached=0.25)
 
 	# The last note onset is at (count-1) * offset = 0.4 beats; duration is
 	# (8.0 - 0.25 - 0.4) = 7.35 beats. End-of-note pulse = onset + duration.
@@ -3216,7 +3216,7 @@ def test_bresenham_poly_dropout_reduces_notes () -> None:
 	builder.bresenham_poly(
 		parts={"kick": 0.5, "hat": 0.5},
 		velocity=100,
-		dropout=0.5,
+		probability=0.5,
 	)
 
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
@@ -3273,7 +3273,7 @@ def test_bresenham_poly_deterministic_with_seed () -> None:
 		builder.bresenham_poly(
 			parts={"kick": 0.25, "hat": 0.5},
 			velocity=100,
-			dropout=0.3,
+			probability=0.7,
 		)
 		return set(pattern.steps.keys())
 
@@ -3623,11 +3623,11 @@ def test_cellular_dropout () -> None:
 
 	pattern_full, builder_full = _make_builder(length=4, drum_note_map=drum_map)
 	builder_full.rng = random.Random(42)
-	builder_full.cellular_1d("hat", rule=30, generation=10, velocity=50, dropout=0.0)
+	builder_full.cellular_1d("hat", rule=30, generation=10, velocity=50, probability=1.0)
 
 	pattern_drop, builder_drop = _make_builder(length=4, drum_note_map=drum_map)
 	builder_drop.rng = random.Random(42)
-	builder_drop.cellular_1d("hat", rule=30, generation=10, velocity=50, dropout=0.5)
+	builder_drop.cellular_1d("hat", rule=30, generation=10, velocity=50, probability=0.5)
 
 	full_count = sum(len(s.notes) for s in pattern_full.steps.values())
 	drop_count = sum(len(s.notes) for s in pattern_drop.steps.values())
@@ -3647,7 +3647,7 @@ def test_cellular_2d_places_notes () -> None:
 	builder.rng = random.Random(42)
 
 	pitches = ["kick", "snare", "hat", "open"]
-	builder.cellular_2d(pitches, rule="B368/S245", generation=5, seed=99, density=0.4)
+	builder.cellular_2d(pitches, rule="B368/S245", generation=5, initial_state="random", seed=99, density=0.4)
 
 	total = sum(len(s.notes) for s in pattern.steps.values())
 	assert total > 0
@@ -3664,7 +3664,7 @@ def test_cellular_2d_pitch_mapping () -> None:
 	# Explicit seed: only row 0 has live cells (kick only)
 	seed_grid = [[1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
 	             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
-	builder.cellular_2d(["kick", "snare"], generation=0, seed=seed_grid)
+	builder.cellular_2d(["kick", "snare"], generation=0, initial_state=seed_grid)
 
 	all_pitches = [n.pitch for step in pattern.steps.values() for n in step.notes]
 	assert 36 in all_pitches      # kick present
@@ -3681,7 +3681,7 @@ def test_cellular_2d_velocity_single () -> None:
 
 	seed_grid = [[1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
 	             [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]]
-	builder.cellular_2d(["kick", "hat"], generation=0, seed=seed_grid, velocity=77)
+	builder.cellular_2d(["kick", "hat"], generation=0, initial_state=seed_grid, velocity=77)
 
 	all_velocities = [n.velocity for step in pattern.steps.values() for n in step.notes]
 	assert all(v == 77 for v in all_velocities)
@@ -3698,7 +3698,7 @@ def test_cellular_2d_velocity_list () -> None:
 	# Row 0 (kick): velocity 90. Row 1 (hat): velocity 50.
 	seed_grid = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 	             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]
-	builder.cellular_2d(["kick", "hat"], generation=0, seed=seed_grid, velocity=[90, 50])
+	builder.cellular_2d(["kick", "hat"], generation=0, initial_state=seed_grid, velocity=[90, 50])
 
 	kick_velocities = [
 		n.velocity for step in pattern.steps.values()
@@ -3726,8 +3726,8 @@ def test_cellular_2d_generation_none_uses_cycle () -> None:
 	builder2.rng = random.Random(42)
 
 	pitches = ["hat", "snare"]
-	builder.cellular_2d(pitches, seed=42, density=0.4)
-	builder2.cellular_2d(pitches, generation=5, seed=42, density=0.4)
+	builder.cellular_2d(pitches, initial_state="random", seed=42, density=0.4)
+	builder2.cellular_2d(pitches, generation=5, initial_state="random", seed=42, density=0.4)
 
 	assert sorted(pattern.steps.keys()) == sorted(pattern2.steps.keys())
 
@@ -3742,7 +3742,7 @@ def test_cellular_2d_drum_name_strings () -> None:
 
 	seed_grid = [[1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
 	             [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]]
-	builder.cellular_2d(["c4", "g4"], generation=0, seed=seed_grid)
+	builder.cellular_2d(["c4", "g4"], generation=0, initial_state=seed_grid)
 
 	all_pitches = {n.pitch for step in pattern.steps.values() for n in step.notes}
 	assert 60 in all_pitches
@@ -3758,11 +3758,11 @@ def test_cellular_2d_dropout () -> None:
 
 	pattern_full, builder_full = _make_builder(length=4, drum_note_map=drum_map)
 	builder_full.rng = random.Random(42)
-	builder_full.cellular_2d(pitches, seed=7, density=0.6, generation=3, dropout=0.0)
+	builder_full.cellular_2d(pitches, initial_state="random", seed=7, density=0.6, generation=3, probability=1.0)
 
 	pattern_drop, builder_drop = _make_builder(length=4, drum_note_map=drum_map)
 	builder_drop.rng = random.Random(42)
-	builder_drop.cellular_2d(pitches, seed=7, density=0.6, generation=3, dropout=0.8)
+	builder_drop.cellular_2d(pitches, initial_state="random", seed=7, density=0.6, generation=3, probability=0.2)
 
 	full_count = sum(len(s.notes) for s in pattern_full.steps.values())
 	drop_count = sum(len(s.notes) for s in pattern_drop.steps.values())
@@ -3781,7 +3781,7 @@ def test_cellular_2d_invalid_rule_raises () -> None:
 	builder.rng = random.Random(42)
 
 	with pytest.raises(ValueError):
-		builder.cellular_2d(["kick"], rule="notarule", seed=42)
+		builder.cellular_2d(["kick"], rule="notarule", initial_state="random", seed=42)
 
 
 # --- p.markov() ---
@@ -5168,7 +5168,7 @@ def test_fibonacci_places_notes () -> None:
 	"""fibonacci places the requested number of notes."""
 
 	pattern, builder = _make_builder(length=4)
-	builder.fibonacci(60, steps=8, velocity=80)
+	builder.fibonacci(60, count=8, velocity=80)
 	assert len(pattern.steps) == 8
 
 
@@ -5177,7 +5177,7 @@ def test_fibonacci_correct_count () -> None:
 	"""Total placed notes equals steps parameter."""
 
 	pattern, builder = _make_builder(length=4)
-	builder.fibonacci(60, steps=11)
+	builder.fibonacci(60, count=11)
 	assert len(pattern.steps) == 11
 
 
@@ -5187,7 +5187,7 @@ def test_fibonacci_velocity_tuple () -> None:
 
 	pattern, builder = _make_builder(length=4)
 	builder.rng = random.Random(1)
-	builder.fibonacci(60, steps=8, velocity=(60, 100))
+	builder.fibonacci(60, count=8, velocity=(60, 100))
 	vels = [note.velocity for step in pattern.steps.values() for note in step.notes]
 	assert all(60 <= v <= 100 for v in vels)
 
@@ -5272,11 +5272,11 @@ def test_reaction_diffusion_dropout_reduces_notes () -> None:
 	for seed in range(10):
 		p, b = _make_builder(length=4)
 		b.rng = stdlib_random.Random(seed)
-		b.reaction_diffusion(60, threshold=0.3, dropout=0.8, steps=300)
+		b.reaction_diffusion(60, threshold=0.3, probability=0.2, steps=300)
 		counts.append(len(p.steps))
 
 	p2, b2 = _make_builder(length=4)
-	b2.reaction_diffusion(60, threshold=0.3, dropout=0.0, steps=300)
+	b2.reaction_diffusion(60, threshold=0.3, probability=1.0, steps=300)
 	no_dropout_count = len(p2.steps)
 
 	assert sum(counts) / len(counts) < no_dropout_count
