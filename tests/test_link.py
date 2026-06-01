@@ -62,7 +62,12 @@ def test_link_sets_quantum (patch_midi: None) -> None:
 	"""link() stores the quantum and returns self for method chaining."""
 
 	comp = _make_composition(patch_midi)
-	result = comp.link(quantum=4.0)
+
+	# link() eagerly requires aalink; mock its presence so this test exercises
+	# quantum storage regardless of whether the optional extra is installed.
+	fake_aalink = types.ModuleType("aalink")
+	with unittest.mock.patch.dict(sys.modules, {"aalink": fake_aalink}):
+		result = comp.link(quantum=4.0)
 
 	assert comp._link_quantum == 4.0
 	assert result is comp
@@ -73,7 +78,11 @@ def test_link_default_quantum (patch_midi: None) -> None:
 	"""link() defaults to quantum=4.0 (one bar in 4/4)."""
 
 	comp = _make_composition(patch_midi)
-	comp.link()
+
+	# link() eagerly requires aalink; mock its presence (see test_link_sets_quantum).
+	fake_aalink = types.ModuleType("aalink")
+	with unittest.mock.patch.dict(sys.modules, {"aalink": fake_aalink}):
+		comp.link()
 
 	assert comp._link_quantum == 4.0
 

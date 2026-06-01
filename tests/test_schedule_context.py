@@ -54,7 +54,11 @@ def test_make_safe_callback_context_increments () -> None:
 
 	asyncio.run(run())
 
-	assert received == [0, 1, 2]
+	# Sync callbacks run via loop.run_in_executor (a thread pool), so completion
+	# order across the three fire-and-forget tasks is not guaranteed — under load
+	# they can finish out of order.  The real invariant is that each trigger ran
+	# exactly once with its own captured cycle, i.e. the multiset {0, 1, 2}.
+	assert sorted(received) == [0, 1, 2]
 
 
 def test_make_safe_callback_no_context_flag () -> None:
