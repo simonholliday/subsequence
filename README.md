@@ -1504,6 +1504,19 @@ p.arpeggio(chord, root=48, rng=random.Random(7))
 
 `seed=` is an int; `rng=` is a `random.Random`; precedence is `rng=` > `seed=` > `p.rng`. A few generators are honest about their limits: **`lorenz`** is fully deterministic and varies by its initial conditions (`x0=`), not a seed; **`fibonacci`**, **`de_bruijn`**, and **`branch`** have a fixed structure, so their `seed=` only changes the velocity draws (and, for `branch`, the optional mutation layer).
 
+**One master seed, independent per-pattern streams.** The composition `seed=` is a *master* seed: each pattern — and the harmony and form engines — gets its own independent generator derived from it. One seed reproduces the whole piece, yet patterns never interfere, so a random draw in one pattern won't shift another's.
+
+**Re-seeding a pattern mid-flight.** Because `p.rng` *is* that pattern's own generator, you can reset it in place with `p.rng.seed(n)`; every `p.rng`-based draw *after* that line — this bar and onward — then flows from the new seed (including generators like `evolve` that fall back to `p.rng`):
+
+```python
+def bass (p):
+    if p.bar == 16:
+        p.rng.seed(99)            # reset just this pattern's stream from bar 16 on
+    p.evolve(seed_pitches, ...)   # now driven by seed 99 — drums and others untouched
+```
+
+⚠️ **Re-seed once, not on every rebuild.** Reseeding with the *same* number every cycle pins the pattern to *identical* output every bar. Guard it so it fires once: on a fixed bar (`if p.bar == 16`), or at a section boundary so every chorus replays the same — `if p.section and p.section.first_bar: p.rng.seed(7)` (add `and p.section.name == "chorus"` to pin only the choruses). Use `p.rng.seed(...)`, which resets in place; `p.rng = random.Random(...)` only affects the current rebuild and reverts next bar.
+
 ### Stochastic utilities
 
 `subsequence.sequence_utils` provides structured randomness primitives:
