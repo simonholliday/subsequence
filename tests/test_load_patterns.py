@@ -115,6 +115,45 @@ def test_load_patterns_sets_live_mode (patch_midi: None) -> None:
 	assert composition._is_live is True
 
 
+def test_load_patterns_injects_live_reload_dunders (patch_midi: None) -> None:
+
+	"""The exec namespace exposes __name__='__live_reload__' and __file__=source_label.
+
+	Powers the single-file workflow: a user can write
+	``if __name__ == "__main__": composition = subsequence.Composition(...)``
+	at the top of a self-watching file and have it skipped during reload.
+	"""
+
+	composition = subsequence.Composition(bpm=120, output_device="Dummy MIDI")
+
+	# Source records the dunder values it saw at exec time on composition.data
+	# so the test can read them back.
+	composition.load_patterns(
+		"composition.data['name']  = __name__\n"
+		"composition.data['file']  = __file__\n",
+		source_label = "uploaded-session-xyz",
+	)
+
+	assert composition.data["name"] == "__live_reload__"
+	assert composition.data["file"] == "uploaded-session-xyz"
+
+
+def test_load_patterns_skips_main_guard (patch_midi: None) -> None:
+
+	"""``if __name__ == "__main__":`` blocks in the source are skipped at reload-time."""
+
+	composition = subsequence.Composition(bpm=120, output_device="Dummy MIDI")
+
+	composition.load_patterns(
+		"composition.data['outside_guard'] = True\n"
+		"if __name__ == '__main__':\n"
+		"\tcomposition.data['inside_guard'] = True\n"
+	)
+
+	assert composition.data.get("outside_guard") is True
+	assert "inside_guard" not in composition.data
+
+
 # ── Post-play (event loop running) ──────────────────────────────────────────
 #
 # Production callers (web handlers, queue consumers, ...) run on a thread

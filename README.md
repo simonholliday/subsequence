@@ -43,9 +43,11 @@ Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes
   - [MIDI recording and rendering](#midi-recording-and-rendering)
   - [Live coding](#live-coding)
   - [Live coding via file watching](#live-coding-via-file-watching)
+  - [Single-file live coding](#single-file-live-coding)
   - [Loading patterns from a string](#loading-patterns-from-a-string)
   - [Clock accuracy](#clock-accuracy)
   - [MIDI input and external clock](#midi-input-and-external-clock)
+  - [Live held-note arpeggiator](#live-held-note-arpeggiator)
   - [Ableton Link](#ableton-link)
   - [Pattern tools and hardware control](#pattern-tools-and-hardware-control)
   - [OSC integration](#osc-integration)
@@ -1857,6 +1859,49 @@ Run `python live_init.py` and edit `live_patterns.py` to taste.  See [examples/l
 
 The file watcher and the TCP REPL (`composition.live()`) are independent — you can enable either, both, or neither.  `composition.unregister(name)` is available from both: a deleted pattern in the live file calls it automatically; you can also call it directly from the REPL.
 
+### Single-file live coding
+
+If the wrapper / live-file split feels heavy for solo work, you can collapse the two into one file that watches itself. The mechanism uses an idiom every Python developer already reaches for: `if __name__ == "__main__":`.
+
+Inside the live-reload namespace, `__name__` is set to `"__live_reload__"` — not `"__main__"`. So `if __name__ == "__main__":` blocks only run when the file is executed directly (i.e. via `python my_session.py`), and are skipped during every re-exec triggered by save.
+
+```python
+"""my_session.py — single-file live coding"""
+
+import subsequence
+import subsequence.constants.instruments.gm_drums as gm_drums
+
+# Runs once at startup.
+if __name__ == "__main__":
+    composition = subsequence.Composition(bpm=120, key="E")
+    composition.harmony(style="aeolian_minor", cycle_beats=4, gravity=0.8)
+    composition.watch(__file__)
+
+# Re-runs on every save.
+@composition.pattern(channel=10, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
+def drums (p):
+    p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
+    p.hit_steps("snare_1", [4, 12], velocity=90)
+
+# Runs once at startup.
+if __name__ == "__main__":
+    composition.play()
+```
+
+Run `python my_session.py`. Edit and save — pattern bodies hot-swap on the next bar; the `composition`, MIDI ports, harmony engine, and event loop are untouched because their setup lives behind the guard.
+
+**Rule of thumb:**
+- **Inside the guard** — anything that should run once: building the `Composition`, opening MIDI ports, `composition.harmony(...)`, `composition.watch(__file__)`, `composition.display(...)`, `composition.play()`.
+- **Outside the guard** — anything you want to iterate on live: pattern definitions, scales, constants, and form structure if you want it tweakable.
+
+The watcher also injects `__file__` set to the watched file's path, so `composition.watch(__file__)` works identically on the initial run and during reloads (where it's a no-op because the guard skips it). For the same reason, `__file__` is set to the user-supplied `source_label` inside `composition.load_patterns(source, source_label=...)`.
+
+**Self-watch detection.** When `watch(path)` is called and `path` matches the calling file's own `__file__`, the watcher skips its initial-load exec — the outer Python script is already running every pattern decorator at module level, so a second exec would double-register everything. The two-file flow (where the wrapper's `__file__` differs from the watched live file) is unaffected: `_load_initial` still execs the live file normally because there's no other path that does.
+
+**Why the two-file split is still supported:** it makes the misuse impossible. There's no way to accidentally re-open MIDI ports or rebuild the `Composition` on save when the wrapper file is separate. The single-file form is more compact but trusts the user to place each call on the correct side of the guard. Pick whichever fits how you work.
+
+See [examples/live_single_file.py](examples/live_single_file.py) for a runnable starting point.
+
 ### Loading patterns from a string
 
 `composition.load_patterns(source)` does exactly what `watch()` does on save, but the source is presented as an in-memory string instead of being read from disk. Useful when patterns arrive over a network — e.g. a small web service that accepts pattern uploads from a trusted contributor, or a message-queue consumer.
@@ -2024,6 +2069,34 @@ comp.cc_map(74, "filter", input_device="faders")
 # Forward mod wheel from the keyboard to pitch bend on the Integra
 comp.cc_forward(1, "pitchwheel", input_device="keys", output_device="integra")
 ```
+
+### Live held-note arpeggiator
+
+`cc_map()` turns incoming **CC** into a live parameter; `note_input()` does the same for incoming **notes**. It tracks the set of keys you're currently holding so a pattern can read them with `p.held_notes()` — typically fed straight to `p.arpeggio()`. The composition still authors the rhythm and motion; your hands supply the pitch set.
+
+```python
+composition.midi_input("Arturia KeyStep")    # open the input port
+composition.note_input(channel=1, release_ms=30)
+
+@composition.pattern(channel=6, beats=4)
+def arp(p):
+    p.arpeggio(p.held_notes(), direction="up")   # rests when no keys are held
+```
+
+Hold a chord and the arp runs over it; release everything and it rests. `p.held_notes()` returns the held MIDI notes sorted ascending (and an empty list when nothing is held).
+
+This is a live **performance layer over the deterministic skeleton**: the seed still reproduces the rhythm and structure exactly, while the held notes are an acknowledged live overlay. When you render headlessly there's no keyboard, so `p.held_notes()` is empty and seeded output is unchanged.
+
+Two knobs smooth out playing:
+
+- **`release_ms`** *(default 30)* keeps a just-released note counting as held for a few milliseconds, so the momentary all-keys-up gap as you move your hand doesn't drop the arp to silence. Set `0` to release instantly.
+- **`latch=True`** holds the chord after you lift your hands until you play a new one — like a hardware arp's latch.
+
+```python
+composition.note_input(channel=1, latch=True)   # chord persists until you play the next one
+```
+
+> `note_input()` requires a `midi_input()` first (it needs an open input port). One note-input source is supported for now.
 
 ### MIDI clock output
 
@@ -2983,6 +3056,10 @@ Demonstrates the [file-watching live coding](#live-coding-via-file-watching) wor
 ### Load patterns from a string (`examples/load_patterns.py`)
 
 Demonstrates [`composition.load_patterns(source)`](#loading-patterns-from-a-string) — the in-memory string analogue of `composition.watch(path)`. Same compile + exec + activate + diff-and-unregister behaviour, but with the source presented as a Python string instead of being read from a file. Use this when patterns arrive over a network (web upload from a trusted contributor, message-queue consumer) or for one-shot session loads with no file backing. The example calls it before `play()` to register an initial set of patterns from a string; post-`play()` calls work the same way and are typically invoked from a worker thread (e.g. a web handler).
+
+### Single-file live coding (`examples/live_single_file.py`)
+
+Demonstrates the [single-file live-coding workflow](#single-file-live-coding) — one file that watches itself. One-time setup (build `Composition`, harmony, MIDI ports, `composition.watch(__file__)`, `composition.play()`) lives inside `if __name__ == "__main__":` blocks; patterns and anything else you want to iterate on live sit outside the guard. Run `python examples/live_single_file.py`, edit and save the same file, and patterns hot-swap on the next bar. The wrapper / live-file pair (`live_init.py` + `live_patterns.py`) remains the recommended-for-beginners workflow; this is the compact alternative for solo work.
 
 ### Extra utilities
 

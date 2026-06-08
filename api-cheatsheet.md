@@ -36,6 +36,7 @@ The top-level controller for a musical piece.
 | `midi_output(device, name, latency_ms) -> int` | Register an additional MIDI output device. |
 | `mirror(name, device, channel, drum_note_map) -> None` | Add a mirror destination to a running pattern. |
 | `mute(name) -> None` | Mute a running pattern by name. |
+| `note_input(channel, release_ms, latch, input_device) -> None` | Track notes held on a MIDI keyboard for live arpeggiation. |
 | `on_event(event_name, callback) -> None` | Register a callback for a sequencer event (e.g., "bar", "start", "stop"). |
 | `osc(receive_port, send_port, send_host, receive_host) -> None` | Enable bi-directional Open Sound Control (OSC). |
 | `osc_map(address, handler) -> None` | Register a custom OSC handler. |
@@ -66,7 +67,7 @@ The musician's 'palette' for creating musical content.
 
 | Method | Description |
 |---|---|
-| `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
+| `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key, held_notes) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
 | `apply_tuning(tuning, bend_range, channels, reference_note) -> 'PatternBuilder'` | Apply a microtonal tuning to this pattern via pitch bend injection. |
 | `arpeggio(notes, root, velocity, count, inversion, beat, span, spacing, duration, direction, seed, rng) -> 'PatternBuilder'` | Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time at regular beat intervals. |
 | `bend(note, amount, start, end, shape, resolution) -> 'subsequence.pattern_builder.PatternBuilder'` | Bend a specific note by index. |
@@ -97,6 +98,7 @@ The musician's 'palette' for creating musical content.
 | `grid *(property)*` | Number of grid slots in this pattern (e.g. 16 for a 4-beat sixteenth-note pattern). |
 | `groove(template, strength) -> 'PatternBuilder'` | Apply a groove template to all notes in the pattern. |
 | `half_time() -> 'PatternBuilder'` | Expand all notes by factor of 2, halving the speed. Notes that fall outside the pattern length are removed. |
+| `held_notes() -> List[int]` | Return the MIDI notes currently held on the ``note_input`` keyboard. |
 | `hit(pitch, beats, velocity, duration) -> 'PatternBuilder'` | Place multiple short 'hits' at a list of beat positions. |
 | `hit_steps(pitch, steps, velocity, duration, grid, probability, seed, rng) -> 'PatternBuilder'` | Place short hits at specific step (grid) positions. |
 | `invert(pivot) -> 'PatternBuilder'` | Invert all pitches around a pivot note. |

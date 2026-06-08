@@ -643,16 +643,19 @@ def test_arpeggio_fills_pattern () -> None:
 	assert total_notes == 16
 
 
-def test_arpeggio_empty_pitches_raises () -> None:
+def test_arpeggio_empty_pitches_rests () -> None:
 
 	"""
-	Arpeggio with empty pitches list should raise ValueError.
+	Arpeggio with an empty pitches list rests (places nothing, returns self)
+	so ``p.arpeggio(p.held_notes())`` is silent when no keys are held.
 	"""
 
 	pattern, builder = _make_builder()
 
-	with pytest.raises(ValueError, match="Pitches list cannot be empty"):
-		builder.arpeggio([], spacing=0.25)
+	result = builder.arpeggio([], spacing=0.25)
+
+	assert result is builder
+	assert pattern.steps == {}
 
 
 def test_arpeggio_invalid_step_raises () -> None:

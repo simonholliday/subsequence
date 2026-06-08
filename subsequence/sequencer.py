@@ -13,6 +13,7 @@ import mido
 import subsequence.constants
 import subsequence.easing
 import subsequence.event_emitter
+import subsequence.held_notes
 import subsequence.midi_utils
 
 
@@ -335,6 +336,16 @@ class Sequencer:
 		self._forward_buffer: collections.deque = collections.deque()
 		# Shared reference to composition.data so CC mappings can update it
 		self._composition_data: typing.Dict[str, typing.Any] = {}
+
+		# Held-note input — populated from Composition.note_input().
+		# The tracker (created in _run when note_input was declared) and a buffer
+		# of raw (is_on, pitch, velocity, perf_counter) note events.  The buffer is
+		# appended on the mido callback thread and drained on the loop thread in
+		# _advance_pulse, so all tracker state stays single-threaded — no lock.
+		self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None
+		self._note_input_buffer: collections.deque = collections.deque()
+		self._note_input_channel: typing.Optional[int] = None  # None = any channel
+		self._note_input_device: typing.Optional[int] = None   # None = any input device
 
 		# Ableton Link clock — set by Composition._run() when comp.link() was called.
 		# Must be initialized before set_bpm() is called below.
@@ -774,6 +785,20 @@ class Sequencer:
 				else:
 					# Queued: buffer for drain in _process_pulse on the event loop thread.
 					self._forward_buffer.append((self.pulse_count, out_msg))
+
+		# Buffer incoming note on/off for the held-note tracker.  Only the
+		# GIL-atomic deque.append happens here; the tracker is updated when the
+		# loop thread drains the buffer in _advance_pulse.
+		if self._held_notes is not None and message.type in ('note_on', 'note_off'):
+			if self._note_input_channel is not None and message.channel != self._note_input_channel:
+				return
+			if self._note_input_device is not None and device_idx != self._note_input_device:
+				return
+			# A note_on with velocity 0 is the running-status form of note-off.
+			if message.type == 'note_on' and message.velocity > 0:
+				self._note_input_buffer.append((True, message.note, message.velocity, time.perf_counter()))
+			else:
+				self._note_input_buffer.append((False, message.note, 0, time.perf_counter()))
 
 
 
@@ -1303,6 +1328,18 @@ class Sequencer:
 				)
 				self.running = False
 				return
+
+		# Drain buffered note input into the held-note tracker BEFORE patterns
+		# rebuild, so a pattern's held_notes() snapshot reflects this pulse rather
+		# than the previous one.  deque.popleft() is GIL-atomic; the tracker is
+		# only ever touched on this loop thread (here and during rebuild).
+		if self._held_notes is not None:
+			while self._note_input_buffer:
+				is_on, pitch, velocity, when = self._note_input_buffer.popleft()
+				if is_on:
+					self._held_notes.note_on(pitch, velocity, when)
+				else:
+					self._held_notes.note_off(pitch, when)
 
 		await self._maybe_reschedule_patterns(self.pulse_count)
 		await self._process_pulse(self.pulse_count)

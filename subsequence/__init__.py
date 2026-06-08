@@ -121,6 +121,11 @@ Integration:
   ``p.data`` for both external data access and cross-pattern
   communication. OSC for bidirectional communication with mixers,
   lighting, visuals.
+- **Live held-note arpeggiator.** ``composition.note_input()`` tracks the
+  notes you hold on a keyboard; a pattern reads them with ``p.held_notes()``
+  and arpeggiates them (``p.arpeggio(p.held_notes())``), with ``release_ms``
+  debounce and ``latch``. A performance layer over the deterministic
+  composition - empty when rendering headlessly.
 - **Live coding.** Hot-swap patterns, change tempo, mute/unmute, and
   tweak parameters during playback via a built-in TCP eval server.
 - **Hotkeys.** Single keystrokes to jump sections, toggle mutes, or

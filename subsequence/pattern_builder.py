@@ -1,5 +1,6 @@
 import logging
 import random
+import time
 import typing
 
 import pymididefs.rpn
@@ -8,6 +9,7 @@ import subsequence.constants
 import subsequence.constants.velocity
 import subsequence.easing
 import subsequence.groove
+import subsequence.held_notes
 import subsequence.intervals
 import subsequence.pattern
 import subsequence.sequence_utils
@@ -108,7 +110,7 @@ class PatternBuilder(
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info.
 
@@ -141,6 +143,9 @@ class PatternBuilder(
 			key: The composition's key (e.g. ``"C"``), used by ``p.progression()``
 				to generate chords from a graph style.  ``None`` when the composition
 				has no key set.
+			held_notes: Optional live held-note tracker from ``composition.note_input()``.
+				Read via ``p.held_notes()``.  ``None`` when no note input was declared
+				(and when rendering headlessly), so the accessor returns an empty list.
 		"""
 
 		self._pattern = pattern
@@ -156,6 +161,7 @@ class PatternBuilder(
 		self._default_grid: int = default_grid
 		self.data: typing.Dict[str, typing.Any] = data if data is not None else {}
 		self.key: typing.Optional[str] = key  # composition key, for p.progression() chord generation
+		self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = held_notes
 		self._tuning_applied: bool = False  # set by apply_tuning() to prevent double-apply
 
 	@property
@@ -200,6 +206,27 @@ class PatternBuilder(
 			return 0.0
 
 		return self.conductor.get(name, self.bar * 4)
+
+	def held_notes (self) -> typing.List[int]:
+
+		"""Return the MIDI notes currently held on the ``note_input`` keyboard.
+
+		The notes are sorted ascending.  Pass the result straight to
+		``p.arpeggio()`` to arpeggiate whatever the player is holding —
+		``p.arpeggio(p.held_notes())`` rests when no keys are down.  Returns
+		an empty list when no ``note_input()`` source was declared and when
+		rendering headlessly (so seeded output stays deterministic).
+
+		The set is sampled once per rebuild; ``note_input(release_ms=…)``
+		smooths the gap during hand-position changes so the arp does not drop
+		out, and ``note_input(latch=True)`` holds the chord until you play a
+		new one.
+		"""
+
+		if self._held_notes is None:
+			return []
+
+		return self._held_notes.snapshot(time.perf_counter())
 
 	def param (self, name: str, default: typing.Any = None) -> typing.Any:
 
@@ -834,6 +861,11 @@ class PatternBuilder(
 		— use ``duration`` for how long each note rings and ``span`` for how much of
 		the bar the figure fills.
 
+		An empty pitch list rests (places nothing), so a live arpeggiator over
+		``p.held_notes()`` is simply silent when no keys are held::
+
+			p.arpeggio(p.held_notes(), direction="up")
+
 		Parameters:
 			notes: A chord to arpeggiate (anything with a ``.tones()`` method — the
 				pattern's ``chord``, or a chord from ``p.progression()``), or a list
@@ -902,7 +934,7 @@ class PatternBuilder(
 			if root is not None or count is not None or inversion != 0:
 				raise ValueError("arpeggio root=, count=, and inversion= only apply to the chord form — arpeggio(chord, root=48, count=4); with a plain pitch list, drop them")
 			if not notes:
-				raise ValueError("Pitches list cannot be empty")
+				return self	# nothing held (e.g. p.arpeggio(p.held_notes()) with no keys down) — rest
 			resolved = [r for r in (self._resolve_pitch_lenient(p) for p in notes) if r is not None]
 			if not resolved:
 				return self	# every named voice was dropped (this device lacks them all)

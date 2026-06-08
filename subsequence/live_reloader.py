@@ -104,6 +104,7 @@ class LiveReloader:
 		composition: "subsequence.composition.Composition",
 		path: typing.Union[str, pathlib.Path],
 		poll_interval: float = 0.25,
+		skip_initial_exec: bool = False,
 	) -> None:
 
 		"""Initialise the reloader in a stopped state.
@@ -114,11 +115,19 @@ class LiveReloader:
 			poll_interval: Seconds between ``st_mtime`` polls.  Default
 				0.25 s gives a responsive feel for editor saves without
 				busy-waiting.
+			skip_initial_exec: When ``True``, ``start()`` skips the
+				compile + exec phase of the initial load and only records
+				``_last_mtime``.  Set by ``Composition.watch()`` when it
+				detects a self-watch (the file calling ``watch()`` is the
+				file being watched), since the outer Python script execution
+				will already run the patterns at the module level — a second
+				exec via ``_load_initial`` would double-register every one.
 		"""
 
 		self._composition = composition
 		self._path: pathlib.Path = pathlib.Path(path)
 		self._poll_interval = poll_interval
+		self._skip_initial_exec = skip_initial_exec
 
 		# Last known mtime; set by the initial load and updated on each
 		# detected change.  Used by the watcher loop to skip unchanged ticks.
@@ -184,13 +193,20 @@ class LiveReloader:
 		``_load_initial`` contract is pre-play setup, so direct exec is
 		correct here: decorators populate ``_pending_patterns`` and the
 		composition's ``play()`` graduates them.
+
+		When ``self._skip_initial_exec`` is ``True`` (single-file self-watch),
+		the compile+exec step is skipped — the outer Python script will run
+		the decorators itself.  We still stat for ``_last_mtime`` so the
+		watcher loop doesn't immediately re-trigger on the first poll.
 		"""
 
-		content = self._path.read_text(encoding = "utf-8")
-		compiled = compile(content, str(self._path), "exec")
+		if not self._skip_initial_exec:
 
-		namespace = self._composition._build_live_namespace()
-		exec(compiled, namespace)
+			content = self._path.read_text(encoding = "utf-8")
+			compiled = compile(content, str(self._path), "exec")
+
+			namespace = self._composition._build_live_namespace(source_label = str(self._path))
+			exec(compiled, namespace)
 
 		try:
 			self._last_mtime = os.stat(self._path).st_mtime
@@ -261,7 +277,7 @@ class LiveReloader:
 			logger.warning(f"LiveReloader: SyntaxError in {self._path}, skipping reload:\n{traceback.format_exc()}")
 			return
 
-		namespace = self._composition._build_live_namespace()
+		namespace = self._composition._build_live_namespace(source_label = str(self._path))
 
 		try:
 			await self._composition._apply_source_async(compiled, namespace)

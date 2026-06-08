@@ -345,3 +345,122 @@ async def test_reload_uses_fresh_namespace_each_call (patch_midi: None, tmp_path
 	assert "drums" in composition._running_patterns
 
 	composition._live_reloader.stop()
+
+
+# ── Single-file workflow: __name__ / __file__ injection ─────────────────────
+
+
+def test_initial_load_injects_live_reload_dunders (tmp_path: pathlib.Path) -> None:
+
+	"""The reloader exposes ``__name__='__live_reload__'`` and ``__file__=path`` in the watched namespace.
+
+	Together with the user writing ``if __name__ == "__main__":`` blocks for
+	one-time setup, this powers the single-file workflow: setup runs when the
+	file is executed directly, while the watcher's re-exec sees a different
+	``__name__`` and skips those blocks.
+	"""
+
+	live_file = tmp_path / "patterns.py"
+	live_file.write_text(
+		"composition.data['name'] = __name__\n"
+		"composition.data['file'] = __file__\n"
+	)
+
+	composition = subsequence.Composition(bpm=120, output_device="Dummy MIDI")
+	composition.watch(live_file)
+
+	assert composition.data["name"] == "__live_reload__"
+	assert composition.data["file"] == str(live_file)
+
+
+def test_initial_load_skips_main_guard (tmp_path: pathlib.Path) -> None:
+
+	"""``if __name__ == "__main__":`` blocks in the watched file are skipped.
+
+	This is the core invariant for the single-file workflow — one-time
+	setup gated by the guard must not re-run inside the watcher's exec.
+	"""
+
+	live_file = tmp_path / "patterns.py"
+	live_file.write_text(
+		"composition.data['always'] = True\n"
+		"if __name__ == '__main__':\n"
+		"\tcomposition.data['main_guard'] = True\n"
+	)
+
+	composition = subsequence.Composition(bpm=120, output_device="Dummy MIDI")
+	composition.watch(live_file)
+
+	assert composition.data["always"] is True
+	assert "main_guard" not in composition.data
+
+
+def test_self_watch_skips_initial_exec (tmp_path: pathlib.Path) -> None:
+
+	"""Self-watch (watch(__file__) from the file being watched) skips _load_initial's exec.
+
+	Otherwise the outer Python script execution AND the watcher's initial
+	exec both register the same pattern decorators, double-counting every
+	pattern.  Detection compares the watch path to the caller frame's
+	module-level ``__file__``.
+	"""
+
+	live_file = tmp_path / "single.py"
+	live_file.write_text(
+		"composition.data['exec_count'] = composition.data.get('exec_count', 0) + 1\n"
+		"@composition.pattern(channel=1, beats=4)\n"
+		"def drums (p): pass\n"
+	)
+
+	composition = subsequence.Composition(bpm=120, output_device="Dummy MIDI")
+
+	# Simulate ``python single.py`` by exec'ing the file in a namespace
+	# whose ``__file__`` matches the path being watched — that's the signal
+	# Composition.watch() uses to detect self-watch.
+	preamble = (
+		"composition.watch(__file__)\n"
+		+ live_file.read_text()
+	)
+	ns = {"__name__": "__main__", "__file__": str(live_file), "composition": composition}
+	exec(compile(preamble, str(live_file), "exec"), ns)
+
+	# Outer exec ran the body once; _load_initial should have been skipped.
+	assert composition.data["exec_count"] == 1
+	pending_names = [p.builder_fn.__name__ for p in composition._pending_patterns]
+	assert pending_names == ["drums"]  # exactly one, not two
+
+	composition._live_reloader.stop()
+
+
+def test_two_file_watch_runs_initial_exec (tmp_path: pathlib.Path) -> None:
+
+	"""The classic two-file flow still runs _load_initial: caller's __file__ != watched path."""
+
+	wrapper_file = tmp_path / "wrapper.py"
+	live_file    = tmp_path / "patterns.py"
+
+	live_file.write_text(
+		"composition.data['exec_count'] = composition.data.get('exec_count', 0) + 1\n"
+		"@composition.pattern(channel=1, beats=4)\n"
+		"def drums (p): pass\n"
+	)
+
+	composition = subsequence.Composition(bpm=120, output_device="Dummy MIDI")
+
+	# Simulate ``python wrapper.py`` calling watch(live_file).  Caller's
+	# __file__ is wrapper_file; watched path is live_file → different →
+	# normal _load_initial path runs and execs the live file.
+	ns = {
+		"__name__":    "__main__",
+		"__file__":    str(wrapper_file),
+		"composition": composition,
+		"live_path":   str(live_file),
+	}
+	exec("composition.watch(live_path)", ns)
+
+	# _load_initial ran the live file exactly once.
+	assert composition.data["exec_count"] == 1
+	pending_names = [p.builder_fn.__name__ for p in composition._pending_patterns]
+	assert pending_names == ["drums"]
+
+	composition._live_reloader.stop()

@@ -17,6 +17,7 @@ import subsequence.constants.durations
 import subsequence.constants.velocity
 import subsequence.display
 import subsequence.harmonic_state
+import subsequence.held_notes
 import subsequence.keystroke
 import subsequence.live_reloader
 import subsequence.live_server
@@ -731,6 +732,8 @@ class Composition:
 		self._clock_output: bool = False
 		self._cc_mappings: typing.List[typing.Dict[str, typing.Any]] = []
 		self._cc_forwards: typing.List[typing.Dict[str, typing.Any]] = []
+		# Held-note input config from note_input() (None = not declared).
+		self._note_input: typing.Optional[typing.Dict[str, typing.Any]] = None
 		# Additional output devices registered with midi_output() after construction.
 		self._additional_outputs: typing.List[_AdditionalOutput] = []
 		# Additional input devices: (device_name: str, alias: Optional[str], clock_follow: bool)
@@ -1774,6 +1777,66 @@ class Composition:
 		})
 
 
+	def note_input (
+		self,
+		channel: typing.Optional[int] = None,
+		release_ms: float = 30.0,
+		latch: bool = False,
+		input_device: subsequence.midi_utils.DeviceId = None,
+	) -> None:
+
+		"""Track notes held on a MIDI keyboard for live arpeggiation.
+
+		Incoming note-on/note-off messages build a live "currently held" set
+		that any pattern reads via ``p.held_notes()`` — typically fed straight
+		to ``p.arpeggio()``.  The composition still authors the rhythm and
+		motion; the player's hands supply the pitch set.  This is a live
+		*performance* layer over the deterministic, seeded composition: when
+		rendering headlessly there is no input, so ``p.held_notes()`` is empty
+		and seeded output is unchanged.
+
+		**Requires** ``midi_input()`` to be called first to open an input port.
+
+		Parameters:
+			channel: If given, only track notes on this channel.  Uses the same
+				numbering convention as ``pattern()`` (1-16 by default, or 0-15
+				with ``zero_indexed_channels=True``).  ``None`` tracks any
+				channel (default).
+			release_ms: How long (milliseconds) a released note keeps counting
+				as held.  This smooths the momentary all-keys-up gap during a
+				hand-position change so the arp does not drop to silence.
+				Default 30.0; set 0.0 to release instantly.  Ignored when
+				``latch`` is True.
+			latch: When True, the held set persists after you lift your hands
+				until you play a new chord (the first key after every key is up
+				replaces it) — like a hardware arp's latch.
+			input_device: Only track notes from this input device (index or
+				name).  ``None`` tracks any input device (default).
+
+		Example:
+			```python
+			comp.midi_input("Arturia KeyStep")
+			comp.note_input(channel=1, release_ms=30)
+
+			@comp.pattern(channel=6, beats=4)
+			def arp (p):
+			    p.arpeggio(p.held_notes(), direction="up")  # rests when silent
+			```
+		"""
+
+		if self._note_input is not None:
+			raise RuntimeError("only one note_input source is supported — named multi-source is not yet available")
+
+		resolved_channel = self._resolve_channel(channel) if channel is not None else None
+
+		self._note_input = {
+			'channel': resolved_channel,
+			'release_ms': release_ms,
+			'latch': latch,
+			'input_device': input_device,  # resolved to int index in _run()
+		}
+
+
 	@staticmethod
 	def _make_cc_forward_transform (
 		output: typing.Union[str, typing.Callable],
@@ -1988,12 +2051,46 @@ class Composition:
 		# Required for the decorator hot-swap path to fire on re-decoration.
 		self._is_live = True
 
+		# Detect the single-file workflow: if watch() is called from inside
+		# the very file being watched, the outer Python script execution will
+		# already register the patterns (the decorators sit at module level
+		# below ``watch(__file__)``).  In that case, _load_initial's re-exec
+		# would double-register every pattern, so skip it.  For the two-file
+		# workflow (path != caller's __file__) the initial exec is essential
+		# — it's the only way the watched file's patterns ever reach the
+		# composition.
+		caller_file = self._caller_module_file()
+		self_watch = False
+		if caller_file is not None:
+			try:
+				self_watch = pathlib.Path(caller_file).resolve() == pathlib.Path(path).resolve()
+			except OSError:
+				self_watch = False
+
 		self._live_reloader = subsequence.live_reloader.LiveReloader(
 			composition = self,
 			path = path,
 			poll_interval = poll_interval,
+			skip_initial_exec = self_watch,
 		)
 		self._live_reloader.start()
+
+	@staticmethod
+	def _caller_module_file () -> typing.Optional[str]:
+
+		"""Return ``__file__`` of the module that invoked the caller, if available.
+
+		Walks one frame up the call stack — the immediate caller is
+		``watch()``, so ``f_back`` is the user's code.  Returns the
+		module-level ``__file__`` of that frame's globals; ``None`` when
+		the caller has no ``__file__`` (REPL, exec'd context, etc.).
+		"""
+
+		frame = inspect.currentframe()
+		if frame is None or frame.f_back is None or frame.f_back.f_back is None:
+			return None
+		# f_back = watch(); f_back.f_back = user code calling watch().
+		return frame.f_back.f_back.f_globals.get("__file__")
 
 	def load_patterns (
 		self,
@@ -2058,7 +2155,7 @@ class Composition:
 		# Compile on the caller's thread so SyntaxError comes back fast,
 		# before any cross-thread scheduling.
 		compiled = compile(source, source_label, "exec")
-		namespace = self._build_live_namespace()
+		namespace = self._build_live_namespace(source_label = source_label)
 
 		loop = self._sequencer._event_loop
 
@@ -2147,7 +2244,7 @@ class Composition:
 			if name not in self._declared_names:
 				self.unregister(name)
 
-	def _build_live_namespace (self) -> typing.Dict[str, typing.Any]:
+	def _build_live_namespace (self, source_label: str = "<live>") -> typing.Dict[str, typing.Any]:
 
 		"""Build a fresh namespace dict for exec'ing live source.
 
@@ -2155,13 +2252,33 @@ class Composition:
 		package), and a safe builtins set with ``help``, ``input``,
 		``breakpoint``, ``exit``, ``quit`` blocked.
 
-		Single source of truth: both ``live_reloader`` (file watching) and
-		``live_server`` (TCP REPL) call this so live source sees the same
-		environment from either entry point.
+		Also injects two dunder globals that make the single-file live-coding
+		workflow ergonomic:
+
+		* ``__name__ = "__live_reload__"`` — so ``if __name__ == "__main__":``
+		  blocks in the watched file are *skipped* during live reload.  The
+		  same file run directly with ``python my_session.py`` sees
+		  ``__name__ == "__main__"`` and runs setup; saves trigger reload
+		  with ``__name__ == "__live_reload__"``, skipping setup and only
+		  re-running pattern definitions.
+		* ``__file__ = source_label`` — so ``composition.watch(__file__)``
+		  and any user code referencing ``__file__`` works inside the live
+		  namespace.  Set to the file path for ``LiveReloader``, the
+		  user-supplied ``source_label`` for ``Composition.load_patterns``,
+		  and ``"<live>"`` for ``LiveServer``.
+
+		Single source of truth: ``live_reloader`` (file watching),
+		``live_server`` (TCP REPL), and ``load_patterns`` (string source)
+		all call this so live source sees the same environment from any
+		entry point.
 
 		The blocklist prevents calls that would stall the async event loop
 		running the sequencer.  It is **not** a security sandbox — exec'd
 		code can still do anything Python allows.
+
+		Parameters:
+			source_label: Value to bind to ``__file__`` in the namespace.
+				Defaults to ``"<live>"``.
 		"""
 
 		import subsequence  # local import: this module is imported during subsequence init
@@ -2175,6 +2292,8 @@ class Composition:
 
 		return {
 			"__builtins__": safe_builtins,
+			"__name__":     "__live_reload__",
+			"__file__":     source_label,
 			"composition":  self,
 			"subsequence":  subsequence,
 		}
@@ -3146,7 +3265,8 @@ class Composition:
 			rng=random.Random(),  # Fresh random state for each trigger
 			tweaks={},
 			default_grid=default_grid,
-			data=self.data
+			data=self.data,
+			held_notes=self._sequencer._held_notes
 		)
 
 		# Call the builder function
@@ -3334,6 +3454,21 @@ class Composition:
 		self._sequencer.cc_mappings = self._cc_mappings
 		self._sequencer.cc_forwards = self._cc_forwards
 		self._sequencer._composition_data = self.data
+
+		# Held-note input: create the tracker and resolve its channel/device
+		# filter so the callback thread can buffer matching note events.
+		if self._note_input is not None:
+			if self._input_device is None and not self._additional_inputs:
+				raise RuntimeError("note_input() requires a MIDI input — call composition.midi_input(device) first")
+			raw_dev = self._note_input.get('input_device')
+			if isinstance(raw_dev, str):
+				raw_dev = self._resolve_input_device_id(raw_dev)
+			self._sequencer._note_input_channel = self._note_input['channel']
+			self._sequencer._note_input_device = raw_dev
+			self._sequencer._held_notes = subsequence.held_notes.HeldNotes(
+				release_ms = self._note_input['release_ms'],
+				latch = self._note_input['latch'],
+			)
 
 		# 5. Open MIDI input ports early. Even without a deliberate sleep, opening
 		# them before pattern building minimizes the window for missed messages.
@@ -3678,7 +3813,8 @@ class Composition:
 					tweaks = self._tweaks,
 					default_grid = self._default_grid,
 					data = composition_ref.data,
-					key = composition_ref.key
+					key = composition_ref.key,
+					held_notes = composition_ref._sequencer._held_notes
 				)
 
 				try:
