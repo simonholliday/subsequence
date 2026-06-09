@@ -1,10 +1,13 @@
 import asyncio
 import inspect
+import logging
+import pathlib
 import threading
 import typing
 
 import pytest
 
+import subsequence
 import subsequence.composition
 import subsequence.sequencer
 
@@ -20,9 +23,9 @@ def test_sequencer_data_store_exists (patch_midi: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_safe_callback_catches_exceptions () -> None:
+async def test_safe_callback_catches_exceptions (caplog: pytest.LogCaptureFixture) -> None:
 
-	"""A failing safe callback should log a warning instead of raising."""
+	"""A failing safe callback should log a warning naming the task instead of raising."""
 
 	def bad_fn () -> None:
 		raise RuntimeError("boom")
@@ -30,10 +33,19 @@ async def test_safe_callback_catches_exceptions () -> None:
 	wrapped = subsequence.composition._make_safe_callback(bad_fn)
 
 	# wrapper is sync, fires a background task.
-	wrapped(0)
+	with caplog.at_level(logging.WARNING, logger="subsequence.composition"):
+		wrapped(0)
 
-	# Yield control so the background task runs and completes.
-	await asyncio.sleep(0.05)
+		# Poll until the background task has run and logged (executor thread + event loop).
+		for _ in range(200):
+			if any("Scheduled task 'bad_fn' failed: boom" in r.message for r in caplog.records):
+				break
+
+			await asyncio.sleep(0.01)
+
+	warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+
+	assert any("Scheduled task 'bad_fn' failed: boom" in r.message for r in warnings)
 
 
 @pytest.mark.asyncio
@@ -159,38 +171,38 @@ async def test_schedule_task_no_defer_fires_at_zero (patch_midi: None) -> None:
 	assert scheduled.next_fire_pulse < one_cycle
 
 
-@pytest.mark.asyncio
-async def test_initial_runs_sync_fn_before_patterns () -> None:
+def test_initial_runs_before_first_pattern_build (tmp_path: pathlib.Path, patch_midi: None) -> None:
 
-	"""wait_for_initial=True should block on a sync function via run_in_executor."""
+	"""End-to-end: schedule(wait_for_initial=True) completes before the first pattern build, so the data it writes is visible to patterns from bar 1."""
 
-	order: typing.List[str] = []
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=960)
+	first_build_saw_sentinel: typing.List[bool] = []
 
 	def populate () -> None:
-		order.append("initial")
+		composition.data["sentinel"] = "ready"
 
-	# Simulate what _run() does: gather initial tasks.
-	async def _run_initial (fn: typing.Callable) -> None:
-		if inspect.iscoroutinefunction(fn):
-			await fn()
-		else:
-			await asyncio.get_running_loop().run_in_executor(None, fn)
+	composition.schedule(populate, cycle_beats=4, wait_for_initial=True)
 
-	pending = subsequence.composition._PendingScheduled(
-		fn=populate, cycle_beats=32, reschedule_lookahead=1, wait_for_initial=True
-	)
+	@composition.pattern(channel=1, beats=4)
+	def p (p: typing.Any) -> None:
+		if not first_build_saw_sentinel:
+			first_build_saw_sentinel.append(composition.data.get("sentinel") == "ready")
 
-	await asyncio.gather(*[_run_initial(t.fn) for t in [pending]])
+	composition.render(bars=1, filename=str(tmp_path / "initial.mid"))
 
-	order.append("patterns")
-
-	assert order == ["initial", "patterns"]
+	assert first_build_saw_sentinel, "the pattern never built"
+	assert first_build_saw_sentinel[0] is True
 
 
 @pytest.mark.asyncio
 async def test_initial_runs_async_fn_before_patterns () -> None:
 
-	"""wait_for_initial=True should block on an async function."""
+	"""wait_for_initial=True should block on an async function.
+
+	Note: this simulates _run()'s gather to test the helper contract
+	(_PendingScheduled + awaiting the fn), not the real _run() wiring —
+	that is covered by test_initial_runs_before_first_pattern_build.
+	"""
 
 	order: typing.List[str] = []
 
@@ -217,7 +229,11 @@ async def test_initial_runs_async_fn_before_patterns () -> None:
 @pytest.mark.asyncio
 async def test_initial_failure_does_not_raise () -> None:
 
-	"""An initial function that fails should log a warning, not crash."""
+	"""An initial function that fails should log a warning, not crash.
+
+	Note: this simulates _run()'s try/except to test the helper contract,
+	not the real _run() wiring.
+	"""
 
 	def bad_fn () -> None:
 		raise RuntimeError("network error")

@@ -419,7 +419,7 @@ melody_state = subsequence.MelodicState(
 	pitch_diversity=0.6, # Penalise recently-repeated pitches
 )
 
-@composition.pattern(channel=4, beats=4, chord=True)
+@composition.pattern(channel=4, beats=4)
 def lead (p, chord):
 	tones = chord.tones(notes.C5) if chord else None
 	p.melody(melody_state, spacing=0.5, velocity=(70, 100), chord_tones=tones)
@@ -513,7 +513,7 @@ Pattern length can be specified two ways - use whichever is clearest:
 @composition.pattern(channel=1, bars=2)    # 2 bars (8 beats)
 ```
 
-**Velocity** — every `velocity=` parameter on a `PatternBuilder` method accepts either a single integer (`velocity=90`) or a `(low, high)` tuple (`velocity=(60, 95)`) for a fresh random draw on each placed note. The convention is universal — it works with `p.hit()`, `p.hit_steps()`, `p.note()`, `p.sequence()`, `p.fill()`, `p.arpeggio()`, `p.chord()`, `p.strum()`, `p.broken_chord()`, and every algorithmic generator (`p.euclidean()`, `p.bresenham()`, `p.cellular_1d()`, `p.markov()`, `p.melody()`, `p.lsystem()`, `p.thue_morse()`, `p.fibonacci()`, `p.lorenz()`, etc.). On methods that place several notes (`p.chord()`, `p.strum()`, `p.arpeggio()`, etc.), each note gets its own independent random draw, so a strum or chord feels human rather than mechanically uniform.
+**Velocity** — every `velocity=` parameter on a `PatternBuilder` method accepts either a single integer (`velocity=90`) or a `(low, high)` tuple (`velocity=(60, 95)`) for a fresh random draw on each placed note. The convention is universal — it works with `p.hit()`, `p.hit_steps()`, `p.note()`, `p.sequence()`, `p.repeat()`, `p.arpeggio()`, `p.chord()`, `p.strum()`, `p.broken_chord()`, and every algorithmic generator (`p.euclidean()`, `p.bresenham()`, `p.cellular_1d()`, `p.markov()`, `p.melody()`, `p.lsystem()`, `p.thue_morse()`, `p.fibonacci()`, `p.lorenz()`, etc.). On methods that place several notes (`p.chord()`, `p.strum()`, `p.arpeggio()`, etc.), each note gets its own independent random draw, so a strum or chord feels human rather than mechanically uniform.
 
 ```python
 p.hit_steps("hh", range(16), velocity=(40, 90))      # humanised hats
@@ -762,7 +762,9 @@ This gives you full control by letting you subclass `Pattern` directly. It's for
         def on_reschedule(self):
             self.density += 0.05  # State persists!
             self.steps = {}       # Clear old notes
-            self.euclidean(pulses=int(16 * self.density))
+            # Wrap self in a transient builder for high-level features
+            p = subsequence.pattern_builder.PatternBuilder(self, cycle=0)
+            p.euclidean(36, pulses=int(16 * self.density))
     ```
 
 ### Accessing internal state
@@ -913,23 +915,23 @@ A performer or code can override the pre-decided next section with `composition.
 
 For a `beats=4` pattern in 4/4, they're always equal. For a `beats=8` pattern, `p.cycle` is half `p.bar` (the pattern runs once every two bars). For a `beats=2` pattern, `p.cycle` is double `p.bar`. Use `p.bar` for composition-wide synchronisation (e.g. "fire on bar 8") and `p.cycle` for pattern-local variation (e.g. "every 4th rebuild of this pattern").
 
-#### Musical phrase position - `p.phrase(length)`
+#### Bar-cycle position - `p.bar_cycle(length)`
 
-For bar-position logic, `p.phrase(length)` replaces raw modulo arithmetic with readable musical vocabulary:
+For bar-position logic, `p.bar_cycle(length)` replaces raw modulo arithmetic with readable musical vocabulary:
 
-| Intent | Raw modulo | `p.phrase()` |
+| Intent | Raw modulo | `p.bar_cycle()` |
 |---|---|---|
-| Every 4 bars | `if p.bar % 4 == 0:` | `if p.phrase(4).first:` |
-| Bar 3 of every 8 | `if p.bar % 8 == 2:` | `if p.phrase(8).bar == 2:` |
-| Last bar of every 16 | `if p.bar % 16 == 15:` | `if p.phrase(16).last:` |
-| Progress through phrase | `(p.bar % 8) / 8` | `p.phrase(8).progress` |
+| Every 4 bars | `if p.bar % 4 == 0:` | `if p.bar_cycle(4).first:` |
+| Bar 3 of every 8 | `if p.bar % 8 == 2:` | `if p.bar_cycle(8).bar == 2:` |
+| Last bar of every 16 | `if p.bar % 16 == 15:` | `if p.bar_cycle(16).last:` |
+| Progress through the cycle | `(p.bar % 8) / 8` | `p.bar_cycle(8).progress` |
 
-`p.phrase(length)` returns a `Phrase` object with four properties:
+`p.bar_cycle(length)` returns a `BarCycle` object with four properties:
 
-- **`.first`** - `True` on the first bar of the phrase
-- **`.last`** - `True` on the last bar of the phrase
-- **`.bar`** - zero-indexed position within the phrase (0 … length−1)
-- **`.progress`** - fractional progress: 0.0 on bar 0, rising each bar (0.25, 0.5, 0.75 for a 4-bar phrase)
+- **`.first`** - `True` on the first bar of the cycle
+- **`.last`** - `True` on the last bar of the cycle
+- **`.bar`** - zero-indexed position within the cycle (0 … length−1)
+- **`.progress`** - fractional progress: 0.0 on bar 0, rising each bar (0.25, 0.5, 0.75 for a 4-bar cycle)
 
 ```python
 @composition.pattern(channel=1, beats=4)
@@ -937,12 +939,12 @@ def drums(p):
 
     p.euclidean("kick_1", 4)
 
-    # Add an open hi-hat fill on the last bar of every 8-bar phrase
-    if p.phrase(8).last:
+    # Add an open hi-hat fill on the last bar of every 8-bar cycle
+    if p.bar_cycle(8).last:
         p.euclidean("hi_hat_open", 3)
 
     # Build velocity over a 16-bar arc
-    intensity = p.phrase(16).progress   # 0.0 → 0.9375
+    intensity = p.bar_cycle(16).progress   # 0.0 → 0.9375
     p.velocity_shape(low=int(50 + 40 * intensity), high=110)
 ```
 
@@ -1170,7 +1172,7 @@ Each pattern tracks voice leading independently - a bass line and a pad can voic
 **What `chord.tones()` returns with voice leading active:** when `voice_leading=True`, `chord.tones(root=...)` returns the notes of the chosen inversion - the voicing closest to the previous chord - not root position. The `inversion` parameter is ignored; the engine picks the inversion automatically. This matters for arpeggios: whether you hand `p.arpeggio()` a chord directly (`p.arpeggio(chord, root=...)`) or the result of `chord.tones()`, the notes are already in the voice-led order, not ascending from the root.
 
 ```python
-@composition.pattern(channel=1, beats=4, voice_leading=True, chord=True)
+@composition.pattern(channel=1, beats=4, voice_leading=True)
 def arp (p, chord):
     # Arpeggiate the chord directly — voiced (and voice-led) just like p.chord()
     p.arpeggio(chord, root=notes.E3, count=4, spacing=0.25, velocity=90)
@@ -1912,7 +1914,7 @@ def velocity_ramp_seq (p, steps, pitch, low, high, *, shape="linear", **kwargs):
     p.sequence(
         steps=steps,
         pitches=pitch,
-        velocities=p.velocity_ramp(low, high, shape=shape, grid=len(steps)),
+        velocities=p.build_velocity_ramp(low, high, shape=shape, grid=len(steps)),
         **kwargs,
     )
 
@@ -2090,7 +2092,7 @@ Two dispatch modes:
 
 Built-in preset strings: `"cc"` (identity), `"cc:N"` (remap to CC N), `"pitchwheel"` (scale to ±8192). Pass a callable for full control over output message type and value scaling.
 
-**Multiple input/output devices** - both `cc_map()` and `cc_forward()` support `input_device=` and `output_device=` parameters for routing between devices:
+**Multiple input/output devices** - both `cc_map()` and `cc_forward()` support an `input_device=` parameter to listen to a specific input; `cc_forward()` additionally supports `output_device=` for routing to a specific output:
 
 ```python
 comp.midi_input("Arturia KeyStep", name="keys")
@@ -2290,7 +2292,7 @@ Pass `data` as a `bytes` object or a list of integers (0–127). The surrounding
 
 ### Pitch bend automation
 
-Three post-build transforms generate correctly-timed pitch bend events by reading actual note positions and durations - no manual beat arithmetic required. Call them *after* `legato()` / `detached()` / `staccato()` so durations are final.
+Three post-build transforms generate correctly-timed pitch bend events by reading actual note positions and durations - no manual beat arithmetic required. Call them *after* `legato()` / `detached()` / `duration()` so durations are final.
 
 **`p.bend()` - bend a specific note by index:**
 
@@ -2473,11 +2475,11 @@ The live API takes the same optional map: `composition.mirror("drums", device=1,
 
 - **Mirror-to-self.** Adding a mirror equal to the pattern's primary destination would double every event to the same `(device, channel)` — almost certainly unintended. Subsequence logs a warning when this is detected at decoration or runtime time. The warning fires for both the decorator (`mirrors=[...]`) and the live API (`composition.mirror(...)`); deferred string device names skip the check at decoration time but pick it up once the pattern is running.
 
-- **Author in canonical (General MIDI) names; a device silently drops voices it lacks.** General MIDI is the shared drum vocabulary every bundled map speaks (from `pymididefs.drums`, re-exported as `subsequence.constants.instruments.gm_drums`). Each device map aliases the GM names **only for the voices it genuinely has** — *faithful-core* aliasing, with no stand-ins on unrelated voices, so you never hear a wrong instrument. Both the DRM1 and TR-8S maps include the unnumbered **primary aliases** `"kick"`/`"snare"`/`"crash"`/`"ride"` (shorthands for the `_1` variant, e.g. `"kick"` → `"kick_1"`, on any map that has the voice). **One resolution rule applies wherever you name a drum** — `hit`, `hit_steps`, `seq`, `fill`, `ghost_fill`, `arpeggio`, drones, `thin`/`ratchet`, the generative builders: **a name the device's map can't voice is dropped there and warned once — never a wrong note, never a crash.** So you can write a `"crash"` even on a crash-less drum machine: it's silent there and sounds on whichever destination maps it. (A drum name with **no** `drum_note_map` at all is a *configuration* error and still raises — you forgot the map.) **Across mirrors,** a 3-tuple `(device, channel, drum_note_map)` re-resolves the *name* per destination — so one `"hi_hat_closed"` is note 44 on the DRM1 and 42 on a GM sampler — and a name a mirror's map lacks drops on that mirror (enable `DEBUG` logging to see which). A plain 2-tuple mirror still copies the raw note number (note-level mirroring). Step-note hits are re-resolved per destination; drones and CC copy their resolved value to every destination (not per-destination re-resolved in this release). No new vocabulary or list is introduced; GM (PyMidiDefs) is the canonical source.
+- **Author in canonical (General MIDI) names; a device silently drops voices it lacks.** General MIDI is the shared drum vocabulary every bundled map speaks (from `pymididefs.drums`, re-exported as `subsequence.constants.instruments.gm_drums`). Each device map aliases the GM names **only for the voices it genuinely has** — *faithful-core* aliasing, with no stand-ins on unrelated voices, so you never hear a wrong instrument. Both the DRM1 and TR-8S maps include the unnumbered **primary aliases** `"kick"`/`"snare"`/`"crash"`/`"ride"` (shorthands for the `_1` variant, e.g. `"kick"` → `"kick_1"`, on any map that has the voice). **One resolution rule applies wherever you name a drum** — `hit`, `hit_steps`, `seq`, `repeat`, `ghost_fill`, `arpeggio`, drones, `thin`/`ratchet`, the generative builders: **a name the device's map can't voice is dropped there and warned once — never a wrong note, never a crash.** So you can write a `"crash"` even on a crash-less drum machine: it's silent there and sounds on whichever destination maps it. (A drum name with **no** `drum_note_map` at all is a *configuration* error and still raises — you forgot the map.) **Across mirrors,** a 3-tuple `(device, channel, drum_note_map)` re-resolves the *name* per destination — so one `"hi_hat_closed"` is note 44 on the DRM1 and 42 on a GM sampler — and a name a mirror's map lacks drops on that mirror (enable `DEBUG` logging to see which). A plain 2-tuple mirror still copies the raw note number (note-level mirroring). Step-note hits are re-resolved per destination; drones and CC copy their resolved value to every destination (not per-destination re-resolved in this release). No new vocabulary or list is introduced; GM (PyMidiDefs) is the canonical source.
 
   > **Breaking change (drum maps).** The `VERMONA_DRM1_DRUM_MAP` previously aliased the *whole* GM kit by approximating absent voices (e.g. `cowbell` → multi, cymbals → hi-hat); those subjective approximations have been removed in favour of faithful-core aliasing. GM names the DRM1 has no real voice for are now **dropped with a one-time warning** rather than triggering a stand-in — address those voices by their native `drum_1` / `drum_2` / `multi` names. The TR-8S map gains faithful GM aliases in the same spirit.
 
-### Scale quantization
+### Snap to scale
 
 Snap all notes in a pattern to a named scale - essential after generative or sensor-driven pitch work:
 
@@ -2489,10 +2491,10 @@ def walk (p):
     for beat in range(16):
         pitch = notes.C4 + p.rng.randint(-7, 7)  # random walk around middle C
         p.note(pitch, beat=beat * 0.25)
-    p.quantize("G", "dorian")                     # snap everything to G Dorian
+    p.snap_to_scale("G", "dorian")                     # snap everything to G Dorian
 ```
 
-`quantize(key, mode, strength=1.0)` accepts any key name (`"C"`, `"F#"`, `"Bb"`, etc.) and any registered scale. Equidistant notes prefer the upward direction. The optional `strength` parameter (0.0–1.0) controls how many notes are snapped: `1.0` quantizes everything (default, fully backward compatible), `0.0` leaves all notes untouched, and values in between apply quantization probabilistically - useful for keeping occasional chromatic passing tones.
+`snap_to_scale(key, mode, strength=1.0)` accepts any key name (`"C"`, `"F#"`, `"Bb"`, etc.) and any registered scale. Equidistant notes prefer the upward direction. The optional `strength` parameter (0.0–1.0) controls how many notes are snapped: `1.0` snaps everything (default), `0.0` leaves all notes untouched, and values in between snap probabilistically - useful for keeping occasional chromatic passing tones. (Note the deliberate name: `quantize=` elsewhere in the API means snapping *timing* to a beat boundary, as on every sequencer - this method snaps *pitch*.)
 
 Built-in modes include western diatonic (`"ionian"`, `"dorian"`, `"minor"`, `"harmonic_minor"`, etc.) and non-western scales (`"hirajoshi"`, `"in_sen"`, `"iwato"`, `"yo"`, `"egyptian"`, `"major_pentatonic"`, `"minor_pentatonic"`).
 
@@ -2501,7 +2503,7 @@ Register your own scales at any time:
 ```python
 subsequence.register_scale("raga_bhairav", [0, 1, 4, 5, 7, 8, 11])
 # then in patterns:
-p.quantize("C", "raga_bhairav")
+p.snap_to_scale("C", "raga_bhairav")
 ```
 
 ### Generating scale note lists
@@ -2538,7 +2540,7 @@ Pass the result directly to `p.markov()`, `p.self_avoiding_walk()`, `p.de_bruijn
 
 `p.evolve()` loops a pitch sequence that gradually mutates each cycle. On cycle 0 the buffer is locked to the seed. Each subsequent cycle, every step has a `drift` probability of being replaced by a value drawn from the pool. At `drift=0.0` the loop never changes; at `drift=1.0` every step is redrawn on every cycle.
 
-State is stored in `p.data` and resets when `cycle == 0`, so restarts are always deterministic. Combine with `p.quantize()` to keep drifted pitches in key.
+State is stored in `p.data` and resets when `cycle == 0`, so restarts are always deterministic. Combine with `p.snap_to_scale()` to keep drifted pitches in key.
 
 ```python
 @composition.pattern(channel=1, beats=4)
@@ -2551,7 +2553,7 @@ def melody (p):
         duration=0.3,
         spacing=0.5,
     )
-    p.quantize("C", "minor")        # keep mutations in key
+    p.snap_to_scale("C", "minor")        # keep mutations in key
 ```
 
 | Parameter | Default | Description |
@@ -2580,7 +2582,7 @@ def melody (p):
         velocity=85,
         spacing=0.5,
     )
-    p.quantize("C", "minor")
+    p.snap_to_scale("C", "minor")
 ```
 
 | Parameter | Default | Description |
@@ -3197,7 +3199,7 @@ All feedback and suggestions will be gratefully received! Please use these chann
 
 ### Related Projects
 
-- **[Subsample ↗](https://github.com/simonholliday/subsample)** — A sister project by the same author: live sampler, automatic drum-kit builder, and MIDI sample instrument. Point a microphone at the world (or feed in recordings and sample packs) and Subsample captures, analyses, and maps every sound into a playable instrument automatically. Connect to Subsequence via a [virtual MIDI port](#virtual-midi) or standard MIDI hardware; enable [OSC](#osc-integration) on both sides for richer event communication (sample-captured notifications, density changes, visualiser data).
+- **[Subsample ↗](https://github.com/simonholliday/subsample)** — A sister project by the same author: live sampler, automatic drum-kit builder, and MIDI sample instrument. Point a microphone at the world (or feed in recordings and sample packs) and Subsample captures, analyses, and maps every sound into a playable instrument automatically. Connect to Subsequence via a virtual MIDI port or standard MIDI hardware; enable [OSC](#osc-integration) on both sides for richer event communication (sample-captured notifications, density changes, visualiser data).
 
 ### Dependencies and Credits
 

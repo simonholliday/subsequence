@@ -174,7 +174,7 @@ class PatternAlgorithmicMixin:
 		"""
 		rng = self._rng_from(seed, rng)
 
-		steps = int(self._pattern.length * 4)
+		steps = self._default_grid
 		sequence = subsequence.sequence_utils.generate_euclidean_sequence(steps=steps, pulses=pulses)
 		self._place_rhythm_sequence(sequence, pitch, velocity, duration, probability, rng, no_overlap=no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
@@ -201,7 +201,7 @@ class PatternAlgorithmicMixin:
 		"""
 		rng = self._rng_from(seed, rng)
 
-		steps = int(self._pattern.length * 4)
+		steps = self._default_grid
 		sequence = subsequence.sequence_utils.generate_bresenham_sequence(steps=steps, pulses=pulses)
 		self._place_rhythm_sequence(sequence, pitch, velocity, duration, probability, rng, no_overlap=no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
@@ -226,7 +226,7 @@ class PatternAlgorithmicMixin:
 		evenly-distributed rests (silent steps).
 
 		Because notes are placed via ``self.note()``, all post-placement transforms
-		(``groove``, ``randomize``, ``velocity_shape``, ``shift``, etc.) work normally.
+		(``groove``, ``randomize``, ``velocity_shape``, ``rotate``, etc.) work normally.
 
 		Parameters:
 			parts: Mapping of pitch (MIDI note or drum name) to density weight.
@@ -237,7 +237,7 @@ class PatternAlgorithmicMixin:
 				fall back to the default velocity (100).
 			duration: Note duration in beats (default 0.1).
 			grid: Number of steps to divide the pattern into. Defaults to the
-				pattern's standard sixteenth-note grid (``length * 4``).
+				pattern's ``default_grid``.
 			probability: Chance (0.0–1.0) that each hit plays — 1.0 places them all, lower thins.
 			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.
 			no_overlap: If True, skip steps where a note of the same pitch already
@@ -627,7 +627,7 @@ class PatternAlgorithmicMixin:
 		pitches: typing.List[typing.Union[int, str]],
 		rule: str = "B368/S245",
 		generation: typing.Optional[int] = None,
-		velocity: typing.Union[int, typing.List[int]] = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
+		velocity: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
 		duration: float = 0.1,
 		no_overlap: bool = False,
 		probability: float = 1.0,
@@ -690,7 +690,12 @@ class PatternAlgorithmicMixin:
 		elif initial_state == "center":
 			grid_seed = 1
 		elif initial_state == "random":
-			grid_seed = seed if isinstance(seed, int) and seed != 1 else rng.randint(2, 2_147_483_646)
+			if isinstance(seed, int):
+				# The generator reserves 1 as its centre-cell sentinel, so remap
+				# seed=1 to a fixed surrogate - every seed stays deterministic.
+				grid_seed = seed if seed != 1 else -1
+			else:
+				grid_seed = rng.randint(2, 2_147_483_646)
 		else:
 			raise ValueError(f"cellular_2d(): initial_state must be \"center\", \"random\", or a grid — got {initial_state!r}")
 
@@ -715,10 +720,13 @@ class PatternAlgorithmicMixin:
 		)
 
 		for row_idx, pitch in enumerate(pitches):
-			row_velocity: int
+			row_velocity: typing.Union[int, typing.Tuple[int, int]]
 
 			if isinstance(velocity, list):
 				row_velocity = int(velocity[row_idx % len(velocity)])
+			elif isinstance(velocity, tuple):
+				# (low, high) range - resolved per placed note downstream.
+				row_velocity = velocity
 			else:
 				row_velocity = int(velocity)
 
@@ -818,7 +826,7 @@ class PatternAlgorithmicMixin:
 		self,
 		state: subsequence.melodic_state.MelodicState,
 		spacing: float = 0.25,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = 90,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
 		duration: float = 0.2,
 		chord_tones: typing.Optional[typing.List[int]] = None,
 		seed: typing.Optional[int] = None,
@@ -858,7 +866,7 @@ class PatternAlgorithmicMixin:
 			    chord_weight=0.4,
 			)
 
-			@composition.pattern(channel=4, length=4, chord=True)
+			@composition.pattern(channel=4, beats=4)
 			def lead (p, chord):
 			    tones = chord.tones(72) if chord else None
 			    p.melody(melody_state, spacing=0.5, velocity=(70, 100), chord_tones=tones)
@@ -1009,11 +1017,12 @@ class PatternAlgorithmicMixin:
 		alternating two drums or two chord tones.
 
 		Parameters:
-			pitch: Pitch (MIDI note number or drum name) for sequence-1 positions.
+			pitch: Pitch (MIDI note number or drum name) placed at the
+			    sequence's 0 positions (the hits in single-pitch mode).
 			velocity: MIDI velocity for ``pitch``, or a ``(low, high)``
 			    tuple for a fresh random draw per hit.
 			duration: Note duration in beats.
-			pitch_b: Optional second pitch placed at sequence-0 positions.
+			pitch_b: Optional second pitch placed at sequence-1 positions.
 			    When set, all steps produce a note (no rests).
 			velocity_b: Velocity for ``pitch_b`` (int or ``(low, high)``
 			    tuple).  Defaults to ``velocity``.
@@ -1244,7 +1253,9 @@ class PatternAlgorithmicMixin:
 				if isinstance(velocity, tuple):
 					p_vel = int(velocity[0] + y * (velocity[1] - velocity[0]))
 				else:
-					p_vel = int(40 + y * 87)
+					# A fixed int means FIXED - the y axis only drives velocity
+					# when a (low, high) range invites it (or via mapping=).
+					p_vel = int(velocity)
 				p_dur = 0.05 + z * max(0.0, duration - 0.05)
 				self.note(pitch=p_pitch, beat=beat, velocity=p_vel, duration=p_dur)
 
@@ -1748,11 +1759,11 @@ class PatternAlgorithmicMixin:
 		buffer persists across pattern rebuilds.  The buffer is reset whenever
 		``cycle == 0`` so restarts produce deterministic output.
 
-		Combine with ``p.quantize()`` to keep drifted pitches in key:
+		Combine with ``p.snap_to_scale()`` to keep drifted pitches in key:
 
 		```python
 		p.evolve([60, 64, 67, 72], length=8, drift=0.12)
-		p.quantize("C", "minor")
+		p.snap_to_scale("C", "minor")
 		```
 
 		Parameters:
@@ -1771,7 +1782,7 @@ class PatternAlgorithmicMixin:
 			# 8-step loop that slowly diverges from its seed
 			p.evolve([60, 62, 64, 65, 67, 69], length=8, drift=0.1,
 			         velocity=(70, 100), spacing=0.5)
-			p.quantize("C", "dorian")
+			p.snap_to_scale("C", "dorian")
 			```
 		"""
 
@@ -1873,7 +1884,7 @@ class PatternAlgorithmicMixin:
 			# Cycle through 8 variations (depth=3) of a 4-note motif
 			p.branch([60, 64, 67, 72], depth=3, path=p.cycle,
 			         velocity=85, spacing=0.5)
-			p.quantize("C", "minor")
+			p.snap_to_scale("C", "minor")
 			```
 		"""
 
@@ -1893,7 +1904,7 @@ class PatternAlgorithmicMixin:
 		branch_rng = random.Random(hash(tuple(resolved)))
 
 		num_variations = 2 ** depth
-		path_index = path % num_variations if num_variations > 0 else 0
+		path_index = path % num_variations
 
 		sequence = list(resolved)
 		root = resolved[0]

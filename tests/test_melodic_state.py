@@ -87,6 +87,58 @@ class TestMelodicStateInit:
 		with pytest.raises(ValueError):
 			subsequence.melodic_state.MelodicState(mode="not_a_mode")
 
+	def test_nir_strength_out_of_range_raises (self) -> None:
+		"""nir_strength outside 0-1 should raise ValueError."""
+		with pytest.raises(ValueError, match="NIR strength"):
+			_state(nir_strength=-0.1)
+
+		with pytest.raises(ValueError, match="NIR strength"):
+			_state(nir_strength=1.1)
+
+	def test_rest_probability_out_of_range_raises (self) -> None:
+		"""rest_probability outside 0-1 should raise ValueError."""
+		with pytest.raises(ValueError, match="Rest probability"):
+			_state(rest_probability=-0.1)
+
+		with pytest.raises(ValueError, match="Rest probability"):
+			_state(rest_probability=1.1)
+
+	def test_pitch_diversity_out_of_range_raises (self) -> None:
+		"""pitch_diversity outside 0-1 should raise ValueError."""
+		with pytest.raises(ValueError, match="Pitch diversity"):
+			_state(pitch_diversity=-0.1)
+
+		with pytest.raises(ValueError, match="Pitch diversity"):
+			_state(pitch_diversity=1.1)
+
+	def test_negative_chord_weight_raises (self) -> None:
+		"""Negative chord_weight should raise ValueError."""
+		with pytest.raises(ValueError, match="Chord weight"):
+			_state(chord_weight=-0.1)
+
+	def test_low_at_or_above_high_raises (self) -> None:
+		"""A pitch range with low >= high should raise ValueError."""
+		with pytest.raises(ValueError, match="low must be below high"):
+			_state(low=72, high=60)
+
+		with pytest.raises(ValueError, match="low must be below high"):
+			_state(low=60, high=60)
+
+	def test_in_range_construction_succeeds (self) -> None:
+		"""Boundary-valid parameters construct without error."""
+		ms = subsequence.melodic_state.MelodicState(
+			key="C",
+			mode="ionian",
+			low=48,
+			high=72,
+			nir_strength=1.0,
+			chord_weight=0.0,
+			rest_probability=0.0,
+			pitch_diversity=1.0,
+		)
+
+		assert ms.history == []
+
 
 # ---------------------------------------------------------------------------
 # choose_next — basic behaviour

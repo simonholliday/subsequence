@@ -27,46 +27,46 @@ def test_sequence_to_indices_all_hits () -> None:
 	assert subsequence.sequence_utils.sequence_to_indices([1, 1, 1]) == [0, 1, 2]
 
 
-def test_roll_no_wraparound () -> None:
+def test_rotate_no_wraparound () -> None:
 
 	"""Rolling indices that stay within bounds should shift correctly."""
 
-	assert subsequence.sequence_utils.roll([0, 8], 4, 16) == [4, 12]
+	assert subsequence.sequence_utils.rotate([0, 8], 4, 16) == [4, 12]
 
 
-def test_roll_with_wraparound () -> None:
+def test_rotate_with_wraparound () -> None:
 
 	"""Indices that exceed length should wrap to the beginning."""
 
-	assert subsequence.sequence_utils.roll([12, 14], 4, 16) == [0, 2]
+	assert subsequence.sequence_utils.rotate([12, 14], 4, 16) == [0, 2]
 
 
-def test_roll_negative_shift () -> None:
+def test_rotate_negative_shift () -> None:
 
 	"""A negative shift should move indices backward with wraparound."""
 
-	assert subsequence.sequence_utils.roll([4, 12], -4, 16) == [0, 8]
+	assert subsequence.sequence_utils.rotate([4, 12], -4, 16) == [0, 8]
 
 
-def test_roll_empty_list () -> None:
+def test_rotate_empty_list () -> None:
 
 	"""Rolling an empty list should return an empty list."""
 
-	assert subsequence.sequence_utils.roll([], 4, 16) == []
+	assert subsequence.sequence_utils.rotate([], 4, 16) == []
 
 
-def test_roll_zero_shift () -> None:
+def test_rotate_zero_shift () -> None:
 
 	"""A zero shift should return the original indices."""
 
-	assert subsequence.sequence_utils.roll([0, 4, 8, 12], 0, 16) == [0, 4, 8, 12]
+	assert subsequence.sequence_utils.rotate([0, 4, 8, 12], 0, 16) == [0, 4, 8, 12]
 
 
-def test_roll_full_cycle () -> None:
+def test_rotate_full_cycle () -> None:
 
 	"""Rolling by the full length should return the original indices."""
 
-	assert subsequence.sequence_utils.roll([0, 4, 8, 12], 16, 16) == [0, 4, 8, 12]
+	assert subsequence.sequence_utils.rotate([0, 4, 8, 12], 16, 16) == [0, 4, 8, 12]
 
 
 # --- weighted_choice ---

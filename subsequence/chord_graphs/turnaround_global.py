@@ -85,8 +85,18 @@ def _add_minor_turnaround (
 	supertonic = subsequence.chords.Chord(root_pc=supertonic_pc, quality="half_diminished_7th")
 	dominant_7th = subsequence.chords.Chord(root_pc=dominant_pc, quality="dominant_7th")
 	tonic_minor = subsequence.chords.Chord(root_pc=tonic_pc, quality="minor")
+	tonic_major = subsequence.chords.Chord(root_pc=tonic_pc, quality="major")
 
 	minor_weight_strong = max(1, int(round(WEIGHT_STRONG * minor_turnaround_weight)))
+	minor_weight_entry = max(1, int(round(WEIGHT_MEDIUM * minor_turnaround_weight)))
+
+	# Entry edges — without these the iio7 chords are unreachable and the
+	# minor turnaround can never start.  The tonic minor aliases existing
+	# diatonic nodes (e.g. C minor is the ii of Bb major), and the parallel
+	# major tonic is each key's own I, so both hooks connect the minor
+	# turnaround to the core ii-V-I graph.
+	graph.add_transition(tonic_minor, supertonic, minor_weight_strong)
+	graph.add_transition(tonic_major, supertonic, minor_weight_entry)
 
 	if include_dominant_7th:
 		graph.add_transition(supertonic, dominant_7th, minor_weight_strong)

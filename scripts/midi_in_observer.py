@@ -1,3 +1,10 @@
+"""
+Console tool that prints every incoming MIDI message from a chosen input device.
+
+Use it to discover the notes, CCs, and channels your controller sends, and to
+verify an external clock (incoming clock ticks are summarised as an estimated BPM).
+"""
+
 import logging
 import time
 import typing

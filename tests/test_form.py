@@ -458,6 +458,26 @@ def test_form_state_graph_invalid_start_raises () -> None:
 		}, start="Z")
 
 
+def test_form_state_graph_zero_bars_raises () -> None:
+
+	"""A graph section lasting fewer than 1 bar should raise ValueError at construction."""
+
+	with pytest.raises(ValueError, match="at least 1 bar"):
+
+		subsequence.form_state.FormState({
+			"A": (0, [("B", 1)]),
+			"B": (2, []),
+		}, start="A")
+
+
+def test_form_state_list_zero_bars_raises () -> None:
+
+	"""A list-form section lasting fewer than 1 bar should raise ValueError at construction."""
+
+	with pytest.raises(ValueError, match="at least 1 bar"):
+		subsequence.form_state.FormState([("intro", 0), ("verse", 4)])
+
+
 def test_form_state_graph_total_bars () -> None:
 
 	"""The total_bars counter should track across graph transitions."""

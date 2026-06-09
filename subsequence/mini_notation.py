@@ -121,8 +121,10 @@ def _parse_recursive (tokens: list, start_time: float, duration: float) -> typin
 				try:
 					probability = float(prob_str)
 				except ValueError:
-					symbol = token
-					probability = 1.0
+					raise MiniNotationError(f"Invalid probability suffix in {token!r} - expected a number after '?'")
+
+				if not 0.0 <= probability <= 1.0:
+					raise MiniNotationError(f"Probability in {token!r} must be between 0.0 and 1.0")
 			else:
 				symbol = token
 				probability = 1.0
@@ -149,7 +151,10 @@ def _post_process_sustains (events: typing.List[ParsedEvent]) -> typing.List[Par
 	for event in events:
 	
 		if event.symbol == "_":
-			if last_event:
+			# Extend only when this sustain slot is contiguous with the end
+			# of the previous note: after a rest, `_` keeps the silence
+			# instead of stretching the note through the gap.
+			if last_event and abs((last_event.time + last_event.duration) - event.time) < 1e-9:
 				last_event.duration += event.duration
 				
 		else:

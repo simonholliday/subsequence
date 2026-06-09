@@ -44,7 +44,7 @@ def analyze_style (
 	nir_strength: float = 0.5,
 	steps: int = 1000,
 	seed: int = 42,
-) -> typing.Optional[dict]:
+) -> typing.Optional[typing.Dict[str, typing.Any]]:
 
 	"""Run one simulation and return a summary dict, or None on init failure."""
 

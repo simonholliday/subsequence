@@ -61,6 +61,9 @@ class PatternMidiMixin:
 		if span <= 0:
 			return
 
+		if resolution < 1:
+			raise ValueError("resolution must be at least 1 pulse")
+
 		easing_fn = subsequence.easing.get_easing(shape)
 		pulse = pulse_start
 
@@ -471,7 +474,8 @@ class PatternMidiMixin:
 
 		Bandwidth note: with ``fine=True`` (default) every step emits two
 		CCs.  Default ``resolution=4`` is one update every four pulses
-		(~20 ms at 120 BPM), which keeps the bus lightly loaded.  Increase
+		(~83 ms at 120 BPM, where one pulse is ~21 ms), which keeps the bus
+		lightly loaded.  Increase
 		``resolution`` (e.g. ``8``) on slow DIN-MIDI links if you hear
 		other messages getting delayed.
 
@@ -591,7 +595,7 @@ class PatternMidiMixin:
 
 		Example:
 			```python
-			@composition.pattern(channel=1, length=4)
+			@composition.pattern(channel=1, beats=4)
 			def strings (p):
 			    # GM — no bank needed
 			    p.program_change(48)
@@ -797,6 +801,9 @@ class PatternMidiMixin:
 		if span <= 0:
 			return
 
+		if resolution < 1:
+			raise ValueError("resolution must be at least 1 pulse")
+
 		easing_fn = subsequence.easing.get_easing(shape)
 		pulse = pulse_start
 
@@ -828,7 +835,7 @@ class PatternMidiMixin:
 
 		Generates a pitch bend ramp that covers a fraction of the target note's
 		duration, then resets to 0.0 at the next note's onset.  Call this
-		*after* ``legato()`` / ``staccato()`` so that note durations are final.
+		*after* ``legato()`` / ``detached()`` / ``duration()`` so that note durations are final.
 
 		Parameters:
 			note: Note index (0 = first, -1 = last, etc.).
@@ -879,11 +886,15 @@ class PatternMidiMixin:
 
 		self._generate_bend_events(0.0, amount, bend_start_pulse, bend_end_pulse, resolution, shape)
 
-		# Reset bend at the next note's onset (or pulse 0 for the last note)
+		# Reset bend at the next note's onset.  For the last note that is the
+		# NEXT cycle's first onset (total + first), not pulse 0 - a bend tail
+		# spilling past the cycle end was cancelled mid-flight by a pulse-0
+		# reset, leaving the next cycle's first note bent.
 		if note_idx < len(sorted_positions) - 1:
 			reset_pulse = sorted_positions[note_idx + 1]
 		else:
-			reset_pulse = 0
+			total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
+			reset_pulse = total_pulses + sorted_positions[0]
 
 		reset_midi = max(-8192, min(8191, int(round(0.0 * 8192))))
 		self._pattern.cc_events.append(
@@ -908,7 +919,7 @@ class PatternMidiMixin:
 
 		Generates a pitch bend ramp in the tail of each note, bending toward
 		the next note's pitch, then resets at the next note's onset.  Call this
-		*after* ``legato()`` / ``staccato()`` so that note durations are final.
+		*after* ``legato()`` / ``detached()`` / ``duration()`` so that note durations are final.
 
 		Most effective on mono instruments where pitch bend is per-channel.
 
@@ -978,8 +989,15 @@ class PatternMidiMixin:
 
 			self._generate_bend_events(0.0, amount, glide_start_pulse, glide_end_pulse, resolution, shape)
 
-			# Reset at the destination note's onset
-			reset_pulse = b_pos if not is_last else 0
+			# Reset at the destination note's onset.  For the wrap-around pair
+			# that is the NEXT cycle's first onset (total + first), not pulse 0
+			# - a glide spilling past the cycle end was cancelled mid-flight by
+			# the pulse-0 reset, leaving the first note fully bent.
+			if is_last:
+				total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
+				reset_pulse = total_pulses + sorted_positions[0]
+			else:
+				reset_pulse = b_pos
 			self._pattern.cc_events.append(
 				subsequence.pattern.CcEvent(
 					pulse = reset_pulse,
@@ -1009,7 +1027,7 @@ class PatternMidiMixin:
 		preceding note's duration is extended to meet the slide target, matching
 		the 303's behaviour where slide notes do not retrigger.
 
-		Call this *after* ``legato()`` / ``staccato()`` so that note durations
+		Call this *after* ``legato()`` / ``detached()`` / ``duration()`` so that note durations
 		are final.
 
 		Parameters:
@@ -1104,8 +1122,6 @@ class PatternMidiMixin:
 			normaliser = bend_range if bend_range is not None else 2.0
 			amount = max(-1.0, min(1.0, interval / normaliser))
 
-			a_duration = _longest_duration(a_pos)
-
 			# Optionally extend preceding note to meet the target onset (303 style)
 			if extend:
 				if is_last:
@@ -1115,13 +1131,23 @@ class PatternMidiMixin:
 				for note in self._pattern.steps[a_pos].notes:
 					note.duration = gap
 
+			# Read the duration AFTER any extension so the glide occupies the
+			# tail of the note as actually played and lands on the target
+			# onset.  (Reading it before the extend block made the bend jump
+			# near the note's start and then hold flat - the opposite of a
+			# slide.)
+			a_duration = _longest_duration(a_pos)
+
 			glide_start_pulse = a_pos + int(a_duration * (1.0 - time))
 			glide_end_pulse = a_pos + a_duration
 
 			self._generate_bend_events(0.0, amount, glide_start_pulse, glide_end_pulse, resolution, shape)
 
-			# Reset at the destination note's onset
-			reset_pulse = b_pos if not is_last else 0
+			# Reset at the destination note's onset.  For the wrap-around pair
+			# the destination is the NEXT cycle's first onset (total_pulses +
+			# first onset): resetting at pulse 0 fired while a spilled glide
+			# was still in flight, so the destination note played fully bent.
+			reset_pulse = b_pos if not is_last else total_pulses + sorted_positions[0]
 			self._pattern.cc_events.append(
 				subsequence.pattern.CcEvent(
 					pulse = reset_pulse,

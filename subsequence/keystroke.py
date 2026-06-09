@@ -116,6 +116,7 @@ class KeystrokeListener:
 		self._queue: queue.Queue[str] = queue.Queue()
 		self._thread: typing.Optional[threading.Thread] = None
 		self._running: bool = False
+		self._old_settings: typing.Optional[typing.List[typing.Any]] = None
 
 		#: ``True`` after a successful :meth:`start` on a supported platform.
 		self.active: bool = False
@@ -135,6 +136,12 @@ class KeystrokeListener:
 		if self._running:
 			return
 
+		# A previous listener may still be inside its ~0.1 s poll: wait for it,
+		# or it would see the new _running=True, never exit, and the new thread
+		# would snapshot CBREAK mode as the "original" terminal settings.
+		if self._thread is not None and self._thread.is_alive():
+			self._thread.join(timeout=0.5)
+
 		if not HOTKEYS_SUPPORTED:
 			logger.warning(
 				f"Hotkeys are not available on this system and will be disabled. "
@@ -153,16 +160,26 @@ class KeystrokeListener:
 
 	def stop (self) -> None:
 
-		"""Signal the listener to stop.
+		"""Signal the listener to stop and restore the terminal.
 
-		The background thread will exit within one poll interval (~0.1 s).
-		Terminal settings are restored by the thread itself in its ``finally``
-		block, so this method returns immediately without waiting for the thread.
-		Safe to call on an unsupported platform — it is a no-op.
+		Waits briefly for the background thread (it polls every ~0.1 s), then
+		restores the terminal settings directly if the thread has not done so —
+		a daemon thread killed at interpreter exit never runs its ``finally``
+		block, which used to leave the shell in cbreak mode (no echo) on most
+		clean exits.  Safe to call on an unsupported platform — it is a no-op.
 		"""
 
 		self._running = False
 		self.active = False
+
+		if self._thread is not None and self._thread.is_alive():
+			self._thread.join(timeout=0.5)
+
+		# Belt and braces: if the thread is somehow still alive (blocked
+		# read), restore the terminal from here - tcsetattr is idempotent.
+		if self._thread is not None and self._thread.is_alive() and self._old_settings is not None:
+			import termios  # noqa: PLC0415
+			termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._old_settings)
 
 	def drain (self) -> typing.List[str]:
 
@@ -202,6 +219,10 @@ class KeystrokeListener:
 
 		fd = sys.stdin.fileno()
 		old_settings = termios.tcgetattr(fd)
+
+		# Shared with stop() so it can restore the terminal if this thread is
+		# killed before the finally block runs (daemon threads at exit).
+		self._old_settings = old_settings
 
 		try:
 			# cbreak: one character at a time, no Enter required.

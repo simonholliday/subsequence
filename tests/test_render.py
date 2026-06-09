@@ -1,6 +1,8 @@
 """Tests for composition.render() — limits, safety cap, and validation."""
 
 import pathlib
+
+import mido
 import pytest
 
 import subsequence
@@ -102,6 +104,32 @@ def test_render_default_bars_is_none (patch_midi: None) -> None:
 		composition.render(filename="dummy.mid")
 
 	assert composition._sequencer.render_bars == 0
+
+
+# ---------------------------------------------------------------------------
+# Recorded output
+# ---------------------------------------------------------------------------
+
+def test_render_writes_pattern_notes (tmp_path: pathlib.Path, patch_midi: None) -> None:
+
+	"""A note placed by a pattern ends up in the rendered MIDI file as a note_on."""
+
+	filename = str(tmp_path / "notes.mid")
+	composition = subsequence.Composition(bpm=480)
+
+	@composition.pattern(channel=1, beats=4)
+	def p (p) -> None:
+		p.note(60, beat=0)
+
+	composition.render(bars=1, filename=filename)
+
+	mid = mido.MidiFile(filename)
+	note_ons = [
+		msg for track in mid.tracks for msg in track
+		if not isinstance(msg, mido.MetaMessage) and msg.type == "note_on" and msg.velocity > 0
+	]
+
+	assert any(msg.note == 60 for msg in note_ons)
 
 
 # ---------------------------------------------------------------------------

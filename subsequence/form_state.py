@@ -151,6 +151,9 @@ class FormState:
 			self._section_bars = {}
 
 			for name, (bars, transitions) in sections.items():
+				if bars < 1:
+					raise ValueError(f"Section '{name}' must last at least 1 bar, got {bars}")
+
 				self._section_bars[name] = bars
 				if transitions is None:
 					self._terminal_sections.add(name)
@@ -167,6 +170,10 @@ class FormState:
 			self._pick_next()
 
 		elif isinstance(sections, list):
+			for name, bars in sections:
+				if bars < 1:
+					raise ValueError(f"Section '{name}' must last at least 1 bar, got {bars}")
+
 			# List mode: convert to iterator, optionally cycling.
 			self._iterator = itertools.cycle(sections) if loop else iter(sections)
 

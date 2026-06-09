@@ -54,15 +54,15 @@ SEQ2_LENGTH = 5
 SEQ1_UNIT = dur.EIGHTH
 SEQ2_UNIT = dur.EIGHTH
 
-# QUANTIZE_ROOT: Root note for the quantizer applied to both sequencers.
-# Labyrinth transposes the quantized output of both SEQ1 and SEQ2 when a
-# MIDI Note On message is received.  In Subsequence, change this string to
-# transpose the entire piece.
+# SCALE_ROOT: Root note of the scale both sequencers snap to (the software
+# counterpart of the Labyrinth's quantizer root).  Labyrinth transposes the
+# quantized output of both SEQ1 and SEQ2 when a MIDI Note On message is
+# received.  In Subsequence, change this string to transpose the entire piece.
 # String: "C", "D", "Eb", "F#", "Bb", etc.
-QUANTIZE_ROOT = "C"
+SCALE_ROOT = "C"
 
-# QUANTIZE_MODE: Scale mode applied to random pitch values from both sequencers.
-# Labyrinth has 15 built-in quantization modes.  Set to None for unquantized
+# SCALE_MODE: Scale mode applied to random pitch values from both sequencers.
+# Labyrinth has 15 built-in quantization modes.  Set to None for free pitch
 # (chromatic - all 12 semitones available).
 #
 # Equivalents for Labyrinth's 15 modes:
@@ -82,7 +82,7 @@ QUANTIZE_ROOT = "C"
 #   Mode 14  Minor 11th           → "minor"    (aeolian)
 #   Mode 15  Hang Drum            → "hirajoshi" (closest available)
 #   Mode 16  Quads (minor 3rds)   → "minor_pentatonic"
-QUANTIZE_MODE = "minor_pentatonic"
+SCALE_MODE = "minor_pentatonic"
 
 # SEQ1_CV_RANGE / SEQ2_CV_RANGE: Pitch range attenuator for each sequencer.
 # On the Labyrinth this physically attenuates the CV voltage before the
@@ -115,7 +115,7 @@ CHAIN_SEQ = False
 # fixed settings, so they are implemented as Conductor LFOs.  Adjust the
 # cycle_beats, min_val, and max_val parameters to control the sweep behaviour.
 
-composition = subsequence.Composition(bpm=TEMPO, key=QUANTIZE_ROOT)
+composition = subsequence.Composition(bpm=TEMPO, key=SCALE_ROOT)
 
 # SEQ1_CORRUPT / SEQ2_CORRUPT: Probability-based mutation amount (0.0–1.0).
 #   0.0       = frozen - no mutation; the sequence repeats exactly.
@@ -163,7 +163,7 @@ composition.conductor.lfo("EG_TRIG_MIX", shape="triangle", cycle_beats=64, min_v
 
 
 # ─── PITCH POOL BUILDER ───────────────────────────────────────────────────────
-# Converts QUANTIZE_ROOT, QUANTIZE_MODE, and a CV_RANGE value into a sorted
+# Converts SCALE_ROOT, SCALE_MODE, and a CV_RANGE value into a sorted
 # list of MIDI pitches spanning two octaves.  SEQ1_CV_RANGE and SEQ2_CV_RANGE
 # then clip the pool so that lower values compress pitch content toward the root,
 # faithfully replicating the Labyrinth's CV RANGE attenuator before its quantizer.
@@ -208,8 +208,8 @@ def _build_pitch_pool (root, mode, cv_range, base_octave=3):
 	return pitches[:n]
 
 
-SEQ1_PITCHES = _build_pitch_pool(QUANTIZE_ROOT, QUANTIZE_MODE, SEQ1_CV_RANGE, base_octave=SEQ1_OCTAVE)
-SEQ2_PITCHES = _build_pitch_pool(QUANTIZE_ROOT, QUANTIZE_MODE, SEQ2_CV_RANGE, base_octave=SEQ2_OCTAVE)
+SEQ1_PITCHES = _build_pitch_pool(SCALE_ROOT, SCALE_MODE, SEQ1_CV_RANGE, base_octave=SEQ1_OCTAVE)
+SEQ2_PITCHES = _build_pitch_pool(SCALE_ROOT, SCALE_MODE, SEQ2_CV_RANGE, base_octave=SEQ2_OCTAVE)
 
 
 # ─── SEQUENCER PATTERNS ───────────────────────────────────────────────────────

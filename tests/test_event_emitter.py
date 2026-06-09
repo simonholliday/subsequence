@@ -81,3 +81,71 @@ def test_off_raises_after_already_removed () -> None:
 
 	with pytest.raises(ValueError):
 		emitter.off("tick", cb)
+
+@pytest.mark.asyncio
+async def test_emit_async_isolates_raising_sync_listener () -> None:
+
+	"""A raising sync listener must not silence later listeners or async tasks."""
+
+	emitter = subsequence.event_emitter.EventEmitter()
+	calls = []
+
+	def bad () -> None:
+		raise RuntimeError("boom")
+
+	def good () -> None:
+		calls.append("sync")
+
+	async def good_async () -> None:
+		calls.append("async")
+
+	emitter.on("x", bad)
+	emitter.on("x", good)
+	emitter.on("x", good_async)
+
+	await emitter.emit_async("x")
+
+	assert calls == ["sync", "async"]
+
+
+@pytest.mark.asyncio
+async def test_emit_async_awaits_async_callable_objects () -> None:
+
+	"""An object with async __call__ must be awaited, not silently dropped."""
+
+	emitter = subsequence.event_emitter.EventEmitter()
+	calls = []
+
+	class Handler:
+
+		async def __call__ (self) -> None:
+			calls.append("handled")
+
+	emitter.on("x", Handler())
+
+	await emitter.emit_async("x")
+
+	assert calls == ["handled"]
+
+
+@pytest.mark.asyncio
+async def test_emit_async_logs_raising_async_listener () -> None:
+
+	"""A raising async listener is logged, never propagated to the emit site."""
+
+	emitter = subsequence.event_emitter.EventEmitter()
+	calls = []
+
+	async def bad () -> None:
+		raise RuntimeError("boom")
+
+	async def good () -> None:
+		calls.append("ok")
+
+	emitter.on("x", bad)
+	emitter.on("x", good)
+
+	# Must not raise.
+	await emitter.emit_async("x")
+
+	assert calls == ["ok"]

@@ -13,19 +13,21 @@ WEIGHT_COMMON = subsequence.chord_graphs.WEIGHT_COMMON
 
 class Diminished (subsequence.chord_graphs.ChordGraph):
 
-	"""Octatonic (diminished) chord graph with minor-third symmetry.
+	"""Diminished chord graph with minor-third symmetry and chromatic escapes.
 
-	Built on the half-whole diminished scale: 0, 1, 3, 4, 6, 7, 9, 10.
 	Two chord types interlock:
 
-	- 4 diminished triads at roots 0, 3, 6, 9 (the symmetry backbone)
+	- 4 diminished triads at roots 0, 3, 6, 9 (the symmetry backbone — the
+	  minor-third cycle that also underpins the half-whole diminished scale)
 	- 4 dominant 7th chords at roots 1, 4, 7, 10 (escape chords)
 
 	Diminished chords connect to each other by minor thirds (the defining
-	rotation). Dominant 7th chords sit a half step above each diminished
-	chord, acting as tension points. The result is angular, disorienting,
-	and cyclical - useful for dark techno, industrial, and experimental
-	electronic music.
+	rotation). Each dominant 7th sits a half step ABOVE its diminished
+	chord as a chromatic tension point — deliberately outside the
+	half-whole scale on the key root, which is what gives the escape its
+	lift before the half-step-down resolve. The result is angular,
+	disorienting, and cyclical - useful for dark techno, industrial, and
+	experimental electronic music.
 	"""
 
 	def build (self, key_name: str) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
@@ -76,7 +78,10 @@ class Diminished (subsequence.chord_graphs.ChordGraph):
 
 		diatonic: typing.Set[subsequence.chords.Chord] = set()
 
-		# All 8 chords are diatonic to the octatonic scale.
+		# Gravity treats the full 8-chord palette as "home": the dominant
+		# escapes are included by design even though they sit outside the
+		# half-whole scale on the key root (they are the graph's tension
+		# vocabulary, not foreign territory to be damped).
 		for i in [0, 3, 6, 9]:
 			diatonic.add(subsequence.chords.Chord(root_pc=(key_pc + i) % 12, quality="diminished"))
 

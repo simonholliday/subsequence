@@ -137,10 +137,10 @@ def test_hit_accepts_tuple_velocity () -> None:
 	assert all(60 <= v <= 100 for v in velocities)
 
 
-def test_fill_accepts_tuple_velocity () -> None:
+def test_repeat_accepts_tuple_velocity () -> None:
 
 	pattern, builder = _make_builder(seed=1)
-	builder.fill(pitch=60, spacing=0.5, velocity=(70, 95))
+	builder.repeat(pitch=60, spacing=0.5, velocity=(70, 95))
 	velocities = [step.notes[0].velocity for step in pattern.steps.values()]
 	assert all(70 <= v <= 95 for v in velocities)
 

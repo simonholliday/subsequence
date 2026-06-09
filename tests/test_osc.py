@@ -10,6 +10,20 @@ import subsequence
 import subsequence.osc
 
 
+async def _wait_for (condition: typing.Callable[[], bool], deadline: float = 2.0, poll: float = 0.01) -> None:
+
+	"""Poll until `condition()` is true or the deadline passes; avoids flat sleeps that flake under load."""
+
+	loop = asyncio.get_running_loop()
+	end = loop.time() + deadline
+
+	while not condition():
+		if loop.time() >= end:
+			return
+
+		await asyncio.sleep(poll)
+
+
 @pytest.fixture
 def composition (patch_midi: None) -> subsequence.Composition:
 
@@ -34,8 +48,8 @@ async def test_osc_bpm_handler (composition: subsequence.Composition) -> None:
 	client = pythonosc.udp_client.SimpleUDPClient("127.0.0.1", port)
 	client.send_message("/bpm", 145)
 
-	# Give it a tiny bit of time to process
-	await asyncio.sleep(0.1)
+	# Poll until the handler has run (UDP delivery is async).
+	await _wait_for(lambda: composition.bpm == 145)
 
 	assert composition.bpm == 145
 	assert composition._sequencer.current_bpm == 145
@@ -64,12 +78,12 @@ async def test_osc_mute_handler (composition: subsequence.Composition) -> None:
 	client = pythonosc.udp_client.SimpleUDPClient("127.0.0.1", port)
 	client.send_message("/mute/drums", [])
 
-	await asyncio.sleep(0.1)
+	await _wait_for(lambda: pattern._muted is True)
 
 	assert pattern._muted is True
 
 	client.send_message("/unmute/drums", [])
-	await asyncio.sleep(0.1)
+	await _wait_for(lambda: pattern._muted is False)
 	assert pattern._muted is False
 
 	await server.stop()
@@ -87,7 +101,7 @@ async def test_osc_data_handler (composition: subsequence.Composition) -> None:
 	client = pythonosc.udp_client.SimpleUDPClient("127.0.0.1", port)
 	client.send_message("/data/velocity", 0.75)
 
-	await asyncio.sleep(0.1)
+	await _wait_for(lambda: composition.data.get("velocity") == 0.75)
 
 	assert composition.data["velocity"] == 0.75
 
@@ -118,25 +132,18 @@ async def test_osc_status_broadcasting (composition: subsequence.Composition) ->
 	# Configure composition OSC to send to our receiver
 	composition.osc(receive_port=0, send_port=recv_port)
 	
-	# We need to manually trigger the _send_osc_status callback 
-	# since we aren't calling composition.play()
+	# We need to manually wire up the broadcast since we aren't calling
+	# composition.play(); register the PRODUCTION method that _run() uses
+	# so this test exercises real code, not a copy of it.
 	await composition._osc_server.start()
-	
-	# In composition.py, the callback is local to _run. 
-	# For testing we can simulate its logic or just use the setup that _run would do.
-	
-	# Let's manually register a callback that mimics _run's setup
-	def _send_osc_status (bar: int) -> None:
-		composition._osc_server.send("/bar", bar)
-		composition._osc_server.send("/bpm", composition.bpm)
 
-	composition.on_event("bar", _send_osc_status)
-	
+	composition.on_event("bar", composition._broadcast_osc_status)
+
 	# Emit bar event
 	composition._sequencer.events.emit_sync("bar", 42)
-	
-	await asyncio.sleep(0.1)
-	
+
+	await _wait_for(lambda: {"/bar", "/bpm"} <= {m[0] for m in received_messages})
+
 	# Check if we received anything
 	addresses = [m[0] for m in received_messages]
 	assert "/bar" in addresses

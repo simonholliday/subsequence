@@ -50,3 +50,30 @@ def test_minor_turnaround_weight_toggle () -> None:
 
 	transitions_enabled = graph_enabled.get_transitions(supertonic_half_dim)
 	assert transitions_enabled != []
+
+def test_minor_turnaround_supertonic_is_reachable () -> None:
+
+	"""The iio7 chords must have incoming edges, or the minor turnaround can never start.
+
+	Regression: entry edges (i -> iio7 and I -> iio7) were missing, leaving all
+	twelve half-diminished nodes orphaned - present in the graph but unreachable
+	from any other chord.
+	"""
+
+	graph, _ = subsequence.chord_graphs.turnaround_global.build_graph(
+		key_name = "C",
+		include_dominant_7th = True,
+		minor_turnaround_weight = 0.5
+	)
+
+	incoming: dict = {}
+
+	for source in list(graph._edges.keys()):
+		for target, weight in graph.get_transitions(source):
+			incoming[target] = incoming.get(target, 0) + 1
+
+	all_nodes = set(graph._edges.keys()) | set(incoming.keys())
+	half_dim = [n for n in all_nodes if n.quality == "half_diminished_7th"]
+
+	assert len(half_dim) == 12
+	assert all(incoming.get(n, 0) > 0 for n in half_dim), "orphaned iio7 nodes"

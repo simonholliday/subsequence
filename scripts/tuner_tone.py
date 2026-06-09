@@ -2,7 +2,7 @@
 """
 This script plays a pulsed E3 note on all 16 MIDI channels of a selected output device.
 
-It is utility is used to assess whether instruments are in tune with each 
+This utility is used to assess whether instruments are in tune with each
 other and allow tuning against a reference. This is particularly useful 
 for analogue instruments which may drift in pitch over time.
 

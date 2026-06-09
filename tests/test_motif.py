@@ -17,3 +17,18 @@ def test_motif_to_pattern () -> None:
 
 	assert 0 in pattern.steps
 	assert 24 in pattern.steps
+
+	# Beat positions/durations convert to pulses (1 beat = 24 pulses), and
+	# pitch/velocity carry through unchanged.
+	first_step = pattern.steps[0].notes
+	second_step = pattern.steps[24].notes
+
+	assert len(first_step) == 1
+	assert first_step[0].pitch == 60
+	assert first_step[0].velocity == 100
+	assert first_step[0].duration == 24
+
+	assert len(second_step) == 1
+	assert second_step[0].pitch == 62
+	assert second_step[0].velocity == 100
+	assert second_step[0].duration == 24

@@ -77,21 +77,14 @@ def test_calculate_nir_score_reversal () -> None:
 
 	hs = subsequence.harmonic_state.HarmonicState(key_name="C")
 
-	"""
-	Test Rule A: Reversal (Gap Fill)
-	If previous move was a Large Leap (> 4 semitones),
-	BOOST targets that change direction.
-	"""
-
-	hs = subsequence.harmonic_state.HarmonicState(key_name="C")
-
 	# History: C (0) -> G (7)
 	# Modulo 12 shortest path: 7 - 0 = +7. >6 so 7-12 = -5.
 	# Interval = 5 (Large Leap). Direction = DOWN.
 	c = subsequence.chords.Chord(root_pc=0, quality="major")
 	g = subsequence.chords.Chord(root_pc=7, quality="major")
 
-	hs.history = [c]
+	# step() appends the source before scoring, so history is [prev, source].
+	hs.history = [c, g]
 	source = g
 
 	# Target 1: A (9). G->A is +2.
@@ -128,7 +121,8 @@ def test_calculate_nir_score_process () -> None:
 	c = subsequence.chords.Chord(root_pc=0, quality="major")
 	d = subsequence.chords.Chord(root_pc=2, quality="minor")
 
-	hs.history = [c]
+	# step() appends the source before scoring, so history is [prev, source].
+	hs.history = [c, d]
 	source = d
 
 	# Target 1: E (4) = +2 semitones (Continuation Up) -> Expect BOOST
@@ -153,20 +147,13 @@ def test_calculate_nir_score_closure () -> None:
 
 	hs = subsequence.harmonic_state.HarmonicState(key_name="C")
 
-	"""
-	Test Rule C: Closure
-	Return to Tonic implies closure and should be boosted if other conditions match.
-	"""
-
-	hs = subsequence.harmonic_state.HarmonicState(key_name="C")
-
 	# History: C (0) -> E (4).
 	# Interval = 4 (Neutral - neither Small Step <3 nor Large Leap >4).
 	# Rule A and Rule B should NOT fire.
 	c = subsequence.chords.Chord(root_pc=0, quality="major")
 	e = subsequence.chords.Chord(root_pc=4, quality="minor")
 
-	hs.history = [c]
+	hs.history = [c, e]
 	source = e
 
 	# Target 1: C (0). E->C is -4. Neutral interval.
@@ -197,7 +184,7 @@ def test_calculate_nir_score_proximity () -> None:
 	c = subsequence.chords.Chord(root_pc=0, quality="major")
 	e = subsequence.chords.Chord(root_pc=4, quality="minor")
 
-	hs.history = [c]
+	hs.history = [c, e]
 	source = e
 
 	# Target 1: F (5). E->F is +1 semitone (small, proximate).
@@ -223,7 +210,7 @@ def test_nir_strength_zero_disables () -> None:
 	d = subsequence.chords.Chord(root_pc=2, quality="minor")
 	e = subsequence.chords.Chord(root_pc=4, quality="minor")
 
-	hs.history = [c]
+	hs.history = [c, d]
 
 	# C -> D is a small step (+2), D -> E continues (+2).
 	# At full strength this would get boosted. At 0.0 it should be neutral.
@@ -240,11 +227,11 @@ def test_nir_strength_scales_boost () -> None:
 	e = subsequence.chords.Chord(root_pc=4, quality="minor")
 
 	hs_full = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=1.0)
-	hs_full.history = [c]
+	hs_full.history = [c, d]
 	score_full = hs_full._calculate_nir_score(d, e)
 
 	hs_half = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=0.5)
-	hs_half.history = [c]
+	hs_half.history = [c, d]
 	score_half = hs_half._calculate_nir_score(d, e)
 
 	# Both should be boosted above 1.0
@@ -390,3 +377,36 @@ def test_root_diversity_disabled_at_one () -> None:
 
 	# Disabled penalty should produce more concentrated distribution.
 	assert top_without > top_with
+
+
+def test_step_scoring_sees_distinct_previous_chord () -> None:
+
+	"""During step(), the NIR scorer must compare against the chord BEFORE the
+	current one - not the current chord itself.
+
+	Regression: step() appends the current chord to history before choosing,
+	so reading history[-1] as "previous" made prev == source on every call and
+	left the reversal/continuation rules permanently inert (pre-2026-06 bug).
+	"""
+
+	rng = random.Random(5)
+	hs = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major", rng=rng)
+
+	calls = []
+	original = hs._calculate_nir_score
+
+	def spy (source: subsequence.chords.Chord, target: subsequence.chords.Chord) -> float:
+		calls.append((list(hs.history), source))
+		return original(source, target)
+
+	hs._calculate_nir_score = spy  # type: ignore[method-assign]
+
+	for _ in range(30):
+		hs.step()
+
+	distinct = [
+		1 for history, source in calls
+		if len(history) >= 2 and history[-2] != source
+	]
+
+	assert distinct, "scorer never saw a previous chord distinct from the source - implication rules are inert"

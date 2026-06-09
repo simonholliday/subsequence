@@ -368,6 +368,38 @@ def test_from_agr_velocity_amount_50_blends () -> None:
 		os.unlink(tmp_path)
 
 
+def test_from_agr_out_of_order_events_keep_velocity_pairing () -> None:
+
+	"""MidiNoteEvent elements listed out of time order still pair each note time with ITS OWN velocity."""
+
+	import tempfile
+
+	# Deliberately out of time order, each time with a distinct velocity.
+	notes = [(0.5, 80), (0.0, 127), (0.785, 90), (0.285, 110)]
+
+	with tempfile.NamedTemporaryFile(suffix=".agr", delete=False, mode="w") as f:
+		tmp_path = f.name
+
+	try:
+		_write_agr(tmp_path, note_times_and_velocities=notes)
+		g = subsequence.groove.Groove.from_agr(tmp_path)
+
+		# Offsets follow time-sorted order: 0.0, 0.285, 0.5, 0.785 on a 0.25 grid.
+		expected_offsets = [0.0, 0.035, 0.0, 0.035]
+		for i in range(4):
+			assert abs(g.offsets[i] - expected_offsets[i]) < 1e-9, \
+				f"Slot {i}: expected offset {expected_offsets[i]}, got {g.offsets[i]}"
+
+		# Velocities must travel with their times: 127, 110, 80, 90 (each / max 127).
+		assert g.velocities is not None
+		expected_velocities = [127 / 127, 110 / 127, 80 / 127, 90 / 127]
+		for i in range(4):
+			assert abs(g.velocities[i] - expected_velocities[i]) < 1e-9, \
+				f"Slot {i}: expected velocity scale {expected_velocities[i]}, got {g.velocities[i]}"
+	finally:
+		os.unlink(tmp_path)
+
+
 # ── Validation ───────────────────────────────────────────────────────
 
 
@@ -417,6 +449,19 @@ def test_apply_groove_strength_zero_no_change () -> None:
 
 	# All original positions preserved
 	assert set(result.keys()) == {0, 6, 12, 18}
+
+
+def test_apply_groove_strength_zero_leaves_off_grid_note_untouched () -> None:
+
+	"""strength=0.0 leaves a note that sits off the groove grid (pulse 1) exactly where it is."""
+
+	steps = _make_steps(1)  # pulse 1 — just off the 16th-note grid
+	g = subsequence.groove.Groove(offsets=[0.05] * 16, grid=0.25)
+
+	result = subsequence.groove.apply_groove(steps, g, pulses_per_quarter=24, strength=0.0)
+
+	assert set(result.keys()) == {1}
+	assert result[1].notes[0].velocity == 100
 
 
 def test_apply_groove_strength_half_timing () -> None:

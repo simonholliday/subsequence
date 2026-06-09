@@ -60,7 +60,7 @@ Composition tools:
   ``p.silence()``),
   groove templates (``Groove.swing()``, ``Groove.from_agr()``), swing via
   ``p.swing()`` (a shortcut for ``Groove.swing()``), randomize,
-  velocity shaping and ramps (``p.velocity_ramp()``), dropout, per-step
+  velocity shaping and ramps (``p.build_velocity_ramp()``), dropout, per-step
   probability, and polyrhythms via independent pattern lengths.
 - **Melody generation.** ``p.melody()`` with ``MelodicState`` applies
   the Narmour Implication-Realization model to single-note lines:
@@ -81,7 +81,7 @@ Composition tools:
   (LFOs, ramps) shape intensity over time.
 - **Mini-notation.** ``p.seq("x x [x x] x", pitch="kick")`` - concise
   string syntax for rhythms, subdivisions, and per-step probability.
-- **Scales and quantization.** ``p.quantize()`` snaps notes to any
+- **Scales.** ``p.snap_to_scale()`` snaps notes to any
   scale. ``scale_notes()`` generates a list of MIDI note numbers from
   a key, mode, and range or note count - useful for arpeggios, Markov
   chains, and melodic walks. Built-in western and non-western modes,
@@ -98,9 +98,9 @@ Composition tools:
   (``seed=`` on any generator, with ``rng=`` for an explicit instance —
   precedence ``rng`` > ``seed`` > the pattern's ``p.rng``). See the
   README "Conventions" section for the API's shared vocabulary.
-- **Pattern transforms.** Legato, detached, staccato, reverse,
-  double/half-time, shift, transpose, invert, randomize, and conditional
-  ``p.every()``.
+- **Pattern transforms.** Legato, detached, fixed gate (``p.duration()``),
+  reverse, time-stretch, rotate, transpose, invert, randomize, and
+  conditional ``p.every()``.
 
 Integration:
 
@@ -134,8 +134,8 @@ Integration:
   one-shot patterns in response to sensors, OSC, or any event.
 - **Terminal display.** Live status line (BPM, bar, section, chord).
   Add ``grid=True`` for an ASCII pattern grid showing velocity and
-  sustain - makes legato, detached, and staccato visually distinct at
-  a glance.
+  sustain - makes legato, detached, and staccato articulations visually
+  distinct at a glance.
   Add ``grid_scale=2`` to zoom in horizontally, revealing swing and
   groove micro-timing.
 - **Web UI Dashboard (Beta).** Enable with ``composition.web_ui()`` to 

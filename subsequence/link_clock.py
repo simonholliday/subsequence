@@ -17,6 +17,7 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import math
 import typing
 
 
@@ -44,6 +45,10 @@ class LinkClock:
 	"""
 
 	def __init__ (self, bpm: float, quantum: float, loop: asyncio.AbstractEventLoop) -> None:
+
+		"""
+		Join the Link session immediately, proposing *bpm* and setting the bar length to *quantum* beats.
+		"""
 
 		aalink = _require_aalink()
 		self._link = aalink.Link(bpm, loop)
@@ -102,7 +107,10 @@ class LinkClock:
 		"""
 		current = self._link.beat
 		# Next quantum boundary strictly after the current beat
-		next_boundary = (int(current / self._link.quantum) + 1) * self._link.quantum
+		# math.floor, not int(): Link beats can be negative before transport
+		# zero, and int() truncates toward zero - skipping the boundary at 0.0
+		# and delaying the start by a full extra quantum.
+		next_boundary = (math.floor(current / self._link.quantum) + 1) * self._link.quantum
 		result = await self._link.sync(next_boundary)
 		return float(result)
 

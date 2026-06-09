@@ -127,6 +127,34 @@ def test_sustain_at_start () -> None:
 	assert events[0].time == 2.0
 
 
+def test_sustain_after_rest_stays_silent () -> None:
+
+	"""A sustain after a rest is silent: in "a ~ _" the note keeps its one-slot duration and is not extended through the rest."""
+
+	events = subsequence.mini_notation.parse("a ~ _", total_duration=3.0)
+
+	assert len(events) == 1
+	assert events[0].symbol == "a"
+	assert events[0].time == 0.0
+	assert events[0].duration == 1.0
+
+
+def test_probability_suffix_not_a_number_raises () -> None:
+
+	"""A non-numeric probability suffix like "kick?abc" raises MiniNotationError."""
+
+	with pytest.raises(subsequence.mini_notation.MiniNotationError):
+		subsequence.mini_notation.parse("kick?abc", total_duration=1.0)
+
+
+def test_probability_suffix_out_of_range_raises () -> None:
+
+	"""A probability above 1.0 like "kick?1.5" raises MiniNotationError."""
+
+	with pytest.raises(subsequence.mini_notation.MiniNotationError):
+		subsequence.mini_notation.parse("kick?1.5", total_duration=1.0)
+
+
 def test_invalid_total_duration () -> None:
 
 	"""Test that zero or negative total_duration raises ValueError."""

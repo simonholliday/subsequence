@@ -1,3 +1,11 @@
+"""
+Browser dashboard for a running composition.
+
+Serves a read-only web UI that shows the live state of a composition —
+tempo, current chord, section, pattern grids, and conductor signals —
+over a local HTTP + WebSocket pair.  Started via ``composition.web_ui()``.
+"""
+
 import asyncio
 import http.server
 import json
@@ -32,6 +40,10 @@ class WebUI:
 
 	def __init__ (self, composition: typing.Any, http_port: int = 8080, ws_port: int = 8765, ws_host: str = "127.0.0.1", http_host: str = "127.0.0.1") -> None:
 
+		"""
+		Prepare the dashboard servers without starting them; call start() to go live.
+		"""
+
 		self.composition_ref = weakref.ref(composition)
 		self.http_port = http_port
 		self.ws_port = ws_port
@@ -41,16 +53,27 @@ class WebUI:
 		self._httpd: typing.Optional[socketserver.TCPServer] = None
 		self._ws_server: typing.Optional[websockets.asyncio.server.Server] = None
 		self._broadcast_task: typing.Optional[asyncio.Task] = None
+		self._last_state: typing.Optional[typing.Dict[str, typing.Any]] = None
 		self._clients: typing.Set[websockets.asyncio.server.ServerConnection] = set()
 		self._last_bar: int = -1
 		self._cached_patterns: typing.List[typing.Dict[str, typing.Any]] = []
 
 	def start (self) -> None:
 
+		"""
+		Launch the dashboard: HTTP server for the frontend, WebSocket server for live state.
+		"""
+
 		self._start_http_server()
-		asyncio.create_task(self._start_ws_server())
+		# Keep a reference: an unreferenced task may be garbage-collected
+		# before it completes (asyncio docs).
+		self._ws_bootstrap_task = asyncio.create_task(self._start_ws_server())
 
 	def _start_http_server (self) -> None:
+
+		"""
+		Serve the static dashboard assets on a daemon thread and log the URLs to visit.
+		"""
 
 		if self._http_thread and self._http_thread.is_alive():
 			return
@@ -68,8 +91,11 @@ class WebUI:
 		# Bind on the main thread so stop() has a reference to shut the server
 		# down cleanly (serve_forever runs on the worker thread below).  Localhost
 		# by default — see the class docstring for LAN-exposure guidance.
-		socketserver.TCPServer.allow_reuse_address = True
-		self._httpd = socketserver.TCPServer((self.http_host, self.http_port), Handler)
+		# Subclass rather than mutating the TCPServer CLASS attribute, which
+		# would change behaviour for every TCPServer in the process.
+		class _ReusableTCPServer (socketserver.TCPServer):
+			allow_reuse_address = True
+		self._httpd = _ReusableTCPServer((self.http_host, self.http_port), Handler)
 
 		def run_server () -> None:
 			try:
@@ -92,6 +118,10 @@ class WebUI:
 
 	async def _handle_client (self, websocket: websockets.asyncio.server.ServerConnection) -> None:
 
+		"""
+		Track a connected browser for broadcasts; incoming messages are discarded (read-only UI).
+		"""
+
 		self._clients.add(websocket)
 		try:
 			# We don't process incoming commands in the PoC, just keep alive 
@@ -105,6 +135,10 @@ class WebUI:
 
 	async def _start_ws_server (self) -> None:
 
+		"""
+		Open the WebSocket endpoint and kick off the periodic state broadcast.
+		"""
+
 		try:
 			self._ws_server = await websockets.asyncio.server.serve(self._handle_client, self.ws_host, self.ws_port)
 			self._broadcast_task = asyncio.create_task(self._broadcast_loop())
@@ -112,6 +146,10 @@ class WebUI:
 			logger.error(f"WebSocket server error: {e}")
 
 	async def _broadcast_loop (self) -> None:
+
+		"""
+		Push composition state to all connected browsers 10x/sec, skipping unchanged frames.
+		"""
 
 		while True:
 			# Broadcast 10 times a second to keep UI snappy without bogging down the loop
@@ -126,12 +164,23 @@ class WebUI:
 
 			try:
 				state = self._get_state(comp)
+
+				# Serialising the full note set 10x/sec on the audio loop is
+				# avoidable jitter - skip when nothing changed since last send.
+				if state == self._last_state:
+					continue
+
+				self._last_state = state
 				message = json.dumps(state)
 				websockets.broadcast(self._clients.copy(), message)
 			except Exception as e:
 				logger.error(f"Error broadcasting UI state: {e}\n{traceback.format_exc()}")
 
 	def _get_state (self, comp: typing.Any) -> typing.Dict[str, typing.Any]:
+
+		"""
+		Snapshot the musical state of the composition (tempo, chord, section, patterns, signals) as a JSON-ready dict.
+		"""
 
 		state: typing.Dict[str, typing.Any] = {
 			"bpm": comp.bpm,
@@ -231,6 +280,10 @@ class WebUI:
 		return state
 
 	def stop (self) -> None:
+
+		"""
+		Shut down both servers cleanly so ports and threads don't leak.
+		"""
 
 		if self._broadcast_task:
 			self._broadcast_task.cancel()

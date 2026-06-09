@@ -1,4 +1,5 @@
 import asyncio
+import typing
 
 import mido
 import pytest
@@ -12,6 +13,11 @@ import conftest
 # Helpers
 # ---------------------------------------------------------------------------
 
+# Event loops created by _make_sequencer, closed after each test by the
+# autouse fixture below so they don't leak a ResourceWarning per test.
+_created_input_loops: typing.List[asyncio.AbstractEventLoop] = []
+
+
 def _make_sequencer (spy: conftest.SpyMidiOut) -> subsequence.sequencer.Sequencer:
 	seq = subsequence.sequencer.Sequencer(
 		output_device_name="Dummy MIDI",
@@ -21,9 +27,21 @@ def _make_sequencer (spy: conftest.SpyMidiOut) -> subsequence.sequencer.Sequence
 	# _on_midi_input has an early-return guard on these; initialise them
 	# so the CC mapping / forwarding code is reachable in unit tests.
 	loop = asyncio.new_event_loop()
+	_created_input_loops.append(loop)
 	seq._midi_input_queue = asyncio.Queue()
 	seq._input_loop = loop
 	return seq
+
+
+@pytest.fixture(autouse=True)
+def _close_input_loops () -> typing.Iterator[None]:
+
+	"""Close every input loop created during the test."""
+
+	yield
+
+	while _created_input_loops:
+		_created_input_loops.pop().close()
 
 
 def _cc_msg (control: int, value: int, channel: int = 0) -> mido.Message:
@@ -279,7 +297,7 @@ async def test_queued_drained_in_process_pulse (patch_midi: None) -> None:
 	seq._event_loop = asyncio.get_event_loop()
 
 	out_msg = mido.Message('control_change', channel=0, control=74, value=64)
-	seq._forward_buffer.append((0, out_msg))
+	seq._forward_buffer.append((0, out_msg, 0))
 
 	await seq._process_pulse(0)
 
@@ -305,3 +323,69 @@ def test_midi_event_from_mido_pitchwheel (patch_midi: None) -> None:
 	assert event.pulse == 5
 	assert event.message_type == 'pitchwheel'
 	assert event.value == -4096
+
+@pytest.mark.asyncio
+async def test_queued_forward_routes_to_output_device (patch_midi: None) -> None:
+
+	"""Queued forwards must reach their configured output device, not device 0.
+
+	Regression: the queued buffer dropped the output device, so every queued
+	forward was sent to the primary output.
+	"""
+
+	spy_primary = conftest.SpyMidiOut()
+	spy_extra = conftest.SpyMidiOut()
+	seq = _make_sequencer(spy_primary)
+	seq.add_output_device("Extra", spy_extra)
+	seq._event_loop = asyncio.get_event_loop()
+
+	seq.cc_forwards = [{
+		'cc': 74,
+		'channel': None,
+		'mode': 'queued',
+		'transform': lambda value, channel: mido.Message('control_change', channel=0, control=74, value=value),
+		'input_device': None,
+		'output_device': 1,
+	}]
+
+	seq._on_midi_input(mido.Message('control_change', channel=0, control=74, value=99), device_idx=0)
+
+	await seq._process_pulse(seq.pulse_count)
+
+	assert any(m.type == 'control_change' and m.value == 99 for m in spy_extra.sent)
+	assert not any(m.type == 'control_change' and m.value == 99 for m in spy_primary.sent)
+
+def test_callable_with_output_channel_rechannels (patch_midi: None) -> None:
+
+	"""A callable transform combined with output_channel= must re-channel, not crash.
+
+	Regression: the wrapper rebuilt the message passing 'type' twice, raising
+	TypeError on every incoming CC so nothing was ever forwarded.
+	"""
+
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+	comp.midi_input("Dummy MIDI")
+	comp.cc_forward(
+		1,
+		lambda value, channel: mido.Message('control_change', channel=channel, control=10, value=value),
+		output_channel=5,
+	)
+
+	transform = comp._cc_forwards[0]['transform']
+	result = transform(64, 2)
+
+	assert result is not None
+	assert result.type == 'control_change'
+	assert result.value == 64
+	assert result.channel == 4		# user channel 5 -> 0-indexed 4
+
+
+def test_callable_with_output_channel_passes_none_through (patch_midi: None) -> None:
+
+	"""A callable returning None (filter) must stay None under output_channel=."""
+
+	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+	comp.midi_input("Dummy MIDI")
+	comp.cc_forward(1, lambda value, channel: None, output_channel=5)
+
+	assert comp._cc_forwards[0]['transform'](64, 2) is None

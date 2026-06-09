@@ -47,6 +47,10 @@ class OscServer:
 		receive_host: str = "0.0.0.0"
 	) -> None:
 
+		"""
+		Wire up the OSC ports and built-in control handlers; call start() to begin listening.
+		"""
+
 		self._composition = composition
 		self._receive_port = receive_port
 		self._receive_host = receive_host
@@ -87,12 +91,21 @@ class OscServer:
 
 	async def stop (self) -> None:
 
-		"""Stop the OSC server."""
+		"""Stop the OSC server and close the outgoing client socket."""
 
 		if self._transport:
 			self._transport.close()
 			self._transport = None
 			logger.info("OSC server stopped")
+
+		if self._client is not None:
+			# python-osc's SimpleUDPClient owns a raw socket; close it so a
+			# stopped composition doesn't keep a zombie sender alive.
+			try:
+				self._client._sock.close()
+			except (AttributeError, OSError):
+				pass
+			self._client = None
 
 
 	def send (self, address: str, *args: typing.Any) -> None:
@@ -116,8 +129,14 @@ class OscServer:
 	# Handlers
 
 	def _handle_bpm (self, address: str, *args: typing.Any) -> None:
+
+		"""
+		Set the composition tempo from an incoming ``/bpm <int>`` message.
+		"""
+
 		if not args:
 			return
+
 		try:
 			bpm = int(args[0])
 			self._composition.set_bpm(bpm)
@@ -125,6 +144,11 @@ class OscServer:
 			logger.warning(f"Invalid OSC BPM argument: {args[0]}")
 
 	def _handle_mute (self, address: str, *args: typing.Any) -> None:
+
+		"""
+		Silence the pattern named in an incoming ``/mute/<name>`` message.
+		"""
+
 		# address is like /mute/drums
 		parts = address.split("/")
 		if len(parts) >= 3:
@@ -132,15 +156,26 @@ class OscServer:
 			self._composition.mute(name)
 
 	def _handle_unmute (self, address: str, *args: typing.Any) -> None:
+
+		"""
+		Bring back the pattern named in an incoming ``/unmute/<name>`` message.
+		"""
+
 		parts = address.split("/")
 		if len(parts) >= 3:
 			name = parts[2]
 			self._composition.unmute(name)
 
 	def _handle_data (self, address: str, *args: typing.Any) -> None:
+
+		"""
+		Update a composition.data value from an incoming ``/data/<key> <value>`` message, preserving the existing numeric type.
+		"""
+
 		# address is like /data/intensity
 		if not args:
 			return
+
 		parts = address.split("/")
 		if len(parts) >= 3:
 			key = parts[2]

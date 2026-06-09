@@ -36,7 +36,6 @@ docs = [
 ]
 dev = [
     "mypy>=1.8.0",
-    "ruff>=0.4.0",
 ]
 link = [
     "aalink>=0.1.1",
@@ -50,14 +49,6 @@ include = ["subsequence*"]
 
 [tool.setuptools.package-data]
 subsequence = ["py.typed"]
-
-[tool.ruff]
-line-length = 120
-indent-width = 4
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I"]
-ignore = ["E501"]  # line length handled by formatter
 
 [tool.mypy]
 python_version = "3.10"

@@ -184,8 +184,8 @@ def test_layer_patterns_get_distinct_names (patch_midi: None) -> None:
 
 	names = [p.builder_fn.__name__ for p in comp._pending_patterns]
 
-	assert "kick+hats" in names
-	assert "snare+claps" in names
+	assert "kick+hats@ch9" in names
+	assert "snare+claps@ch10" in names
 	assert len(set(names)) == len(names)	# no "merged_builder" collision
 
 

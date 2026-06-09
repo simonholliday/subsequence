@@ -1,3 +1,10 @@
+"""
+Generate ``api-cheatsheet.md`` from the public API's signatures and docstrings.
+
+Run after changing the public API surface so the cheat sheet stays in sync:
+``python scripts/generate_cheatsheet.py``.
+"""
+
 import inspect
 import os
 import re
@@ -16,13 +23,18 @@ import subsequence.intervals
 import subsequence.melodic_state
 import subsequence.midi_utils
 import subsequence.pattern_builder
+import subsequence.progression
 import subsequence.sequence_utils
+import subsequence.tuning
 
 classes_to_document: typing.List[typing.Type] = [
 	subsequence.composition.Composition,
 	subsequence.pattern_builder.PatternBuilder,
 	subsequence.groove.Groove,
 	subsequence.melodic_state.MelodicState,
+	subsequence.tuning.Tuning,
+	subsequence.chords.Chord,
+	subsequence.progression.ChordTimeline,
 ]
 
 functions_to_document: typing.List[typing.Callable] = [

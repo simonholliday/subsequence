@@ -1,3 +1,7 @@
+"""
+Entry point for ``python -m subsequence`` — confirms the install and points to the demo.
+"""
+
 import logging
 
 

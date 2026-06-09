@@ -1,3 +1,10 @@
+"""
+Groove templates — repeating timing and velocity feels applied to quantized patterns.
+
+Exports the public Groove class: build one by hand, from a swing percentage,
+or from an Ableton ``.agr`` file, then apply it with ``p.groove(template)``.
+"""
+
 from __future__ import annotations
 
 import dataclasses
@@ -152,7 +159,12 @@ class Groove:
 			times.append(float(event.get("Time", "0")))
 			velocities_raw.append(float(event.get("Velocity", "127")))
 
-		times.sort()
+		# Sort as PAIRS - sorting times alone desynced each offset from its
+		# note's velocity whenever the XML listed events out of time order.
+		paired = sorted(zip(times, velocities_raw))
+		times = [t for t, _ in paired]
+		velocities_raw = [v for _, v in paired]
+
 		note_count = len(times)
 
 		# Infer grid from clip length and note count
@@ -230,8 +242,13 @@ def apply_groove (
 			new_pulse = old_pulse
 		else:
 			slot = grid_index % num_offsets
-			offset_pulses = groove.offsets[slot] * pulses_per_quarter * strength
-			new_pulse = int(round(ideal_pulse + offset_pulses))
+
+			# Blend from the note's OWN pulse toward the groove target so
+			# strength=0.0 truly leaves timing untouched.  (Blending from
+			# ideal_pulse quantised away in-window micro-timing — e.g. from
+			# randomize() — at every strength, including 0.)
+			groove_target = ideal_pulse + groove.offsets[slot] * pulses_per_quarter
+			new_pulse = int(round(old_pulse + (groove_target - old_pulse) * strength))
 			new_pulse = max(0, new_pulse)
 
 			# Velocity scaling applies only to grooved (on-grid) notes, for the

@@ -20,6 +20,7 @@ import asyncio
 import logging
 import statistics
 import sys
+import typing
 
 # Suppress sequencer logging during benchmark — we want clean output.
 logging.basicConfig(level=logging.ERROR)
@@ -36,12 +37,12 @@ def _run_benchmark (
 	bpm: float,
 	bars: int,
 	spin_wait: bool,
-	device_name: str | None,
-) -> list[float]:
+	device_name: typing.Optional[str],
+) -> typing.List[float]:
 
 	"""Run the sequencer for *bars* bars and return per-pulse jitter (seconds)."""
 
-	jitter_log: list[float] = []
+	jitter_log: typing.List[float] = []
 	seconds_per_bar = (60.0 / bpm) * BEATS_PER_BAR
 	total_seconds = seconds_per_bar * bars
 	pulses = bars * BEATS_PER_BAR * PPQN
@@ -82,7 +83,7 @@ def _run_benchmark (
 
 
 def _print_report (
-	jitter: list[float],
+	jitter: typing.List[float],
 	bpm: float,
 	bars: int,
 	spin_wait: bool,

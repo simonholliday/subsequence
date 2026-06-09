@@ -122,16 +122,17 @@ SEQ2_STEPS = [
 # Options: 1 (±1 octave), 2 (±2 octaves), 5 (±5 octaves).
 SEQ_OCT = 2
 
-# QUANTIZE_MODE: Scale applied to all sequencer pitch output.
+# SCALE_MODE: Scale that all sequencer pitch output snaps to (the software
+# counterpart of the Subharmonicon's hardware QUANTIZE switch).
 # The Subharmonicon has four quantize modes; the closest Subsequence equivalents:
 #   "12-ET" (chromatic equal temperament)   → "major"  (or any 12-note mode)
 #   "8-ET"  (diatonic equal temperament)    → "major"
 #   "12-JI" (chromatic just intonation)     → "major"  (approximated in MIDI)
 #   "8-JI"  (diatonic just intonation)      → "major"  (approximated in MIDI)
-#   None    (unquantized / continuous)      → None
+#   None    (free / continuous pitch)       → None
 # Any valid subsequence scale mode string is accepted.
-QUANTIZE_ROOT = "C"
-QUANTIZE_MODE = None   # None for unquantized; e.g. "major", "minor_pentatonic"
+SCALE_ROOT = "C"
+SCALE_MODE = None   # None for free pitch; e.g. "major", "minor_pentatonic"
 
 # SEQ1_ASSIGN_OSC1: When True, SEQ1 steps control VCO1's pitch.
 # When False, VCO1 plays at VCO1_FREQ every step (no pitch variation from SEQ1).
@@ -195,7 +196,7 @@ NOTE_DURATION = dur.QUARTER * 0.85
 
 # ─── CONDUCTOR-DRIVEN CONTROLS ────────────────────────────────────────────────
 
-composition = subsequence.Composition(bpm=TEMPO, key=QUANTIZE_ROOT)
+composition = subsequence.Composition(bpm=TEMPO, key=SCALE_ROOT)
 
 # VELOCITY_SWELL: Slowly modulates note velocity across all voices, creating
 # a natural dynamic arc over time - analogous to slowly sweeping the VCA EG AMT
@@ -347,8 +348,8 @@ if seq1_triggers:
 				pitch = SEQ1_STEPS[step]
 				p.hit_steps(pitch, [tick], velocity=vel, duration=NOTE_DURATION)
 
-			if QUANTIZE_MODE:
-				p.quantize(QUANTIZE_ROOT, QUANTIZE_MODE)
+			if SCALE_MODE:
+				p.snap_to_scale(SCALE_ROOT, SCALE_MODE)
 
 	if SEQ1_ASSIGN_SUB1:
 
@@ -365,8 +366,8 @@ if seq1_triggers:
 				vco_pitch = SEQ1_STEPS[step] if SEQ1_ASSIGN_OSC1 else VCO1_FREQ
 				pitch     = _subharmonic_note(vco_pitch, VCO1_SUB1_FREQ)
 				p.hit_steps(pitch, [tick], velocity=vel, duration=NOTE_DURATION)
-			if QUANTIZE_MODE:
-				p.quantize(QUANTIZE_ROOT, QUANTIZE_MODE)
+			if SCALE_MODE:
+				p.snap_to_scale(SCALE_ROOT, SCALE_MODE)
 
 	if SEQ1_ASSIGN_SUB2:
 
@@ -379,8 +380,8 @@ if seq1_triggers:
 				vco_pitch = SEQ1_STEPS[step] if SEQ1_ASSIGN_OSC1 else VCO1_FREQ
 				pitch     = _subharmonic_note(vco_pitch, VCO1_SUB2_FREQ)
 				p.hit_steps(pitch, [tick], velocity=vel, duration=NOTE_DURATION)
-			if QUANTIZE_MODE:
-				p.quantize(QUANTIZE_ROOT, QUANTIZE_MODE)
+			if SCALE_MODE:
+				p.snap_to_scale(SCALE_ROOT, SCALE_MODE)
 
 
 # ─── SEQ 2 GROUP: VCO2 · VCO2 SUB1 · VCO2 SUB2 ──────────────────────────────
@@ -398,8 +399,8 @@ if seq2_triggers:
 				step  = (p.cycle * len(seq2_triggers) + trigger_idx) % 4
 				pitch = SEQ2_STEPS[step]
 				p.hit_steps(pitch, [tick], velocity=vel, duration=NOTE_DURATION)
-			if QUANTIZE_MODE:
-				p.quantize(QUANTIZE_ROOT, QUANTIZE_MODE)
+			if SCALE_MODE:
+				p.snap_to_scale(SCALE_ROOT, SCALE_MODE)
 
 	if SEQ2_ASSIGN_SUB1:
 
@@ -411,8 +412,8 @@ if seq2_triggers:
 				vco_pitch = SEQ2_STEPS[step] if SEQ2_ASSIGN_OSC2 else VCO2_FREQ
 				pitch     = _subharmonic_note(vco_pitch, VCO2_SUB1_FREQ)
 				p.hit_steps(pitch, [tick], velocity=vel, duration=NOTE_DURATION)
-			if QUANTIZE_MODE:
-				p.quantize(QUANTIZE_ROOT, QUANTIZE_MODE)
+			if SCALE_MODE:
+				p.snap_to_scale(SCALE_ROOT, SCALE_MODE)
 
 	if SEQ2_ASSIGN_SUB2:
 
@@ -424,8 +425,8 @@ if seq2_triggers:
 				vco_pitch = SEQ2_STEPS[step] if SEQ2_ASSIGN_OSC2 else VCO2_FREQ
 				pitch     = _subharmonic_note(vco_pitch, VCO2_SUB2_FREQ)
 				p.hit_steps(pitch, [tick], velocity=vel, duration=NOTE_DURATION)
-			if QUANTIZE_MODE:
-				p.quantize(QUANTIZE_ROOT, QUANTIZE_MODE)
+			if SCALE_MODE:
+				p.snap_to_scale(SCALE_ROOT, SCALE_MODE)
 
 
 if __name__ == "__main__":

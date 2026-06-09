@@ -343,15 +343,15 @@ def test_chord_at_beat_zero_does_not_warn (caplog: typing.Any) -> None:
 	assert not [r for r in caplog.records if "past its slot" in r.getMessage()]
 
 
-def test_staccato_param_is_beats_not_ratio () -> None:
+def test_duration_param_is_beats () -> None:
 	pattern, builder = _builder(length=4.0)
 	builder.note(60, beat=0.0, duration=2.0)
 
-	builder.staccato(beats=0.5)		# the keyword is now 'beats'
+	builder.duration(beats=0.5)		# fixed gate time, in beats
 	assert pattern.steps[0].notes[0].duration == int(0.5 * PPQ)
 
 	with pytest.raises(TypeError):
-		builder.staccato(ratio=0.5)		# the old keyword is gone
+		builder.duration(ratio=0.5)		# no 'ratio' keyword — beats only
 
 
 def test_ghost_fill_rejects_non_pair_velocity_tuple () -> None:

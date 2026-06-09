@@ -1,3 +1,10 @@
+"""
+Global automation signals — LFOs and ramps that modulate a composition over time.
+
+The Conductor holds named, time-varying signals (swells, fades, filter sweeps)
+that any pattern can read via ``p.signal(name)`` to shape velocity, CCs, or
+note choices across long stretches of music.
+"""
 
 import math
 import typing
@@ -16,6 +23,11 @@ class Signal:
 	"""
 	
 	def value_at (self, beat: float) -> float:
+
+		"""
+		Return the signal value at the given beat time.  Subclasses must override.
+		"""
+
 		raise NotImplementedError
 
 
@@ -151,6 +163,11 @@ class Conductor:
 	"""
 
 	def __init__ (self) -> None:
+
+		"""
+		Create an empty conductor; register signals with lfo() or line().
+		"""
+
 		self._signals: typing.Dict[str, Signal] = {}
 		self._warned_missing: typing.Set[str] = set()
 

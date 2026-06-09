@@ -517,7 +517,7 @@ def test_seed_produces_deterministic_patterns (patch_midi: None) -> None:
 
 		def my_builder (p: "subsequence.pattern_builder.PatternBuilder") -> None:
 			# Use p.rng to make a stochastic pattern.
-			p.fill(60, spacing=0.25, velocity=100)
+			p.repeat(60, spacing=0.25, velocity=100)
 			p.dropout(probability=0.4)
 
 		pending = subsequence.composition._PendingPattern(
@@ -1766,3 +1766,85 @@ def test_layer_bars_alias (patch_midi: None) -> None:
 	composition.layer(kick, channel=1, bars=2)
 
 	assert composition._pending_patterns[0].length == 8
+
+def test_section_chords_replay_aligns_with_section_boundaries (tmp_path, patch_midi: None) -> None:
+
+	"""Frozen section chords must start on the section's FIRST bar.
+
+	Regression: the harmonic clock was registered before the form clock, so on
+	every section-boundary bar it read the outgoing section and the frozen
+	progression played one bar late, bleeding its last chord into the next
+	section.
+	"""
+
+	composition = subsequence.Composition(bpm=960, key="C", seed=11)
+	composition.harmony(style="functional_major", cycle_beats=4)
+	composition.form([("verse", 2), ("chorus", 2)], loop=True)
+
+	prog = composition.freeze(bars=2)
+	composition.section_chords("chorus", prog)
+
+	observed = []
+
+	@composition.pattern(channel=1, beats=4)
+	def watcher (p, chord) -> None:
+		if p.section is not None:
+			observed.append((p.section.name, chord.name()))
+
+	composition.render(bars=8, filename=str(tmp_path / "align.mid"))
+
+	frozen_names = [c.name() for c in prog.chords]
+	chorus_chords = [name for section, name in observed if section == "chorus"]
+	verse_chords = [name for section, name in observed if section == "verse"]
+
+	# Every chorus bar must play the frozen chords in order from bar one.
+	assert chorus_chords[:2] == frozen_names
+
+	# The frozen progression must not bleed into the verse following a chorus.
+	# (Live verse harmony could coincide by chance with seed-dependent chords,
+	# so pin the structural property: chorus bars exactly cycle the frozen pair.)
+	assert all(
+		chorus_chords[i] == frozen_names[i % 2]
+		for i in range(len(chorus_chords))
+	)
+	assert len(verse_chords) >= 2
+
+@pytest.mark.asyncio
+async def test_unregistered_pattern_is_not_resurrected_by_later_graduation (patch_midi: None) -> None:
+
+	"""A pattern deleted via unregister() must not come back on a later reload pass.
+
+	Regression: pending declarations were never pruned, so every subsequent
+	live-reload graduation re-scheduled patterns that had been deleted.
+	"""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+
+	@composition.pattern(channel=1, beats=4)
+	def ghost (p) -> None:
+		p.note(60, beat=0)
+
+	await composition._activate_new_pending_patterns()
+
+	assert "ghost" in composition._running_patterns
+	assert composition._pending_patterns == []
+
+	composition.unregister("ghost")
+
+	assert "ghost" not in composition._running_patterns
+
+	# A later reload's graduation pass must not bring it back.
+	await composition._activate_new_pending_patterns()
+
+	assert "ghost" not in composition._running_patterns
+
+
+def test_schedule_after_play_raises (patch_midi: None) -> None:
+
+	"""schedule() after playback starts must fail loudly, not register silently into the void."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+	composition._sequencer.running = True
+
+	with pytest.raises(RuntimeError, match="before play"):
+		composition.schedule(lambda: None, cycle_beats=4)

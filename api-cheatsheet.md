@@ -11,7 +11,7 @@ The top-level controller for a musical piece.
 | `__init__(output_device, bpm, time_signature, key, seed, record, record_filename, zero_indexed_channels, latency_ms) -> None` | Initialize a new composition. |
 | `builder_bar *(property)*` | Current bar index used by pattern builders. |
 | `cc_forward(cc, output, channel, output_channel, mode, input_device, output_device) -> None` | Forward an incoming MIDI CC to the MIDI output in real-time. |
-| `cc_map(cc, key, channel, min_val, max_val, input_device) -> None` | Map an incoming MIDI CC to a ``composition.data`` key. |
+| `cc_map(cc, data_key, channel, min_val, max_val, input_device) -> None` | Map an incoming MIDI CC to a ``composition.data`` key. |
 | `chords(channel, progression, harmonic_rhythm, bars, beats, voicing, velocity, detached, root, key, seed, device, mirrors) -> subsequence.progression.ChordTimeline` | Declare a self-contained chord part: a progression at a chosen harmonic rhythm. |
 | `clear_tweak(name, *param_names) -> None` | Remove tweaked parameters from a running pattern. |
 | `clock_output(enabled) -> None` | Send MIDI timing clock to connected hardware. |
@@ -70,12 +70,14 @@ The musician's 'palette' for creating musical content.
 | `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key, held_notes) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
 | `apply_tuning(tuning, bend_range, channels, reference_note) -> 'PatternBuilder'` | Apply a microtonal tuning to this pattern via pitch bend injection. |
 | `arpeggio(notes, root, velocity, count, inversion, beat, span, spacing, duration, direction, seed, rng) -> 'PatternBuilder'` | Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time at regular beat intervals. |
+| `bar_cycle(length) -> subsequence.pattern_builder.BarCycle` | Return the current bar's position within a repeating cycle of bars. |
 | `bend(note, amount, start, end, shape, resolution) -> 'subsequence.pattern_builder.PatternBuilder'` | Bend a specific note by index. |
 | `branch(pitches, depth, path, mutation, velocity, duration, spacing, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melodic variation by navigating a fractal tree of transforms. |
 | `bresenham(pitch, pulses, velocity, duration, probability, no_overlap, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a rhythm using the Bresenham line algorithm. |
 | `bresenham_poly(parts, velocity, duration, grid, probability, no_overlap, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Distribute multiple drum voices across the pattern using weighted Bresenham. |
 | `broken_chord(chord_obj, root, order, spacing, velocity, duration, inversion, beat, span) -> 'PatternBuilder'` | Play a chord as an arpeggio in a specific or random order. |
 | `build_ghost_bias(grid, bias) -> List[float]` | Build probability weights for ghost notes or other generative functions. |
+| `build_velocity_ramp(low, high, shape, grid) -> List[int]` | Build a per-step velocity list that ramps from *low* to *high*. |
 | `c *(property)*` | Alias for self.conductor. |
 | `cc(control, value, beat) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a single CC message at a beat position. |
 | `cc_ramp(control, start, end, beat_start, beat_end, resolution, shape) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate a CC value over a beat range. |
@@ -84,20 +86,18 @@ The musician's 'palette' for creating musical content.
 | `chord(chord_obj, root, velocity, sustain, duration, inversion, count, legato, detached, beat) -> 'PatternBuilder'` | Place a chord at ``beat`` (the start of the pattern by default). |
 | `de_bruijn(pitches, window, spacing, velocity, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melody that exhaustively traverses all pitch subsequences. |
 | `detached(beats) -> 'PatternBuilder'` | Shorten note durations so a guaranteed silence precedes the next onset. |
-| `double_time() -> 'PatternBuilder'` | Compress all notes into the first half of the pattern, doubling the speed. |
 | `drone(pitch, beat, velocity) -> 'PatternBuilder'` | A musical alias for `note_on`. Places a raw Note On event without a duration, typically used for sustained notes that span multiple cycles. Must be silenced later using `drone_off()`. |
 | `drone_off(pitch) -> 'PatternBuilder'` | A musical alias for `note_off`. Places a raw Note Off event at beat 0.0. Used to stop a sequence started by `drone()`. |
 | `dropout(probability, seed, rng) -> 'PatternBuilder'` | Randomly remove notes from the pattern. |
 | `duck_map(steps, floor, grid) -> List[float]` | Build a per-step velocity multiplier list for sidechain-style ducking. |
+| `duration(beats) -> 'PatternBuilder'` | Set every note's duration to a fixed length in beats. |
 | `euclidean(pitch, pulses, velocity, duration, probability, no_overlap, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a Euclidean rhythm. |
 | `every(n, fn) -> 'PatternBuilder'` | Apply a transformation every Nth cycle. |
 | `evolve(pitches, length, drift, velocity, duration, spacing, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Loop a pitch sequence that gradually mutates each cycle. |
 | `fibonacci(pitch, count, velocity, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing). |
-| `fill(pitch, spacing, velocity, duration) -> 'PatternBuilder'` | Fill the pattern with a note repeating at a fixed beat interval. |
 | `ghost_fill(pitch, density, velocity, bias, no_overlap, grid, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Fill the pattern with probability-biased ghost notes. |
 | `grid *(property)*` | Number of grid slots in this pattern (e.g. 16 for a 4-beat sixteenth-note pattern). |
 | `groove(template, strength) -> 'PatternBuilder'` | Apply a groove template to all notes in the pattern. |
-| `half_time() -> 'PatternBuilder'` | Expand all notes by factor of 2, halving the speed. Notes that fall outside the pattern length are removed. |
 | `held_notes() -> List[int]` | Return the MIDI notes currently held on the ``note_input`` keyboard. |
 | `hit(pitch, beats, velocity, duration) -> 'PatternBuilder'` | Place multiple short 'hits' at a list of beat positions. |
 | `hit_steps(pitch, steps, velocity, duration, grid, probability, seed, rng) -> 'PatternBuilder'` | Place short hits at specific step (grid) positions. |
@@ -115,17 +115,17 @@ The musician's 'palette' for creating musical content.
 | `osc(address, *args, beat) -> 'subsequence.pattern_builder.PatternBuilder'` | Send an OSC message at a beat position. |
 | `osc_ramp(address, start, end, beat_start, beat_end, resolution, shape) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate an OSC float value over a beat range. |
 | `param(name, default) -> Any` | Read a tweakable parameter for this pattern. |
-| `phrase(length) -> subsequence.pattern_builder.Phrase` | Return the current bar's position within a repeating musical phrase. |
 | `pitch_bend(value, beat) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a single pitch bend message at a beat position. |
 | `pitch_bend_ramp(start, end, beat_start, beat_end, resolution, shape) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate pitch bend over a beat range. |
 | `portamento(time, shape, resolution, bend_range, wrap) -> 'subsequence.pattern_builder.PatternBuilder'` | Glide between all consecutive notes using pitch bend. |
 | `program_change(program, beat, bank_msb, bank_lsb) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a Program Change message, optionally preceded by bank select. |
 | `progression(source, harmonic_rhythm, key, seed, rng) -> subsequence.progression.ChordTimeline` | Realise a chord progression across the pattern, returning it to place yourself. |
-| `quantize(key, mode, strength, seed, rng) -> 'PatternBuilder'` | Snap all notes in the pattern to the nearest pitch in a scale. |
 | `randomize(timing, velocity, seed, rng) -> 'PatternBuilder'` | Add random variations to note timing and velocity. |
 | `ratchet(subdivisions, pitch, probability, velocity_start, velocity_end, shape, gate, steps, grid, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Subdivide existing notes into rapid repeated hits (rolls/ratchets). |
 | `reaction_diffusion(pitch, threshold, velocity, duration, feed_rate, kill_rate, steps, no_overlap, probability, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation. |
+| `repeat(pitch, spacing, velocity, duration) -> 'PatternBuilder'` | Repeat a note at a fixed beat interval for the whole pattern. |
 | `reverse() -> 'PatternBuilder'` | Flip the pattern backwards in time. |
+| `rotate(steps, grid) -> 'PatternBuilder'` | Rotate the pattern by a number of grid steps, wrapping around. |
 | `rpn(parameter, value, beat, fine, null_reset) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a single RPN parameter write at a beat position. |
 | `rpn_ramp(parameter, start, end, beat_start, beat_end, resolution, shape, fine, null_reset) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate an RPN value over a beat range. |
 | `scale_velocities(factors, grid) -> 'PatternBuilder'` | Scale note velocities by a per-step multiplier list. |
@@ -133,18 +133,17 @@ The musician's 'palette' for creating musical content.
 | `seq(notation, pitch, velocity, seed, rng) -> 'PatternBuilder'` | Build a pattern using an expressive string-based 'mini-notation'. |
 | `sequence(steps, pitches, velocities, durations, grid, probability, seed, rng) -> 'PatternBuilder'` | A multi-parameter step sequencer. |
 | `set_length(length) -> 'PatternBuilder'` | Dynamically change the length of the pattern. |
-| `shift(steps, grid) -> 'PatternBuilder'` | Rotate the pattern by a number of grid steps. |
 | `signal(name) -> float` | Read a conductor signal at the current bar. |
 | `silence(beat) -> 'PatternBuilder'` | Sends an 'All Notes Off' (CC 123) and 'All Sound Off' (CC 120) message on the pattern's channel to immediately silence any ringing notes or drones. |
 | `slide(notes, steps, time, shape, resolution, bend_range, wrap, extend) -> 'subsequence.pattern_builder.PatternBuilder'` | TB-303-style selective slide into specific notes. |
-| `staccato(beats) -> 'PatternBuilder'` | Set all note durations to a fixed length in beats. |
+| `snap_to_scale(key, mode, strength, seed, rng) -> 'PatternBuilder'` | Snap all notes in the pattern to the nearest pitch in a scale. |
+| `stretch(factor) -> 'PatternBuilder'` | Stretch the pattern in time, scaling note positions and durations. |
 | `strum(chord_obj, root, velocity, sustain, duration, inversion, count, spacing, direction, legato, detached, beat) -> 'PatternBuilder'` | Play a chord with a small time offset between each note (strum effect). |
 | `swing(percent, grid, strength) -> 'PatternBuilder'` | Apply swing feel to all notes in the pattern. |
 | `sysex(data, beat) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a System Exclusive (SysEx) message at a beat position. |
 | `thin(pitch, strategy, amount, grid, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Remove notes from the pattern based on their rhythmic position. |
 | `thue_morse(pitch, velocity, duration, pitch_b, velocity_b, no_overlap, probability, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Place notes using the Thue-Morse aperiodic binary sequence. |
 | `transpose(semitones) -> 'PatternBuilder'` | Shift all note pitches up or down. |
-| `velocity_ramp(low, high, shape, grid) -> List[int]` | Build a per-step velocity list that ramps from *low* to *high*. |
 | `velocity_shape(low, high) -> 'PatternBuilder'` | Apply organic velocity variation to all notes in the pattern. |
 
 
@@ -166,7 +165,48 @@ Persistent melodic context that applies NIR scoring to single-note lines.
 | Method | Description |
 |---|---|
 | `__init__(key, mode, low, high, nir_strength, chord_weight, rest_probability, pitch_diversity) -> None` | Initialise a melodic state for a given key, mode, and MIDI register. |
-| `choose_next(chord_tones, rng) -> int \| None` | Score all pitch-pool candidates and return the chosen pitch, or None for a rest. |
+| `choose_next(chord_tones, rng) -> Optional[int]` | Score all pitch-pool candidates and return the chosen pitch, or None for a rest. |
+
+
+## `Tuning`
+
+A microtonal tuning system expressed as cent offsets from the unison.
+
+| Method | Description |
+|---|---|
+| `__init__(cents, description) -> None` |  |
+| `equal(divisions, period) -> 'Tuning'` | Construct an equal-tempered tuning with ``divisions`` equal steps per period. |
+| `from_cents(cents, description) -> 'Tuning'` | Construct a tuning from a list of cent values for degrees 1..N. |
+| `from_ratios(ratios, description) -> 'Tuning'` | Construct a tuning from frequency ratios relative to 1/1. |
+| `from_scl(source) -> 'Tuning'` | Parse a Scala .scl file. |
+| `from_scl_string(text) -> 'Tuning'` | Parse a Scala .scl file from a string (useful for testing). |
+| `period_cents *(property)*` | Cent span of one period (typically 1200.0 for octave-repeating scales). |
+| `pitch_bend_for_note(midi_note, reference_note, bend_range) -> Tuple[int, float]` | Return ``(nearest_12tet_note, bend_normalized)`` for a MIDI note number. |
+| `size *(property)*` | Number of scale degrees per period (the .scl ``count`` line). |
+
+
+## `Chord`
+
+Represents a chord as a root pitch class and quality.
+
+| Method | Description |
+|---|---|
+| `__init__(root_pc, quality) -> None` |  |
+| `bass_note(root_midi, octave_offset) -> int` | Return the chord root shifted by a number of octaves. |
+| `intervals() -> List[int]` | Return the chord intervals for this chord quality. |
+| `name() -> str` | Return a human-friendly chord name. |
+| `root_note(root_midi) -> int` | Return the MIDI note number for the chord root nearest to *root_midi*. |
+| `tones(root, inversion, count) -> List[int]` | Return MIDI note numbers for chord tones starting from a root. |
+
+
+## `ChordTimeline`
+
+A chord progression laid out in time — an iterable of :class:`ChordEvent`.
+
+| Method | Description |
+|---|---|
+| `__init__(events, length) -> None` |  |
+| `describe() -> str` | A readable, one-chord-per-line summary of the timeline. |
 
 
 ## Global Functions
@@ -174,7 +214,7 @@ Persistent melodic context that applies NIR scoring to single-note lines.
 
 | Function | Description |
 |---|---|
-| `register_scale(name, intervals, qualities) -> None` | Register a custom scale for use with ``p.quantize()`` and ``scale_pitch_classes()``. |
+| `register_scale(name, intervals, qualities) -> None` | Register a custom scale for use with ``p.snap_to_scale()`` and ``scale_pitch_classes()``. |
 | `scale_notes(key, mode, low, high, count) -> List[int]` | Return MIDI note numbers for a scale within a pitch range. |
 | `bank_select(bank) -> Tuple[int, int]` | Convert a 14-bit MIDI bank number to (MSB, LSB) for use with ``p.program_change()``. |
 | `between(low, high, step) -> subsequence.harmonic_rhythm.HarmonicRhythm` | A harmonic rhythm that varies *between* two lengths (in beats). |
@@ -208,8 +248,7 @@ Functions for generating and transforming sequences.
 | `probability_gate(sequence, probability, rng) -> List[int]` | Filter a binary sequence by probability. |
 | `random_walk(n, low, high, step, rng, start) -> List[int]` | Generate values that drift by small steps within a range. |
 | `reaction_diffusion_1d(width, steps, feed_rate, kill_rate, du, dv) -> List[float]` | Simulate a 1D Gray-Scott reaction-diffusion system. |
-| `roll(indices, shift, length) -> List[int]` | Circularly shift step indices by the specified amount. |
-| `rotate(indices, shift, length) -> List[int]` | Circularly shift step indices by the specified amount. |
+| `rotate(indices, shift, length) -> List[int]` | Circularly rotate step indices by the specified amount, wrapping at *length*. |
 | `scale_clamp(value, in_min, in_max, out_min, out_max) -> float` | Scale a value from an input range to an output range and clamp the result. |
 | `self_avoiding_walk(n, low, high, rng, start) -> List[int]` | Generate a self-avoiding random walk on an integer lattice. |
 | `sequence_to_indices(sequence) -> List[int]` | Extract step indices where hits occur in a binary sequence. |

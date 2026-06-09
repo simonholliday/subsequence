@@ -192,6 +192,62 @@ def test_register_scale_qualities_length_mismatch () -> None:
 		subsequence.intervals.register_scale("bad", [0, 3, 7], qualities=["major", "minor"])
 
 
+def test_register_scale_rejects_builtin_name () -> None:
+
+	"""Overwriting a built-in scale name raises and leaves the built-in intact."""
+
+	with pytest.raises(ValueError, match="built-in"):
+		subsequence.intervals.register_scale("minor", [0, 1, 2])
+
+	with pytest.raises(ValueError, match="built-in"):
+		subsequence.intervals.register_scale("hirajoshi", [0, 1, 2])
+
+	# The built-in definition is unchanged.
+	assert subsequence.intervals.scale_pitch_classes(0, "minor") == [0, 2, 3, 5, 7, 8, 10]
+
+
+def test_register_scale_custom_name_reregisters () -> None:
+
+	"""Re-registering a custom name works — live reload re-runs registration on every save."""
+
+	subsequence.intervals.register_scale("test_rereg", [0, 3, 7])
+	subsequence.intervals.register_scale("test_rereg", [0, 4, 7])
+
+	# The second registration wins.
+	assert subsequence.intervals.scale_pitch_classes(0, "test_rereg") == [0, 4, 7]
+
+	# Clean up
+	del subsequence.intervals.INTERVAL_DEFINITIONS["test_rereg"]
+	del subsequence.intervals.SCALE_MODE_MAP["test_rereg"]
+
+
+def test_register_scale_empty_intervals () -> None:
+
+	"""intervals must not be empty."""
+
+	with pytest.raises(ValueError, match="empty"):
+		subsequence.intervals.register_scale("bad", [])
+
+
+def test_register_scale_non_integer_intervals () -> None:
+
+	"""intervals must be whole numbers."""
+
+	with pytest.raises(ValueError, match="whole numbers"):
+		subsequence.intervals.register_scale("bad", [0, 2.5, 7])  # type: ignore[list-item]
+
+
+def test_register_scale_not_strictly_ascending () -> None:
+
+	"""intervals must ascend strictly — descents and duplicates raise."""
+
+	with pytest.raises(ValueError, match="ascending"):
+		subsequence.intervals.register_scale("bad", [0, 7, 3])
+
+	with pytest.raises(ValueError, match="ascending"):
+		subsequence.intervals.register_scale("bad", [0, 3, 3, 7])
+
+
 # ── diatonic_chords guard for no-qualities modes ────────────────────
 
 def test_diatonic_chords_raises_for_no_qualities () -> None:

@@ -1,7 +1,7 @@
 """Utility functions for generating and transforming step sequences.
 
 Provides algorithms for rhythm generation (Euclidean, Bresenham, van der Corput),
-sequence manipulation (roll, legato, probability gate), and general-purpose
+sequence manipulation (rotate, legato, probability gate), and general-purpose
 generative helpers (random walk, weighted choice, shuffled choices, scale/clamp).
 """
 
@@ -68,13 +68,17 @@ def generate_bresenham_sequence (steps: int, pulses: int) -> typing.List[int]:
 
 	sequence = [0] * steps
 	error = 0
-	
+
+	# The accumulator starts at 0, so each group of steps fills up before it
+	# overflows — placing hits LATE in each group BY DESIGN.  This is the
+	# documented difference from generate_euclidean_sequence, which rotates
+	# its result to start on a hit.
 	for i in range(steps):
 		error += pulses
 		if error >= steps:
 			sequence[i] = 1
 			error -= steps
-			
+
 	return sequence
 
 
@@ -133,15 +137,11 @@ def sequence_to_indices (sequence: typing.List[int]) -> typing.List[int]:
 	return [i for i, v in enumerate(sequence) if v]
 
 
-def roll (indices: typing.List[int], shift: int, length: int) -> typing.List[int]:
+def rotate (indices: typing.List[int], shift: int, length: int) -> typing.List[int]:
 
-	"""Circularly shift step indices by the specified amount."""
+	"""Circularly rotate step indices by the specified amount, wrapping at *length*."""
 
 	return [(i + shift) % length for i in indices]
-
-
-#: Alias for :func:`roll` — same operation, more intuitive name.
-rotate = roll
 
 
 def generate_legato_durations (hits: typing.List[int]) -> typing.List[int]:
@@ -213,6 +213,10 @@ def shuffled_choices (pool: typing.List[T], n: int, rng: random.Random) -> typin
 	Within each pass through the pool, every item appears before any repeats.
 	Across reshuffles, the last item of one pass is never the first of the next.
 	Similar to Max/MSP's ``urn`` object.
+
+	The no-immediate-repeat guarantee assumes the pool values are distinct —
+	a pool containing duplicates (e.g. ``[100, 100, 80]``) can still place
+	equal values back to back.
 
 	Parameters:
 		pool: Items to choose from

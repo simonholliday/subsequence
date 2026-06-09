@@ -20,7 +20,7 @@ Use directly for step sizes and note durations::
 
     p.arpeggio(tones, spacing=dur.SIXTEENTH, velocity=90)
     p.arpeggio(tones, spacing=dur.DOTTED_SIXTEENTH, velocity=80)
-    p.fill(60, spacing=dur.EIGHTH)
+    p.repeat(60, spacing=dur.EIGHTH)
 """
 
 THIRTYSECOND = 0.125

@@ -364,7 +364,7 @@ def test_cc_map_input_device_filter (patch_midi: None) -> None:
 	seq = _make_sequencer(spy)
 	seq.cc_mappings = [{
 		'cc': 74,
-		'key': 'filter',
+		'data_key': 'filter',
 		'channel': None,
 		'min_val': 0.0,
 		'max_val': 1.0,
@@ -387,7 +387,7 @@ def test_cc_map_no_device_filter (patch_midi: None) -> None:
 	seq = _make_sequencer(spy)
 	seq.cc_mappings = [{
 		'cc': 74,
-		'key': 'filter',
+		'data_key': 'filter',
 		'channel': None,
 		'min_val': 0.0,
 		'max_val': 1.0,
@@ -641,7 +641,7 @@ def test_cc_map_unknown_input_device_none_means_any (patch_midi: None) -> None:
 	seq = _make_sequencer(spy)
 	seq.cc_mappings = [{
 		'cc': 74,
-		'key': 'filter',
+		'data_key': 'filter',
 		'channel': None,
 		'min_val': 0.0,
 		'max_val': 1.0,

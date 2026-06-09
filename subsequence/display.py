@@ -584,7 +584,10 @@ class Display:
 			chord = comp.harmonic_state.get_current_chord()
 			parts.append(f"Chord: {chord.name()}")
 
-		# Conductor signals (when any are registered).
+		# Conductor signals (when any are registered).  builder_bar is the
+		# lookahead bar - deliberately the same time base the pattern builders
+		# read, so the status line shows the values shaping what you are about
+		# to hear (the section line above shows playing-bar time instead).
 		conductor = comp.conductor
 		if conductor.signal_names:
 			beat = comp.builder_bar * comp.sequencer.time_signature[0]

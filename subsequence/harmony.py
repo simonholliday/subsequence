@@ -25,7 +25,7 @@ def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.
 		mode: A mode with chord qualities defined (e.g. ``"ionian"``,
 			``"dorian"``, ``"minor"``). Scales without chord qualities
 			(e.g. ``"hirajoshi"``) will raise ``ValueError`` — use
-			``p.quantize()`` for pitch snapping instead.
+			``p.snap_to_scale()`` for pitch snapping instead.
 
 	Returns:
 		List of ``Chord`` objects, one per scale degree.
@@ -55,7 +55,7 @@ def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.
 		raise ValueError(
 			f"Mode {mode!r} has no chord qualities defined. "
 			"Use register_scale(..., qualities=[...]) to add them, "
-			"or use p.quantize() for pitch snapping without harmony."
+			"or use p.snap_to_scale() for pitch snapping without harmony."
 		)
 	key_pc = subsequence.chords.key_name_to_pc(key)
 	scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)

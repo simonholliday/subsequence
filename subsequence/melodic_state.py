@@ -57,6 +57,21 @@ class MelodicState:
 			    repetition more aggressively.
 		"""
 
+		if nir_strength < 0 or nir_strength > 1:
+			raise ValueError("NIR strength must be between 0 and 1")
+
+		if rest_probability < 0 or rest_probability > 1:
+			raise ValueError("Rest probability must be between 0 and 1")
+
+		if pitch_diversity < 0 or pitch_diversity > 1:
+			raise ValueError("Pitch diversity must be between 0 and 1")
+
+		if chord_weight < 0:
+			raise ValueError("Chord weight must be non-negative")
+
+		if low >= high:
+			raise ValueError("low must be below high")
+
 		self.key = key
 		self.mode = mode
 		self.low = low

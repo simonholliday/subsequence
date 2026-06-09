@@ -12,7 +12,7 @@ Module-level constants:
 Module-level helpers:
 - `key_name_to_pc(key_name)`: Validate a key name and return its pitch class (0–11).
   Raises `ValueError` for unknown names. This is the canonical key validation function
-  used by `harmony.py`, `pattern_builder.quantize()`, and `chord_graphs.validate_key_name()`.
+  used by `harmony.py`, `pattern_builder.snap_to_scale()`, and `chord_graphs.validate_key_name()`.
 
 Chord qualities: `"major"`, `"minor"`, `"diminished"`, `"augmented"`, `"dominant_7th"`,
 `"major_7th"`, `"minor_7th"`, `"half_diminished_7th"`, `"sus2"`, `"sus4"`
@@ -172,7 +172,7 @@ class Chord:
 		offset = (self.root_pc - root) % 12
 		if offset > 6:
 			offset -= 12
-		
+
 		effective_root = root + offset
 
 		intervals = self.intervals()

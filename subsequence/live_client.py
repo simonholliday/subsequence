@@ -141,13 +141,21 @@ def main () -> None:
 
 			lines = [line]
 
-			# Accumulate multi-line blocks.
-			while _is_incomplete("\n".join(lines)):
+			# Accumulate multi-line blocks.  Once a block has started, only a
+			# BLANK line ends it (standard REPL behaviour) — terminating when
+			# the joined code merely "looked complete" cut every block off
+			# after its first body line.
+			in_block = _is_incomplete(line)
+
+			while in_block or _is_incomplete("\n".join(lines)):
 				try:
 					continuation = input("... ")
 				except KeyboardInterrupt:
 					print()
 					lines = []
+					break
+
+				if in_block and continuation.strip() == "":
 					break
 
 				lines.append(continuation)

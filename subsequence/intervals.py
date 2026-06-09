@@ -114,7 +114,7 @@ MELODIC_MINOR_QUALITIES: typing.List[str] = [
 
 # Map mode/scale names to (interval_key, qualities) for use by helpers.
 # qualities is None for scales without predefined chord mappings — these
-# can still be used with scale_pitch_classes() and p.quantize(), but not
+# can still be used with scale_pitch_classes() and p.snap_to_scale(), but not
 # with diatonic_chords() or composition.harmony().
 SCALE_MODE_MAP: typing.Dict[str, typing.Tuple[str, typing.Optional[typing.List[str]]]] = {
 	# -- Western diatonic modes (7-note, with chord qualities) --
@@ -143,6 +143,12 @@ SCALE_MODE_MAP: typing.Dict[str, typing.Tuple[str, typing.Optional[typing.List[s
 DIATONIC_MODE_MAP = SCALE_MODE_MAP
 
 
+# Snapshot of every built-in scale name, taken at import time.  register_scale()
+# refuses to overwrite these so a custom scale can never silently change what
+# "minor" or "hirajoshi" means mid-composition.
+_BUILTIN_SCALE_NAMES: typing.FrozenSet[str] = frozenset(INTERVAL_DEFINITIONS) | frozenset(SCALE_MODE_MAP)
+
+
 def scale_pitch_classes (key_pc: int, mode: str = "ionian") -> typing.List[int]:
 
 	"""
@@ -154,7 +160,9 @@ def scale_pitch_classes (key_pc: int, mode: str = "ionian") -> typing.List[int]:
 		      (e.g. ``"ionian"``, ``"dorian"``, ``"minor"``, ``"harmonic_minor"``).
 
 	Returns:
-		Sorted list of pitch classes in the scale (length varies by mode).
+		Pitch classes in scale-degree order, starting from the root
+		(length varies by mode). Values wrap mod-12, so the list is
+		not numerically sorted for non-C roots.
 
 	Example:
 		```python
@@ -328,17 +336,27 @@ def register_scale (
 ) -> None:
 
 	"""
-	Register a custom scale for use with ``p.quantize()`` and
+	Register a custom scale for use with ``p.snap_to_scale()`` and
 	``scale_pitch_classes()``.
 
+	Built-in scale names (e.g. ``"minor"``, ``"hirajoshi"``) cannot be
+	overwritten.  Custom names may be re-registered freely — live reload
+	re-runs registration on every save, so this must not raise.
+
 	Parameters:
-		name: Scale name (used in ``p.quantize(key, name)``).
+		name: Scale name (used in ``p.snap_to_scale(key, name)``).  Must not
+			be the name of a built-in scale.
 		intervals: Semitone offsets from the root (e.g. ``[0, 2, 3, 7, 8]``
-			for Hirajōshi). Must start with 0 and contain values 0–11.
+			for Hirajōshi). Must be whole numbers, start with 0, ascend
+			strictly, and stay within 0–11.
 		qualities: Optional chord quality per scale degree (e.g.
 			``["minor", "major", "minor", "major", "diminished"]``).
 			Required only if you want to use the scale with
 			``diatonic_chords()`` or ``diatonic_chord_sequence()``.
+
+	Raises:
+		ValueError: If *name* is a built-in scale, or *intervals* /
+			*qualities* fail the rules above.
 
 	Example::
 
@@ -349,11 +367,23 @@ def register_scale (
 		@comp.pattern(channel=0, length=4)
 		def melody (p):
 			p.note(60, beat=0)
-			p.quantize("C", "raga_bhairav")
+			p.snap_to_scale("C", "raga_bhairav")
 	"""
 
-	if not intervals or intervals[0] != 0:
+	if name in _BUILTIN_SCALE_NAMES:
+		raise ValueError(
+			f"Cannot overwrite built-in scale '{name}'. "
+			"Choose a different name for your custom scale."
+		)
+
+	if not intervals:
+		raise ValueError("intervals must not be empty")
+	if not all(isinstance(i, int) for i in intervals):
+		raise ValueError("intervals must be whole numbers (semitone offsets)")
+	if intervals[0] != 0:
 		raise ValueError("intervals must start with 0")
+	if any(b <= a for a, b in zip(intervals, intervals[1:])):
+		raise ValueError("intervals must be strictly ascending")
 	if any(i < 0 or i > 11 for i in intervals):
 		raise ValueError("intervals must contain values between 0 and 11")
 	if qualities is not None and len(qualities) != len(intervals):

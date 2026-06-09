@@ -5,6 +5,7 @@ import mido
 import pytest
 
 import subsequence
+import subsequence.midi_utils
 import subsequence.sequencer
 import conftest
 
@@ -342,3 +343,34 @@ def test_live_info_with_midi_input (patch_midi: None) -> None:
 
 	assert info["input_device"] == "Dummy MIDI"
 	assert info["clock_follow"] is True
+
+
+# --- select_input_device ---
+
+
+def test_select_input_device_none_returns_none (patch_midi: None) -> None:
+
+	"""No device name means no input — (None, None) without prompting."""
+
+	name, port = subsequence.midi_utils.select_input_device(None)
+
+	assert name is None
+	assert port is None
+
+
+def test_select_input_device_opens_named_device (patch_midi: None) -> None:
+
+	"""A named device that exists is opened directly."""
+
+	name, port = subsequence.midi_utils.select_input_device("Dummy MIDI")
+
+	assert name == "Dummy MIDI"
+	assert isinstance(port, conftest.FakeMidiIn)
+
+
+def test_select_input_device_missing_name_raises (patch_midi: None) -> None:
+
+	"""A named device that is missing raises instead of falling back to another input."""
+
+	with pytest.raises(ValueError, match="not found"):
+		subsequence.midi_utils.select_input_device("Nonexistent Device")

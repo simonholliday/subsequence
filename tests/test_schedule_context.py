@@ -1,6 +1,27 @@
 """Tests for ScheduleContext injection into composition.schedule() callbacks."""
 
+import asyncio
+import typing
+
 import subsequence.composition
+
+
+async def _wait_for (condition: typing.Callable[[], bool], deadline: float = 2.0, poll: float = 0.01) -> None:
+
+	"""Poll until `condition()` is true or the deadline passes.
+
+	Sync callbacks complete on executor threads, so a fixed number of
+	zero-sleeps can flake under load — polling a condition is deterministic.
+	"""
+
+	loop = asyncio.get_running_loop()
+	end = loop.time() + deadline
+
+	while not condition():
+		if loop.time() >= end:
+			return
+
+		await asyncio.sleep(poll)
 
 
 # ---------------------------------------------------------------------------
@@ -33,8 +54,6 @@ def test_make_safe_callback_context_increments () -> None:
 
 	"""Each _execute() call should increment cycle_count inside the closure."""
 
-	import asyncio
-
 	received: list = []
 
 	def my_task (p: subsequence.composition.ScheduleContext) -> None:
@@ -44,13 +63,11 @@ def test_make_safe_callback_context_increments () -> None:
 
 	async def run () -> None:
 
-		# Fire all three calls first, then drain the event loop.
+		# Fire all three calls first, then wait for every spawned task to finish.
 		for _ in range(3):
 			wrapped(0)
 
-		# Multiple yields to let each spawned coroutine run to completion.
-		for _ in range(10):
-			await asyncio.sleep(0)
+		await _wait_for(lambda: len(received) == 3)
 
 	asyncio.run(run())
 
@@ -70,8 +87,6 @@ def test_make_safe_callback_start_cycle_offset () -> None:
 	yielding a non-monotonic 0, 0, 1, 2… contradicting ScheduleContext's docstring.
 	"""
 
-	import asyncio
-
 	received: list = []
 
 	def my_task (p: subsequence.composition.ScheduleContext) -> None:
@@ -84,8 +99,7 @@ def test_make_safe_callback_start_cycle_offset () -> None:
 		for _ in range(3):
 			wrapped(0)
 
-		for _ in range(10):
-			await asyncio.sleep(0)
+		await _wait_for(lambda: len(received) == 3)
 
 	asyncio.run(run())
 
@@ -96,8 +110,6 @@ def test_make_safe_callback_no_context_flag () -> None:
 
 	"""When accepts_context=False the function is called with zero args."""
 
-	import asyncio
-
 	received: list = []
 
 	def my_task () -> None:
@@ -107,7 +119,7 @@ def test_make_safe_callback_no_context_flag () -> None:
 
 	async def run () -> None:
 		wrapped(0)
-		await asyncio.sleep(0)
+		await _wait_for(lambda: len(received) == 1)
 
 	asyncio.run(run())
 

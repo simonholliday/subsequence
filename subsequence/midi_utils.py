@@ -1,3 +1,10 @@
+"""
+MIDI device plumbing — discovering, opening, and registering hardware ports.
+
+Provides interactive/automatic output and input device selection, the
+multi-device registry used by the sequencer, and the ``bank_select()``
+helper for addressing synth banks beyond the first 128 programs.
+"""
 
 import logging
 import typing
@@ -24,6 +31,10 @@ class MidiDeviceRegistry:
 	"""
 
 	def __init__ (self) -> None:
+
+		"""
+		Create an empty registry; populate it with add().
+		"""
 
 		self._ports: typing.List[typing.Tuple[str, typing.Any]] = []
 		self._name_to_index: typing.Dict[str, int] = {}
@@ -143,6 +154,11 @@ class MidiDeviceRegistry:
 		self._latencies.clear()
 
 	def __len__ (self) -> int:
+
+		"""
+		Number of registered devices.
+		"""
+
 		return len(self._ports)
 
 	def __iter__ (self) -> typing.Iterator[typing.Any]:
@@ -150,6 +166,11 @@ class MidiDeviceRegistry:
 		return (port for _, port in self._ports)
 
 	def __bool__ (self) -> bool:
+
+		"""
+		True if at least one device is registered.
+		"""
+
 		return bool(self._ports)
 
 
@@ -261,15 +282,21 @@ def select_input_device (device_name: typing.Optional[str] = None, callback: typ
 	"""
 	Select and open a MIDI input device.
 
-	If `device_name` is provided, attempts to open that specific device.
+	If `device_name` is provided, attempts to open exactly that device.
 	If `device_name` is None, returns None without prompting (input is optional/advanced).
 	To enforce input, the caller should check the return value.
 
-	If the precise name is not found, this function falls back to the first available input
-	and logs a warning, which is useful for cross-platform script portability.
+	A named device that is not present raises ValueError rather than falling
+	back to another input: MIDI input drives clock-follow and live note
+	capture, so silently listening to the wrong device would desynchronise
+	or mis-record a performance.
 
 	Returns:
-		A tuple of (device_name, midi_in_object) or (None, None) on failure.
+		A tuple of (device_name, midi_in_object), or (None, None) when no
+		name was given or the device failed to open.
+
+	Raises:
+		ValueError: If *device_name* is not among the available inputs.
 	"""
 
 	if device_name is None:
@@ -279,19 +306,15 @@ def select_input_device (device_name: typing.Optional[str] = None, callback: typ
 		inputs = mido.get_input_names()
 		logger.info(f"Available MIDI inputs: {inputs}")
 
-		target = device_name
+		if device_name not in inputs:
+			raise ValueError(
+				f"MIDI input device '{device_name}' not found. "
+				f"Available devices: {inputs}"
+			)
 
-		if target not in inputs:
-			logger.warning(f"MIDI input device '{target}' not found.")
-			if inputs:
-				target = inputs[0]
-				logger.warning(f"Fallback to: {target}")
-			else:
-				return None, None
-
-		midi_in = mido.open_input(target, callback=callback)
-		logger.info(f"Opened MIDI input: {target}")
-		return target, midi_in
+		midi_in = mido.open_input(device_name, callback=callback)
+		logger.info(f"Opened MIDI input: {device_name}")
+		return device_name, midi_in
 
 	except (OSError, RuntimeError) as e:
 		logger.error(f"Failed to open MIDI input: {e}")

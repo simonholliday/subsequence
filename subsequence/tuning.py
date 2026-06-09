@@ -302,7 +302,11 @@ def apply_tuning_to_pattern (
 		bend_range: Must match the MIDI synth's pitch-bend range setting
 		    (default ±2 semitones).
 		channels: Optional explicit channel pool for polyphonic parts.
-		    When ``None``, all notes stay on ``pattern.channel``.
+		    When ``None``, all notes stay on ``pattern.channel``.  Under
+		    polyphonic rotation, expression events created BEFORE this call
+		    (``portamento()``/``slide()`` bends) are not re-routed per note —
+		    apply tuning last, or avoid combining note-correlated bends with
+		    a channel pool.
 		reference_note: MIDI note number mapped to scale degree 0.
 	"""
 	if not pattern.steps:
@@ -320,6 +324,14 @@ def apply_tuning_to_pattern (
 			for step in pattern.steps.values():
 				for note in step.notes:
 					note.channel = channels[0]
+
+			# Pre-existing expression events (portamento/slide bends, CCs)
+			# with no explicit channel would otherwise stay on
+			# pattern.channel — targeting a channel where nothing sounds and
+			# escaping the additive-shift pass below.
+			for ev in pattern.cc_events:
+				if ev.channel is None:
+					ev.channel = channels[0]
 
 	# ── Step 2: build a pulse→(tuning_bend_normalized, note_channel) map ─────
 	# We need this for two things:

@@ -116,19 +116,12 @@ class TestHotkeyBinding:
 
 class TestHotkeyRegistration:
 
-	def _make_composition (self) -> comp_mod.Composition:
-		# Avoid MIDI hardware init — we only test the hotkey logic.
-		return comp_mod.Composition.__new__(comp_mod.Composition)
+	@pytest.fixture(autouse=True)
+	def _setup (self, patch_midi: None) -> None:
 
-	def setup_method (self) -> None:
+		"""Build a real Composition (against the fake MIDI backend) so registration runs through __init__-initialised state."""
 
-		# Manually initialise just the hotkey-related state.
-		self.comp = self._make_composition()
-		self.comp._hotkeys_enabled = False
-		self.comp._hotkey_bindings = {}
-		self.comp._pending_hotkey_actions = []
-		self.comp._keystroke_listener = None
-		self.comp._form_state = None
+		self.comp = comp_mod.Composition(output_device="Dummy MIDI", bpm=120)
 
 	def test_hotkeys_enables (self) -> None:
 		self.comp.hotkeys()
@@ -318,7 +311,6 @@ class TestProcessHotkeys:
 		self.comp._pending_hotkey_actions.append(
 			comp_mod._PendingHotkeyAction(
 				binding=self.comp._hotkey_bindings["a"],
-				requested_bar=1,
 			)
 		)
 
@@ -333,7 +325,6 @@ class TestProcessHotkeys:
 		self.comp._pending_hotkey_actions.append(
 			comp_mod._PendingHotkeyAction(
 				binding=self.comp._hotkey_bindings["a"],
-				requested_bar=1,
 			)
 		)
 		# Bar 2 is not divisible by 4.

@@ -233,7 +233,9 @@ class LiveReloader:
 				self._stop_event.wait(self._poll_interval)
 				continue
 
-			if self._last_mtime is None or mtime > self._last_mtime:
+			# != rather than >: a timestamp-preserving replacement (mv backup.py
+			# watched.py) can legitimately have an OLDER mtime.
+			if self._last_mtime is None or mtime != self._last_mtime:
 
 				loop = self._composition._sequencer._event_loop
 

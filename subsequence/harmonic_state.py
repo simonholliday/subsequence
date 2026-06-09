@@ -154,10 +154,15 @@ class HarmonicState:
 		Returns a multiplier (default 1.0, >1.0 for boost).
 		"""
 
-		if not self.history:
+		# step() appends the current chord to history BEFORE choosing, so
+		# history[-1] is always the source itself; the implication interval
+		# needs the chord we arrived FROM, which is history[-2].  (Using
+		# history[-1] here was the pre-2026-06 bug that left the reversal
+		# and continuation rules permanently inert.)
+		if len(self.history) < 2:
 			return 1.0
 
-		prev = self.history[-1]
+		prev = self.history[-2]
 
 		# Calculate interval from Prev -> Source (The "Implication" generator)
 		# Using shortest-path distance in Pitch Class space (-6 to +6)

@@ -1,7 +1,10 @@
 import asyncio
 import inspect
+import logging
 import typing
 
+
+logger = logging.getLogger(__name__)
 
 CallbackType = typing.Callable[..., typing.Any]
 
@@ -60,13 +63,23 @@ class EventEmitter:
 			if inspect.iscoroutinefunction(callback):
 				raise ValueError("Async callback encountered in emit_sync")
 
-			callback(*args, **kwargs)
+			result = callback(*args, **kwargs)
+
+			# Catch async-callable objects too (async __call__ fails the
+			# iscoroutinefunction check but still returns an awaitable).
+			if inspect.isawaitable(result):
+				typing.cast(typing.Coroutine, result).close()
+				raise ValueError("Async callback encountered in emit_sync")
 
 
 	async def emit_async (self, event_name: str, *args: typing.Any, **kwargs: typing.Any) -> None:
 
 		"""
-		Emit an event and await async listeners.
+		Emit an event, awaiting async listeners.
+
+		One raising listener never silences the others: sync exceptions are
+		logged and the remaining listeners still run, and async listeners are
+		gathered with their exceptions logged individually.
 		"""
 
 		if event_name not in self._listeners:
@@ -76,11 +89,21 @@ class EventEmitter:
 
 		for callback in self._listeners[event_name]:
 
-			if inspect.iscoroutinefunction(callback):
-				tasks.append(callback(*args, **kwargs))
+			# Calling first and checking the RESULT handles both coroutine
+			# functions and async-callable objects (async __call__), which
+			# iscoroutinefunction misses.
+			try:
+				result = callback(*args, **kwargs)
+			except Exception:
+				logger.exception("Listener for %r raised - continuing with remaining listeners", event_name)
+				continue
 
-			else:
-				callback(*args, **kwargs)
+			if inspect.isawaitable(result):
+				tasks.append(result)
 
 		if tasks:
-			await asyncio.gather(*tasks)
+			results = await asyncio.gather(*tasks, return_exceptions=True)
+
+			for outcome in results:
+				if isinstance(outcome, BaseException):
+					logger.error("Async listener for %r raised", event_name, exc_info=outcome)

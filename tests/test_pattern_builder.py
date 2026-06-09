@@ -90,7 +90,7 @@ def test_hit_places_multiple_beats () -> None:
 	assert pattern.steps[pulse_3].notes[0].pitch == 38
 
 
-def test_fill_covers_pattern () -> None:
+def test_repeat_covers_pattern () -> None:
 
 	"""
 	Fill with spacing=0.25 over a 4-beat pattern should place 16 notes.
@@ -98,7 +98,7 @@ def test_fill_covers_pattern () -> None:
 
 	pattern, builder = _make_builder(length=4)
 
-	builder.fill(60, spacing=0.25, velocity=90, duration=0.2)
+	builder.repeat(60, spacing=0.25, velocity=90, duration=0.2)
 
 	# 4 beats / 0.25 step = 16 notes
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
@@ -106,7 +106,7 @@ def test_fill_covers_pattern () -> None:
 	assert total_notes == 16
 
 
-def test_fill_invalid_step_raises () -> None:
+def test_repeat_invalid_step_raises () -> None:
 
 	"""
 	Fill with non-positive step should raise ValueError.
@@ -115,10 +115,10 @@ def test_fill_invalid_step_raises () -> None:
 	pattern, builder = _make_builder()
 
 	with pytest.raises(ValueError):
-		builder.fill(60, spacing=0)
+		builder.repeat(60, spacing=0)
 
 	with pytest.raises(ValueError):
-		builder.fill(60, spacing=-1)
+		builder.repeat(60, spacing=-1)
 
 
 def test_duck_map_builds_multiplier_list () -> None:
@@ -565,7 +565,7 @@ def test_dropout_removes_some_hits () -> None:
 
 	pattern, builder = _make_builder(length=4)
 
-	builder.fill(60, spacing=0.25, velocity=100)
+	builder.repeat(60, spacing=0.25, velocity=100)
 
 	total_before = sum(len(step.notes) for step in pattern.steps.values())
 
@@ -588,7 +588,7 @@ def test_velocity_shape_applies () -> None:
 
 	pattern, builder = _make_builder(length=2)
 
-	builder.fill(60, spacing=0.5, velocity=100)
+	builder.repeat(60, spacing=0.5, velocity=100)
 
 	builder.velocity_shape(low=40, high=120)
 
@@ -1155,7 +1155,7 @@ def test_dropout_uses_builder_rng () -> None:
 			rng = random.Random(seed)
 		)
 
-		builder.fill(60, spacing=0.25, velocity=100)
+		builder.repeat(60, spacing=0.25, velocity=100)
 		builder.dropout(probability=0.5)
 
 		return sum(len(step.notes) for step in pattern.steps.values())
@@ -1217,7 +1217,7 @@ def test_float_length_hit_steps () -> None:
 	assert total_notes == 4
 
 
-def test_float_length_fill () -> None:
+def test_float_length_repeat () -> None:
 
 	"""fill should work with a float pattern length."""
 
@@ -1229,7 +1229,7 @@ def test_float_length_fill () -> None:
 	)
 
 	# spacing=0.5 over 3.5 beats = 7 notes (0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
-	builder.fill(60, spacing=0.5, velocity=100)
+	builder.repeat(60, spacing=0.5, velocity=100)
 
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
 
@@ -1292,7 +1292,7 @@ def test_set_length_updates_pattern () -> None:
 	assert pattern.length == 8
 
 
-def test_set_length_affects_fill () -> None:
+def test_set_length_affects_repeat () -> None:
 
 	"""After set_length, fill should use the new length."""
 
@@ -1304,7 +1304,7 @@ def test_set_length_affects_fill () -> None:
 	)
 
 	builder.set_length(2)
-	builder.fill(60, spacing=0.5, velocity=100)
+	builder.repeat(60, spacing=0.5, velocity=100)
 
 	# 2 beats / 0.5 step = 4 notes
 	total_notes = sum(len(step.notes) for step in pattern.steps.values())
@@ -1346,16 +1346,16 @@ def test_reverse_empty_pattern () -> None:
 	assert len(pattern.steps) == 0
 
 
-def test_double_time_halves_positions () -> None:
+def test_stretch_compress_halves_positions () -> None:
 
-	"""double_time() should compress notes into the first half with halved durations."""
+	"""stretch(0.5) should compress notes into the first half with halved durations."""
 
 	pattern, builder = _make_builder(length=4)
 
 	# Place notes at beats 0, 1, 2, 3 (pulses 0, 24, 48, 72).
 	builder.hit(60, beats=[0, 1, 2, 3], velocity=100, duration=0.5)
 
-	builder.double_time()
+	builder.stretch(0.5)
 
 	positions = sorted(pattern.steps.keys())
 
@@ -1370,16 +1370,16 @@ def test_double_time_halves_positions () -> None:
 			assert note.duration == original_duration // 2
 
 
-def test_half_time_doubles_positions () -> None:
+def test_stretch_expand_doubles_positions () -> None:
 
-	"""half_time() should expand notes and drop those that exceed the pattern boundary."""
+	"""stretch(2.0) should expand notes and drop those that exceed the pattern boundary."""
 
 	pattern, builder = _make_builder(length=4)
 
 	# Place notes at beats 0, 1, 2, 3 (pulses 0, 24, 48, 72).
 	builder.hit(60, beats=[0, 1, 2, 3], velocity=100, duration=0.25)
 
-	builder.half_time()
+	builder.stretch(2.0)
 
 	total_pulses = int(4 * subsequence.constants.MIDI_QUARTER_NOTE)  # 96
 	positions = sorted(pattern.steps.keys())
@@ -1395,35 +1395,81 @@ def test_half_time_doubles_positions () -> None:
 			assert note.duration == original_duration * 2
 
 
-def test_shift_wraps_around () -> None:
+def test_stretch_fractional_factor () -> None:
 
-	"""shift() should rotate note positions and wrap past the end back to the start."""
+	"""A non-×2 factor places notes at proportionally scaled positions."""
+
+	pattern, builder = _make_builder(length=4)
+
+	# Notes at beats 0 and 2 (pulses 0 and 48).
+	builder.hit(60, beats=[0, 2], velocity=100, duration=0.5)
+
+	builder.stretch(1.5)
+
+	# 0 stays, 48 × 1.5 = 72.
+	assert sorted(pattern.steps.keys()) == [0, 72]
+
+
+def test_stretch_invalid_factor_raises () -> None:
+
+	"""Zero or negative stretch factors raise ValueError."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.note(60, beat=0)
+
+	with pytest.raises(ValueError):
+		builder.stretch(0)
+
+	with pytest.raises(ValueError):
+		builder.stretch(-1.0)
+
+
+def test_stretch_preserves_drum_origin () -> None:
+
+	"""stretch() must keep Note.origin so mirror destinations can re-resolve drum names."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.note(60, beat=0, velocity=100)
+
+	for step in pattern.steps.values():
+		for note in step.notes:
+			note.origin = "kick_1"
+
+	builder.stretch(2.0)
+
+	assert pattern.steps[0].notes[0].origin == "kick_1"
+
+
+def test_rotate_wraps_around () -> None:
+
+	"""rotate() should move note positions and wrap past the end back to the start."""
 
 	pattern, builder = _make_builder(length=4)
 
 	# Place notes at steps 0, 4, 8, 12 on a 16-step grid.
 	builder.hit_steps(60, steps=[0, 4, 8, 12], velocity=100)
 
-	# Shift by 4 steps = 1 beat = 24 pulses.
-	builder.shift(4)
+	# Rotate by 4 steps = 1 beat = 24 pulses.
+	builder.rotate(4)
 
 	positions = sorted(pattern.steps.keys())
 
-	# Original: 0, 24, 48, 72 → shifted: 24, 48, 72, 0 (96 wraps to 0).
+	# Original: 0, 24, 48, 72 → rotated: 24, 48, 72, 0 (96 wraps to 0).
 	assert positions == [0, 24, 48, 72]
 
 
-def test_shift_negative () -> None:
+def test_rotate_negative () -> None:
 
-	"""Negative shift should move notes earlier, wrapping from start to end."""
+	"""Negative rotation should move notes earlier, wrapping from start to end."""
 
 	pattern, builder = _make_builder(length=4)
 
 	# Place a single note at beat 0 (pulse 0).
 	builder.note(60, beat=0, velocity=100)
 
-	# Shift by -4 steps = -24 pulses → wraps to 72.
-	builder.shift(-4)
+	# Rotate by -4 steps = -24 pulses → wraps to 72.
+	builder.rotate(-4)
 
 	assert 72 in pattern.steps
 	assert 0 not in pattern.steps
@@ -2512,6 +2558,16 @@ def test_pitch_bend_ramp () -> None:
 	assert events[-1].value > 0
 
 
+def test_cc_ramp_resolution_zero_raises () -> None:
+
+	"""cc_ramp(resolution=0) raises ValueError instead of looping forever."""
+
+	pattern, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="resolution must be at least 1 pulse"):
+		builder.cc_ramp(74, 0, 127, beat_start=0, beat_end=1, resolution=0)
+
+
 def test_cc_ramp_defaults_beat_end_to_pattern_length () -> None:
 
 	"""When beat_end is omitted, the ramp should extend to pattern length."""
@@ -2783,6 +2839,17 @@ def test_bend_with_start_end_fraction () -> None:
 	assert ramp_events[-1].pulse == expected_end
 
 
+def test_bend_resolution_zero_raises () -> None:
+
+	"""bend(resolution=0) raises ValueError instead of looping forever."""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0, pitch=40, velocity=80, duration=24)
+
+	with pytest.raises(ValueError, match="resolution must be at least 1 pulse"):
+		builder.bend(note=0, amount=0.5, resolution=0)
+
+
 def test_bend_inserts_reset_at_next_note () -> None:
 
 	"""bend() should insert a pitch_bend(0) at the onset of the following note."""
@@ -2806,7 +2873,11 @@ def test_bend_inserts_reset_at_next_note () -> None:
 
 def test_bend_reset_wraps_to_bar_start () -> None:
 
-	"""bend() on the last note should place the reset at pulse 0."""
+	"""bend() on the last note must reset at the NEXT cycle's first onset.
+
+	Resetting at pulse 0 cancelled a wrap-spilled bend tail mid-flight,
+	leaving the next cycle's first note bent.
+	"""
 
 	_, builder = _make_builder(length=4)
 	for pos in (0, 24, 48, 72):
@@ -2818,7 +2889,8 @@ def test_bend_reset_wraps_to_bar_start () -> None:
 	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
 	reset_event = bend_events[-1]
 
-	assert reset_event.pulse == 0
+	# total_pulses (96) + first onset (0) = the next cycle's first onset.
+	assert reset_event.pulse == 96
 	assert reset_event.value == 0
 
 
@@ -2947,11 +3019,12 @@ def test_portamento_wrap_true () -> None:
 
 	builder.portamento(time=0.25, resolution=1, wrap=True)
 
-	# With wrap=True there should be a reset at pulse 0 (wrapping from last→first)
+	# With wrap=True the reset lands on the NEXT cycle's first onset
+	# (total 96 + first onset 0), after any wrap-spilled glide events.
 	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
-	reset_at_zero = [e for e in bend_events if e.pulse == 0 and e.value == 0]
+	wrap_resets = [e for e in bend_events if e.pulse == 96 and e.value == 0]
 
-	assert len(reset_at_zero) >= 1
+	assert len(wrap_resets) >= 1
 
 
 def test_portamento_wrap_false () -> None:
@@ -3008,11 +3081,15 @@ def test_slide_by_note_index () -> None:
 
 	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
 
-	# Ramp events should be in tail of note 0 (pos 0, duration 40) → [30, 40]
+	# extend=True (default) stretches note 0 to the 48-pulse gap, and the
+	# glide occupies the tail of the EXTENDED note, landing on the target
+	# onset: [48 * 0.75, 48] = [36, 48].
+	assert builder._pattern.steps[0].notes[0].duration == 48
+
 	ramp_events = [e for e in bend_events if e.value != 0]
 	assert len(ramp_events) > 0
 	for e in ramp_events:
-		assert 30 <= e.pulse <= 40
+		assert 36 <= e.pulse <= 48
 
 	# No ramp events in tail of note 1 (pos 48) since note 2 isn't flagged
 	events_in_note1_tail = [e for e in ramp_events if 60 <= e.pulse <= 72]
@@ -3097,9 +3174,9 @@ def test_slide_wrap () -> None:
 	for e in ramp_events:
 		assert e.pulse >= 48  # within or after the last note's position
 
-	# Reset at pulse 0 (wrap-around)
-	reset_at_zero = [e for e in bend_events if e.pulse == 0 and e.value == 0]
-	assert len(reset_at_zero) >= 1
+	# Reset at the next cycle's first onset (total 96 + onset 0).
+	wrap_resets = [e for e in bend_events if e.pulse == 96 and e.value == 0]
+	assert len(wrap_resets) >= 1
 
 
 # --- bresenham_poly ---
@@ -3714,6 +3791,44 @@ def test_cellular_2d_velocity_list () -> None:
 
 	assert all(v == 90 for v in kick_velocities)
 	assert all(v == 50 for v in hat_velocities)
+
+
+def test_cellular_2d_velocity_tuple_range () -> None:
+
+	"""cellular_2d(velocity=(60, 90)) draws each note's velocity from the range."""
+
+	drum_map = {"kick": 36, "hat": 42}
+	pattern, builder = _make_builder(length=4, drum_note_map=drum_map)
+	builder.rng = random.Random(42)
+
+	seed_grid = [[1] * 16, [1] * 16]
+	builder.cellular_2d(["kick", "hat"], generation=0, initial_state=seed_grid, velocity=(60, 90))
+
+	all_velocities = [n.velocity for step in pattern.steps.values() for n in step.notes]
+
+	assert all_velocities
+	assert all(60 <= v <= 90 for v in all_velocities)
+
+
+def test_cellular_2d_seed_one_deterministic () -> None:
+
+	"""Two identical cellular_2d calls with seed=1 produce identical grids (seed=1 must not fall back to an unseeded fill)."""
+
+	drum_map = {"kick": 36, "hat": 42}
+
+	pattern1, builder1 = _make_builder(length=4, drum_note_map=drum_map)
+	builder1.rng = random.Random(42)
+	builder1.cellular_2d(["kick", "hat"], generation=3, initial_state="random", seed=1, density=0.5)
+
+	pattern2, builder2 = _make_builder(length=4, drum_note_map=drum_map)
+	builder2.rng = random.Random(42)
+	builder2.cellular_2d(["kick", "hat"], generation=3, initial_state="random", seed=1, density=0.5)
+
+	notes1 = [(pos, n.pitch) for pos in sorted(pattern1.steps) for n in pattern1.steps[pos].notes]
+	notes2 = [(pos, n.pitch) for pos in sorted(pattern2.steps) for n in pattern2.steps[pos].notes]
+
+	assert notes1
+	assert notes1 == notes2
 
 
 def test_cellular_2d_generation_none_uses_cycle () -> None:
@@ -5079,15 +5194,6 @@ def test_data_without_composition_uses_isolated_dict () -> None:
 # --- thue_morse ---
 
 
-def test_thue_morse_places_notes () -> None:
-
-	"""thue_morse places at least one note (sequence has 1s)."""
-
-	pattern, builder = _make_builder(length=4)
-	builder.thue_morse(60, velocity=80)
-	assert len(pattern.steps) > 0
-
-
 def test_thue_morse_single_pitch_count () -> None:
 
 	"""Note count equals number of 1s in the Thue-Morse sequence."""
@@ -5123,15 +5229,6 @@ def test_thue_morse_no_overlap () -> None:
 
 
 # --- de_bruijn ---
-
-
-def test_de_bruijn_places_notes () -> None:
-
-	"""de_bruijn places notes for each symbol in the sequence."""
-
-	pattern, builder = _make_builder(length=4)
-	builder.de_bruijn([60, 62, 64], window=2)
-	assert len(pattern.steps) > 0
 
 
 def test_de_bruijn_autofit_note_count () -> None:
@@ -5198,15 +5295,6 @@ def test_fibonacci_velocity_tuple () -> None:
 # --- lorenz ---
 
 
-def test_lorenz_places_notes () -> None:
-
-	"""lorenz places notes at each step."""
-
-	pattern, builder = _make_builder(length=4)
-	builder.lorenz([60, 62, 64, 65, 67], spacing=0.25)
-	assert len(pattern.steps) > 0
-
-
 def test_lorenz_correct_step_count () -> None:
 
 	"""lorenz places int(length / step) notes."""
@@ -5227,6 +5315,19 @@ def test_lorenz_pitches_from_list () -> None:
 	assert placed.issubset(set(pitches))
 
 
+def test_lorenz_int_velocity_is_fixed () -> None:
+
+	"""lorenz(velocity=80) gives every note exactly velocity 80 — an int means a fixed velocity, not a modulation range."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.lorenz([60, 62, 64, 65, 67], spacing=0.25, velocity=80)
+
+	vels = [n.velocity for step in pattern.steps.values() for n in step.notes]
+
+	assert vels
+	assert all(v == 80 for v in vels)
+
+
 def test_lorenz_custom_mapping () -> None:
 
 	"""Custom mapping callable controls pitch, velocity, duration."""
@@ -5242,15 +5343,6 @@ def test_lorenz_custom_mapping () -> None:
 
 
 # --- reaction_diffusion ---
-
-
-def test_reaction_diffusion_places_notes () -> None:
-
-	"""reaction_diffusion places at least one note at default threshold."""
-
-	pattern, builder = _make_builder(length=4)
-	builder.reaction_diffusion(60, threshold=0.3, steps=500)
-	assert len(pattern.steps) > 0
 
 
 def test_reaction_diffusion_threshold_affects_density () -> None:
@@ -5286,15 +5378,6 @@ def test_reaction_diffusion_dropout_reduces_notes () -> None:
 
 
 # --- self_avoiding_walk ---
-
-
-def test_self_avoiding_walk_places_notes () -> None:
-
-	"""self_avoiding_walk places notes at each step."""
-
-	pattern, builder = _make_builder(length=4)
-	builder.self_avoiding_walk([60, 62, 64, 65, 67, 69, 71, 72], spacing=0.25)
-	assert len(pattern.steps) > 0
 
 
 def test_self_avoiding_walk_correct_count () -> None:
@@ -5334,7 +5417,7 @@ def test_self_avoiding_walk_deterministic () -> None:
 	assert pitches1 == pitches2
 
 
-# ── quantize(strength=) ──────────────────────────────────────────────────────
+# ── snap_to_scale(strength=) ──────────────────────────────────────────────────────
 
 
 def _pitches_in_pattern (pattern) -> list:
@@ -5348,72 +5431,71 @@ def _place_chromatic_notes (builder, pitches: list, length: float = 4) -> None:
 		builder.note(p, beat=i * spacing, duration=spacing * 0.9)
 
 
-def test_quantize_strength_one_snaps_all () -> None:
+def test_snap_to_scale_strength_one_snaps_all () -> None:
 
-	"""strength=1.0 (default) must quantize every note — identical to old behaviour."""
+	"""strength=1.0 (default) must snap every note — identical to old behaviour."""
 
 	# C major pitch classes: [0, 2, 4, 5, 7, 9, 11]
 	# Place C# (61), D# (63), F# (66) — all outside C major
 	pattern, builder = _make_builder(length=4)
 	_place_chromatic_notes(builder, [61, 63, 66])
-	builder.quantize("C", "ionian", strength=1.0)
+	builder.snap_to_scale("C", "ionian", strength=1.0)
 
 	pitches = _pitches_in_pattern(pattern)
-	# C# → C (60), D# → E (64), F# → G (67)
-	assert 61 not in pitches
-	assert 63 not in pitches
-	assert 66 not in pitches
+	# quantize_pitch prefers the UPWARD neighbour on equidistant ties:
+	# C# (61) → D (62), D# (63) → E (64), F# (66) → G (67)
+	assert pitches == [62, 64, 67]
 
 
-def test_quantize_strength_zero_leaves_all_unchanged () -> None:
+def test_snap_to_scale_strength_zero_leaves_all_unchanged () -> None:
 
 	"""strength=0.0 must leave every note pitch untouched."""
 
 	pattern, builder = _make_builder(length=4)
 	_place_chromatic_notes(builder, [61, 63, 66])
-	builder.quantize("C", "ionian", strength=0.0)
+	builder.snap_to_scale("C", "ionian", strength=0.0)
 
 	pitches = _pitches_in_pattern(pattern)
 	assert pitches == [61, 63, 66]
 
 
-def test_quantize_default_strength_unchanged () -> None:
+def test_snap_to_scale_default_strength_unchanged () -> None:
 
 	"""Omitting strength= must behave identically to strength=1.0."""
 
 	pattern1, builder1 = _make_builder(length=4)
 	_place_chromatic_notes(builder1, [61, 63, 66])
-	builder1.quantize("C", "ionian")
+	builder1.snap_to_scale("C", "ionian")
 
 	pattern2, builder2 = _make_builder(length=4)
 	_place_chromatic_notes(builder2, [61, 63, 66])
-	builder2.quantize("C", "ionian", strength=1.0)
+	builder2.snap_to_scale("C", "ionian", strength=1.0)
 
 	assert _pitches_in_pattern(pattern1) == _pitches_in_pattern(pattern2)
 
 
-def test_quantize_strength_partial_is_reproducible () -> None:
+def test_snap_to_scale_strength_partial_is_reproducible () -> None:
 
-	"""Same RNG seed + same strength must produce the same set of quantized notes."""
+	"""Same RNG seed + same strength must produce the same set of snapped notes."""
 
 	pitches_in = [61, 63, 66, 58, 70, 73, 56, 69]
 
 	pattern1, builder1 = _make_builder(length=4)
 	builder1.rng = random.Random(99)
 	_place_chromatic_notes(builder1, pitches_in)
-	builder1.quantize("C", "ionian", strength=0.5)
+	builder1.snap_to_scale("C", "ionian", strength=0.5)
 
 	pattern2, builder2 = _make_builder(length=4)
 	builder2.rng = random.Random(99)
 	_place_chromatic_notes(builder2, pitches_in)
-	builder2.quantize("C", "ionian", strength=0.5)
+	builder2.snap_to_scale("C", "ionian", strength=0.5)
 
 	assert _pitches_in_pattern(pattern1) == _pitches_in_pattern(pattern2)
 
 
-def test_quantize_strength_partial_quantizes_some_notes () -> None:
+def test_snap_to_scale_strength_partial_snaps_some_notes () -> None:
 
-	"""strength=0.5 should quantize roughly half the notes (statistical check over many notes)."""
+	"""strength=0.5 should snap roughly half the notes (statistical check over many notes)."""
 
 	# Place 200 notes all on C# (61), which is outside C major.
 	# quantize_pitch prefers upward, so C# (61) → D (62).
@@ -5423,21 +5505,21 @@ def test_quantize_strength_partial_quantizes_some_notes () -> None:
 	builder.rng = random.Random(7)
 	for i in range(n):
 		builder.note(61, beat=i * 0.25, duration=0.2)
-	builder.quantize("C", "ionian", strength=0.5)
+	builder.snap_to_scale("C", "ionian", strength=0.5)
 
 	pitches = _pitches_in_pattern(pattern)
-	quantized_count = sum(1 for p in pitches if p == 62)   # snapped up to D
-	unquantized_count = sum(1 for p in pitches if p == 61)  # left as C#
+	snapped_count = sum(1 for p in pitches if p == 62)   # snapped up to D
+	unsnapped_count = sum(1 for p in pitches if p == 61)  # left as C#
 
 	# Allow ±15% tolerance
-	assert 0.35 * n <= quantized_count <= 0.65 * n, (
-		f"Expected ~{n // 2} quantized, got {quantized_count}/{n}"
+	assert 0.35 * n <= snapped_count <= 0.65 * n, (
+		f"Expected ~{n // 2} snapped, got {snapped_count}/{n}"
 	)
-	assert quantized_count + unquantized_count == n
+	assert snapped_count + unsnapped_count == n
 
 
 # ---------------------------------------------------------------------------
-# p.phrase()
+# p.bar_cycle()
 # ---------------------------------------------------------------------------
 
 def _make_builder_at_bar (bar: int) -> "subsequence.pattern_builder.PatternBuilder":
@@ -5445,80 +5527,80 @@ def _make_builder_at_bar (bar: int) -> "subsequence.pattern_builder.PatternBuild
 	builder.bar = bar
 	return builder
 
-def test_phrase_first () -> None:
+def test_bar_cycle_first () -> None:
 	builder = _make_builder_at_bar(0)
-	ph = builder.phrase(4)
+	ph = builder.bar_cycle(4)
 	assert ph.bar == 0
 	assert ph.first is True
 	assert ph.last is False
 
-def test_phrase_last () -> None:
+def test_bar_cycle_last () -> None:
 	builder = _make_builder_at_bar(3)
-	ph = builder.phrase(4)
+	ph = builder.bar_cycle(4)
 	assert ph.bar == 3
 	assert ph.first is False
 	assert ph.last is True
 
-def test_phrase_middle () -> None:
+def test_bar_cycle_middle () -> None:
 	builder = _make_builder_at_bar(2)
-	ph = builder.phrase(4)
+	ph = builder.bar_cycle(4)
 	assert ph.bar == 2
 	assert ph.first is False
 	assert ph.last is False
 
-def test_phrase_progress () -> None:
-	assert _make_builder_at_bar(0).phrase(4).progress == pytest.approx(0.0)
-	assert _make_builder_at_bar(2).phrase(4).progress == pytest.approx(0.5)
-	assert _make_builder_at_bar(3).phrase(4).progress == pytest.approx(0.75)
+def test_bar_cycle_progress () -> None:
+	assert _make_builder_at_bar(0).bar_cycle(4).progress == pytest.approx(0.0)
+	assert _make_builder_at_bar(2).bar_cycle(4).progress == pytest.approx(0.5)
+	assert _make_builder_at_bar(3).bar_cycle(4).progress == pytest.approx(0.75)
 
-def test_phrase_wraps_correctly () -> None:
+def test_bar_cycle_wraps_correctly () -> None:
 	# bar=5 with phrase(4) → position 1 (5 % 4 == 1)
-	ph = _make_builder_at_bar(5).phrase(4)
+	ph = _make_builder_at_bar(5).bar_cycle(4)
 	assert ph.bar == 1
 	assert ph.first is False
 	assert ph.last is False
 
-def test_phrase_single_bar () -> None:
-	ph = _make_builder_at_bar(0).phrase(1)
+def test_bar_cycle_single_bar () -> None:
+	ph = _make_builder_at_bar(0).bar_cycle(1)
 	assert ph.bar == 0
 	assert ph.first is True
 	assert ph.last is True
 	assert ph.progress == pytest.approx(0.0)
 
-def test_phrase_length_8 () -> None:
+def test_bar_cycle_length_8 () -> None:
 	# bar=2 with phrase(8) → "bar 3 of every 8" in user's example
-	ph = _make_builder_at_bar(2).phrase(8)
+	ph = _make_builder_at_bar(2).bar_cycle(8)
 	assert ph.bar == 2
 	assert ph.first is False
 	assert ph.last is False
 
-def test_phrase_last_of_16 () -> None:
+def test_bar_cycle_last_of_16 () -> None:
 	# bar=15 with phrase(16) → last bar before every 16th
-	assert _make_builder_at_bar(15).phrase(16).last is True
+	assert _make_builder_at_bar(15).bar_cycle(16).last is True
 
-def test_phrase_cycle_through_4_bars () -> None:
-	positions = [_make_builder_at_bar(bar).phrase(4).bar for bar in range(8)]
+def test_bar_cycle_through_4_bars () -> None:
+	positions = [_make_builder_at_bar(bar).bar_cycle(4).bar for bar in range(8)]
 	assert positions == [0, 1, 2, 3, 0, 1, 2, 3]
 
 
-def test_velocity_ramp_returns_int_list () -> None:
+def test_build_velocity_ramp_returns_int_list () -> None:
 	_, builder = _make_builder(default_grid=4, length=4)
-	result = builder.velocity_ramp(0, 100, "linear")
+	result = builder.build_velocity_ramp(0, 100, "linear")
 	assert len(result) == 4
 	assert all(isinstance(v, int) for v in result)
 	assert result[0] == 0
 	assert result[-1] == 100
 
 
-def test_velocity_ramp_clamped () -> None:
+def test_build_velocity_ramp_clamped () -> None:
 	_, builder = _make_builder(default_grid=4, length=4)
-	result = builder.velocity_ramp(0, 200, "linear")
+	result = builder.build_velocity_ramp(0, 200, "linear")
 	assert all(0 <= v <= 127 for v in result)
 
 
-def test_velocity_ramp_uses_grid () -> None:
+def test_build_velocity_ramp_uses_grid () -> None:
 	_, builder = _make_builder(default_grid=8, length=8)
-	result = builder.velocity_ramp(50, 100)
+	result = builder.build_velocity_ramp(50, 100)
 	assert len(result) == 8
 
 
@@ -5533,3 +5615,70 @@ def test_no_overlap_rounding_edge_case () -> None:
 	builder._pattern.add_note_beats(beat, 60, 100, 0.25)
 	# _has_pitch_at_beat must find it (would return False under the old + 0.5 rounding)
 	assert builder._has_pitch_at_beat(60, beat), "_has_pitch_at_beat missed a note placed at the same beat (rounding mismatch)"
+
+
+def test_portamento_wrap_reset_respects_first_onset () -> None:
+
+	"""The wrap reset must land on the next cycle's FIRST ONSET, not pulse 0.
+
+	Regression: with a first onset later than pulse 0, the pulse-0 reset fired
+	while the wrap-spilled glide was still in flight, so the destination note
+	played fully bent.
+	"""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=6,  pitch=40, velocity=80, duration=40)
+	builder._pattern.add_note(position=48, pitch=42, velocity=80, duration=44)
+
+	builder.portamento(time=0.25, resolution=1, wrap=True)
+
+	bend_events = [e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel']
+	resets = [e for e in bend_events if e.value == 0 and e.pulse >= 96]
+
+	# total_pulses (96) + first onset (6) = 102.
+	assert any(e.pulse == 102 for e in resets)
+	assert not any(e.pulse == 96 for e in resets)
+
+
+def test_slide_extend_glide_lands_on_target_onset () -> None:
+
+	"""With extend=True and SHORT notes, the glide must end at the target onset.
+
+	Regression: the glide window was computed from the pre-extension duration,
+	so a short note produced a near-instant bend at its start followed by a
+	long flat hold - the opposite of a slide.
+	"""
+
+	_, builder = _make_builder(length=4)
+	builder._pattern.add_note(position=0,  pitch=40, velocity=80, duration=2)
+	builder._pattern.add_note(position=24, pitch=42, velocity=80, duration=2)
+
+	builder.slide(notes=[1], time=0.5, wrap=False)
+
+	ramp_events = sorted(
+		(e for e in builder._pattern.cc_events if e.message_type == 'pitchwheel' and e.value != 0),
+		key=lambda e: e.pulse,
+	)
+
+	# Extended duration = 24; glide occupies [12, 24] and lands on the target.
+	assert ramp_events
+	assert ramp_events[0].pulse >= 12
+	assert ramp_events[-1].pulse == 24
+
+
+def test_stretch_does_not_clip_ring_past_end () -> None:
+
+	"""stretch() must not clip durations at the pattern boundary.
+
+	A note deliberately ringing past the end (legato/drone style) must survive
+	stretch unchanged in proportion - and stretch(1.0) must be a true no-op.
+	"""
+
+	pattern, builder = _make_builder(length=4)
+	builder.note(60, beat=3.9, duration=2.0)
+
+	before = [n.duration for s in pattern.steps.values() for n in s.notes]
+	builder.stretch(1.0)
+	after = [n.duration for s in pattern.steps.values() for n in s.notes]
+
+	assert after == before

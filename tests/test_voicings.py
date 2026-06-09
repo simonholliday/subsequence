@@ -15,8 +15,8 @@ def test_first_inversion_triad () -> None:
 
 	result = subsequence.voicings.invert_chord([0, 4, 7], 1)
 
-	# E is bass (interval 4 becomes 0), G above (+3), C above (+8)
-	assert result == [0, 3, 8]
+	# E is bass, G above, C up an octave - same pitch classes as root position.
+	assert result == [4, 7, 12]
 
 
 def test_second_inversion_triad () -> None:
@@ -25,8 +25,8 @@ def test_second_inversion_triad () -> None:
 
 	result = subsequence.voicings.invert_chord([0, 4, 7], 2)
 
-	# G is bass (interval 7 becomes 0), C above (+5), E above (+9)
-	assert result == [0, 5, 9]
+	# G is bass, C and E up an octave.
+	assert result == [7, 12, 16]
 
 
 def test_first_inversion_seventh () -> None:
@@ -35,8 +35,8 @@ def test_first_inversion_seventh () -> None:
 
 	result = subsequence.voicings.invert_chord([0, 4, 7, 10], 1)
 
-	# [4, 7, 10, 12] -> re-zeroed: [0, 3, 6, 8]
-	assert result == [0, 3, 6, 8]
+	# E bass; the root wraps up an octave.
+	assert result == [4, 7, 10, 12]
 
 
 def test_second_inversion_seventh () -> None:
@@ -45,8 +45,8 @@ def test_second_inversion_seventh () -> None:
 
 	result = subsequence.voicings.invert_chord([0, 4, 7, 10], 2)
 
-	# [7, 10, 12, 16] -> re-zeroed: [0, 3, 5, 9]
-	assert result == [0, 3, 5, 9]
+	# G bass; root and third wrap up an octave.
+	assert result == [7, 10, 12, 16]
 
 
 def test_third_inversion_seventh () -> None:
@@ -55,8 +55,8 @@ def test_third_inversion_seventh () -> None:
 
 	result = subsequence.voicings.invert_chord([0, 4, 7, 10], 3)
 
-	# [10, 12, 16, 19] -> re-zeroed: [0, 2, 6, 9]
-	assert result == [0, 2, 6, 9]
+	# Bb bass; root, third, and fifth wrap up an octave.
+	assert result == [10, 12, 16, 19]
 
 
 def test_inversion_wraps_around () -> None:
@@ -67,7 +67,7 @@ def test_inversion_wraps_around () -> None:
 	assert subsequence.voicings.invert_chord([0, 4, 7], 3) == [0, 4, 7]
 
 	# Inversion 4 on a triad wraps to 1 (first inversion).
-	assert subsequence.voicings.invert_chord([0, 4, 7], 4) == [0, 3, 8]
+	assert subsequence.voicings.invert_chord([0, 4, 7], 4) == [4, 7, 12]
 
 
 def test_empty_intervals () -> None:
@@ -84,11 +84,11 @@ def test_minor_triad_inversions () -> None:
 
 	minor = [0, 3, 7]
 
-	# First inversion: [3, 7, 12] -> [0, 4, 9]
-	assert subsequence.voicings.invert_chord(minor, 1) == [0, 4, 9]
+	# First inversion: Eb bass, C up an octave.
+	assert subsequence.voicings.invert_chord(minor, 1) == [3, 7, 12]
 
-	# Second inversion: [7, 12, 15] -> [0, 5, 8]
-	assert subsequence.voicings.invert_chord(minor, 2) == [0, 5, 8]
+	# Second inversion: G bass, C and Eb up an octave.
+	assert subsequence.voicings.invert_chord(minor, 2) == [7, 12, 15]
 
 
 # ─── Voice leading ──────────────────────────────────────────────
@@ -108,14 +108,13 @@ def test_voice_lead_picks_closest () -> None:
 	"""Voice leading should pick the inversion closest to the previous voicing."""
 
 	# Previous: C major root position [60, 64, 67]
-	# Target: F major (root 65). Inversions:
-	#   root:  [65, 69, 72] - cost = |65-60| + |69-64| + |72-67| = 5+5+5 = 15
-	#   1st:   [65+0, 65+3, 65+8] = [65, 68, 73] - cost = 5+4+6 = 15
-	#   2nd:   [65+0, 65+5, 65+9] = [65, 70, 74] - cost = 5+6+7 = 18
-	# Root and 1st both cost 15. Root wins (checked first).
+	# Target: F major (root 65). Best candidates:
+	#   root:        [65, 69, 72] - cost = 5+5+5 = 15
+	#   2nd inv -8va: [60, 65, 69] - cost = 0+1+2 = 3  (C-F-A, common tone C)
+	# The octave-down second inversion is the classic smooth choice.
 	result = subsequence.voicings.voice_lead([0, 4, 7], 65, [60, 64, 67])
 
-	assert result == [65, 69, 72]
+	assert result == [60, 65, 69]
 
 
 def test_voice_lead_prefers_smaller_movement () -> None:
@@ -123,11 +122,10 @@ def test_voice_lead_prefers_smaller_movement () -> None:
 	"""Voice leading should prefer the inversion with smallest total movement."""
 
 	# Previous: first inversion C major = [64, 67, 72]
-	# Target: F major (root 65). Inversions:
-	#   root:  [65, 69, 72] - cost = |65-64| + |69-67| + |72-72| = 1+2+0 = 3
-	#   1st:   [65, 68, 73] - cost = 1+1+1 = 3
-	#   2nd:   [65, 70, 74] - cost = 1+3+2 = 6
-	# Root and 1st tie at 3, root wins (first checked).
+	# Target: F major (root 65). Best candidates:
+	#   root:         [65, 69, 72] - cost = 1+2+0 = 3
+	#   2nd inv -8va: [60, 65, 69] - cost = 4+2+3 = 9
+	# Root position wins with the smallest total movement.
 	result = subsequence.voicings.voice_lead([0, 4, 7], 65, [64, 67, 72])
 
 	assert result == [65, 69, 72]
@@ -178,10 +176,9 @@ def test_state_persists_across_calls () -> None:
 	# Second: the state should now pick an inversion that's close to v1.
 	v2 = state.next([0, 3, 7], 62)
 
-	# D minor inversions relative to [60, 64, 67]:
-	#   root:  [62, 65, 69] - cost = 2+1+2 = 5
-	#   1st:   [62, 66, 71] - cost = 2+2+4 = 8
-	#   2nd:   [62, 67, 69] - cost = 2+3+2 = 7
+	# D minor candidates relative to [60, 64, 67]:
+	#   root:         [62, 65, 69] - cost = 2+1+2 = 5
+	#   2nd inv -8va: [57, 62, 65] - cost = 3+2+2 = 7
 	assert v2 == [62, 65, 69]
 
 	# Third call should use v2 as the reference.
@@ -252,11 +249,11 @@ def test_tones_count_with_inversion () -> None:
 
 	chord = subsequence.chords.Chord(root_pc=0, quality="major")
 
-	# First inversion intervals: [0, 3, 8]
-	# 5 notes: 60, 63, 68, 72, 75
+	# First inversion intervals: [4, 7, 12] - E, G, C ascending.
+	# 5 notes: E G C' E' G'
 	result = chord.tones(root=60, inversion=1, count=5)
 
-	assert result == [60, 63, 68, 72, 75]
+	assert result == [64, 67, 72, 76, 79]
 
 
 def test_tones_count_seventh_chord () -> None:

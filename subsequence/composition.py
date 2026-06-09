@@ -12,6 +12,7 @@ import signal
 import types
 import typing
 import subsequence.chord_graphs
+import subsequence.chords
 import subsequence.constants
 import subsequence.constants.durations
 import subsequence.constants.velocity
@@ -21,6 +22,7 @@ import subsequence.held_notes
 import subsequence.keystroke
 import subsequence.live_reloader
 import subsequence.live_server
+import subsequence.midi_utils
 import subsequence.osc
 import subsequence.pattern
 import subsequence.pattern_builder
@@ -70,8 +72,7 @@ class _PendingHotkeyAction:
 
 	"""An action that has been triggered but is waiting for its quantize boundary."""
 
-	binding:       HotkeyBinding
-	requested_bar: int
+	binding: HotkeyBinding
 
 
 _HOTKEY_RESERVED = "?"
@@ -831,10 +832,15 @@ class Composition:
 		# device registry (no-op for int/None devices).
 		self._resolve_pending_devices()
 
-		new_pending = [
-			pending for pending in self._pending_patterns
-			if pending.builder_fn.__name__ not in self._running_patterns
-		]
+		# Dedupe by name, last declaration wins — re-declaring a pattern in a
+		# reloaded source must not schedule two copies.
+		new_by_name: typing.Dict[str, _PendingPattern] = {}
+
+		for pending in self._pending_patterns:
+			if pending.builder_fn.__name__ not in self._running_patterns:
+				new_by_name[pending.builder_fn.__name__] = pending
+
+		new_pending = list(new_by_name.values())
 
 		if not new_pending:
 			return
@@ -848,6 +854,13 @@ class Composition:
 			self._running_patterns[pending.builder_fn.__name__] = pattern
 
 			logger.info(f"Live-reload: scheduled new pattern '{pending.builder_fn.__name__}'")
+
+		# Prune graduated (and stale duplicate) declarations: leaving them in
+		# _pending_patterns resurrected deleted patterns on every later reload.
+		self._pending_patterns = [
+			pending for pending in self._pending_patterns
+			if pending.builder_fn.__name__ not in self._running_patterns
+		]
 
 	def _resolve_channel (self, channel: int) -> int:
 
@@ -1115,8 +1128,9 @@ class Composition:
 			progression: The :class:`Progression` returned by :meth:`freeze`.
 
 		Raises:
-			ValueError: If the form has been configured and *section_name* is
-				not a known section name.
+			ValueError: If a graph-based form has been configured and
+				*section_name* is not one of its sections.  List and generator
+				forms yield names lazily, so they cannot be validated here.
 
 		Example::
 
@@ -1363,7 +1377,7 @@ class Composition:
 			else:
 				# Defer until the next quantize boundary.
 				self._pending_hotkey_actions.append(
-					_PendingHotkeyAction(binding=binding, requested_bar=bar)
+					_PendingHotkeyAction(binding=binding)
 				)
 
 		# Fire any pending actions whose bar boundary has arrived.
@@ -1723,7 +1737,7 @@ class Composition:
 	def cc_map (
 		self,
 		cc: int,
-		key: str,
+		data_key: str,
 		channel: typing.Optional[int] = None,
 		min_val: float = 0.0,
 		max_val: float = 1.0,
@@ -1735,7 +1749,7 @@ class Composition:
 
 		When the composition receives a CC message on the configured MIDI
 		input port, the value is scaled from the CC range (0–127) to
-		*[min_val, max_val]* and stored in ``composition.data[key]``.
+		*[min_val, max_val]* and stored in ``composition.data[data_key]``.
 
 		This lets hardware knobs, faders, and expression pedals control live
 		parameters without writing any callback code.
@@ -1744,7 +1758,7 @@ class Composition:
 
 		Parameters:
 			cc: MIDI Control Change number (0–127).
-			key: The ``composition.data`` key to write.
+			data_key: The ``composition.data`` key to write.
 			channel: If given, only respond to CC messages on this channel.
 				Uses the same numbering convention as ``pattern()`` (1-16
 				by default, or 0-15 with ``zero_indexed_channels=True``).
@@ -1769,7 +1783,7 @@ class Composition:
 
 		self._cc_mappings.append({
 			'cc': cc,
-			'key': key,
+			'data_key': data_key,
 			'channel': resolved_channel,
 			'min_val': min_val,
 			'max_val': max_val,
@@ -1860,12 +1874,14 @@ class Composition:
 				return output
 			def _wrapped (value: int, channel: int) -> typing.Optional[typing.Any]:
 				msg = output(value, channel)
-				if msg is not None and output_channel is not None:
-					# Rebuild message with overridden channel
-					return _mido.Message(msg.type, channel=output_channel, **{
-						k: v for k, v in msg.__dict__.items() if k != 'channel'
-					})
-				return msg
+
+				if msg is None:
+					return None
+
+				# copy() re-channels without rebuilding: reconstructing from
+				# __dict__ passed 'type' twice and raised TypeError on every
+				# message, so callable+output_channel never forwarded anything.
+				return msg.copy(channel=output_channel)
 			return _wrapped
 
 		if output == 'cc':
@@ -2524,8 +2540,32 @@ class Composition:
 				loop = self._sequencer._event_loop,
 			)
 
-		del self._running_patterns[name]
-		logger.info(f"Unregistered pattern: {name}")
+		def _finalise_removal () -> None:
+			self._running_patterns.pop(name, None)
+
+			# Forget any pending (not-yet-graduated) declaration too, so a
+			# later live reload cannot resurrect the pattern.
+			self._pending_patterns = [
+				pending for pending in self._pending_patterns
+				if pending.builder_fn.__name__ != name
+			]
+
+			logger.info(f"Unregistered pattern: {name}")
+
+		# The running-patterns dict is iterated by the display, web UI, and
+		# reschedule loop on the event loop thread — mutate it there when this
+		# call arrives from another thread (e.g. the live TCP server).
+		loop = self._sequencer._event_loop
+
+		try:
+			on_loop = loop is not None and asyncio.get_running_loop() is loop
+		except RuntimeError:
+			on_loop = False
+
+		if loop is not None and loop.is_running() and not on_loop:
+			loop.call_soon_threadsafe(_finalise_removal)
+		else:
+			_finalise_removal()
 
 	def mirror (self, name: str, device: int, channel: int, drum_note_map: typing.Optional[typing.Dict[str, int]] = None) -> None:
 
@@ -2706,7 +2746,15 @@ class Composition:
 				schedule.
 			defer: If True, skip the pulse-0 fire and defer the first
 				repeating call to just before the second cycle boundary.
+
+		Raises:
+			RuntimeError: If called after ``play()`` has started — scheduled
+				tasks register at startup, so a late registration would be
+				silently ignored otherwise.
 		"""
+
+		if self._sequencer.running:
+			raise RuntimeError("schedule() must be called before play() - scheduled tasks register at startup")
 
 		self._pending_scheduled.append(_PendingScheduled(fn, cycle_beats, reschedule_lookahead, wait_for_initial, defer))
 
@@ -2807,7 +2855,8 @@ class Composition:
 		beats: typing.Optional[float] = None,
 		bars: typing.Optional[float] = None,
 		steps: typing.Optional[float] = None,
-		step_duration: typing.Optional[float] = None,		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+		step_duration: typing.Optional[float] = None,
+		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
@@ -2942,7 +2991,8 @@ class Composition:
 		beats: typing.Optional[float] = None,
 		bars: typing.Optional[float] = None,
 		steps: typing.Optional[float] = None,
-		step_duration: typing.Optional[float] = None,		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+		step_duration: typing.Optional[float] = None,
+		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		reschedule_lookahead: float = 1,
@@ -3016,7 +3066,18 @@ class Composition:
 		# mute/tweak/unregister/live_info reach only the LAST layer).  "+" can't
 		# appear in a Python identifier, so this never clashes with a real
 		# pattern function's name.
-		merged_builder.__name__ = "+".join(fn.__name__ for fn in builder_fns) or "layer"
+		base_name = ("+".join(fn.__name__ for fn in builder_fns) or "layer") + f"@ch{resolved_channel}"
+		merged_name = base_name
+		suffix = 2
+
+		# Two layers with the same components (e.g. on different saves of a
+		# live file) must map to the same names pass-over-pass, while two
+		# DIFFERENT layers sharing components in one pass must not collide.
+		while merged_name in self._declared_names:
+			merged_name = f"{base_name}#{suffix}"
+			suffix += 1
+
+		merged_builder.__name__ = merged_name
 
 		# Record the declaration for the live-reload deletion diff, and hot-swap
 		# in place when this layer is already running so a reload picks up edits
@@ -3128,8 +3189,19 @@ class Composition:
 				voices = subsequence.progression.resolve_voices(captured_voicing, p.rng)
 				p.chord(chord, root=captured_root, beat=start, duration=ring, count=voices, velocity=captured_velocity)
 
-		# Unique, stable name so multiple chord parts don't collide in _running_patterns.
-		chords_builder.__name__ = f"chords@ch{resolved_channel}"
+		# Unique, stable name so multiple chord parts don't collide in
+		# _running_patterns — including two parts on the SAME channel, which
+		# get a deterministic #2/#3 suffix in declaration order.
+		base_name = f"chords@ch{resolved_channel}"
+		chords_name = base_name
+		suffix = 2
+
+		while chords_name in self._declared_names:
+			chords_name = f"{base_name}#{suffix}"
+			suffix += 1
+
+		chords_builder.__name__ = chords_name
+		self._declared_names.add(chords_name)
 
 		primary: typing.Optional[typing.Tuple[int, int]]
 		if isinstance(device, str):
@@ -3169,7 +3241,8 @@ class Composition:
 		beats: typing.Optional[float] = None,
 		bars: typing.Optional[float] = None,
 		steps: typing.Optional[float] = None,
-		step_duration: typing.Optional[float] = None,		quantize: float = 0,
+		step_duration: typing.Optional[float] = None,
+		quantize: float = 0,
 		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
 		cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
 		nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None,
@@ -3214,25 +3287,26 @@ class Composition:
 
 		Example:
 			```python
-			# Immediate single note
+			# Immediate single note (channels are 1-16 by default)
 			composition.trigger(
 				lambda p: p.note(60, beat=0, velocity=100, duration=0.5),
-				channel=0
+				channel=1
 			)
 
-			# Quantized fill (next bar)
+			# Quantized fill (next bar) — channel 10 is the GM drum channel
 			import subsequence.constants.durations as dur
 			composition.trigger(
 				lambda p: p.euclidean("snare", pulses=7, velocity=90),
-				channel=9,
+				channel=10,
 				drum_note_map=gm_drums.GM_DRUM_MAP,
 				quantize=dur.WHOLE
 			)
 
-			# With chord context
+			# With chord context — the builder receives the chord as a second
+			# argument when chord=True.
 			composition.trigger(
-				lambda p: p.arpeggio(p.chord.tones(root=60), spacing=dur.SIXTEENTH),
-				channel=0,
+				lambda p, chord: p.arpeggio(chord.tones(root=60), spacing=dur.SIXTEENTH),
+				channel=1,
 				quantize=dur.QUARTER,
 				chord=True
 			)
@@ -3299,12 +3373,12 @@ class Composition:
 
 		# Schedule the pattern for one-shot execution
 		try:
-			loop = asyncio.get_running_loop()
-			# Already on the event loop
+			# Probe only: raises RuntimeError when not on the event loop.
+			asyncio.get_running_loop()
 			asyncio.create_task(self._sequencer.schedule_pattern(pattern, start_pulse))
 
 		except RuntimeError:
-			# Not on the event loop — schedule via call_soon_threadsafe
+			# Not on the event loop — hand the coroutine to the loop thread.
 			if self._sequencer._event_loop is not None:
 				asyncio.run_coroutine_threadsafe(
 					self._sequencer.schedule_pattern(pattern, start_pulse),
@@ -3393,6 +3467,25 @@ class Composition:
 		self._sequencer.render_max_seconds = max_minutes * 60.0 if max_minutes is not None else None
 		asyncio.run(self._run())
 
+	def _broadcast_osc_status (self, bar: int) -> None:
+
+		"""
+		Send the per-bar OSC status snapshot: bar number, current tempo,
+		and (when active) the current chord name and form section.
+		"""
+
+		if self._osc_server:
+			self._osc_server.send("/bar", bar)
+			self._osc_server.send("/bpm", self._sequencer.current_bpm)
+
+			if self._harmonic_state:
+				self._osc_server.send("/chord", self._harmonic_state.current_chord.name())
+
+			if self._form_state:
+				info = self._form_state.get_section_info()
+				if info:
+					self._osc_server.send("/section", info.name)
+
 	async def _run (self) -> None:
 
 		"""
@@ -3433,9 +3526,12 @@ class Composition:
 			if self._output_latency_ms:
 				self._sequencer.set_device_latency(0, self._output_latency_ms)
 
-		# 3. Resolve name-based device ids in cc_map/cc_forward/pending patterns early.
-		# This ensures we have integer indices ready for the background callback thread.
-		self._resolve_pending_devices()
+		# 3. Resolve name-based INPUT device ids in cc_map/cc_forward early — the
+		# input-names map is fully populated above, and the callback thread needs
+		# integer indices as soon as ports open.  OUTPUT names (cc_forward
+		# output_device=, pattern device=) resolve after the additional outputs
+		# are opened below; resolving them here matched against a map containing
+		# only the primary and silently routed everything to device 0.
 		for mapping in self._cc_mappings:
 			raw = mapping.get('input_device')
 			if isinstance(raw, str):
@@ -3444,9 +3540,6 @@ class Composition:
 			raw_in = fwd.get('input_device')
 			if isinstance(raw_in, str):
 				fwd['input_device'] = self._resolve_input_device_id(raw_in)
-			raw_out = fwd.get('output_device')
-			if isinstance(raw_out, str):
-				fwd['output_device'] = self._resolve_device_id(raw_out)
 
 		# 4. Share CC input mappings, forwards, and a reference to composition.data
 		# with the sequencer BEFORE opening the ports. This ensures that any initial
@@ -3505,6 +3598,13 @@ class Composition:
 		# for additional output devices.
 		self._resolve_pending_devices()
 
+		# Resolve cc_forward output-device names now that every output port and
+		# alias is registered (resolving earlier silently routed to device 0).
+		for fwd in self._cc_forwards:
+			raw_out = fwd.get('output_device')
+			if isinstance(raw_out, str):
+				fwd['output_device'] = self._resolve_device_id(raw_out)
+
 		# Pass clock output flag (suppressed automatically when clock_follow=True).
 		self._sequencer.clock_output = self._clock_output and not self.is_clock_following
 
@@ -3533,6 +3633,20 @@ class Composition:
 			for _ in self._pending_patterns:
 				self._pattern_rngs.append(random.Random(master.randint(0, 2 ** 63)))
 
+		# The form clock MUST be registered before the harmonic clock: same-pulse
+		# callbacks fire in registration order, and on a section-boundary bar the
+		# harmonic clock reads the current section (via _get_section_progression)
+		# to decide whether to replay frozen section chords.  Registering harmony
+		# first would make it read the OLD section on every boundary, shifting
+		# section_chords() replays by one bar and bleeding them across sections.
+		if self._form_state is not None:
+
+			await schedule_form(
+				sequencer = self._sequencer,
+				form_state = self._form_state,
+				reschedule_lookahead = 1
+			)
+
 		if self._harmonic_state is not None and self._harmony_cycle_beats is not None:
 
 			def _get_section_progression () -> typing.Optional[typing.Tuple[str, int, typing.Optional[Progression]]]:
@@ -3551,14 +3665,6 @@ class Composition:
 				cycle_beats = self._harmony_cycle_beats,
 				reschedule_lookahead = self._harmony_reschedule_lookahead,
 				get_section_progression = _get_section_progression,
-			)
-
-		if self._form_state is not None:
-
-			await schedule_form(
-				sequencer = self._sequencer,
-				form_state = self._form_state,
-				reschedule_lookahead = 1
 			)
 
 		# Bar counter - always active so p.bar is available to all builders.
@@ -3649,6 +3755,10 @@ class Composition:
 			name = pending.builder_fn.__name__
 			self._running_patterns[name] = patterns[i]
 
+		# Everything pending is running now; drop the declarations so a later
+		# live reload cannot graduate stale copies.
+		self._pending_patterns = []
+
 		if self._display is not None and not self._sequencer.render_mode:
 			self._display.start()
 			self._sequencer.on_event("bar",  self._display.update)
@@ -3660,21 +3770,7 @@ class Composition:
 		if self._osc_server is not None:
 			await self._osc_server.start()
 			self._sequencer.osc_server = self._osc_server
-
-			def _send_osc_status (bar: int) -> None:
-				if self._osc_server:
-					self._osc_server.send("/bar", bar)
-					self._osc_server.send("/bpm", self._sequencer.current_bpm)
-					
-					if self._harmonic_state:
-						self._osc_server.send("/chord", self._harmonic_state.current_chord.name())
-					
-					if self._form_state:
-						info = self._form_state.get_section_info()
-						if info:
-							self._osc_server.send("/section", info.name)
-
-			self._sequencer.on_event("bar", _send_osc_status)
+			self._sequencer.on_event("bar", self._broadcast_osc_status)
 
 		# Start keystroke listener if hotkeys are enabled and not in render mode.
 		if self._hotkeys_enabled and not self._sequencer.render_mode:

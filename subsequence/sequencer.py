@@ -418,9 +418,6 @@ class Sequencer:
 		# OSC server reference — set by Composition after osc_server.start()
 		self.osc_server: typing.Optional[typing.Any] = None
 
-		# Callbacks
-		self.callbacks: typing.List[typing.Callable[[int], typing.Coroutine]] = []
-
 	# ------------------------------------------------------------------
 	# Backward-compatible properties: midi_out / midi_in
 	# External code and tests may reference these directly.  They always
@@ -644,15 +641,6 @@ class Sequencer:
 		logger.info(f"BPM transition: {self.current_bpm:.2f} → {target_bpm:.2f} over {bars} bars ({shape!r})")
 
 
-	def add_callback (self, callback: typing.Callable[[int], typing.Coroutine]) -> None:
-
-		"""
-		Add an async callback to be invoked at the start of each bar.
-		"""
-		
-		self.callbacks.append(callback)
-
-
 	def on_event (self, event_name: str, callback: typing.Callable[..., typing.Any]) -> None:
 
 		"""
@@ -735,9 +723,13 @@ class Sequencer:
 		if self._midi_input_queue is None or self._input_loop is None:
 			return
 
-		self._input_loop.call_soon_threadsafe(
-			self._midi_input_queue.put_nowait, (device_idx, message)
-		)
+		# The queue feeds only the external-clock loop, so enqueue only when
+		# following: with the internal clock nothing ever drains it, and a
+		# synced device's 24-ticks-per-beat clock would grow it forever.
+		if self.clock_follow:
+			self._input_loop.call_soon_threadsafe(
+				self._midi_input_queue.put_nowait, (device_idx, message)
+			)
 
 		# Apply CC input mappings: map incoming CC values to composition.data.
 		if message.type == 'control_change' and self.cc_mappings:
@@ -752,7 +744,7 @@ class Sequencer:
 				if in_dev is not None and device_idx != in_dev:
 					continue
 				scaled = mapping['min_val'] + (message.value / 127.0) * (mapping['max_val'] - mapping['min_val'])
-				self._composition_data[mapping['key']] = scaled
+				self._composition_data[mapping['data_key']] = scaled
 
 		# Apply CC forwards: route incoming CC to MIDI output in real-time.
 		if message.type == 'control_change' and self.cc_forwards:
@@ -783,8 +775,11 @@ class Sequencer:
 						except Exception:
 							logger.exception("CC forward send failed")
 				else:
-					# Queued: buffer for drain in _process_pulse on the event loop thread.
-					self._forward_buffer.append((self.pulse_count, out_msg))
+					# Queued: buffer for drain in _process_pulse on the event loop
+					# thread.  The output device travels with the message so the
+					# drain can route it (dropping it sent everything to device 0).
+					out_dev = fwd.get('output_device')
+					self._forward_buffer.append((self.pulse_count, out_msg, 0 if out_dev is None else out_dev))
 
 		# Buffer incoming note on/off for the held-note tracker.  Only the
 		# GIL-atomic deque.append happens here; the tracker is updated when the
@@ -804,7 +799,7 @@ class Sequencer:
 
 	def _estimate_bpm (self, tick_time: float) -> None:
 
-		"""Estimate BPM from recent MIDI clock tick timestamps for display purposes."""
+		"""Estimate BPM from recent MIDI clock tick timestamps for display and recording."""
 
 		self._clock_tick_times.append(tick_time)
 
@@ -818,7 +813,15 @@ class Sequencer:
 			interval = (recent[-1] - recent[0]) / (len(recent) - 1)
 
 			if interval > 0:
-				self.current_bpm = int(round(60.0 / (interval * self.pulses_per_beat)))
+				new_bpm = int(round(60.0 / (interval * self.pulses_per_beat)))
+
+				# Record tempo changes so a clock-following session's .mid
+				# plays back at the external tempo, not the constructor BPM.
+				# Integer rounding above already filters tick jitter.
+				if self.recording and new_bpm != self.current_bpm and new_bpm > 0:
+					self._record_event(self.pulse_count, mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(new_bpm)))
+
+				self.current_bpm = new_bpm
 
 
 	def _get_schedule_timing (self, length_beats: float, lookahead_beats: float) -> typing.Tuple[int, int]:
@@ -1190,7 +1193,13 @@ class Sequencer:
 		self.running = False
 
 		if self.task:
-			await self.task
+			try:
+				await self.task
+			except Exception:
+				# A crashed loop must not abort shutdown - the cleanup below
+				# (pending-send cancellation, panic, port close, recording
+				# save) is exactly what a dying session needs most.
+				logger.exception("Sequencer loop task ended with an exception - continuing shutdown")
 
 		# Cancel any latency-compensation deferrals still in flight.  Must happen
 		# after the loop has stopped producing (await self.task) and before
@@ -1275,9 +1284,6 @@ class Sequencer:
 				self.running = False
 				return
 
-			for cb in self.callbacks:
-				self._spawn(cb(self.current_bar))
-
 			self._spawn(self.events.emit_async("bar", self.current_bar))
 
 
@@ -1313,6 +1319,11 @@ class Sequencer:
 				self.current_bpm = interpolated
 				self.seconds_per_beat = 60.0 / self.current_bpm
 				self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
+
+				# Keep the recording's tempo map honest: without these events
+				# a recorded ramp plays back at the pre-ramp tempo and jumps.
+				if self.recording:
+					self._record_event(self.pulse_count, mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(interpolated)))
 
 		# Accumulate simulated time and enforce the render time cap.
 		if self.render_mode:
@@ -1596,19 +1607,33 @@ class Sequencer:
 		if to_reschedule:
 			# Decision path: update shared composition state before pattern rebuilds.
 			patterns = [scheduled_pattern.pattern for scheduled_pattern in to_reschedule]
-			await self.events.emit_async("reschedule_pulse", pulse, patterns)
+
+			try:
+				await self.events.emit_async("reschedule_pulse", pulse, patterns)
+			except Exception:
+				logger.exception("reschedule_pulse listener failed (pulse %d) - continuing", pulse)
 
 		for scheduled_pattern in to_reschedule:
 
-			scheduled_pattern.pattern.on_reschedule()
+			# Containment: a failing rebuild — or an invalid set_length() that
+			# makes _get_pattern_timing raise — must cost this pattern its
+			# cycle, never the clock.  On failure the pattern keeps its
+			# previous timing and is re-queued below for another try.
+			try:
+				scheduled_pattern.pattern.on_reschedule()
 
-			# Re-read length in case on_reschedule() changed it (e.g. via set_length).
-			new_length_pulses, new_lookahead_pulses = self._get_pattern_timing(scheduled_pattern.pattern)
-			scheduled_pattern.length_pulses = new_length_pulses
-			scheduled_pattern.lookahead_pulses = new_lookahead_pulses
-			scheduled_pattern.next_reschedule_pulse = scheduled_pattern.cycle_start_pulse + new_length_pulses - new_lookahead_pulses
+				# Re-read length in case on_reschedule() changed it (e.g. via set_length).
+				new_length_pulses, new_lookahead_pulses = self._get_pattern_timing(scheduled_pattern.pattern)
+				scheduled_pattern.length_pulses = new_length_pulses
+				scheduled_pattern.lookahead_pulses = new_lookahead_pulses
+				scheduled_pattern.next_reschedule_pulse = scheduled_pattern.cycle_start_pulse + new_length_pulses - new_lookahead_pulses
 
-			await self.schedule_pattern(scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse)
+				await self.schedule_pattern(scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse)
+
+			except Exception:
+				logger.exception("Pattern reschedule failed - pattern is silent this cycle and keeps its previous timing")
+				scheduled_pattern.next_reschedule_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses - scheduled_pattern.lookahead_pulses
+
 			self._spawn(self.events.emit_async("pattern_reschedule", scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse))
 
 		async with self.pattern_lock:
@@ -1629,8 +1654,8 @@ class Sequencer:
 			# deque.popleft() is GIL-atomic; safe to call from the event loop thread
 			# while the callback thread calls append().
 			while self._forward_buffer:
-				fwd_pulse, fwd_msg = self._forward_buffer.popleft()
-				self._push_event(MidiEvent.from_mido(fwd_pulse, fwd_msg))
+				fwd_pulse, fwd_msg, fwd_device = self._forward_buffer.popleft()
+				self._push_event(MidiEvent.from_mido(fwd_pulse, fwd_msg, device=fwd_device))
 
 			while self.event_queue and self.event_queue[0].pulse <= pulse:
 

@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import random
 import time
@@ -56,16 +57,16 @@ def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 	return result
 
 
-class Phrase:
+class BarCycle:
 
-	"""Position of the current bar within a repeating musical phrase.
+	"""Position of the current bar within a repeating cycle of bars.
 
-	Returned by :meth:`PatternBuilder.phrase`. Provides readable, musician-friendly
+	Returned by :meth:`PatternBuilder.bar_cycle`. Provides readable, musician-friendly
 	properties for bar-position logic without raw modulo arithmetic.
 
 	Attributes:
-		bar: Zero-indexed bar within the phrase (0 … length−1).
-		length: The phrase length passed to :meth:`PatternBuilder.phrase`.
+		bar: Zero-indexed bar within the cycle (0 … length−1).
+		length: The cycle length in bars passed to :meth:`PatternBuilder.bar_cycle`.
 	"""
 
 	__slots__ = ("bar", "length")
@@ -76,19 +77,19 @@ class Phrase:
 
 	@property
 	def first (self) -> bool:
-		"""True on the first bar of the phrase (``bar == 0``)."""
+		"""True on the first bar of the cycle (``bar == 0``)."""
 		return self.bar == 0
 
 	@property
 	def last (self) -> bool:
-		"""True on the last bar of the phrase (``bar == length − 1``)."""
+		"""True on the last bar of the cycle (``bar == length − 1``)."""
 		return self.bar == self.length - 1
 
 	@property
 	def progress (self) -> float:
-		"""Fractional progress through the phrase: 0.0 on bar 0, rising each bar.
+		"""Fractional progress through the cycle: 0.0 on bar 0, rising each bar.
 
-		For a 4-bar phrase: 0.0, 0.25, 0.5, 0.75.
+		For a 4-bar cycle: 0.0, 0.25, 0.5, 0.75.
 		Useful for gradual intensity curves or as a noise/LFO seed.
 		"""
 		return self.bar / self.length
@@ -130,9 +131,9 @@ class PatternBuilder(
 			rng: Optional seeded ``Random`` for reproducibility.
 			tweaks: Per-pattern overrides set via ``composition.tweak()``.
 			default_grid: Number of grid slots used by ``hit_steps()``,
-				``sequence()``, and ``shift()`` when no explicit ``grid``
+				``sequence()``, and ``rotate()`` when no explicit ``grid``
 				is passed.  Normally set automatically from the decorator's
-				``length`` and ``unit`` parameters.
+				``beats``/``bars``/``steps`` and ``step_duration`` parameters.
 			data: Shared state dict from the parent ``Composition``
 				(same object as ``composition.data``).  Read and write
 				via ``p.data`` for cross-pattern communication and
@@ -241,7 +242,7 @@ class PatternBuilder(
 
 		Example::
 
-			@composition.pattern(channel=0, length=4)
+			@composition.pattern(channel=1, beats=4)
 			def bass (p):
 				pitches = p.param("pitches", [60, 64, 67, 72])
 				p.sequence(steps=[0, 4, 8, 12], pitches=pitches)
@@ -263,6 +264,9 @@ class PatternBuilder(
 
 		Returns ``self`` for fluent chaining.
 		"""
+
+		if length <= 0:
+			raise ValueError("Pattern length must be positive")
 
 		self._pattern.length = length
 		return self
@@ -653,7 +657,7 @@ class PatternBuilder(
 			duration: Note duration in beats.
 			grid: How many grid slots the pattern is divided into.
 				Defaults to the pattern's ``default_grid`` (set from the
-				decorator's ``length`` and ``unit``, or sixteenth-note
+				decorator's ``steps``/``step_duration``, or sixteenth-note
 				resolution when ``unit`` is omitted).
 			probability: Chance (0.0 to 1.0) that each hit will play.
 			rng: Optional random generator (overrides the pattern's seed).
@@ -684,7 +688,7 @@ class PatternBuilder(
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 		return self
 
-	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = 100, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		A multi-parameter step sequencer.
@@ -701,7 +705,7 @@ class PatternBuilder(
 				cycled per step.
 			durations: Duration or list of durations (default 0.1).
 			grid: Grid resolution. Defaults to the pattern's
-				``default_grid`` (derived from the decorator's ``length``
+				``default_grid`` (derived from the decorator's ``beats``/``steps``
 				and ``unit``).
 		"""
 
@@ -797,22 +801,26 @@ class PatternBuilder(
 			)
 		return self
 
-	def fill (self, pitch: typing.Union[int, str], spacing: float, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
+	def repeat (self, pitch: typing.Union[int, str], spacing: float, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
 
 		"""
-		Fill the pattern with a note repeating at a fixed beat interval.
+		Repeat a note at a fixed beat interval for the whole pattern.
+
+		The classic 'Note Repeat' of MPC, Push, and Maschine fame: one
+		pitch firing at a steady rate — running hi-hats, a pulsing bass
+		note, a metronome click.
 
 		Parameters:
 			pitch: MIDI note number or drum name.
-			spacing: Time between each note in beats.
+			spacing: Time between each note in beats (0.25 = sixteenth notes).
 			velocity: MIDI velocity (default 100), or a ``(low, high)``
 				tuple for a fresh random draw per note.
 			duration: Note duration in beats.
 
 		Example:
 			```python
-			p.fill("hh", spacing=0.25)                       # sixteenth notes
-			p.fill("hh", spacing=0.25, velocity=(40, 80))    # humanised
+			p.repeat("hh", spacing=0.25)                       # sixteenth notes
+			p.repeat("hh", spacing=0.25, velocity=(40, 80))    # humanised
 			```
 		"""
 
@@ -1332,7 +1340,7 @@ class PatternBuilder(
 
 			groove = subsequence.Groove.swing(percent=57)
 
-			@composition.pattern(channel=9, length=4)
+			@composition.pattern(channel=10, beats=4)
 			def drums (p):
 				p.hit_steps("kick", [0, 8], velocity=100)
 				p.hit_steps("hh", range(16), velocity=80)
@@ -1358,7 +1366,9 @@ class PatternBuilder(
 		This operates on all notes currently placed in the builder.
 
 		Parameters:
-			probability: The chance (0.0 to 1.0) of any given note being removed.
+			probability: The chance (0.0 to 1.0) of each pulse POSITION being
+				removed — all notes sharing that position (a chord's voices,
+				layered drums) live or die together.
 		"""
 
 		rng = self._rng_from(seed, rng)
@@ -1385,8 +1395,8 @@ class PatternBuilder(
 		purely random velocity variation.
 
 		Parameters:
-			low: Minimum velocity (default 60).
-			high: Maximum velocity (default 120).
+			low: Minimum velocity (default 64).
+			high: Maximum velocity (default 127).
 		"""
 
 		positions = sorted(self._pattern.steps.keys())
@@ -1446,7 +1456,7 @@ class PatternBuilder(
 		trigger = set(steps)
 		return [floor if s in trigger else 1.0 for s in range(grid)]
 
-	def velocity_ramp (
+	def build_velocity_ramp (
 		self,
 		low: int,
 		high: int,
@@ -1479,12 +1489,12 @@ class PatternBuilder(
 				steps=range(16),
 				pitches="snare_1",
 				durations=0.1,
-				velocities=p.velocity_ramp(25, 100, "ease_in"),
+				velocities=p.build_velocity_ramp(25, 100, "ease_in"),
 			)
 
 			# Fade-out ghost fill
 			p.ghost_fill("snare_1", 1,
-				velocity=p.velocity_ramp(80, 20, "ease_out"),
+				velocity=p.build_velocity_ramp(80, 20, "ease_out"),
 				bias="sixteenths", no_overlap=True)
 		"""
 
@@ -1650,13 +1660,17 @@ class PatternBuilder(
 				note.duration = new_duration
 		return self
 
-	def staccato (self, beats: float = 0.5) -> "PatternBuilder":
+	def duration (self, beats: float) -> "PatternBuilder":
 
 		"""
-		Set all note durations to a fixed length in beats.
+		Set every note's duration to a fixed length in beats.
 
 		This overrides any existing note durations, acting as a global
-		'gate time' relative to the beat (1.0 = a quarter note).
+		'gate time' relative to the beat (1.0 = a quarter note).  Short
+		values clip notes tight; long values let them ring.  For a
+		guaranteed gap before each next onset regardless of note spacing,
+		use :meth:`detached`; for a classic staccato articulation, either
+		a short fixed value (``p.duration(0.1)``) or ``p.detached()`` works.
 
 		Parameters:
 			beats: Fixed note duration in beats (relative to a quarter note).
@@ -1664,7 +1678,7 @@ class PatternBuilder(
 		"""
 
 		if beats <= 0:
-			raise ValueError("Staccato duration (beats) must be positive")
+			raise ValueError("Note duration (beats) must be positive")
 
 		duration_pulses = int(beats * subsequence.constants.MIDI_QUARTER_NOTE)
 		duration_pulses = max(1, duration_pulses)
@@ -1724,14 +1738,14 @@ class PatternBuilder(
 				note.duration = new_duration
 		return self
 
-	def quantize (self, key: str, mode: str = "ionian", strength: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def snap_to_scale (self, key: str, mode: str = "ionian", strength: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		Snap all notes in the pattern to the nearest pitch in a scale.
 
 		Useful after generative or sensor-driven pitch work (random walks,
 		mapping data values to note numbers, etc.) to ensure every note lands
-		on a musically valid scale degree.  The quantization is applied in
+		on a musically valid scale degree.  The snap is applied in
 		place; notes already on a scale degree are left unchanged.
 
 		When a note falls equidistant between two scale tones, the upward
@@ -1742,9 +1756,9 @@ class PatternBuilder(
 			mode: Scale mode.  Any key in :data:`subsequence.intervals.DIATONIC_MODE_MAP`
 			      is accepted: ``"ionian"`` (default), ``"dorian"``, ``"minor"``,
 			      ``"harmonic_minor"``, etc.
-			strength: Probability that each note is quantized (0.0–1.0).
-			      At 1.0 (default), every note snaps to the scale — identical
-			      to the previous behaviour.  At 0.0, no notes are affected.
+			strength: Probability that each note is snapped (0.0–1.0).
+			      At 1.0 (default), every note snaps to the scale.
+			      At 0.0, no notes are affected.
 			      Values in between create melodies that are mostly in key
 			      with occasional chromatic passing tones.  Uses the
 			      pattern's seeded RNG for reproducibility.
@@ -1756,7 +1770,7 @@ class PatternBuilder(
 			    for beat in range(16):
 			        pitch = 60 + random.randint(-5, 5)
 			        p.note(pitch, beat=beat * 0.25)
-			    p.quantize("G", "dorian", strength=0.8)
+			    p.snap_to_scale("G", "dorian", strength=0.8)
 			```
 		"""
 
@@ -1848,47 +1862,39 @@ class PatternBuilder(
 		self._pattern.steps = new_steps
 		return self
 
-	def double_time (self) -> "PatternBuilder":
+	def stretch (self, factor: float) -> "PatternBuilder":
 
 		"""
-		Compress all notes into the first half of the pattern, doubling the speed.
+		Stretch the pattern in time, scaling note positions and durations.
+
+		``stretch(2.0)`` makes everything twice as long (half speed) — what
+		theorists call *augmentation*; ``stretch(0.5)`` squeezes the pattern
+		into half the time (double speed) — *diminution*.  Any positive
+		factor works: ``stretch(2/3)`` compresses a dotted feel into
+		straight time, for example.
+
+		Notes whose start lands past the end of the pattern are dropped,
+		and compression leaves the freed space empty — the pattern is not
+		tiled to fill it.  Durations scale without clipping, so a stretched
+		note may ring past the pattern's end exactly like a legato note,
+		and ``stretch(1.0)`` is a true no-op.  Positions and durations
+		truncate to the pulse grid (matching ``note()``'s beat-to-pulse
+		truncation).
+
+		Parameters:
+			factor: Time multiplier.  Greater than 1.0 slows the pattern
+				down, less than 1.0 speeds it up.  Must be positive.
 		"""
 
-		old_steps = self._pattern.steps
-		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
-
-		for position, step in old_steps.items():
-			new_position = position // 2
-
-			if new_position not in new_steps:
-				new_steps[new_position] = subsequence.pattern.Step()
-
-			new_steps[new_position].notes.extend(
-				subsequence.pattern.Note(
-					pitch = note.pitch,
-					velocity = note.velocity,
-					duration = max(1, note.duration // 2),
-					channel = note.channel
-				)
-				for note in step.notes
-			)
-
-		self._pattern.steps = new_steps
-		return self
-
-	def half_time (self) -> "PatternBuilder":
-
-		"""
-		Expand all notes by factor of 2, halving the speed.
-		Notes that fall outside the pattern length are removed.
-		"""
+		if factor <= 0:
+			raise ValueError("Stretch factor must be positive")
 
 		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
 		old_steps = self._pattern.steps
 		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
 
 		for position, step in old_steps.items():
-			new_position = position * 2
+			new_position = int(position * factor)
 
 			if new_position >= total_pulses:
 				continue
@@ -1897,11 +1903,9 @@ class PatternBuilder(
 				new_steps[new_position] = subsequence.pattern.Step()
 
 			new_steps[new_position].notes.extend(
-				subsequence.pattern.Note(
-					pitch = note.pitch,
-					velocity = note.velocity,
-					duration = min(note.duration * 2, total_pulses - new_position),
-					channel = note.channel
+				dataclasses.replace(
+					note,
+					duration = max(1, int(note.duration * factor)),
 				)
 				for note in step.notes
 			)
@@ -1909,16 +1913,20 @@ class PatternBuilder(
 		self._pattern.steps = new_steps
 		return self
 
-	def shift (self, steps: int, grid: typing.Optional[int] = None) -> "PatternBuilder":
+	def rotate (self, steps: int, grid: typing.Optional[int] = None) -> "PatternBuilder":
 
 		"""
-		Rotate the pattern by a number of grid steps.
+		Rotate the pattern by a number of grid steps, wrapping around.
+
+		Notes pushed past the end of the pattern re-enter at the start
+		(and vice versa for negative values) — the step-sequencer rotation
+		familiar from Euclidean rhythm tools.
 
 		Parameters:
-			steps: Positive values shift right, negative values shift left.
+			steps: Positive values rotate later in time, negative values earlier.
 			grid: The grid resolution. Defaults to the pattern's
-				``default_grid`` (derived from the decorator's ``length``
-				and ``unit``).
+				``default_grid`` (derived from the decorator's ``beats``/``steps``
+				and ``step_duration``).
 		"""
 
 		if grid is None:
@@ -1990,34 +1998,34 @@ class PatternBuilder(
 			fn(self)
 		return self
 
-	def phrase (self, length: int) -> Phrase:
+	def bar_cycle (self, length: int) -> BarCycle:
 
-		"""Return the current bar's position within a repeating musical phrase.
+		"""Return the current bar's position within a repeating cycle of bars.
 
 		A thin wrapper around ``p.bar % length`` that replaces opaque modulo
 		arithmetic with readable, musician-friendly properties.
 
 		Parameters:
-			length: The phrase length in bars (e.g., 4, 8, 16).
+			length: The cycle length in bars (e.g., 4, 8, 16).
 
 		Returns:
-			A :class:`Phrase` with ``.bar``, ``.first``, ``.last``,
+			A :class:`BarCycle` with ``.bar``, ``.first``, ``.last``,
 			and ``.progress`` properties.
 
 		Example:
 			```python
 			# Every 4 bars (replaces: if p.bar % 4 == 0)
-			if p.phrase(4).first:
+			if p.bar_cycle(4).first:
 			    p.hit_steps("snare_1", [0, 8], velocity=110)
 
-			# Last bar of every 16-bar section (replaces: if p.bar % 16 == 15)
-			if p.phrase(16).last:
+			# Last bar of every 16-bar cycle (replaces: if p.bar % 16 == 15)
+			if p.bar_cycle(16).last:
 			    p.euclidean("hi_hat_open", 3)
 
-			# Build intensity over an 8-bar phrase
-			intensity = p.phrase(8).progress   # 0.0 → 0.875
+			# Build intensity over an 8-bar arc
+			intensity = p.bar_cycle(8).progress   # 0.0 → 0.875
 			p.velocity_shape(low=int(40 + 40 * intensity), high=100)
 			```
 		"""
 
-		return Phrase(bar=self.bar % length, length=length)
+		return BarCycle(bar=self.bar % length, length=length)
