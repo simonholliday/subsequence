@@ -44,6 +44,7 @@ Use your own gear. Subsequence provides the logic; your Eurorack, Elektron boxes
   - [Live coding](#live-coding)
   - [Live coding via file watching](#live-coding-via-file-watching)
   - [Single-file live coding](#single-file-live-coding)
+  - [Reusable pattern helpers](#reusable-pattern-helpers)
   - [Loading patterns from a string](#loading-patterns-from-a-string)
   - [Clock accuracy](#clock-accuracy)
   - [MIDI input and external clock](#midi-input-and-external-clock)
@@ -1901,6 +1902,40 @@ The watcher also injects `__file__` set to the watched file's path, so `composit
 **Why the two-file split is still supported:** it makes the misuse impossible. There's no way to accidentally re-open MIDI ports or rebuild the `Composition` on save when the wrapper file is separate. The single-file form is more compact but trusts the user to place each call on the correct side of the guard. Pick whichever fits how you work.
 
 See [examples/live_single_file.py](examples/live_single_file.py) for a runnable starting point.
+
+### Reusable pattern helpers
+
+Any function defined at the module level of your composition file is in scope inside every `@composition.pattern` body — so the obvious idiom works: factor repeated logic out into a helper that takes `p` as its first argument and call it from multiple patterns. Applies to any pattern code, not just live coding — it's worth knowing about even if you never reach for `composition.watch()`.
+
+```python
+def velocity_ramp_seq (p, steps, pitch, low, high, *, shape="linear", **kwargs):
+    p.sequence(
+        steps=steps,
+        pitches=pitch,
+        velocities=p.velocity_ramp(low, high, shape=shape, grid=len(steps)),
+        **kwargs,
+    )
+
+@composition.pattern(channel=10, beats=4)
+def drums (p):
+    velocity_ramp_seq(p, range(0, 16), "snare", 30, 100, durations=0.05)
+
+@composition.pattern(channel=11, beats=4)
+def crash (p):
+    velocity_ramp_seq(p, range(8, 16), "cymbal_1", 60, 110, durations=0.1)
+```
+
+The helper is just a function — it can `return` a value (e.g. a velocity list), mutate `p`, call other helpers, accept an RNG instance, anything Python allows.
+
+**Where to define them:**
+
+- **Outside any `if __name__ == "__main__":` guard** in single-file workflows, so they survive live reload. Each save re-defines the helper alongside the patterns — no state lost, identity changes harmlessly.
+- **In the wrapper file or the live file** in two-file workflows. Wrapper-side helpers are stable across pattern-file saves; live-side helpers can be iterated on alongside the patterns.
+- **In a separate module** if you're building a library of reusable helpers. `import my_helpers as h`, then `h.velocity_ramp_seq(p, ...)` from any pattern.
+
+Helpers that need persistent state across bars (a melodic walker that remembers its last note, an accumulator, a one-shot trigger) should keep that state on `composition.data` rather than on module-level mutable globals — `composition.data` survives live reload as a single source of truth owned by the composition, while module-level state resets every time you save in single-file workflows or restart in two-file ones.
+
+This pattern compounds well with `composition.layer(*builder_fns, ...)` (see further below) when you want multiple helpers to share one MIDI stream and one cycle counter, rather than just calling them in sequence on the same `p`.
 
 ### Loading patterns from a string
 
