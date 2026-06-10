@@ -1504,3 +1504,65 @@ def test_self_avoiding_walk_custom_start () -> None:
 	rng = random.Random(1)
 	result = subsequence.sequence_utils.self_avoiding_walk(8, 0, 9, rng, start=3)
 	assert result[0] == 3
+
+
+# ── branch_sequence: the variation-tree kernel ──────────────────────────────
+
+def test_branch_sequence_is_deterministic_per_trunk () -> None:
+
+	"""The tree derives from the pitch content — same trunk, same variation."""
+
+	a = subsequence.sequence_utils.branch_sequence([60, 64, 67, 72], depth=3, path=5)
+	b = subsequence.sequence_utils.branch_sequence([60, 64, 67, 72], depth=3, path=5)
+	assert a == b
+
+
+def test_branch_sequence_path_wraps () -> None:
+
+	"""path wraps modulo 2 ** depth."""
+
+	trunk = [60, 64, 67]
+	assert (subsequence.sequence_utils.branch_sequence(trunk, depth=2, path=1)
+		== subsequence.sequence_utils.branch_sequence(trunk, depth=2, path=5))
+
+
+def test_branch_sequence_preserves_length_and_relatedness () -> None:
+
+	"""Every variation has the trunk's length (order/interval ops only)."""
+
+	trunk = [60, 64, 67, 72]
+	for path in range(8):
+		variation = subsequence.sequence_utils.branch_sequence(trunk, depth=3, path=path)
+		assert len(variation) == len(trunk)
+
+
+def test_branch_sequence_mutation_uses_caller_rng () -> None:
+
+	"""mutation=1.0 substitutes only trunk pitches, deterministically per rng."""
+
+	trunk = [60, 64, 67]
+	a = subsequence.sequence_utils.branch_sequence(trunk, depth=1, path=0, mutation=1.0, rng=random.Random(5))
+	b = subsequence.sequence_utils.branch_sequence(trunk, depth=1, path=0, mutation=1.0, rng=random.Random(5))
+	assert a == b
+	assert all(pitch in trunk for pitch in a)
+
+
+def test_branch_sequence_empty_raises () -> None:
+
+	"""An empty trunk is a configuration error."""
+
+	import pytest
+
+	with pytest.raises(ValueError, match="empty"):
+		subsequence.sequence_utils.branch_sequence([])
+
+
+def test_branch_sequence_feeds_motif_notes () -> None:
+
+	"""The kernel bridges to the value layer with zero new API."""
+
+	import subsequence as s
+
+	variation = subsequence.sequence_utils.branch_sequence([60, 64, 67, 72], depth=2, path=3)
+	m = s.Motif.notes(variation, durations=0.25)
+	assert len(m.events) == 4

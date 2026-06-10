@@ -1405,6 +1405,128 @@ def self_avoiding_walk (
 	return result
 
 
+def _branch_retrograde (seq: typing.List[int], root: int, interval: int) -> typing.List[int]:
+
+	"""Reverse the pitch order (rhythm untouched — callers own timing)."""
+
+	return list(reversed(seq))
+
+
+def _branch_invert (seq: typing.List[int], root: int, interval: int) -> typing.List[int]:
+
+	"""Mirror each pitch around the root (the sequence's first note)."""
+
+	return [root + (root - p) for p in seq]
+
+
+def _branch_transpose (seq: typing.List[int], root: int, interval: int) -> typing.List[int]:
+
+	"""Shift all pitches by the interval between the first two notes."""
+
+	return [p + interval for p in seq]
+
+
+def _branch_rotate (seq: typing.List[int], root: int, interval: int) -> typing.List[int]:
+
+	"""Rotate the pitch order by one position (first note moves to the end)."""
+
+	if not seq:
+		return seq
+
+	return seq[1:] + seq[:1]
+
+
+def _branch_compress (seq: typing.List[int], root: int, interval: int) -> typing.List[int]:
+
+	"""Halve every interval from the root, rounded to the nearest semitone."""
+
+	return [root + round((p - root) * 0.5) for p in seq]
+
+
+def _branch_expand (seq: typing.List[int], root: int, interval: int) -> typing.List[int]:
+
+	"""Double every interval from the root."""
+
+	return [root + round((p - root) * 2.0) for p in seq]
+
+
+# Indexed by the tree RNG — the ORDER of this list is part of branch()'s
+# deterministic output contract; append new transforms, never reorder.
+_BRANCH_TRANSFORMS = [
+	_branch_retrograde,
+	_branch_invert,
+	_branch_transpose,
+	_branch_rotate,
+	_branch_compress,
+	_branch_expand,
+]
+
+
+def branch_sequence (
+	pitches: typing.List[int],
+	depth: int = 2,
+	path: int = 0,
+	mutation: float = 0.0,
+	rng: typing.Optional[random.Random] = None,
+) -> typing.List[int]:
+
+	"""
+	Navigate a fractal tree of pitch-sequence transforms and return one variation.
+
+	The ``pitches`` sequence is the trunk.  At each of ``depth`` levels two
+	transforms are assigned deterministically (derived from the pitch content
+	itself, so the tree is identical for the same trunk regardless of any
+	seed), and ``path`` selects left or right per level — ``2 ** depth``
+	variations before the index wraps.  The transforms are order and interval
+	operations (retrograde, inversion, transposition, rotation, interval
+	compression/expansion): deliberately rhythm-free, so the caller owns
+	timing.  Feed the result to ``Motif.notes()`` for a storable variation,
+	or let ``p.branch()`` place it directly.
+
+	Parameters:
+		pitches: The trunk — absolute MIDI pitches.  All variations derive
+			from this.
+		depth: Branching levels (``2 ** depth`` variations).
+		path: Which variation (0-based; wraps modulo ``2 ** depth``).
+		mutation: Probability per step of substituting a random trunk pitch
+			on top of the deterministic branching.
+		rng: Random source for ``mutation`` draws only (the tree itself is
+			deterministic).  Unseeded when omitted.
+
+	Returns:
+		A pitch list the same length as the trunk.
+	"""
+
+	if not pitches:
+		raise ValueError("pitches list cannot be empty")
+
+	# Tree RNG derived from the pitch content (never the caller's rng) so the
+	# tree structure is always the same for the same trunk.
+	branch_rng = random.Random(hash(tuple(pitches)))
+
+	path_index = path % (2 ** depth)
+	sequence = list(pitches)
+	root = pitches[0]
+	interval = (pitches[1] - pitches[0]) if len(pitches) >= 2 else 0
+
+	for level in range(depth):
+		left = _BRANCH_TRANSFORMS[branch_rng.randint(0, len(_BRANCH_TRANSFORMS) - 1)]
+		right = _BRANCH_TRANSFORMS[branch_rng.randint(0, len(_BRANCH_TRANSFORMS) - 1)]
+		direction = (path_index >> level) & 1
+		sequence = left(sequence, root, interval) if direction == 0 else right(sequence, root, interval)
+
+	if mutation > 0.0:
+
+		if rng is None:
+			rng = random.Random()
+
+		for i in range(len(sequence)):
+			if rng.random() < mutation:
+				sequence[i] = rng.choice(pitches)
+
+	return sequence
+
+
 def build_metric_weights (time_signature: typing.Tuple[int, int] = (4, 4), grid: int = 16) -> typing.List[float]:
 
 	"""

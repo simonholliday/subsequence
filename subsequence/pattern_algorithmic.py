@@ -1899,50 +1899,17 @@ class PatternAlgorithmicMixin:
 			# Every seed name was a voice this device lacks (each warned once).
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-		# Tree RNG derived from the pitch content (not self.rng or the seed= arg) so the
-		# tree structure is always the same regardless of the pattern's own seed.
-		branch_rng = random.Random(hash(tuple(resolved)))
-
-		num_variations = 2 ** depth
-		path_index = path % num_variations
-
-		sequence = list(resolved)
-		root = resolved[0]
-		interval = (resolved[1] - resolved[0]) if len(resolved) >= 2 else 0
-
-		def _retrograde (seq: typing.List[int]) -> typing.List[int]:
-			return list(reversed(seq))
-
-		def _invert (seq: typing.List[int]) -> typing.List[int]:
-			return [root + (root - p) for p in seq]
-
-		def _transpose (seq: typing.List[int]) -> typing.List[int]:
-			return [p + interval for p in seq]
-
-		def _rotate (seq: typing.List[int]) -> typing.List[int]:
-			if not seq:
-				return seq
-			return seq[1:] + seq[:1]
-
-		def _compress (seq: typing.List[int]) -> typing.List[int]:
-			return [root + round((p - root) * 0.5) for p in seq]
-
-		def _expand (seq: typing.List[int]) -> typing.List[int]:
-			return [root + round((p - root) * 2.0) for p in seq]
-
-		transforms = [_retrograde, _invert, _transpose, _rotate, _compress, _expand]
-
-		for level in range(depth):
-			left_fn  = transforms[branch_rng.randint(0, len(transforms) - 1)]
-			right_fn = transforms[branch_rng.randint(0, len(transforms) - 1)]
-			direction = (path_index >> level) & 1
-			sequence = left_fn(sequence) if direction == 0 else right_fn(sequence)
-
-		# Optional random mutation on top of deterministic branching.
-		if mutation > 0.0:
-			for i in range(len(sequence)):
-				if rng.random() < mutation:
-					sequence[i] = rng.choice(resolved)
+		# The variation tree itself lives in sequence_utils.branch_sequence —
+		# a reusable pure kernel (feed its output to Motif.notes() for a
+		# storable variation).  This verb resolves drum names, derives the
+		# variation, and places it on the grid.
+		sequence = subsequence.sequence_utils.branch_sequence(
+			resolved,
+			depth = depth,
+			path = path,
+			mutation = mutation,
+			rng = rng,
+		)
 
 		# Place notes.
 		for i, pitch in enumerate(sequence):
