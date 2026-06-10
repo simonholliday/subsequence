@@ -11,6 +11,7 @@ import re
 import signal
 import types
 import typing
+import zlib
 import subsequence.chord_graphs
 import subsequence.chords
 import subsequence.constants
@@ -702,6 +703,16 @@ class Composition:
 		self._zero_indexed_channels: bool = zero_indexed_channels
 		self._output_latency_ms: float = latency_ms
 
+		# Determinism plumbing: named-stream derivation state.  Build-time
+		# consumers draw per-call-salted streams (freeze:1, harmony:2, ...) so
+		# adding one call never shifts another's stream; play-time pattern
+		# streams are name-keyed in _build_pattern_from_pending.
+		self._freeze_count: int = 0
+		self._harmony_count: int = 0
+		self._form_count: int = 0
+		self._reroll_nonces: typing.Dict[str, int] = {}
+		self._locked_names: typing.Set[str] = set()
+
 		self._sequencer = subsequence.sequencer.Sequencer(
 			output_device_name = output_device,
 			initial_bpm = bpm,
@@ -1047,6 +1058,12 @@ class Composition:
 			preserved_history = self._harmonic_state.history.copy()
 			preserved_current = self._harmonic_state.current_chord
 
+		# Per-call salted build stream (harmony:1, harmony:2, ...): a re-call
+		# gets its own deterministic stream while history and current chord
+		# are preserved above, and adding a re-call never shifts any other
+		# consumer's stream.
+		self._harmony_count += 1
+
 		self._harmonic_state = subsequence.harmonic_state.HarmonicState(
 			key_name = self.key,
 			graph_style = style,
@@ -1054,7 +1071,8 @@ class Composition:
 			key_gravity_blend = gravity,
 			nir_strength = nir_strength,
 			minor_turnaround_weight = minor_turnaround_weight,
-			root_diversity = root_diversity
+			root_diversity = root_diversity,
+			rng = self._stream(f"harmony:{self._harmony_count}")
 		)
 
 		if preserved_history:
@@ -1100,15 +1118,33 @@ class Composition:
 
 		if bars < 1:
 			raise ValueError("bars must be at least 1")
-		collected: typing.List[subsequence.chords.Chord] = [hs.current_chord]
 
-		for _ in range(bars - 1):
+		# Per-call salted stream (freeze:1, freeze:2, ...): each call's draws
+		# are independent of every other consumer, so frozen progressions are
+		# reproducible WITHOUT play() and adding a call cannot shift a
+		# neighbour's output.  Engine state still advances normally — chord
+		# continuity comes from current_chord/history, randomness from the
+		# salted stream (swap-and-restore keeps hs.rng for play untouched).
+		self._freeze_count += 1
+		stream = self._stream(f"freeze:{self._freeze_count}")
+		saved_rng = hs.rng
+
+		if stream is not None:
+			hs.rng = stream
+
+		try:
+			collected: typing.List[subsequence.chords.Chord] = [hs.current_chord]
+
+			for _ in range(bars - 1):
+				hs.step()
+				collected.append(hs.current_chord)
+
+			# Advance past the last captured chord so the next freeze() call or
+			# live playback does not duplicate it.
 			hs.step()
-			collected.append(hs.current_chord)
 
-		# Advance past the last captured chord so the next freeze() call or
-		# live playback does not duplicate it.
-		hs.step()
+		finally:
+			hs.rng = saved_rng
 
 		return Progression(
 			chords = tuple(collected),
@@ -1400,26 +1436,133 @@ class Composition:
 
 		self._pending_hotkey_actions = still_pending
 
-	def seed (self, value: int) -> None:
+	@property
+	def seed (self) -> typing.Optional[int]:
 
 		"""
-		Set a random seed for deterministic, repeatable playback.
+		The composition's random seed, or None when unseeded.
 
-		If a seed is set, Subsequence will produce the exact same sequence 
-		every time you run the script. This is vital for finishing tracks or 
-		reproducing a specific 'performance'.
+		When set, every random decision derives deterministically from this
+		value through named streams (see ``seed_for()``), so the same script
+		produces the same music on every run.  Assign to set it::
 
-		Parameters:
-			value: An integer seed.
+			comp.seed = 42
+
+		(Formerly the method ``comp.seed(42)`` — the call form is a hard
+		break per the pre-1.0 rename policy.)
+		"""
+
+		return self._seed
+
+	@seed.setter
+	def seed (self, value: typing.Optional[int]) -> None:
+
+		"""Set the composition seed (``comp.seed = 42``)."""
+
+		self._seed = value
+
+	def _stream_seed (self, name: str) -> typing.Optional[int]:
+
+		"""
+		Derive the effective integer seed for a named random stream.
+
+		The derivation is ``zlib.crc32(f"{seed}:{name}")`` — crc32 rather
+		than ``hash()`` because it is stable across processes — plus the
+		per-name nonce when ``reroll()`` has been called.  Returns None when
+		the composition is unseeded.
+		"""
+
+		if self._seed is None:
+			return None
+
+		nonce = self._reroll_nonces.get(name, 0)
+		key = f"{self._seed}:{name}" if nonce == 0 else f"{self._seed}:{name}:{nonce}"
+		return zlib.crc32(key.encode())
+
+	def _stream (self, name: str) -> typing.Optional[random.Random]:
+
+		"""A fresh ``random.Random`` for a named stream, or None when unseeded."""
+
+		stream_seed = self._stream_seed(name)
+		return None if stream_seed is None else random.Random(stream_seed)
+
+	def seed_for (self, name: str) -> typing.Optional[int]:
+
+		"""
+		Surface the effective derived seed for a named stream.
+
+		Works for pattern names and equally for any name you invent for a
+		standalone value generator (``seed=composition.seed_for("hook")``),
+		so its randomness keys off the composition seed without sharing any
+		other consumer's stream.  Reflects ``reroll()`` nonces.  Returns None
+		when the composition is unseeded.
 
 		Example:
 			```python
-			# Fix the randomness
-			comp.seed(42)
+			hook_seed = composition.seed_for("hook")
 			```
 		"""
 
-		self._seed = value
+		return self._stream_seed(name)
+
+	def reroll (self, name: str) -> None:
+
+		"""
+		Deal a named stream a fresh deterministic seed — try a new variation.
+
+		Bumps the per-name nonce and prints the new effective seed.  The
+		nonce lives only in this process, so the printed seed is what lets a
+		variation you like survive a restart: note it down, or ``lock()`` the
+		name to pin it for the session.  Refuses on locked names.
+
+		Parameters:
+			name: The stream name — usually a pattern name.
+
+		Example:
+			```python
+			comp.reroll("lead")    # prints: reroll('lead') -> effective seed ...
+			```
+		"""
+
+		if name in self._locked_names:
+			print(f"reroll('{name}') refused: '{name}' is locked - call unlock('{name}') first")
+			return
+
+		self._reroll_nonces[name] = self._reroll_nonces.get(name, 0) + 1
+		effective = self._stream_seed(name)
+
+		if effective is None:
+			print(f"reroll('{name}'): composition has no seed - randomness is unseeded")
+			return
+
+		running = self._running_patterns.get(name)
+
+		if running is not None and hasattr(running, "_rng"):
+			running._rng = random.Random(effective)
+
+		print(f"reroll('{name}') -> effective seed {effective} (nonce {self._reroll_nonces[name]})")
+
+	def lock (self, name: str) -> None:
+
+		"""
+		Pin a named stream: keep its current effective seed and realization.
+
+		Engine-side state, so it survives live reload (it is never a builder
+		swap): a locked pattern re-deals its stream from the same effective
+		seed on every rebuild, so every cycle realizes identically, and
+		``reroll()`` refuses with a message until ``unlock()``.
+
+		Parameters:
+			name: The stream name — usually a pattern name.
+		"""
+
+		self._locked_names.add(name)
+
+	def unlock (self, name: str) -> None:
+
+		"""Release a ``lock()``: the stream runs free and ``reroll()`` works again."""
+
+		self._locked_names.discard(name)
 
 	def tuning (
 		self,
@@ -2794,7 +2937,17 @@ class Composition:
 			```
 		"""
 
-		self._form_state = subsequence.form_state.FormState(sections, loop=loop, start=start)
+		# Seed FormState at form() time (per-call salt) so build-time walks —
+		# the frozen clones form_freeze will take — are deterministic without
+		# play(); the play-time stream is re-dealt name-keyed in _run().
+		self._form_count += 1
+
+		self._form_state = subsequence.form_state.FormState(
+			sections,
+			loop = loop,
+			start = start,
+			rng = self._stream(f"form:{self._form_count}")
+		)
 
 	@staticmethod
 	def _resolve_length (
@@ -2960,6 +3113,16 @@ class Composition:
 				running._wants_chord = _fn_has_parameter(fn, "chord")
 				logger.info(f"Hot-swapped pattern: {fn.__name__}")
 				return fn
+
+			# Names key the seeded stream, mutes, tweaks, and reroll/lock — a
+			# duplicate means two scheduled copies sharing one stream with
+			# only one reachable by name.  Warn loudly at registration.
+			if any(existing.builder_fn.__name__ == fn.__name__ for existing in self._pending_patterns):
+				logger.warning(
+					f"Duplicate pattern name '{fn.__name__}': both copies will be "
+					f"scheduled, they share one seeded stream, and only one is "
+					f"reachable by name — rename one of them."
+				)
 
 			pending = _PendingPattern(
 				builder_fn = fn,
@@ -3616,22 +3779,21 @@ class Composition:
 				loop = asyncio.get_running_loop(),
 			)
 
-		# Derive child RNGs from the master seed so each component gets
-		# an independent, deterministic stream.  When no seed is set,
-		# each component creates its own unseeded RNG (existing behaviour).
-		self._pattern_rngs: typing.List[random.Random] = []
-
+		# Deal play-time streams.  Every stream is NAME-keyed (crc32 of
+		# "seed:name", see _stream_seed) rather than dealt from one master in
+		# registration order: adding or removing one consumer can never shift
+		# another's stream, and patterns added live derive identically in
+		# _build_pattern_from_pending.  When no seed is set, components keep
+		# their own unseeded RNGs (existing behaviour).
 		if self._seed is not None:
-			master = random.Random(self._seed)
 
-			if self._harmonic_state is not None:
-				self._harmonic_state.rng = random.Random(master.randint(0, 2 ** 63))
+			harmony_stream = self._stream("play:harmony")
+			if self._harmonic_state is not None and harmony_stream is not None:
+				self._harmonic_state.rng = harmony_stream
 
-			if self._form_state is not None:
-				self._form_state._rng = random.Random(master.randint(0, 2 ** 63))
-
-			for _ in self._pending_patterns:
-				self._pattern_rngs.append(random.Random(master.randint(0, 2 ** 63)))
+			form_stream = self._stream("play:form")
+			if self._form_state is not None and form_stream is not None:
+				self._form_state._rng = form_stream
 
 		# The form clock MUST be registered before the harmonic clock: same-pulse
 		# callbacks fire in registration order, and on a section-boundary bar the
@@ -3740,8 +3902,7 @@ class Composition:
 
 		for i, pending in enumerate(self._pending_patterns):
 
-			pattern_rng = self._pattern_rngs[i] if i < len(self._pattern_rngs) else None
-			pattern = self._build_pattern_from_pending(pending, pattern_rng)
+			pattern = self._build_pattern_from_pending(pending)
 			patterns.append(pattern)
 
 		await schedule_patterns(
@@ -3833,13 +3994,19 @@ class Composition:
 					logger.exception("Error stopping keystroke listener")
 				self._keystroke_listener = None
 
-	def _build_pattern_from_pending (self, pending: _PendingPattern, rng: typing.Optional[random.Random] = None) -> subsequence.pattern.Pattern:
+	def _build_pattern_from_pending (self, pending: _PendingPattern) -> subsequence.pattern.Pattern:
 
 		"""
 		Create a Pattern from a pending registration using a temporary subclass.
+
+		The pattern's play stream is dealt here, keyed by NAME (crc32 of
+		"seed:name" plus any reroll nonce), so registration order is
+		irrelevant and a pattern added live gets exactly the stream it would
+		have had at startup.
 		"""
 
 		composition_ref = self
+		rng = self._stream(pending.builder_fn.__name__)
 
 		class _DecoratorPattern (subsequence.pattern.Pattern):
 
@@ -3892,6 +4059,14 @@ class Composition:
 				self.raw_note_events = []
 				current_cycle = self._cycle_count
 				self._cycle_count += 1
+
+				# lock(): re-deal the stream from its effective seed every
+				# rebuild so a locked pattern realizes identically each cycle.
+				# Checked here (engine-side) so it survives live reload.
+				if self._builder_fn.__name__ in composition_ref._locked_names:
+					locked_seed = composition_ref._stream_seed(self._builder_fn.__name__)
+					if locked_seed is not None:
+						self._rng = random.Random(locked_seed)
 
 				if self._muted:
 					return

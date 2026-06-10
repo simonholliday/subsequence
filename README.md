@@ -1479,7 +1479,7 @@ Set a seed to make all random behavior repeatable:
 ```python
 composition = subsequence.Composition(bpm=125, key="E", seed=42)
 # OR
-composition.seed(42)
+composition.seed = 42
 ```
 
 When a seed is set, chord progressions, form transitions, and all pattern randomness produce identical output on every run. Pattern builders access the seeded RNG via `p.rng`:

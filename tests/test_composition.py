@@ -463,17 +463,21 @@ def test_composition_seed_constructor (patch_midi: None) -> None:
 	assert composition._seed == 42
 
 
-def test_composition_seed_method (patch_midi: None) -> None:
+def test_composition_seed_property (patch_midi: None) -> None:
 
-	"""Composition.seed() should store the seed value."""
+	"""Composition.seed is a readable/assignable property; the old call form raises."""
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
 
-	assert composition._seed is None
+	assert composition.seed is None
 
-	composition.seed(99)
+	composition.seed = 99
 
+	assert composition.seed == 99
 	assert composition._seed == 99
+
+	with pytest.raises(TypeError):
+		composition.seed(42)  # type: ignore[operator]  # hard break: formerly a method
 
 
 def test_builder_receives_rng_from_seed (patch_midi: None) -> None:
@@ -497,11 +501,8 @@ def test_builder_receives_rng_from_seed (patch_midi: None) -> None:
 
 	composition._pending_patterns.append(pending)
 
-	# Simulate what _run() does: derive child RNGs.
-	master = random.Random(42)
-	pattern_rng = random.Random(master.randint(0, 2 ** 63))
-
-	pattern = composition._build_pattern_from_pending(pending, pattern_rng)
+	# Streams are dealt inside _build_pattern_from_pending, keyed by name.
+	pattern = composition._build_pattern_from_pending(pending)
 
 	assert len(received_rngs) == 1
 	assert isinstance(received_rngs[0], random.Random)
@@ -529,11 +530,8 @@ def test_seed_produces_deterministic_patterns (patch_midi: None) -> None:
 			default_grid = 16
 		)
 
-		# Derive RNG the same way _run() does.
-		master = random.Random(seed)
-		pattern_rng = random.Random(master.randint(0, 2 ** 63))
-
-		pattern = composition._build_pattern_from_pending(pending, pattern_rng)
+		# Streams are dealt inside _build_pattern_from_pending, keyed by name.
+		pattern = composition._build_pattern_from_pending(pending)
 
 		return set(pattern.steps.keys())
 
