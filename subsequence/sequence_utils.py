@@ -1403,3 +1403,53 @@ def self_avoiding_walk (
 		result.append(current)
 
 	return result
+
+
+def build_metric_weights (time_signature: typing.Tuple[int, int] = (4, 4), grid: int = 16) -> typing.List[float]:
+
+	"""
+	Per-step metric weights for one bar — how "strong" each grid position is.
+
+	The hierarchy: the downbeat is 1.0; the half-bar (even meters only) is
+	0.75; other beats are 0.5; off-beat eighths are 0.25; everything finer is
+	0.125.  Derived from the time signature by default; pass a custom weight
+	list instead wherever a metric table is accepted (additive and
+	non-isochronous meters define their own strong beats).
+
+	Parameters:
+		time_signature: ``(beats_per_bar, beat_unit)`` — only the beat count
+			shapes the table.
+		grid: Number of equal steps across the bar.
+
+	Returns:
+		``grid`` floats in step order.
+
+	Example:
+		```python
+		build_metric_weights((4, 4), grid=8)
+		# → [1.0, 0.25, 0.5, 0.25, 0.75, 0.25, 0.5, 0.25]
+		```
+	"""
+
+	if grid < 1:
+		raise ValueError(f"grid must be at least 1 — got {grid}")
+
+	beats_per_bar = time_signature[0]
+	weights = []
+
+	for i in range(grid):
+
+		numerator = i * beats_per_bar	# beat position = numerator / grid
+
+		if i == 0:
+			weights.append(1.0)
+		elif beats_per_bar % 2 == 0 and 2 * i == grid:
+			weights.append(0.75)
+		elif numerator % grid == 0:
+			weights.append(0.5)
+		elif (2 * numerator) % grid == 0:
+			weights.append(0.25)
+		else:
+			weights.append(0.125)
+
+	return weights

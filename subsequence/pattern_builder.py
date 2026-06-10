@@ -13,6 +13,7 @@ import subsequence.groove
 import subsequence.held_notes
 import subsequence.intervals
 import subsequence.pattern
+import subsequence.motifs
 import subsequence.sequence_utils
 import subsequence.mini_notation
 import subsequence.conductor
@@ -111,7 +112,7 @@ class PatternBuilder(
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, scale: typing.Optional[str] = None, time_signature: typing.Tuple[int, int] = (4, 4), held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info.
 
@@ -142,8 +143,14 @@ class PatternBuilder(
 				a writer defined earlier in source is guaranteed to
 				run before a reader defined later in the same cycle.
 			key: The composition's key (e.g. ``"C"``), used by ``p.progression()``
-				to generate chords from a graph style.  ``None`` when the composition
-				has no key set.
+				to generate chords from a graph style and by ``p.motif()`` to
+				resolve scale degrees.  ``None`` when the composition has no
+				key set.
+			scale: The composition's scale/mode name (e.g. ``"minor"``),
+				read via ``p.scale`` and used to resolve scale degrees in
+				``p.motif()``.  ``None`` means ionian/major.
+			time_signature: The composition's time signature, read via
+				``p.time_signature``; powers the metric-weight table.
 			held_notes: Optional live held-note tracker from ``composition.note_input()``.
 				Read via ``p.held_notes()``.  ``None`` when no note input was declared
 				(and when rendering headlessly), so the accessor returns an empty list.
@@ -162,6 +169,8 @@ class PatternBuilder(
 		self._default_grid: int = default_grid
 		self.data: typing.Dict[str, typing.Any] = data if data is not None else {}
 		self.key: typing.Optional[str] = key  # composition key, for p.progression() chord generation
+		self.scale: typing.Optional[str] = scale  # composition scale/mode, for degree resolution
+		self.time_signature: typing.Tuple[int, int] = time_signature
 		self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = held_notes
 		self._tuning_applied: bool = False  # set by apply_tuning() to prevent double-apply
 
@@ -687,6 +696,216 @@ class PatternBuilder(
 			beat = i * step_duration
 			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
 		return self
+
+	def motif (
+		self,
+		m: "subsequence.motifs.Motif",
+		beat: float = 0.0,
+		span: typing.Optional[float] = None,
+		root: int = 60,
+		velocity: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
+		fit: typing.Optional[float] = None,
+		resolution: typing.Optional[int] = None,
+	) -> "PatternBuilder":
+
+		"""
+		Place an immutable :class:`~subsequence.motifs.Motif` onto the pattern.
+
+		Note events route through the universal ``note()`` funnel (drum names,
+		mirrors, velocity tuples all work); control gestures emit through the
+		same machinery as ``cc()`` / ``cc_ramp()`` / ``pitch_bend()`` /
+		``nrpn()`` / ``osc()``.  Pitch specs resolve here, late: ints are MIDI,
+		strings are drum names, scale degrees resolve against the composition
+		key + scale anchored near ``root=``.  Per-event probabilities roll
+		fresh each cycle against the pattern's seeded stream.
+
+		Parameters:
+			m: The motif value (anything exposing ``.events`` / ``.length``
+				places; ``.controls`` is read when present).
+			beat: Where the motif starts within the pattern.
+			span: Clamp — events whose onset falls at or beyond *span* beats
+				into the motif are dropped (the ``arpeggio()`` convention).
+			root: Register anchor for scale-degree resolution: the tonic
+				lands at its nearest instance to this MIDI note (ties resolve
+				upward) and the melody keeps its written contour from there.
+			velocity: Optional override applied to every note (otherwise each
+				event's own velocity is used).
+			fit: Accepted now; the chord-tones-on-strong-beats dial becomes
+				active only when a harmonic context exists (not yet built).
+			resolution: Pulses between control-ramp messages (defaults to
+				each control verb's own default).  Kept out of the value by
+				design: beats and shapes are music, traffic density is wire.
+		"""
+
+		events = getattr(m, "events", None)
+
+		if events is None or not hasattr(m, "length"):
+			raise TypeError(f"motif() places Motif-like values (.events/.length) — got {type(m).__name__}")
+
+		for event in events:
+
+			if span is not None and event.beat >= span:
+				continue
+			if event.probability < 1.0 and self.rng.random() >= event.probability:
+				continue
+
+			self.note(
+				pitch = self._resolve_motif_pitch(event.pitch, root),
+				beat = beat + event.beat,
+				velocity = velocity if velocity is not None else event.velocity,
+				duration = event.duration,
+			)
+
+		for control in getattr(m, "controls", ()):
+
+			if span is not None and control.beat >= span:
+				continue
+			if control.probability < 1.0 and self.rng.random() >= control.probability:
+				continue
+
+			self._emit_control(control, beat, resolution)
+
+		return self
+
+	def _resolve_motif_pitch (self, pitch: typing.Any, root: int) -> typing.Union[int, str]:
+
+		"""Resolve one stored pitch spec to a MIDI int or drum name, late."""
+
+		if pitch is None:
+			raise ValueError(
+				"This motif is a rhythm skeleton (pitches stripped) — "
+				"re-pitch it with .pitched() before placing"
+			)
+
+		if isinstance(pitch, (int, str)):
+			return pitch
+
+		if isinstance(pitch, subsequence.motifs.Degree):
+			return self._resolve_degree_pitch(pitch, root)
+
+		if isinstance(pitch, subsequence.motifs.ChordTone):
+			raise NotImplementedError(
+				"ChordTone pitches resolve against the harmonic clock, which is "
+				"not built yet — use scale degrees or MIDI notes for now"
+			)
+
+		if isinstance(pitch, subsequence.motifs.Approach):
+			raise NotImplementedError(
+				"Approach pitches resolve against the NEXT chord via the harmony "
+				"window, which is not built yet"
+			)
+
+		raise TypeError(f"Unknown pitch spec: {type(pitch).__name__}")
+
+	def _resolve_degree_pitch (self, degree: "subsequence.motifs.Degree", root: int) -> int:
+
+		"""
+		Resolve a 1-based scale degree against the composition key + scale.
+
+		The tonic anchors at its nearest instance to ``root`` (ties resolve
+		upward); the degree then builds from the anchored tonic, so a written
+		melody keeps its contour.  Steps beyond the scale length carry into
+		higher octaves (8 = tonic an octave up in seven-note scales).
+		"""
+
+		if self.key is None:
+			raise ValueError("Scale degrees resolve against a key — set Composition(key=...)")
+
+		mode = self.scale or "ionian"
+		pcs = subsequence.intervals.scale_pitch_classes(subsequence.chords.key_name_to_pc(self.key), mode)
+
+		idx = (degree.step - 1) % len(pcs)
+		carry = (degree.step - 1) // len(pcs)
+
+		diff = (pcs[0] - root) % 12
+		tonic = root + diff if diff <= 6 else root + diff - 12
+		offset = (pcs[idx] - pcs[0]) % 12
+
+		midi = tonic + offset + 12 * (carry + degree.octave) + degree.chroma
+
+		if not 0 <= midi <= 127:
+			raise ValueError(
+				f"Degree {degree.step} resolves to MIDI {midi}, outside 0–127 — "
+				f"adjust root= or the degree's octaves"
+			)
+
+		return midi
+
+	def _emit_control (self, control: "subsequence.motifs.ControlEvent", beat: float, resolution: typing.Optional[int]) -> None:
+
+		"""Emit one stored control gesture through the matching builder verb."""
+
+		signal = control.signal
+		onset = beat + control.beat
+		extra: typing.Dict[str, typing.Any] = {} if resolution is None else {"resolution": resolution}
+
+		if isinstance(signal, subsequence.motifs.CC):
+			if control.end is None:
+				self.cc(signal.control, int(round(control.start)), beat=onset)
+			else:
+				self.cc_ramp(signal.control, int(round(control.start)), int(round(control.end)), beat_start=onset, beat_end=onset + control.span, shape=control.shape, **extra)
+
+		elif isinstance(signal, subsequence.motifs.PitchBend):
+			if control.end is None:
+				self.pitch_bend(control.start, beat=onset)
+			else:
+				self.pitch_bend_ramp(control.start, control.end, beat_start=onset, beat_end=onset + control.span, shape=control.shape, **extra)
+
+		elif isinstance(signal, subsequence.motifs.NRPN):
+			if control.end is None:
+				self.nrpn(signal.parameter, int(round(control.start)), beat=onset, fine=signal.fine, null_reset=signal.null_reset)
+			else:
+				self.nrpn_ramp(signal.parameter, int(round(control.start)), int(round(control.end)), beat_start=onset, beat_end=onset + control.span, shape=control.shape, fine=signal.fine, null_reset=signal.null_reset, **extra)
+
+		elif isinstance(signal, subsequence.motifs.RPN):
+			if control.end is None:
+				self.rpn(signal.parameter, int(round(control.start)), beat=onset, fine=signal.fine, null_reset=signal.null_reset)
+			else:
+				self.rpn_ramp(signal.parameter, int(round(control.start)), int(round(control.end)), beat_start=onset, beat_end=onset + control.span, shape=control.shape, fine=signal.fine, null_reset=signal.null_reset, **extra)
+
+		elif isinstance(signal, subsequence.motifs.OSC):
+			if control.end is None:
+				self.osc(signal.address, control.start, beat=onset)
+			else:
+				self.osc_ramp(signal.address, control.start, control.end, beat_start=onset, beat_end=onset + control.span, shape=control.shape, **extra)
+
+		else:
+			raise TypeError(f"Unknown control signal: {type(signal).__name__}")
+
+	def capture (self, beat: float = 0.0, span: float = 4.0) -> "subsequence.motifs.Motif":
+
+		"""
+		Read the notes placed so far back out as a :class:`~subsequence.motifs.Motif`.
+
+		The captured motif is **absolute MIDI and lossy by design**: relative
+		specs (degrees, chord tones) do not survive resolution, timing is
+		pulse-truncated, probabilities have already rolled, and control
+		gestures are not captured.  The round trip is generate → place →
+		capture → hand-edit → rebind.
+
+		Parameters:
+			beat: Window start within the pattern.
+			span: Window length in beats (also the captured motif's length).
+		"""
+
+		ppq = subsequence.constants.MIDI_QUARTER_NOTE
+		lo, hi = int(beat * ppq), int((beat + span) * ppq)
+		events = []
+
+		for pulse in sorted(self._pattern.steps):
+
+			if not lo <= pulse < hi:
+				continue
+
+			for placed in self._pattern.steps[pulse].notes:
+				events.append(subsequence.motifs.MotifEvent(
+					beat = pulse / ppq - beat,
+					pitch = placed.pitch,
+					velocity = placed.velocity,
+					duration = max(placed.duration, 1) / ppq,
+				))
+
+		return subsequence.motifs.Motif(events=tuple(events), length=span)
 
 	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 

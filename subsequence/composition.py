@@ -639,6 +639,7 @@ class Composition:
 		bpm: float = 120,
 		time_signature: typing.Tuple[int, int] = (4, 4),
 		key: typing.Optional[str] = None,
+		scale: typing.Optional[str] = None,
 		seed: typing.Optional[int] = None,
 		record: bool = False,
 		record_filename: typing.Optional[str] = None,
@@ -669,6 +670,9 @@ class Composition:
 			bpm: Initial tempo in beats per minute (default 120).
 			key: The root key of the piece (e.g., "C", "F#", "Bb").
 				Required if you plan to use `harmony()`.
+			scale: The scale/mode of the piece (e.g. "minor", "dorian",
+				or any registered scale name).  Used to resolve scale
+				degrees in motifs; defaults to major (ionian) when unset.
 			seed: An optional integer for deterministic randomness. When set,
 				every random decision (chord choices, drum probability, etc.)
 				will be identical on every run.
@@ -699,6 +703,7 @@ class Composition:
 		self.bpm = bpm
 		self.time_signature = time_signature
 		self.key = key
+		self.scale = scale
 		self._seed: typing.Optional[int] = seed
 		self._zero_indexed_channels: bool = zero_indexed_channels
 		self._output_latency_ms: float = latency_ms
@@ -4085,6 +4090,8 @@ class Composition:
 					default_grid = self._default_grid,
 					data = composition_ref.data,
 					key = composition_ref.key,
+					scale = composition_ref.scale,
+					time_signature = composition_ref.time_signature,
 					held_notes = composition_ref._sequencer._held_notes
 				)
 

@@ -170,7 +170,7 @@ Community and Feedback:
 - **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
 - **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
 
-Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``between``, ``ChordTimeline``, ``parse_chord``, ``register_scale``, ``scale_notes``, ``bank_select``.
+Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``between``, ``ChordTimeline``, ``parse_chord``, ``register_scale``, ``scale_notes``, ``bank_select``.
 """
 
 import subsequence.chords
@@ -180,11 +180,20 @@ import subsequence.harmonic_rhythm
 import subsequence.intervals
 import subsequence.melodic_state
 import subsequence.midi_utils
+import subsequence.motifs
 import subsequence.progression
 import subsequence.tuning
 
 
 Composition = subsequence.composition.Composition
+Motif = subsequence.motifs.Motif
+Phrase = subsequence.motifs.Phrase
+motif = subsequence.motifs.motif
+Degree = subsequence.motifs.Degree
+ChordTone = subsequence.motifs.ChordTone
+Approach = subsequence.motifs.Approach
+MotifEvent = subsequence.motifs.MotifEvent
+ControlEvent = subsequence.motifs.ControlEvent
 Chord = subsequence.chords.Chord
 Groove = subsequence.groove.Groove
 MelodicState = subsequence.melodic_state.MelodicState
