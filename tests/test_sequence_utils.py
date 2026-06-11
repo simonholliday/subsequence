@@ -1639,3 +1639,183 @@ def test_vl_distance_empty_raises () -> None:
 
 	with pytest.raises(ValueError):
 		subsequence.sequence_utils.vl_distance([], [0, 4, 7])
+
+
+# ---------------------------------------------------------------------------
+# constrained_walk() — the shared hybrid kernel
+# ---------------------------------------------------------------------------
+
+def _diamond_graph () -> "subsequence.weighted_graph.WeightedGraph":
+
+	"""a → {b, c} → d → a, plus d → e (a dead-endish tail via e → e)."""
+
+	import subsequence.weighted_graph
+
+	graph: subsequence.weighted_graph.WeightedGraph = subsequence.weighted_graph.WeightedGraph()
+	graph.add_transition("a", "b", 1)
+	graph.add_transition("a", "c", 1)
+	graph.add_transition("b", "d", 1)
+	graph.add_transition("c", "d", 1)
+	graph.add_transition("d", "a", 1)
+	graph.add_transition("d", "e", 1)
+	graph.add_transition("e", "e", 1)
+	return graph
+
+
+def test_constrained_walk_satisfies_end () -> None:
+
+	"""end= lands the final position, every time, under any seed."""
+
+	graph = _diamond_graph()
+
+	for seed in range(20):
+		walk = subsequence.sequence_utils.constrained_walk(
+			graph, "a", 4, random.Random(seed), end="a",
+		)
+		assert len(walk) == 4
+		assert walk[0] == "a" and walk[-1] == "a"
+
+
+def test_constrained_walk_satisfies_pins_and_avoid () -> None:
+
+	"""Pins fix interior positions; avoid excludes chosen positions."""
+
+	graph = _diamond_graph()
+
+	for seed in range(20):
+		walk = subsequence.sequence_utils.constrained_walk(
+			graph, "a", 4, random.Random(seed), pins={2: "b"}, avoid=["e"],
+		)
+		assert walk[1] == "b"
+		assert "e" not in walk
+
+
+def test_constrained_walk_unconstrained_matches_choose_next () -> None:
+
+	"""No constraints → draw-for-draw identical to repeated choose_next()."""
+
+	graph = _diamond_graph()
+
+	walked = subsequence.sequence_utils.constrained_walk(graph, "a", 6, random.Random(9))
+
+	rng = random.Random(9)
+	expected = ["a"]
+	for _ in range(5):
+		expected.append(graph.choose_next(expected[-1], rng))
+
+	assert walked == expected
+
+
+def test_constrained_walk_infeasible_raises_before_any_draw () -> None:
+
+	"""Unsatisfiable pins fail loudly, naming the position — no RNG consumed."""
+
+	import pytest
+
+	graph = _diamond_graph()
+
+	class Exploding(random.Random):
+		def uniform (self, a: float, b: float) -> float:
+			raise AssertionError("rng must not be consumed for an infeasible walk")
+
+	# b is not reachable in one step from d, and d→{a,e}: pin b at 3 after d at 2.
+	with pytest.raises(ValueError, match="position"):
+		subsequence.sequence_utils.constrained_walk(
+			graph, "a", 3, Exploding(), pins={2: "d", 3: "b"},
+		)
+
+
+def test_constrained_walk_pin_not_in_graph_raises () -> None:
+
+	"""A pin outside the graph's vocabulary is named in the error."""
+
+	import pytest
+
+	graph = _diamond_graph()
+
+	with pytest.raises(ValueError, match="vocabulary"):
+		subsequence.sequence_utils.constrained_walk(
+			graph, "a", 4, random.Random(0), pins={3: "z"},
+		)
+
+
+def test_constrained_walk_conflicting_constraints_raise () -> None:
+
+	"""end vs pins[length], pin-in-avoid, and pins[1] != start all conflict."""
+
+	import pytest
+
+	graph = _diamond_graph()
+
+	with pytest.raises(ValueError, match="same position"):
+		subsequence.sequence_utils.constrained_walk(
+			graph, "a", 4, random.Random(0), pins={4: "d"}, end="a",
+		)
+	with pytest.raises(ValueError, match="forbidden"):
+		subsequence.sequence_utils.constrained_walk(
+			graph, "a", 4, random.Random(0), pins={3: "d"}, avoid=["d"],
+		)
+	with pytest.raises(ValueError, match="position 1"):
+		subsequence.sequence_utils.constrained_walk(
+			graph, "a", 4, random.Random(0), pins={1: "b"},
+		)
+
+
+def test_constrained_walk_avoid_absent_node_is_trivially_satisfied () -> None:
+
+	"""Avoiding a chord the graph cannot produce is allowed, not an error."""
+
+	graph = _diamond_graph()
+
+	walk = subsequence.sequence_utils.constrained_walk(
+		graph, "a", 3, random.Random(0), avoid=["zz"],
+	)
+
+	assert len(walk) == 3
+
+
+def test_constrained_walk_stall_falls_back_to_bare_weights () -> None:
+
+	"""A modifier that suppresses every candidate stalls — the walk completes anyway."""
+
+	graph = _diamond_graph()
+
+	walk = subsequence.sequence_utils.constrained_walk(
+		graph, "a", 4, random.Random(3), end="a",
+		weight_modifier=lambda source, target, weight: 0.0,
+	)
+
+	assert walk[-1] == "a"
+
+
+def test_constrained_walk_history_hooks_fire_in_order () -> None:
+
+	"""before_choice sees each source; after_choice sees each chosen node."""
+
+	graph = _diamond_graph()
+	log: list = []
+
+	walk = subsequence.sequence_utils.constrained_walk(
+		graph, "a", 3, random.Random(1),
+		before_choice=lambda source: log.append(("pre", source)),
+		after_choice=lambda chosen: log.append(("post", chosen)),
+	)
+
+	assert log == [
+		("pre", walk[0]), ("post", walk[1]),
+		("pre", walk[1]), ("post", walk[2]),
+	]
+
+
+def test_constrained_walk_length_one_returns_start () -> None:
+
+	"""A one-position walk is just the start (pins validated)."""
+
+	import pytest
+
+	graph = _diamond_graph()
+
+	assert subsequence.sequence_utils.constrained_walk(graph, "a", 1, random.Random(0)) == ["a"]
+
+	with pytest.raises(ValueError, match="position 1"):
+		subsequence.sequence_utils.constrained_walk(graph, "a", 1, random.Random(0), end="b")

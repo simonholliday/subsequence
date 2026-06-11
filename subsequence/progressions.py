@@ -31,6 +31,7 @@ import subsequence.chords
 import subsequence.harmonic_rhythm
 import subsequence.harmonic_state
 import subsequence.intervals
+import subsequence.sequence_utils
 import subsequence.voicings
 
 
@@ -162,6 +163,11 @@ class RomanChord:
 		borrowed: When True, the degree resolves against the parallel scale
 			(modal interchange) — set by :meth:`Progression.borrow`.
 		source_text: The element as written, for unbound ``describe()``.
+		major_relative: When True, the degree always reads the major scale
+			(with the accidental applied), whatever scale ``resolve()`` is
+			given — the scale-proof spelling :meth:`Progression.generate`
+			emits, where quality is always explicit and the resolve scale
+			must not re-interpret the root.
 	"""
 
 	degree: int
@@ -170,6 +176,7 @@ class RomanChord:
 	of: typing.Optional[int] = None
 	borrowed: bool = False
 	source_text: str = ""
+	major_relative: bool = False
 
 	def __post_init__ (self) -> None:
 
@@ -215,10 +222,11 @@ class RomanChord:
 				f"({len(pcs)} degrees)"
 			)
 
-		if self.accidental != 0:
+		if self.accidental != 0 or self.major_relative:
 			# Accidental-prefixed degrees read against the major scale — the
 			# universal roman convention (bVII is the whole step below tonic
-			# in every key, major or minor).
+			# in every key, major or minor).  Generated spans set
+			# major_relative so their spelling is scale-proof.
 			major_pcs = subsequence.intervals.scale_pitch_classes(key_pc, "ionian")
 			root_pc = (major_pcs[(self.degree - 1) % len(major_pcs)] + self.accidental) % 12
 		else:
@@ -274,6 +282,92 @@ class RomanChord:
 			intervals.append(((pc - root_pc) % 12) + octave)
 
 		return tuple(sorted(set(intervals)))
+
+
+# Major-relative spelling of every pitch-class offset from the tonic — the
+# pop/rock roman convention (b3, b6, b7; b2 and b5 for the rest).  Used by
+# generation to emit scale-proof RomanChords.
+_OFFSET_SPELLING: typing.Dict[int, typing.Tuple[int, int]] = {
+	0: (1, 0), 1: (2, -1), 2: (2, 0), 3: (3, -1), 4: (3, 0), 5: (4, 0),
+	6: (5, -1), 7: (5, 0), 8: (6, -1), 9: (6, 0), 10: (7, -1), 11: (7, 0),
+}
+
+_ROMAN_NUMERALS: typing.Tuple[str, ...] = ("I", "II", "III", "IV", "V", "VI", "VII")
+
+# The scale each built-in graph style implies — used to infer qualities for
+# int constraints (end=1) and as generation's default resolve scale.  Styles
+# without diatonic quality rows fall back to ionian.
+_STYLE_SCALES: typing.Dict[str, str] = {
+	"functional_major": "ionian",
+	"diatonic_major": "ionian",
+	"turnaround": "ionian",
+	"turnaround_global": "ionian",
+	"aeolian_minor": "minor",
+	"phrygian_minor": "phrygian",
+	"lydian_major": "lydian",
+	"dorian_minor": "dorian",
+	"mixolydian": "mixolydian",
+}
+
+# Quality → (prints lowercase, printable suffix).  Qualities outside the
+# table print as an explicit parenthesised tail.
+_ROMAN_QUALITY_TEXT: typing.Dict[str, typing.Tuple[bool, str]] = {
+	"major": (False, ""),
+	"minor": (True, ""),
+	"dominant_7th": (False, "7"),
+	"minor_7th": (True, "7"),
+	"major_7th": (False, "maj7"),
+	"diminished": (True, "°"),
+	"diminished_7th": (True, "°7"),
+	"half_diminished_7th": (True, "ø7"),
+	"augmented": (False, "+"),
+}
+
+
+def resolve_constraint (spec: typing.Any, key_pc: int, scale: str, what: str) -> subsequence.chords.Chord:
+
+	"""Parse one hybrid-constraint spec (pin/end/avoid) into a concrete chord.
+
+	Specs follow the progression-element grammar: ints are diatonic degrees
+	(quality inferred from *scale*), strings are chord names or romans,
+	``Chord`` objects pass through.  ``PitchSet``s are rejected — generation
+	needs rooted chords.
+	"""
+
+	parsed = parse_element(spec).chord
+
+	if isinstance(parsed, PitchSet):
+		raise ValueError(f"{what}: generation needs rooted chords — a PitchSet cannot constrain the walk")
+	if isinstance(parsed, RomanChord):
+		return parsed.resolve(key_pc, scale)
+
+	return typing.cast(subsequence.chords.Chord, parsed)
+
+
+def _roman_from_chord (chord: subsequence.chords.Chord, tonic_pc: int) -> RomanChord:
+
+	"""Spell a concrete chord relative to a tonic, scale-proof.
+
+	The inverse of resolution for generated values: the root becomes a
+	major-relative degree (accidentals for the chromatic offsets), the
+	quality stays explicit, and ``source_text`` carries a printable roman
+	for unbound ``describe()``.
+	"""
+
+	offset = (chord.root_pc - tonic_pc) % 12
+	degree, accidental = _OFFSET_SPELLING[offset]
+
+	lowercase, suffix = _ROMAN_QUALITY_TEXT.get(chord.quality, (False, f"({chord.quality})"))
+	numeral = _ROMAN_NUMERALS[degree - 1]
+	text = ("b" if accidental < 0 else "#" if accidental > 0 else "") + (numeral.lower() if lowercase else numeral) + suffix
+
+	return RomanChord(
+		degree = degree,
+		accidental = accidental,
+		quality = chord.quality,
+		source_text = text,
+		major_relative = True,
+	)
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +1000,149 @@ class Progression:
 			spans = tuple(span.resolve(key_pc, scale) for span in self.spans),
 		)
 
+	@classmethod
+	def generate (
+		cls,
+		style: typing.Union[str, typing.Any] = "functional_major",
+		bars: int = 8,
+		beats: typing.Union[float, typing.List[float]] = DEFAULT_SPAN_BEATS,
+		*,
+		key: typing.Optional[str] = None,
+		scale: typing.Optional[str] = None,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
+		pins: typing.Optional[typing.Dict[int, typing.Any]] = None,
+		end: typing.Optional[typing.Any] = None,
+		avoid: typing.Optional[typing.Sequence[typing.Any]] = None,
+		dominant_7th: bool = True,
+		gravity: float = 1.0,
+		nir_strength: float = 0.5,
+		minor_turnaround_weight: float = 0.0,
+		root_diversity: float = subsequence.harmonic_state.DEFAULT_ROOT_DIVERSITY,
+	) -> "Progression":
+
+		"""Generate a progression from a chord-graph walk — the hybrid generator.
+
+		Full parameter pass-through to the engine (no more throwaway default
+		engines), plus the hybrid constraints: ``pins`` fix chords at 1-based
+		bars, ``end`` fixes the last bar, ``avoid`` excludes chords
+		everywhere.  Constraints compile into the walk — a backward
+		feasibility pass guarantees satisfiability before any chord is
+		drawn (unsatisfiable constraints raise immediately), then a forward
+		walk samples through the engine's real history-dependent weights
+		(NIR, gravity, diversity keep their character).
+
+		**Without** ``key=`` the result is key-relative — the walk runs
+		against a reference tonic and the spans store scale-proof
+		major-relative romans, so the value prints meaningfully unbound and
+		resolves wherever it is bound (the walk itself is key-invariant).
+		**With** ``key=`` the result is concrete.
+
+		Parameters:
+			style: A chord-graph style name (or ``ChordGraph`` instance).
+			bars: How many chords to generate.
+			beats: Span length per chord — a scalar, or a list cycled.
+			key: Key for a concrete result; omit for a key-relative value.
+			scale: Scale for int constraints' quality inference (e.g.
+				``end=1``).  Defaults from the style (aeolian_minor →
+				minor); explicit strings (``"V"``, ``"bVII7"``) never
+				need it.
+			seed: Seed for the walk.  A standalone generated value without
+				a seed warns — module-level nondeterminism breaks live
+				reload.
+			rng: An explicit random stream (overrides ``seed``).
+			pins: ``{bar: chord}`` — 1-based; values parse like progression
+				elements (ints, romans, names, ``Chord``).
+			end: The chord at the final bar — ``end="V"`` is the cadential
+				major dominant in minor (a string because it is chromatic;
+				no int can ask for it).
+			avoid: Chords excluded from the walk.  Naming a chord outside
+				the style's vocabulary is allowed (trivially satisfied).
+			dominant_7th / gravity / nir_strength / minor_turnaround_weight /
+				root_diversity: The engine parameters, exactly as
+				:meth:`Composition.harmony` takes them.
+
+		Example:
+			```python
+			chorus = subsequence.Progression.generate(
+				style="aeolian_minor", bars=4, end="V", seed=7,
+			)
+			print(chorus)        # romans until bound
+			```
+		"""
+
+		if bars < 1:
+			raise ValueError("bars must be at least 1")
+
+		if rng is None:
+			if seed is None:
+				warnings.warn(
+					"Progression.generate without seed= is nondeterministic — "
+					"pass seed= so the value survives live reload",
+					stacklevel = 2,
+				)
+				rng = random.Random()
+			else:
+				rng = random.Random(seed)
+
+		resolved_scale = scale if scale is not None else _STYLE_SCALES.get(style if isinstance(style, str) else "", "ionian")
+		relative = key is None
+		reference = key if key is not None else "C"
+
+		state = subsequence.harmonic_state.HarmonicState(
+			key_name = reference,
+			graph_style = style,
+			include_dominant_7th = dominant_7th,
+			key_gravity_blend = gravity,
+			nir_strength = nir_strength,
+			minor_turnaround_weight = minor_turnaround_weight,
+			root_diversity = root_diversity,
+			rng = rng,
+		)
+
+		resolved_pins = {
+			position: resolve_constraint(spec, state.key_root_pc, resolved_scale, f"pins[{position}]")
+			for position, spec in (pins or {}).items()
+		}
+		resolved_end = resolve_constraint(end, state.key_root_pc, resolved_scale, "end") if end is not None else None
+		resolved_avoid = [resolve_constraint(spec, state.key_root_pc, resolved_scale, "avoid") for spec in (avoid or [])]
+
+		if 1 in resolved_pins:
+			if resolved_pins[1] not in state.graph.nodes():
+				raise ValueError(
+					f"pins[1]={resolved_pins[1].name()} is not in style {style!r}'s vocabulary"
+				)
+			state.current_chord = resolved_pins[1]
+
+		def commit (chosen: subsequence.chords.Chord) -> None:
+			state.current_chord = chosen
+
+		walked = subsequence.sequence_utils.constrained_walk(
+			state.graph,
+			state.current_chord,
+			bars,
+			rng = state.rng,
+			pins = resolved_pins,
+			end = resolved_end,
+			avoid = resolved_avoid,
+			weight_modifier = state._transition_weight,
+			before_choice = state._record_transition_source,
+			after_choice = commit,
+		)
+
+		lengths = _span_lengths(beats, bars)
+
+		if relative:
+			return cls(spans = tuple(
+				ChordSpan(chord = _roman_from_chord(chord, state.key_root_pc), beats = lengths[index])
+				for index, chord in enumerate(walked)
+			))
+
+		return cls(spans = tuple(
+			ChordSpan(chord = chord, beats = lengths[index])
+			for index, chord in enumerate(walked)
+		))
+
 	# -- algebra ------------------------------------------------------------
 
 	def __add__ (self, other: "Progression") -> "Progression":
@@ -1093,6 +1330,24 @@ class Progression:
 # ---------------------------------------------------------------------------
 
 
+def _span_lengths (beats: typing.Union[float, typing.List[float]], count: int) -> typing.List[float]:
+
+	"""Resolve a beats= spec into per-span lengths — a scalar for all, or a list cycled."""
+
+	if isinstance(beats, bool):
+		raise TypeError(f"beats takes a number or a list of lengths, got bool: {beats!r}")
+
+	if isinstance(beats, (int, float)):
+		return [float(beats)] * count
+
+	values = [float(b) for b in beats]
+
+	if not values:
+		raise ValueError("beats list is empty — pass at least one length")
+
+	return [values[index % len(values)] for index in range(count)]
+
+
 def progression (
 	source: typing.Optional[typing.Any] = None,
 	beats: typing.Union[float, typing.List[float]] = DEFAULT_SPAN_BEATS,
@@ -1100,11 +1355,17 @@ def progression (
 	style: typing.Optional[str] = None,
 	bars: int = 8,
 	key: typing.Optional[str] = None,
+	scale: typing.Optional[str] = None,
 	seed: typing.Optional[int] = None,
 	rng: typing.Optional[random.Random] = None,
+	pins: typing.Optional[typing.Dict[int, typing.Any]] = None,
+	end: typing.Optional[typing.Any] = None,
+	avoid: typing.Optional[typing.Sequence[typing.Any]] = None,
 	dominant_7th: bool = True,
 	gravity: float = 1.0,
 	nir_strength: float = 0.5,
+	minor_turnaround_weight: float = 0.0,
+	root_diversity: float = subsequence.harmonic_state.DEFAULT_ROOT_DIVERSITY,
 ) -> Progression:
 
 	"""Build a :class:`Progression` — the lowercase factory.
@@ -1144,16 +1405,22 @@ def progression (
 	if style is not None:
 		if source is not None:
 			raise ValueError("pass either source or style=, not both")
-		return _generate(
+		return Progression.generate(
 			style = style,
 			bars = bars,
 			beats = beats,
 			key = key,
+			scale = scale,
 			seed = seed,
 			rng = rng,
+			pins = pins,
+			end = end,
+			avoid = avoid,
 			dominant_7th = dominant_7th,
 			gravity = gravity,
 			nir_strength = nir_strength,
+			minor_turnaround_weight = minor_turnaround_weight,
+			root_diversity = root_diversity,
 		)
 
 	if isinstance(source, Progression):
@@ -1176,68 +1443,12 @@ def progression (
 	if not elements:
 		raise ValueError("progression list is empty — pass at least one chord")
 
-	if isinstance(beats, bool):
-		raise TypeError(f"beats takes a number or a list of lengths, got bool: {beats!r}")
-
-	if isinstance(beats, (int, float)):
-		lengths = [float(beats)] * len(elements)
-	else:
-		values = [float(b) for b in beats]
-		if not values:
-			raise ValueError("beats list is empty — pass at least one length")
-		lengths = [values[index % len(values)] for index in range(len(elements))]
+	lengths = _span_lengths(beats, len(elements))
 
 	return Progression(spans = tuple(
 		parse_element(element, beats=lengths[index])
 		for index, element in enumerate(elements)
 	))
-
-
-def _generate (
-	style: str,
-	bars: int,
-	beats: typing.Union[float, typing.List[float]],
-	key: typing.Optional[str],
-	seed: typing.Optional[int],
-	rng: typing.Optional[random.Random],
-	dominant_7th: bool,
-	gravity: float,
-	nir_strength: float,
-) -> Progression:
-
-	"""Generate a progression from a chord-graph walk (the style= path)."""
-
-	if not key:
-		raise ValueError(f"progression style {style!r} needs a key — pass key=")
-	if bars < 1:
-		raise ValueError("bars must be at least 1")
-
-	if rng is None:
-		if seed is None:
-			warnings.warn(
-				"progression(style=...) without seed= is nondeterministic — "
-				"pass seed= so the value survives live reload",
-				stacklevel = 3,
-			)
-			rng = random.Random()
-		else:
-			rng = random.Random(seed)
-
-	state = subsequence.harmonic_state.HarmonicState(
-		key_name = key,
-		graph_style = style,
-		include_dominant_7th = dominant_7th,
-		key_gravity_blend = gravity,
-		nir_strength = nir_strength,
-		rng = rng,
-	)
-
-	collected = [state.current_chord]
-
-	for _ in range(bars - 1):
-		collected.append(state.step())
-
-	return progression(collected, beats=beats)
 
 
 def _chord_source (source: ProgressionSource, key: typing.Optional[str], rng: random.Random, scale: str = "ionian") -> typing.Iterator[typing.Any]:

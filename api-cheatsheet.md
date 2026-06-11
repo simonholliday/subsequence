@@ -21,7 +21,7 @@ The top-level controller for a musical piece.
 | `form_jump(section_name) -> None` | Jump the form to a named section immediately. |
 | `form_next(section_name) -> None` | Queue the next section — takes effect when the current section ends. |
 | `form_state *(property)*` | The active ``subsequence.form_state.FormState``, or ``None`` if ``form()`` has not been called. |
-| `freeze(bars) -> 'Progression'` | Capture a chord progression from the live harmony engine. |
+| `freeze(bars, end, pins, avoid) -> 'Progression'` | Capture a chord progression from the live harmony engine. |
 | `get_tweaks(name) -> Dict[str, Any]` | Return a copy of the current tweaks for a running pattern. |
 | `harmonic_state *(property)*` | The active ``HarmonicState``, or ``None`` if ``harmony()`` has not been called. |
 | `harmony(style, cycle_beats, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity, reschedule_lookahead, progression) -> None` | Configure the harmonic logic and chord change intervals. |
@@ -219,6 +219,7 @@ A frozen sequence of :class:`ChordSpan` — the governing harmony value.
 | `describe(key, scale) -> str` | A readable, one-chord-per-line summary. |
 | `events() -> Tuple[subsequence.progressions.ChordEvent, ...]` | The realised timeline as a tuple (iteration, materialised). |
 | `extend(*extensions, only) -> 'Progression'` | Add chord extensions (``7``/``9``/``11``/``13``/``"sus4"``/...) to every span. |
+| `generate(style, bars, beats, key, scale, seed, rng, pins, end, avoid, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity) -> 'Progression'` | Generate a progression from a chord-graph walk — the hybrid generator. |
 | `inversions(spec) -> 'Progression'` | Set chord inversions — a single int for all spans, or a list cycled per span. |
 | `is_concrete *(property)*` | True when every span is key-independent (no romans/degrees). |
 | `length *(property)*` | Total length in beats (the sum of span lengths). |
@@ -335,7 +336,7 @@ A sequence of Motifs with segmentation preserved.
 | `between(low, high, step) -> subsequence.harmonic_rhythm.HarmonicRhythm` | A harmonic rhythm that varies *between* two lengths (in beats). |
 | `parse_chord(name) -> subsequence.chords.Chord` | Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a :class:`Chord`. |
 | `register_chord_quality(name, intervals, suffix) -> None` | Register a custom chord quality for use everywhere chords are used. |
-| `progression(source, beats, style, bars, key, seed, rng, dominant_7th, gravity, nir_strength) -> subsequence.progressions.Progression` | Build a :class:`Progression` — the lowercase factory. |
+| `progression(source, beats, style, bars, key, scale, seed, rng, pins, end, avoid, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity) -> subsequence.progressions.Progression` | Build a :class:`Progression` — the lowercase factory. |
 | `motif(degrees, beats, velocities, durations, probabilities, length) -> subsequence.motifs.Motif` | The lowercase shortcut: a melody as 1-based scale degrees. |
 | `vl_distance(source, target, pitch_classes) -> int` | Voice-leading distance between two chords (Tymoczko's taxicab metric). |
 | `branch_sequence(pitches, depth, path, mutation, rng) -> List[int]` | Navigate a fractal tree of pitch-sequence transforms and return one variation. |
@@ -351,6 +352,7 @@ Functions for generating and transforming sequences.
 |---|---|
 | `branch_sequence(pitches, depth, path, mutation, rng) -> List[int]` | Navigate a fractal tree of pitch-sequence transforms and return one variation. |
 | `build_metric_weights(time_signature, grid) -> List[float]` | Per-step metric weights for one bar — how "strong" each grid position is. |
+| `constrained_walk(graph, start, length, rng, pins, end, avoid, weight_modifier, before_choice, after_choice) -> List[~T]` | Walk a weighted graph under constraints — the shared hybrid kernel. |
 | `de_bruijn(k, n) -> List[int]` | Generate a de Bruijn sequence B(k, n). |
 | `fibonacci_rhythm(steps, length) -> List[float]` | Generate beat positions spaced by the golden ratio (Fibonacci spiral). |
 | `generate_bresenham_sequence(steps, pulses) -> List[int]` | Generate a rhythm using Bresenham's line algorithm. |

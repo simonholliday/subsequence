@@ -11,6 +11,7 @@ import random
 import typing
 
 import subsequence.easing
+import subsequence.weighted_graph
 
 T = typing.TypeVar("T")
 
@@ -1644,3 +1645,202 @@ def vl_distance (
 
 	assert best is not None	# guaranteed: the identity-style assignment always survives
 	return best
+
+
+def _constraint_label (node: typing.Any) -> str:
+
+	"""A readable label for a graph node in constraint error messages."""
+
+	name = getattr(node, "name", None)
+
+	if callable(name):
+		return str(name())
+
+	return repr(node)
+
+
+def constrained_walk (
+	graph: "subsequence.weighted_graph.WeightedGraph[T]",
+	start: T,
+	length: int,
+	rng: random.Random,
+	pins: typing.Optional[typing.Dict[int, T]] = None,
+	end: typing.Optional[T] = None,
+	avoid: typing.Optional[typing.Collection[T]] = None,
+	weight_modifier: typing.Optional[typing.Callable[[T, T, int], float]] = None,
+	before_choice: typing.Optional[typing.Callable[[T], None]] = None,
+	after_choice: typing.Optional[typing.Callable[[T], None]] = None,
+) -> typing.List[T]:
+
+	"""Walk a weighted graph under constraints — the shared hybrid kernel.
+
+	A backward **feasibility** pass (boolean reachability of every pin, so
+	unsatisfiability is known before a note is emitted) followed by a forward
+	walk through the graph's **real, possibly history-dependent** weights
+	masked to surviving candidates.  This guarantees *satisfaction*, not an
+	exact conditional distribution — history-dependent weighting (NIR,
+	gravity, diversity) keeps its character rather than being flattened.
+
+	Positions are **1-based** (the musician count); position 1 is *start*,
+	which is fixed — pins may name it only redundantly.  ``avoid`` applies
+	to the chosen positions (2..length); the start is exempt.
+
+	With no constraints, the walk consumes the RNG exactly as repeated
+	``graph.choose_next()`` calls would (one draw per step, same candidate
+	order), so an unconstrained walk reproduces the unconstrained engine.
+
+	Parameters:
+		graph: The transition graph.
+		start: The node at position 1.
+		length: Total walk length, including *start*.
+		rng: Random stream for the weighted draws.
+		pins: ``{position: node}`` — the node that MUST sound at a 1-based
+			position.
+		end: The node at the final position — sugar for ``pins[length]``.
+		avoid: Nodes excluded from every chosen position.  Naming a node
+			the graph does not contain is allowed (trivially satisfied).
+		weight_modifier: ``fn(source, target, weight) -> float`` — the
+			engine's soft weighting, applied inside the feasible mask.  If
+			it suppresses every feasible candidate at some step (all
+			modifiers <= 0), the step falls back to the unmodified weights
+			(stall detection) — satisfaction beats character.
+		before_choice: Called with the source node before each draw — the
+			seam for history bookkeeping (append the source to history, as
+			the live engine's ``step()`` does, so *weight_modifier* sees
+			the same context it would live).
+		after_choice: Called with each chosen node after its draw.
+
+	Returns:
+		The walked nodes, ``[start, ...]``, exactly *length* long.
+
+	Raises:
+		ValueError: If the constraints are contradictory or unsatisfiable —
+			before any RNG draw, naming the failing position.
+	"""
+
+	if length < 1:
+		raise ValueError(f"a walk needs at least one position, got length={length}")
+
+	pins = dict(pins) if pins else {}
+
+	if end is not None:
+		if length in pins and pins[length] != end:
+			raise ValueError(
+				f"end={_constraint_label(end)} conflicts with pins[{length}]="
+				f"{_constraint_label(pins[length])} — they name the same position"
+			)
+		pins[length] = end
+
+	for position in pins:
+		if not 1 <= position <= length:
+			raise ValueError(f"pin position {position} is outside the walk (1–{length})")
+
+	avoid_set = set(avoid) if avoid else set()
+
+	for position, node in pins.items():
+		if node in avoid_set:
+			raise ValueError(
+				f"pins[{position}]={_constraint_label(node)} is also in avoid — "
+				"a chord cannot be both required and forbidden"
+			)
+
+	if 1 in pins and pins[1] != start:
+		raise ValueError(
+			f"pins[1]={_constraint_label(pins[1])} conflicts with the walk's start "
+			f"({_constraint_label(start)}) — position 1 is where the walk begins"
+		)
+
+	all_nodes = graph.nodes()
+
+	for position, node in pins.items():
+		if node not in all_nodes and node != start:
+			raise ValueError(
+				f"pins[{position}]={_constraint_label(node)} is not in this graph's "
+				"vocabulary — it can never sound"
+			)
+
+	if length == 1:
+		return [start]
+
+	# Backward feasibility: ok[i] = nodes allowed at position i from which a
+	# valid completion exists.  Position 1 is the fixed start.
+	def allowed (position: int) -> typing.List[T]:
+		if position in pins:
+			return [pins[position]]
+		return [node for node in all_nodes if node not in avoid_set]
+
+	ok: typing.Dict[int, typing.Set[T]] = {length: set(allowed(length))}
+
+	if not ok[length]:
+		raise ValueError(f"no chord can satisfy the constraints at position {length}")
+
+	for position in range(length - 1, 1, -1):
+		ok[position] = {
+			node for node in allowed(position)
+			if any(target in ok[position + 1] for target, _ in graph.get_transitions(node))
+		}
+		if not ok[position]:
+			raise ValueError(
+				f"no chord can satisfy the constraints at position {position} — "
+				"there is no way through to the pins after it"
+			)
+
+	if not any(target in ok[2] for target, _ in graph.get_transitions(start)):
+		raise ValueError(
+			f"no path from {_constraint_label(start)} satisfies the constraints "
+			f"(pins at {sorted(pins)}, {len(avoid_set)} avoided) within {length} positions"
+		)
+
+	# Forward walk: real weights, masked to the feasible sets.
+	walk: typing.List[T] = [start]
+
+	for position in range(2, length + 1):
+
+		source = walk[-1]
+
+		if before_choice is not None:
+			before_choice(source)
+
+		candidates: typing.List[typing.Tuple[T, float]] = []
+		total = 0.0
+
+		for target, weight in graph.get_transitions(source):
+
+			if target not in ok[position]:
+				continue
+
+			modifier = 1.0 if weight_modifier is None else float(weight_modifier(source, target, weight))
+
+			if modifier <= 0:
+				continue
+
+			adjusted = float(weight) * modifier
+			candidates.append((target, adjusted))
+			total += adjusted
+
+		if total <= 0:
+			# Stall: the soft weighting suppressed every feasible candidate.
+			# Satisfaction beats character — fall back to the bare weights.
+			candidates = [
+				(target, float(weight))
+				for target, weight in graph.get_transitions(source)
+				if target in ok[position]
+			]
+			total = sum(weight for _, weight in candidates)
+
+		roll = rng.uniform(0, total)
+		accum = 0.0
+		chosen = candidates[-1][0]
+
+		for target, adjusted in candidates:
+			accum += adjusted
+			if roll <= accum:
+				chosen = target
+				break
+
+		if after_choice is not None:
+			after_choice(chosen)
+
+		walk.append(chosen)
+
+	return walk

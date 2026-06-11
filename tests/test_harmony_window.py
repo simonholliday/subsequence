@@ -327,3 +327,48 @@ def test_current_chord_reads_the_window (patch_midi: None) -> None:
 	composition._harmony_horizon.commit(0.0, 4.0, subsequence.chords.parse_chord("Am"))
 
 	assert composition.current_chord().name() == "Am"
+
+
+# ---------------------------------------------------------------------------
+# Sketch (a) — the acceptance contract, end to end (stage 3 completes it)
+# ---------------------------------------------------------------------------
+
+def test_sketch_a_verse_by_hand_chorus_generated_under_a_constraint (tmp_path: pathlib.Path, patch_midi: None) -> None:
+
+	"""Verse hand-written (spiced), chorus generated with end="V", both bound and
+	inspectable before play — sketch (a), as written in the design document."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=480, key="A", scale="minor", seed=42)
+
+	verse = subsequence.progression([1, 6, 3, 7]).extend(9).borrow(2)
+	chorus = subsequence.progression(style="aeolian_minor", bars=4, end="V", seed=7)
+
+	# Both print before binding — degrees/romans unbound, names under a key.
+	assert "9" in verse.describe()
+	assert "V" in chorus.describe()
+	assert not chorus.is_concrete
+
+	composition.form([("verse", 4), ("chorus", 4)], loop=True)
+	composition.section_chords("verse", verse)
+	composition.section_chords("chorus", chorus)
+
+	heard: typing.List[str] = []
+
+	@composition.pattern(channel=1, beats=4)
+	def pads (p, chord) -> None:
+		heard.append(chord.name())
+		p.note(60, beat=0)
+
+	composition.render(bars=8, filename=str(tmp_path / "sketch_a.mid"))
+
+	# Verse: i VI III VII in A minor, extended (9ths) with degree 2 borrowed
+	# from the parallel major (VI of A major = F#m).
+	assert heard[0] == "Am9"
+	assert heard[1] == "F#m9"
+	assert heard[2] == "C9"
+	assert heard[3] == "G9"
+
+	# Chorus: generated under the constraint — the last bar is the cadential
+	# major dominant, resolved against the composition key at bind time.
+	assert heard[7] == "E"
+	assert composition._section_progressions["chorus"].chords[0].name() == "Am"

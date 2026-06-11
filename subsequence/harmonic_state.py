@@ -264,14 +264,25 @@ class HarmonicState:
 
 		return (1.0 + boost) * nir_score * diversity
 
+	def _record_transition_source (self, chord: subsequence.chords.Chord) -> None:
+
+		"""History bookkeeping for one transition: the outgoing chord enters history.
+
+		The first half of :meth:`step` — exposed so a constrained walk can
+		interleave it with its own draws (``before_choice``) and the NIR
+		weighting sees exactly the context it would live.
+		"""
+
+		self.history.append(chord)
+		if len(self.history) > 4:
+			self.history.pop(0)
+
 	def step (self) -> subsequence.chords.Chord:
 
 		"""Advance to the next chord based on the transition graph."""
 
 		# Update history before choosing next (so structure tracks the path)
-		self.history.append(self.current_chord)
-		if len(self.history) > 4:
-			self.history.pop(0)
+		self._record_transition_source(self.current_chord)
 
 		# Decision path: chord changes occur here; key changes are not automatic.
 		self.current_chord = self.graph.choose_next(self.current_chord, self.rng, weight_modifier=self._transition_weight)
@@ -291,9 +302,7 @@ class HarmonicState:
 
 		saved_history = list(self.history)
 
-		self.history.append(self.current_chord)
-		if len(self.history) > 4:
-			self.history.pop(0)
+		self._record_transition_source(self.current_chord)
 
 		try:
 			return self.graph.choose_next(self.current_chord, self.rng, weight_modifier=self._transition_weight)
@@ -310,9 +319,7 @@ class HarmonicState:
 		``step()`` records it).
 		"""
 
-		self.history.append(self.current_chord)
-		if len(self.history) > 4:
-			self.history.pop(0)
+		self._record_transition_source(self.current_chord)
 
 		self.current_chord = chord
 

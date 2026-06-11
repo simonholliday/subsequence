@@ -1919,3 +1919,77 @@ async def test_pin_inside_a_long_span_forces_its_bar (patch_midi: None) -> None:
 	cb(4 * 24)
 	assert horizon.chord_at(4.0) is pinned
 	assert horizon.chord_at(2.0).name() == "Am"		# the first bar is untouched
+
+
+# ── freeze() hybrid constraints (stage 3) ─────────────────────────────────────
+
+
+def test_freeze_end_lands_the_final_bar (patch_midi: None) -> None:
+
+	"""freeze(end=...) — "end on V at bar 8" — completes sketch (a)'s missing line."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C", seed=42)
+	composition.harmony(cycle_beats=4)
+
+	frozen = composition.freeze(8, end="V")
+
+	assert len(frozen) == 8
+	assert frozen.chords[-1] == subsequence.chords.parse_chord("G")
+
+
+def test_freeze_pins_and_avoid (patch_midi: None) -> None:
+
+	"""Interior pins land; avoided chords never sound."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C", seed=7)
+	composition.harmony(cycle_beats=4)
+
+	frozen = composition.freeze(8, pins={4: "F"}, avoid=["vi"])
+
+	assert frozen.chords[3] == subsequence.chords.parse_chord("F")
+	assert subsequence.chords.parse_chord("Am") not in frozen.chords
+
+
+def test_freeze_bar_one_is_the_journey (patch_midi: None) -> None:
+
+	"""pins={1: ...} that contradicts the current chord refuses — continuity is freeze's identity."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C", seed=1)
+	composition.harmony(cycle_beats=4)
+
+	with pytest.raises(ValueError, match="journey"):
+		composition.freeze(4, pins={1: "F"})
+
+	# Naming the current chord redundantly is fine.
+	frozen = composition.freeze(4, pins={1: "C"})
+	assert frozen.chords[0] == subsequence.chords.parse_chord("C")
+
+
+def test_freeze_constrained_is_reproducible_without_play (patch_midi: None) -> None:
+
+	"""The salted freeze streams cover the constrained path too."""
+
+	def journey () -> typing.Tuple[typing.Any, ...]:
+		composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C", seed=42)
+		composition.harmony(cycle_beats=4)
+		return composition.freeze(8, end="V").chords + composition.freeze(4).chords
+
+	assert journey() == journey()
+
+
+def test_freeze_unsatisfiable_raises_and_engine_state_survives (patch_midi: None) -> None:
+
+	"""Contradictory constraints fail before any draw — the engine is untouched."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C", seed=42)
+	composition.harmony(cycle_beats=4)
+
+	hs = composition.harmonic_state
+	chord_before = hs.current_chord
+	history_before = list(hs.history)
+
+	with pytest.raises(ValueError):
+		composition.freeze(4, end="V", avoid=["V"])
+
+	assert hs.current_chord is chord_before
+	assert hs.history == history_before

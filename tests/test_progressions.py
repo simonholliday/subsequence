@@ -779,3 +779,172 @@ def test_resolve_voices_draws_in_range () -> None:
 
 	with pytest.raises(ValueError):
 		subsequence.progressions.resolve_voices(0, rng)
+
+
+# ---------------------------------------------------------------------------
+# Progression.generate() — the hybrid generator (stage 3)
+# ---------------------------------------------------------------------------
+
+def test_generate_end_lands_the_cadential_dominant () -> None:
+
+	"""end="V" — the chromatic major dominant in minor — lands on the last bar, every seed."""
+
+	for seed in range(10):
+		value = subsequence.progressions.Progression.generate(
+			style="aeolian_minor", bars=4, end="V", seed=seed, key="A", scale="minor",
+		)
+
+		assert len(value) == 4
+		assert value.chords[-1] == chord("E")		# major V in A minor
+		assert value.chords[0] == chord("Am")		# the walk still starts home
+
+
+def test_generate_keyless_is_relative_and_resolves_anywhere () -> None:
+
+	"""Sketch (a): no key= → a key-relative value that prints romans and binds later."""
+
+	value = subsequence.progressions.Progression.generate(
+		style="aeolian_minor", bars=4, end="V", seed=7,
+	)
+
+	assert not value.is_concrete
+
+	unbound = value.describe()
+	assert "i" in unbound		# the tonic prints as a roman
+
+	in_a = value.resolve("A", "minor")
+	in_e = value.resolve("E", "minor")
+
+	assert in_a.chords[0] == chord("Am") and in_a.chords[-1] == chord("E")
+	assert in_e.chords[0] == chord("Em") and in_e.chords[-1] == chord("B")
+
+
+def test_generate_is_key_invariant () -> None:
+
+	"""The same seed in two keys walks the same shape, transposed — the relative emission's premise."""
+
+	in_c = subsequence.progressions.Progression.generate(style="aeolian_minor", bars=8, seed=11, key="C", scale="minor")
+	in_g = subsequence.progressions.Progression.generate(style="aeolian_minor", bars=8, seed=11, key="G", scale="minor")
+
+	for c_chord, g_chord in zip(in_c.chords, in_g.chords):
+		assert (g_chord.root_pc - c_chord.root_pc) % 12 == 7
+		assert g_chord.quality == c_chord.quality
+
+
+def test_generate_relative_resolution_matches_concrete_generation () -> None:
+
+	"""Keyless-then-resolved equals generating concretely in that key (round trip)."""
+
+	relative = subsequence.progressions.Progression.generate(style="aeolian_minor", bars=8, seed=3)
+	concrete = subsequence.progressions.Progression.generate(style="aeolian_minor", bars=8, seed=3, key="A")
+
+	assert relative.resolve("A", "minor").chords == concrete.chords
+
+
+def test_generate_pins_fix_interior_bars () -> None:
+
+	"""pins={bar: spec} compile into the walk — int degrees and romans both."""
+
+	value = subsequence.progressions.Progression.generate(
+		style="functional_major", bars=6, key="C", pins={3: 4, 5: "V7"}, seed=2,
+	)
+
+	assert value.chords[2] == chord("F")		# degree 4 in C major
+	assert value.chords[4] == chord("G7")
+
+
+def test_generate_pin_on_bar_one_overrides_the_tonic_start () -> None:
+
+	"""pins={1: ...} sets where the walk begins."""
+
+	value = subsequence.progressions.Progression.generate(
+		style="functional_major", bars=4, key="C", pins={1: 6}, seed=5,
+	)
+
+	assert value.chords[0] == chord("Am")
+
+
+def test_generate_avoid_excludes_everywhere () -> None:
+
+	"""avoid=[...] never sounds, under any seed."""
+
+	banned = chord("Am")
+
+	for seed in range(10):
+		value = subsequence.progressions.Progression.generate(
+			style="functional_major", bars=8, key="C", avoid=["vi"], seed=seed,
+		)
+		assert banned not in value.chords
+
+
+def test_generate_unsatisfiable_constraints_raise () -> None:
+
+	"""Contradictory constraints fail loudly before any chord is drawn."""
+
+	with pytest.raises(ValueError):
+		subsequence.progressions.Progression.generate(
+			style="functional_major", bars=4, key="C", end="V", avoid=["V"], seed=1,
+		)
+
+
+def test_generate_pin_outside_vocabulary_raises () -> None:
+
+	"""A pin the style can never sound is named in the error."""
+
+	with pytest.raises(ValueError, match="vocabulary"):
+		subsequence.progressions.Progression.generate(
+			style="functional_major", bars=4, key="C", pins={3: "F#m"}, seed=1,
+		)
+
+
+def test_generate_beats_shape_spans () -> None:
+
+	"""beats= cycles per span, exactly as the factory's."""
+
+	value = subsequence.progressions.Progression.generate(
+		style="functional_major", bars=4, beats=[4, 2], key="C", seed=1,
+	)
+
+	assert [span.beats for span in value.spans] == [4.0, 2.0, 4.0, 2.0]
+
+
+def test_generate_without_seed_warns () -> None:
+
+	"""The standalone-generator seed policy applies."""
+
+	with pytest.warns(UserWarning, match="seed"):
+		subsequence.progressions.Progression.generate(style="functional_major", bars=2, key="C")
+
+
+def test_factory_forwards_hybrid_constraints () -> None:
+
+	"""progression(style=, end=, pins=, avoid=) is the same generator."""
+
+	via_factory = subsequence.progressions.progression(
+		style="aeolian_minor", bars=4, end="V", seed=7,
+	)
+	via_generate = subsequence.progressions.Progression.generate(
+		style="aeolian_minor", bars=4, end="V", seed=7,
+	)
+
+	assert via_factory.resolve("A", "minor").chords == via_generate.resolve("A", "minor").chords
+
+
+def test_generate_unconstrained_matches_stage_two_walk () -> None:
+
+	"""No constraints → the walk consumes the RNG exactly as the plain engine would."""
+
+	import subsequence.harmonic_state
+
+	value = subsequence.progressions.Progression.generate(
+		style="aeolian_minor", bars=6, key="A", seed=9,
+	)
+
+	state = subsequence.harmonic_state.HarmonicState(
+		key_name="A", graph_style="aeolian_minor", rng=random.Random(9),
+	)
+	expected = [state.current_chord]
+	for _ in range(5):
+		expected.append(state.step())
+
+	assert list(value.chords) == expected

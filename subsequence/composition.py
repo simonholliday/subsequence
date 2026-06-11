@@ -28,6 +28,7 @@ import subsequence.osc
 import subsequence.pattern
 import subsequence.pattern_builder
 import subsequence.progressions
+import subsequence.sequence_utils
 import subsequence.sequencer
 import subsequence.voicings
 import subsequence.web_ui
@@ -1561,7 +1562,13 @@ class Composition:
 		# A re-call invalidates whatever the horizon had planned.
 		self._harmony_horizon.invalidate_future()
 
-	def freeze (self, bars: int) -> "Progression":
+	def freeze (
+		self,
+		bars: int,
+		end: typing.Optional[typing.Any] = None,
+		pins: typing.Optional[typing.Dict[int, typing.Any]] = None,
+		avoid: typing.Optional[typing.Sequence[typing.Any]] = None,
+	) -> "Progression":
 
 		"""Capture a chord progression from the live harmony engine.
 
@@ -1573,21 +1580,36 @@ class Composition:
 		continuing compositional journey so section progressions feel like parts
 		of a whole rather than isolated islands.
 
+		The hybrid constraints compile into the walk: ``end=`` fixes the last
+		bar ("end on V at bar 8"), ``pins=`` fix any 1-based bar, ``avoid=``
+		excludes chords throughout.  Specs follow the progression-element
+		grammar (ints where diatonic, roman/name strings where chromatic) and
+		resolve against the composition key and scale.  A backward
+		feasibility pass guarantees satisfiability before any chord is drawn;
+		the forward walk keeps the engine's real history-dependent weighting.
+		Bar 1 is always the engine's current chord — the journey continues —
+		so ``pins={1: ...}`` may only name it redundantly.
+
 		Parameters:
 			bars: Number of chords to capture (one per harmony cycle).
+			end: The chord at the final bar — ``end="V"`` is the cadential
+				major dominant in minor.
+			pins: ``{bar: chord}`` — 1-based fiat positions.
+			avoid: Chords excluded from the walk.
 
 		Returns:
 			A :class:`Progression` with the captured chords and trailing
 			history for NIR continuity.
 
 		Raises:
-			ValueError: If :meth:`harmony` has not been called first.
+			ValueError: If :meth:`harmony` has not been called first, or the
+				constraints are contradictory or unsatisfiable.
 
 		Example::
 
 			composition.harmony(style="functional_major", cycle_beats=4)
-			verse  = composition.freeze(8)   # 8 chords, engine advances
-			chorus = composition.freeze(4)   # next 4 chords, continuing on
+			verse  = composition.freeze(8, end="V")   # the verse sets up the chorus
+			chorus = composition.freeze(4)            # next 4 chords, continuing on
 			composition.section_chords("verse",  verse)
 			composition.section_chords("chorus", chorus)
 		"""
@@ -1596,6 +1618,23 @@ class Composition:
 
 		if bars < 1:
 			raise ValueError("bars must be at least 1")
+
+		scale = self.scale or "ionian"
+		key_pc = subsequence.chords.key_name_to_pc(self.key) if self.key is not None else hs.key_root_pc
+
+		resolved_pins = {
+			position: subsequence.progressions.resolve_constraint(spec, key_pc, scale, f"pins[{position}]")
+			for position, spec in (pins or {}).items()
+		}
+		resolved_end = subsequence.progressions.resolve_constraint(end, key_pc, scale, "end") if end is not None else None
+		resolved_avoid = [subsequence.progressions.resolve_constraint(spec, key_pc, scale, "avoid") for spec in (avoid or [])]
+
+		if 1 in resolved_pins and resolved_pins[1] != hs.current_chord:
+			raise ValueError(
+				f"pins[1]={resolved_pins[1].name()} conflicts with the engine's current chord "
+				f"({hs.current_chord.name()}) — bar 1 of a freeze continues the journey; "
+				"pin a later bar, or use pin_chord() for playback fiat"
+			)
 
 		# Per-call salted stream (freeze:1, freeze:2, ...): each call's draws
 		# are independent of every other consumer, so frozen progressions are
@@ -1611,11 +1650,23 @@ class Composition:
 			hs.rng = stream
 
 		try:
-			collected: typing.List[subsequence.chords.Chord] = [hs.current_chord]
+			# The kernel with the engine's own hooks is draw-for-draw the old
+			# step() loop when unconstrained — one walk path for both.
+			def _commit (chosen: subsequence.chords.Chord) -> None:
+				hs.current_chord = chosen
 
-			for _ in range(bars - 1):
-				hs.step()
-				collected.append(hs.current_chord)
+			collected = subsequence.sequence_utils.constrained_walk(
+				hs.graph,
+				hs.current_chord,
+				bars,
+				rng = hs.rng,
+				pins = resolved_pins,
+				end = resolved_end,
+				avoid = resolved_avoid,
+				weight_modifier = hs._transition_weight,
+				before_choice = hs._record_transition_source,
+				after_choice = _commit,
+			)
 
 			# Advance past the last captured chord so the next freeze() call or
 			# live playback does not duplicate it.

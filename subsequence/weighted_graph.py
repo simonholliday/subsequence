@@ -77,6 +77,23 @@ class WeightedGraph (typing.Generic[NodeType]):
 		]
 
 
+	def nodes (self) -> typing.List[NodeType]:
+
+		"""
+		Return every node that appears in the graph (as a source or a target),
+		in first-seen order.
+		"""
+
+		seen: typing.Dict[NodeType, None] = {}
+
+		for source, targets in self._edges.items():
+			seen.setdefault(source)
+			for target in targets:
+				seen.setdefault(target)
+
+		return list(seen)
+
+
 	def get_transitions (self, source: NodeType) -> typing.List[typing.Tuple[NodeType, int]]:
 
 		"""
