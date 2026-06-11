@@ -1566,3 +1566,76 @@ def test_branch_sequence_feeds_motif_notes () -> None:
 	variation = subsequence.sequence_utils.branch_sequence([60, 64, 67, 72], depth=2, path=3)
 	m = s.Motif.notes(variation, durations=0.25)
 	assert len(m.events) == 4
+
+
+# ---------------------------------------------------------------------------
+# vl_distance() — the Tymoczko voice-leading kernel
+# ---------------------------------------------------------------------------
+
+def test_vl_distance_c_to_f () -> None:
+
+	"""C major to F major: C→C (0), E→F (1), G→A (2) = 3."""
+
+	assert subsequence.sequence_utils.vl_distance([0, 4, 7], [5, 9, 0]) == 3
+
+
+def test_vl_distance_c_to_a_minor () -> None:
+
+	"""C major to A minor share two tones: only G→A moves (2)."""
+
+	assert subsequence.sequence_utils.vl_distance([0, 4, 7], [9, 0, 4]) == 2
+
+
+def test_vl_distance_identity_is_zero () -> None:
+
+	"""A chord is zero distance from itself."""
+
+	assert subsequence.sequence_utils.vl_distance([0, 4, 7], [0, 4, 7]) == 0
+
+
+def test_vl_distance_is_symmetric () -> None:
+
+	"""Distance is a metric: order of arguments must not matter."""
+
+	a, b = [0, 3, 7], [2, 5, 9, 0]
+
+	assert (
+		subsequence.sequence_utils.vl_distance(a, b)
+		== subsequence.sequence_utils.vl_distance(b, a)
+	)
+
+
+def test_vl_distance_wraps_pitch_class_circle () -> None:
+
+	"""B→C is one semitone around the circle, not eleven."""
+
+	assert subsequence.sequence_utils.vl_distance([11], [0]) == 1
+
+
+def test_vl_distance_unequal_sizes_doubles_smaller () -> None:
+
+	"""Triad → seventh chord doubles a triad tone; nothing is dropped.
+
+	C major → C7: C, E, G map to themselves and one of them doubles to
+	cover Bb — the cheapest doubling is C→Bb (2, down around the circle).
+	"""
+
+	assert subsequence.sequence_utils.vl_distance([0, 4, 7], [0, 4, 7, 10]) == 2
+
+
+def test_vl_distance_absolute_pitch_mode () -> None:
+
+	"""pitch_classes=False scores literal MIDI movement (no circle wrap)."""
+
+	assert subsequence.sequence_utils.vl_distance([60], [72], pitch_classes=False) == 12
+	assert subsequence.sequence_utils.vl_distance([60], [72]) == 0
+
+
+def test_vl_distance_empty_raises () -> None:
+
+	"""Empty chords are an error, not a silent zero."""
+
+	import pytest
+
+	with pytest.raises(ValueError):
+		subsequence.sequence_utils.vl_distance([], [0, 4, 7])

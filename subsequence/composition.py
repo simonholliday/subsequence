@@ -27,7 +27,7 @@ import subsequence.midi_utils
 import subsequence.osc
 import subsequence.pattern
 import subsequence.pattern_builder
-import subsequence.progression
+import subsequence.progressions
 import subsequence.sequencer
 import subsequence.voicings
 import subsequence.web_ui
@@ -159,27 +159,10 @@ class _AdditionalOutput:
 	latency_ms: float = 0.0
 
 
-@dataclasses.dataclass(frozen=True)
-class Progression:
-
-	"""A frozen chord sequence captured from the harmony engine.
-
-	Created by :meth:`Composition.freeze` and bound to form sections via
-	:meth:`Composition.section_chords`.  During playback the harmonic clock
-	replays ``chords`` in order instead of calling the live engine.
-
-	Attributes:
-		chords: The captured chord sequence — one chord per harmony cycle
-			within the frozen bars.
-		trailing_history: The engine's ``history`` list at the moment the
-			freeze finished.  Restored into the harmonic state at the start
-			of each frozen replay, so every re-entry of the section begins
-			with the same NIR context as when it was originally generated.
-	"""
-
-	chords: typing.Tuple[subsequence.chords.Chord, ...]
-	trailing_history: typing.Tuple[subsequence.chords.Chord, ...]
-
+# The one progression type (subsequence/progressions.py) — re-exported here
+# because freeze() returns it and the clock walks it.  The old engine-side
+# Progression dataclass (chords + trailing_history) is absorbed into it.
+Progression = subsequence.progressions.Progression
 
 
 class _InjectedChord:
@@ -188,14 +171,48 @@ class _InjectedChord:
 	Wraps a Chord with key context so tones() transposes correctly.
 	"""
 
-	def __init__ (self, chord: typing.Any, voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = None) -> None:
+	def __init__ (
+		self,
+		chord: typing.Any,
+		voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = None,
+		next_chord: typing.Optional[typing.Any] = None,
+		beats_remaining: typing.Optional[float] = None,
+	) -> None:
 
 		"""
-		Store the chord and optional voice leading state.
+		Store the chord, optional voice leading state, and the harmony
+		window's anticipation data (the chord after this one and the beats
+		until it arrives), when known.
 		"""
 
 		self._chord = chord
 		self._voice_leading_state = voice_leading_state
+		self._next_chord = next_chord
+		self._beats_remaining = beats_remaining
+
+	@property
+	def next (self) -> typing.Optional["_InjectedChord"]:
+
+		"""The chord after the current one — planned and revocable.
+
+		Sugar over the harmony window (``p.harmony.next_chord``), so
+		two-parameter builders get anticipation without learning a new
+		object.  ``None`` when the window has no committed next chord.
+		Voice leading is not applied (the voicing belongs to the chord
+		that is actually sounding).
+		"""
+
+		if self._next_chord is None:
+			return None
+
+		return _InjectedChord(self._next_chord)
+
+	@property
+	def beats_remaining (self) -> typing.Optional[float]:
+
+		"""Beats until the next chord boundary (from this cycle's start), when known."""
+
+		return self._beats_remaining
 
 	def root_midi (self, base: int) -> int:
 
@@ -267,102 +284,484 @@ class _InjectedChord:
 		return self._chord.name()  # type: ignore[no-any-return]
 
 
+class _HarmonyHorizon:
+
+	"""The published harmony window — realised chord spans on the absolute beat axis.
+
+	The harmonic clock commits one span per chord boundary (decorated chords
+	where the source span is spiced) and, where the future is data (a bound
+	or section progression), installs a *future* lookup so ``chord_at`` can
+	answer arbitrarily far ahead.  In live graph mode the window is
+	``[current, next]`` — one pre-committed step — and queries beyond it
+	clamp to the last known chord with a one-time warning.
+
+	All beats are absolute (from playback start).  Read through
+	:class:`HarmonyView` inside patterns, or :meth:`Composition.current_chord`
+	for the chord sounding at the playhead.
+	"""
+
+	def __init__ (self) -> None:
+
+		"""Start with an empty window."""
+
+		self._spans: typing.List[typing.Tuple[float, float, typing.Any]] = []
+		self._future: typing.Optional[typing.Callable[[float], typing.Optional[typing.Tuple[float, float, typing.Any]]]] = None
+		self._planned: typing.Optional[typing.Tuple[float, float, typing.Any]] = None
+		self._warned_beyond = False
+
+	@property
+	def is_empty (self) -> bool:
+
+		"""True when nothing has been committed yet (no harmony configured)."""
+
+		return not self._spans
+
+	def reset (self) -> None:
+
+		"""Clear everything (a fresh playback)."""
+
+		self._spans = []
+		self._future = None
+		self._planned = None
+		self._warned_beyond = False
+
+	def commit (self, start: float, end: float, chord: typing.Any) -> None:
+
+		"""Commit a realised span.  A commit at an earlier start truncates the tail."""
+
+		while self._spans and self._spans[-1][0] >= start - 1e-9:
+			self._spans.pop()
+
+		if self._spans and self._spans[-1][1] > start:
+			previous_start, _, previous_chord = self._spans[-1]
+			self._spans[-1] = (previous_start, start, previous_chord)
+
+		self._spans.append((start, end, chord))
+
+		if self._planned is not None and self._planned[0] < end:
+			self._planned = None
+
+		# Keep a bounded history so long sessions don't grow without limit.
+		while len(self._spans) > 64:
+			self._spans.pop(0)
+
+	def set_planned (self, start: float, end: float, chord: typing.Any) -> None:
+
+		"""Publish the live engine's pre-committed next step."""
+
+		self._planned = (start, end, chord)
+
+	def set_future (self, fn: typing.Optional[typing.Callable[[float], typing.Optional[typing.Tuple[float, float, typing.Any]]]]) -> None:
+
+		"""Install (or clear) the data-source lookup for beats beyond the committed spans."""
+
+		self._future = fn
+
+	def invalidate_future (self) -> None:
+
+		"""Drop everything not yet sounding — the next clock fire recomputes it.
+
+		Called on every supported intervention: a ``harmony()`` re-call,
+		``form_jump``/``form_next``, a re-bind, a new pin.  ``next_chord``
+		is planned and revocable; this is the revocation.
+		"""
+
+		self._future = None
+		self._planned = None
+
+	def span_at (self, beat: float) -> typing.Optional[typing.Tuple[float, float, typing.Any]]:
+
+		"""The realised ``(start, end, chord)`` covering *beat*, or None if unknown."""
+
+		for start, end, chord in reversed(self._spans):
+			if start - 1e-9 <= beat < end - 1e-9:
+				return (start, end, chord)
+
+		if self._spans and beat >= self._spans[-1][1] - 1e-9:
+
+			if self._future is not None:
+				found = self._future(beat)
+				if found is not None:
+					return found
+
+			if self._planned is not None and self._planned[0] - 1e-9 <= beat < self._planned[1] - 1e-9:
+				return self._planned
+
+		return None
+
+	def chord_at (self, beat: float) -> typing.Optional[typing.Any]:
+
+		"""The chord sounding at *beat* — clamping to the last known chord beyond the window."""
+
+		span = self.span_at(beat)
+
+		if span is not None:
+			return span[2]
+
+		if not self._spans:
+			return None
+
+		if beat < self._spans[0][0]:
+			return self._spans[0][2]
+
+		if not self._warned_beyond:
+			self._warned_beyond = True
+			logger.warning(
+				"chord_at(%.2f) is beyond the harmony window — clamping to the last known chord. "
+				"In live graph mode only [current, next] is committed; bind a progression for a data future.",
+				beat,
+			)
+
+		if self._planned is not None and beat >= self._planned[1] - 1e-9:
+			return self._planned[2]
+
+		return self._spans[-1][2]
+
+	def boundary_after (self, beat: float) -> typing.Optional[float]:
+
+		"""The absolute beat of the next chord boundary after *beat*, when known."""
+
+		span = self.span_at(beat)
+
+		return None if span is None else span[1]
+
+	def next_chord_after (self, beat: float) -> typing.Optional[typing.Any]:
+
+		"""The chord that follows the one sounding at *beat* — None when unknown (no clamping)."""
+
+		boundary = self.boundary_after(beat)
+
+		if boundary is None:
+			return None
+
+		following = self.span_at(boundary)
+
+		return None if following is None else following[2]
+
+	def latest_chord (self) -> typing.Optional[typing.Any]:
+
+		"""The most recently committed chord (compatibility accessor)."""
+
+		return self._spans[-1][2] if self._spans else None
+
+
+class HarmonyView:
+
+	"""Read-only harmony context for one pattern cycle (``p.harmony``).
+
+	Anchored at the cycle's start beat, so all beat arguments are
+	cycle-relative — ``chord_at(0)`` is the chord at the cycle's first beat
+	(what the two-parameter ``chord`` convention injects), ``chord_at(3.5)``
+	the chord sounding under beat 3.5 of this cycle.
+
+	Under bound/frozen progressions the future is data and any beat
+	answers; in live graph mode the window is the current chord plus one
+	pre-committed step, and ``next_chord`` is *planned and revocable*.
+	"""
+
+	def __init__ (self, horizon: _HarmonyHorizon, origin_beat: float) -> None:
+
+		"""Anchor the view at a cycle-start beat."""
+
+		self._horizon = horizon
+		self._origin = origin_beat
+
+	@property
+	def chord (self) -> typing.Optional[typing.Any]:
+
+		"""The chord at this cycle's start (the cycle-start snapshot)."""
+
+		return self._horizon.chord_at(self._origin)
+
+	def chord_at (self, beat: float) -> typing.Optional[typing.Any]:
+
+		"""The chord sounding at *beat* of THIS cycle (0-based beats)."""
+
+		return self._horizon.chord_at(self._origin + beat)
+
+	@property
+	def next_chord (self) -> typing.Optional[typing.Any]:
+
+		"""The chord after the current one — for anticipation and approach tones."""
+
+		return self._horizon.next_chord_after(self._origin)
+
+	@property
+	def until_change (self) -> typing.Optional[float]:
+
+		"""Beats from the cycle start until the next chord boundary, when known."""
+
+		boundary = self._horizon.boundary_after(self._origin)
+
+		return None if boundary is None else boundary - self._origin
+
+
+def _span_chord (span: subsequence.progressions.ChordSpan) -> typing.Any:
+
+	"""The chord a span presents to patterns — decorated where spiced, bare otherwise."""
+
+	if span.is_decorated:
+		return subsequence.progressions.DecoratedChord(span)
+
+	return span.chord
+
+
+def _bare_chord (chord_like: typing.Any) -> typing.Any:
+
+	"""The engine-currency chord under a possibly-decorated chord."""
+
+	if isinstance(chord_like, subsequence.progressions.DecoratedChord):
+		return chord_like.base
+
+	return chord_like
+
+
 async def schedule_harmonic_clock (
 	sequencer: subsequence.sequencer.Sequencer,
 	get_harmonic_state: typing.Callable[[], typing.Optional[subsequence.harmonic_state.HarmonicState]],
-	cycle_beats: int,
-	reschedule_lookahead: float = 1,
+	horizon: _HarmonyHorizon,
+	bar_beats: float,
+	cycle_beats: int = 4,
+	get_bound_progression: typing.Optional[typing.Callable[[], typing.Optional["Progression"]]] = None,
 	get_section_progression: typing.Optional[
 		typing.Callable[[], typing.Optional[typing.Tuple[str, int, typing.Optional["Progression"]]]]
 	] = None,
+	get_pinned: typing.Optional[typing.Callable[[int], typing.Optional[typing.Any]]] = None,
+	reschedule_lookahead: float = 1,
 ) -> None:
 
+	"""Schedule the harmonic clock — a span walker over the bound harmony sources.
+
+	Generalises the old fixed-cycle clock: chords last as long as their
+	spans say, the clock fires at ``min(next span boundary, next bar
+	boundary)`` (so section bookkeeping stays bar-aligned under variable
+	harmonic rhythm), and every realised span is published to *horizon*
+	(the harmony window patterns read through ``p.harmony``).
+
+	Priority chain per chord boundary: **section progression >
+	composition-bound progression > live ``step()``**.  A bound progression
+	loops on exhaustion when no live engine is configured (or when it
+	contains a :class:`~subsequence.progressions.PitchSet`); with a live
+	engine, exhaustion falls through to live stepping — the frozen-replay
+	bridge.  In live mode the engine pre-commits one step so the window
+	always holds ``[current, next]``.
+
+	``get_harmonic_state``, ``get_bound_progression``, and ``get_pinned``
+	are evaluated on every tick so mid-playback calls to ``harmony()``,
+	re-binds, and new pins take effect immediately.  ``get_section_progression``
+	returns ``(name, index, Progression|None)`` for the current section
+	(``index`` increments on every entry, so verse→verse re-entry resets
+	correctly) or ``None`` when no form is active.
+
+	The clock fires ``reschedule_lookahead`` beats before each boundary —
+	raised by the caller to the maximum pattern lookahead, so the window
+	always covers a pattern's next cycle before it rebuilds.
 	"""
-	Schedule composition-level harmonic changes on a repeating beat interval.
 
-	The ``get_harmonic_state`` callable is evaluated on every tick so that
-	mid-playback calls to ``composition.harmony()`` take effect immediately.
+	pulses_per_beat = sequencer.pulses_per_beat
 
-	When ``get_section_progression`` is provided it is called on each tick.
-	It should return ``(section_name, section_index, Progression)`` when the
-	current section has a frozen progression bound to it,
-	``(section_name, section_index, None)`` when the section is live, or
-	``None`` when no form is active.  ``section_index`` is a global counter
-	that increments on every section entry (including re-entry of the same
-	name), ensuring the frozen index resets correctly for verse→verse etc.
-
-	The frozen index resets automatically on section change (including
-	transitions from live → frozen and re-entries).  NIR history is updated
-	during frozen playback so the engine's context remains coherent when
-	transitioning back to live generation.
-	"""
-
-	# Mutable state shared across invocations of advance_harmony.
-	_clock_state: typing.Dict[str, typing.Any] = {
+	state: typing.Dict[str, typing.Any] = {
+		"next_change": 0.0,			# absolute beat of the next chord boundary
 		"last_section_index": None,
-		"frozen_index": 0,
+		"section_anchor": 0.0,		# beat the current section entered
+		"section_exhausted": False,
+		"bound_anchor": 0.0,		# beat the bound progression was first walked from
+		"bound_seen": None,			# identity of the bound progression last walked
+		"bound_exhausted": False,
+		"planned": None,			# the live engine's pre-committed next chord
 	}
 
-	def advance_harmony (pulse: int) -> None:
+	def _data_future (
+		progression: "Progression",
+		anchor: float,
+		loops: bool,
+	) -> typing.Callable[[float], typing.Optional[typing.Tuple[float, float, typing.Any]]]:
 
-		"""
-		Advance the harmonic state on the composition clock.
+		"""A horizon future fn computing spans arithmetically from a data source."""
 
-		If the current section has a frozen Progression, replay its chords
-		in sequence.  Otherwise call step() to generate the next live chord.
-		"""
+		def future (beat: float) -> typing.Optional[typing.Tuple[float, float, typing.Any]]:
+
+			offset = beat - anchor
+
+			if offset < -1e-9:
+				return None
+
+			if not loops and offset >= progression.length - 1e-9:
+				return None
+
+			span, span_start, span_end = progression.span_at(offset)
+			cycle_base = anchor + (offset // progression.length) * progression.length
+			start = cycle_base + span_start
+			end = cycle_base + span_end
+
+			chord = _span_chord(span)
+
+			if get_pinned is not None:
+				pinned = get_pinned(int(start // bar_beats) + 1)
+				if pinned is not None:
+					chord = pinned
+
+			return (start, end, chord)
+
+		return future
+
+	def advance (beat: float) -> typing.Optional[float]:
+
+		"""Prepare the boundary at *beat*; return beats to the next fire (or None to stop)."""
 
 		hs = get_harmonic_state()
-		if hs is None:
-			return
+		initial = beat == 0.0 and horizon.is_empty
 
-		prog: typing.Optional["Progression"] = None
+		# --- Section bookkeeping (every fire is bar-aligned or a span boundary,
+		# and the form clock fired first at this pulse, so the info is current).
+		section_progression: typing.Optional["Progression"] = None
 
 		if get_section_progression is not None:
-			result = get_section_progression()
-			if result is not None:
-				_section_name, section_index, prog = result
+			info = get_section_progression()
+			if info is not None:
+				_section_name, section_index, section_progression = info
 
-				# Reset frozen index on any section change (live→frozen,
-				# frozen→live, frozen→frozen, and re-entry of same section).
-				# Uses section_index (a global counter) rather than name so
-				# that verse→verse re-entry is correctly detected.
-				if section_index != _clock_state["last_section_index"]:
-					_clock_state["last_section_index"] = section_index
-					_clock_state["frozen_index"] = 0
-					# Restore the NIR history that was current when this
-					# progression was frozen, so every replay starts from
-					# the same harmonic context.
-					if prog is not None and prog.trailing_history:
-						hs.history = list(prog.trailing_history)
+				if section_index != state["last_section_index"]:
+					state["last_section_index"] = section_index
+					state["section_anchor"] = beat
+					state["section_exhausted"] = False
+					state["next_change"] = beat		# a section entry forces a chord decision
+					horizon.invalidate_future()
+					state["planned"] = None
 
-		if prog is not None:
-			idx = _clock_state["frozen_index"]
-			if idx < len(prog.chords):
-				# Replay frozen chord: update current and maintain NIR history.
-				hs.current_chord = prog.chords[idx]
-				hs.history.append(hs.current_chord)
-				if len(hs.history) > 4:
-					hs.history.pop(0)
-				_clock_state["frozen_index"] = idx + 1
-				return
+					# Restore the NIR context that was current when this
+					# progression was frozen, so every replay starts alike.
+					if section_progression is not None and section_progression.trailing_history and hs is not None:
+						hs.history = list(section_progression.trailing_history)
 
-			# Progression exhausted — fall through to live generation.
+		bound_progression = get_bound_progression() if get_bound_progression is not None else None
 
-		hs.step()
+		if bound_progression is not None and state["bound_seen"] is not bound_progression:
+			# First sighting (or a re-bind): anchor the walk here and forget exhaustion.
+			state["bound_seen"] = bound_progression
+			state["bound_anchor"] = beat
+			state["bound_exhausted"] = False
+			horizon.invalidate_future()
 
-	# HarmonicState.__init__ already sets current_chord to the tonic, so we must
-	# NOT call step() at pulse 0 (which would immediately discard the tonic).
-	# By passing start_pulse = one full cycle ahead, the backshift initialization
-	# in schedule_callback_repeating gives first_fire = cycle - lookahead, so the
-	# first step() fires just before bar 2 — correct. See backshift note in sequencer.py.
-	first_cycle_pulse = int(cycle_beats * sequencer.pulses_per_beat)
+		chord_boundary = beat >= state["next_change"] - 1e-9
 
-	await sequencer.schedule_callback_repeating(
-		callback = advance_harmony,
-		interval_beats = cycle_beats,
-		start_pulse = first_cycle_pulse,
-		reschedule_lookahead = reschedule_lookahead
+		if not chord_boundary and get_pinned is not None:
+
+			# Fiat inside a longer span: a pinned bar forces its chord at the
+			# bar line, overriding the sounding span until the next change.
+			pinned_now = get_pinned(int(beat // bar_beats) + 1)
+
+			if pinned_now is not None and horizon.chord_at(beat) is not pinned_now:
+
+				bare_pin = _bare_chord(pinned_now)
+
+				if hs is not None and isinstance(bare_pin, subsequence.chords.Chord):
+					hs.commit_chord(bare_pin)
+
+				horizon.commit(beat, state["next_change"], pinned_now)
+
+		if chord_boundary:
+
+			chord_like: typing.Optional[typing.Any] = None
+			span_beats: typing.Optional[float] = None
+			from_live = False
+
+			# Priority 1: the current section's progression.
+			if section_progression is not None and not state["section_exhausted"]:
+
+				offset = beat - state["section_anchor"]
+				loops = hs is None or section_progression.loops_on_exhaustion
+
+				if offset >= section_progression.length - 1e-9 and not loops:
+					state["section_exhausted"] = True	# fall through to live stepping
+				else:
+					span, span_start, span_end = section_progression.span_at(offset)
+					chord_like = _span_chord(span)
+					span_beats = span_end - (offset % section_progression.length)
+					horizon.set_future(_data_future(section_progression, state["section_anchor"], loops))
+
+			# Priority 2: the composition-bound progression.
+			if chord_like is None and bound_progression is not None and not state["bound_exhausted"]:
+
+				offset = beat - state["bound_anchor"]
+				loops = hs is None or bound_progression.loops_on_exhaustion
+
+				if offset >= bound_progression.length - 1e-9 and not loops:
+					state["bound_exhausted"] = True	# the frozen-replay bridge: live from here
+				else:
+					span, span_start, span_end = bound_progression.span_at(offset)
+					chord_like = _span_chord(span)
+					span_beats = span_end - (offset % bound_progression.length)
+					horizon.set_future(_data_future(bound_progression, state["bound_anchor"], loops))
+
+			# Priority 3: live graph stepping.
+			if chord_like is None:
+
+				if hs is None:
+					return None		# nothing left to drive the clock
+
+				if initial:
+					chord_like = hs.current_chord	# the tonic sounds first; no step at beat 0
+				else:
+					if state["planned"] is None:
+						state["planned"] = hs.plan_next()
+					chord_like = state["planned"]
+					state["planned"] = None
+
+				span_beats = float(cycle_beats)
+				from_live = True
+				horizon.set_future(None)
+
+			# Pins are fiat — they override whatever the source produced.
+			if get_pinned is not None:
+				pinned = get_pinned(int(beat // bar_beats) + 1)
+				if pinned is not None:
+					chord_like = pinned
+
+			# Sync the engine so freeze()/NIR/live fall-through stay coherent.
+			bare = _bare_chord(chord_like)
+
+			if hs is not None and isinstance(bare, subsequence.chords.Chord):
+				if initial:
+					hs.current_chord = bare
+				elif from_live or bare is not hs.current_chord:
+					hs.commit_chord(bare)
+
+			horizon.commit(beat, beat + span_beats, chord_like)
+			state["next_change"] = beat + span_beats
+
+			# Live mode pre-commits one step so the window holds [current, next].
+			if from_live and hs is not None:
+				state["planned"] = hs.plan_next()
+				horizon.set_planned(state["next_change"], state["next_change"] + float(cycle_beats), state["planned"])
+
+		# Fire again at the earlier of the next chord change and the next bar
+		# line — bar fires keep section bookkeeping aligned under long spans.
+		next_bar = (beat // bar_beats) * bar_beats + bar_beats
+		if next_bar <= beat + 1e-9:
+			next_bar = beat + bar_beats
+
+		next_fire = min(state["next_change"], next_bar)
+
+		return max(next_fire - beat, 1.0 / pulses_per_beat)
+
+	def advance_pulse (boundary_pulse: int) -> typing.Optional[float]:
+
+		"""The sequencer-facing callback: pulses in, beats out."""
+
+		return advance(boundary_pulse / pulses_per_beat)
+
+	# Populate the window for beat 0 synchronously, BEFORE patterns first
+	# build, then schedule the walker from the first boundary it reported.
+	first_interval = advance(0.0)
+
+	if first_interval is None:
+		return
+
+	await sequencer.schedule_callback_sequence(
+		callback = advance_pulse,
+		start_pulse = int(first_interval * pulses_per_beat),
+		reschedule_lookahead = reschedule_lookahead,
 	)
 
 
@@ -730,6 +1129,9 @@ class Composition:
 		self._harmony_cycle_beats: typing.Optional[int] = None
 		self._harmony_reschedule_lookahead: float = 1
 		self._section_progressions: typing.Dict[str, Progression] = {}
+		self._bound_progression: typing.Optional[Progression] = None
+		self._pinned_chords: typing.Dict[int, typing.Any] = {}
+		self._harmony_horizon = _HarmonyHorizon()
 		self._pending_patterns: typing.List[_PendingPattern] = []
 		# Names of patterns declared by the most recent live-reload exec (added by
 		# pattern()/layer() as they run); the deletion diff in _apply_source_async
@@ -865,7 +1267,7 @@ class Composition:
 
 		for pending in new_pending:
 
-			pattern = self._build_pattern_from_pending(pending)
+			pattern = self._build_pattern_from_pending(pending, start_pulse = current_pulse)
 			await self._sequencer.schedule_pattern_repeating(pattern, start_pulse = current_pulse)
 			self._running_patterns[pending.builder_fn.__name__] = pattern
 
@@ -980,6 +1382,29 @@ class Composition:
 		"""The active ``HarmonicState``, or ``None`` if ``harmony()`` has not been called."""
 		return self._harmonic_state
 
+	def current_chord (self) -> typing.Optional[typing.Any]:
+
+		"""The chord sounding at the playhead, or ``None`` without harmony.
+
+		Reads the harmony window at the current pulse, so it stays accurate
+		under variable harmonic rhythm and clock lookahead (the engine's
+		``current_chord`` flips *lookahead* beats early — this does not).
+		Falls back to the engine's chord before playback starts.  The chord
+		may be a decorated wrapper (``Am9``, ``C/G``) when the sounding span
+		is spiced; it duck-types the ``Chord`` voicing protocol either way.
+		"""
+
+		if not self._harmony_horizon.is_empty:
+			beat = self._sequencer.pulse_count / self._sequencer.pulses_per_beat
+			chord = self._harmony_horizon.chord_at(beat)
+			if chord is not None:
+				return chord
+
+		if self._harmonic_state is not None:
+			return self._harmonic_state.get_current_chord()
+
+		return None
+
 	@property
 	def form_state (self) -> typing.Optional["subsequence.form_state.FormState"]:
 		"""The active ``subsequence.form_state.FormState``, or ``None`` if ``form()`` has not been called."""
@@ -1009,24 +1434,51 @@ class Composition:
 			)
 		return self._harmonic_state
 
+	def _coerce_progression (self, source: typing.Any, what: str) -> Progression:
+
+		"""Coerce a Progression / element list / preset name and resolve it against the key.
+
+		Binding freezes one realisation (the value type's identity), so
+		key-relative content resolves here, at bind time, against the
+		composition's key and scale.
+		"""
+
+		value = source if isinstance(source, Progression) else subsequence.progressions.progression(source)
+
+		if not value.is_concrete:
+			if self.key is None:
+				raise ValueError(
+					f"{what} contains key-relative chords (degrees/romans) — "
+					"set key= on the Composition so they can resolve"
+				)
+			value = value.resolve(self.key, self.scale or "ionian")
+
+		return value
+
 	def harmony (
 		self,
-		style: typing.Union[str, subsequence.chord_graphs.ChordGraph] = "functional_major",
+		style: typing.Optional[typing.Union[str, subsequence.chord_graphs.ChordGraph]] = None,
 		cycle_beats: int = 4,
 		dominant_7th: bool = True,
 		gravity: float = 1.0,
 		nir_strength: float = 0.5,
 		minor_turnaround_weight: float = 0.0,
 		root_diversity: float = subsequence.harmonic_state.DEFAULT_ROOT_DIVERSITY,
-		reschedule_lookahead: float = 1
+		reschedule_lookahead: float = 1,
+		progression: typing.Optional[typing.Any] = None,
 	) -> None:
 
 		"""
 		Configure the harmonic logic and chord change intervals.
 
-		Subsequence uses a weighted transition graph to choose the next chord.
-		You can influence these choices using 'gravity' (favoring the tonic) and
-		'NIR strength' (melodic inertia based on Narmour's model).
+		Two sources, combinable: a **bound progression** (``progression=`` — a
+		:class:`Progression` value, an element list like ``[1, 6, 3, "bVII7"]``,
+		or chord names) walked span by span on the global clock; and/or a
+		**graph style** stepping live chords.  With only a progression bound,
+		it loops on exhaustion; with a style configured too, exhaustion falls
+		through to live stepping (the frozen-replay bridge).  Calling with
+		neither argument keeps today's default live engine
+		(``style="functional_major"``).
 
 		Parameters:
 			style: The harmonic style to use. Built-in: "functional_major"
@@ -1034,7 +1486,9 @@ class Composition:
 				"phrygian_minor", "lydian_major", "dorian_minor",
 				"chromatic_mediant", "suspended", "mixolydian", "whole_tone",
 				"diminished". See README for full descriptions.
-			cycle_beats: How many beats each chord lasts (default 4).
+			cycle_beats: How many beats each live chord lasts (default 4).
+				Bound progressions carry their own harmonic rhythm in their
+				spans, so this applies to live stepping only.
 			dominant_7th: Whether to include V7 chords (default True).
 			gravity: Key gravity (0.0 to 1.0). High values stay closer to the root chord.
 			nir_strength: Melodic inertia (0.0 to 1.0). Influences chord movement
@@ -1045,48 +1499,65 @@ class Composition:
 				the default (0.4). Set to 1.0 to disable.
 			reschedule_lookahead: How many beats in advance to calculate the
 				next chord.
+			progression: A progression to bind to the global clock.  Key-
+				relative content resolves now, against the composition key
+				and scale (binding freezes one realisation).
 
 		Example:
 			```python
 			# A moody minor progression that changes every 8 beats
 			comp.harmony(style="aeolian_minor", cycle_beats=8, gravity=0.4)
+
+			# Manual harmony driving everything — loops forever
+			comp.harmony(progression=subsequence.progression([1, 6, 3, 7]))
 			```
 		"""
 
-		if self.key is None:
-			raise ValueError("Cannot configure harmony without a key - set key in the Composition constructor")
+		if style is None and progression is None:
+			style = "functional_major"
 
-		preserved_history: typing.List[subsequence.chords.Chord] = []
-		preserved_current: typing.Optional[subsequence.chords.Chord] = None
+		if style is not None:
 
-		if self._harmonic_state is not None:
-			preserved_history = self._harmonic_state.history.copy()
-			preserved_current = self._harmonic_state.current_chord
+			if self.key is None:
+				raise ValueError("Cannot configure harmony without a key - set key in the Composition constructor")
 
-		# Per-call salted build stream (harmony:1, harmony:2, ...): a re-call
-		# gets its own deterministic stream while history and current chord
-		# are preserved above, and adding a re-call never shifts any other
-		# consumer's stream.
-		self._harmony_count += 1
+			preserved_history: typing.List[subsequence.chords.Chord] = []
+			preserved_current: typing.Optional[subsequence.chords.Chord] = None
 
-		self._harmonic_state = subsequence.harmonic_state.HarmonicState(
-			key_name = self.key,
-			graph_style = style,
-			include_dominant_7th = dominant_7th,
-			key_gravity_blend = gravity,
-			nir_strength = nir_strength,
-			minor_turnaround_weight = minor_turnaround_weight,
-			root_diversity = root_diversity,
-			rng = self._stream(f"harmony:{self._harmony_count}")
-		)
+			if self._harmonic_state is not None:
+				preserved_history = self._harmonic_state.history.copy()
+				preserved_current = self._harmonic_state.current_chord
 
-		if preserved_history:
-			self._harmonic_state.history = preserved_history
-		if preserved_current is not None and self._harmonic_state.graph.get_transitions(preserved_current):
-			self._harmonic_state.current_chord = preserved_current
+			# Per-call salted build stream (harmony:1, harmony:2, ...): a re-call
+			# gets its own deterministic stream while history and current chord
+			# are preserved above, and adding a re-call never shifts any other
+			# consumer's stream.
+			self._harmony_count += 1
+
+			self._harmonic_state = subsequence.harmonic_state.HarmonicState(
+				key_name = self.key,
+				graph_style = style,
+				include_dominant_7th = dominant_7th,
+				key_gravity_blend = gravity,
+				nir_strength = nir_strength,
+				minor_turnaround_weight = minor_turnaround_weight,
+				root_diversity = root_diversity,
+				rng = self._stream(f"harmony:{self._harmony_count}")
+			)
+
+			if preserved_history:
+				self._harmonic_state.history = preserved_history
+			if preserved_current is not None and self._harmonic_state.graph.get_transitions(preserved_current):
+				self._harmonic_state.current_chord = preserved_current
+
+		if progression is not None:
+			self._bound_progression = self._coerce_progression(progression, "harmony(progression=)")
 
 		self._harmony_cycle_beats = cycle_beats
 		self._harmony_reschedule_lookahead = reschedule_lookahead
+
+		# A re-call invalidates whatever the horizon had planned.
+		self._harmony_horizon.invalidate_future()
 
 	def freeze (self, bars: int) -> "Progression":
 
@@ -1151,22 +1622,38 @@ class Composition:
 		finally:
 			hs.rng = saved_rng
 
+		span_beats = float(self._harmony_cycle_beats or 4)
+
 		return Progression(
-			chords = tuple(collected),
+			spans = tuple(
+				subsequence.progressions.ChordSpan(chord = chord, beats = span_beats)
+				for chord in collected
+			),
 			trailing_history = tuple(hs.history),
 		)
 
-	def section_chords (self, section_name: str, progression: "Progression") -> None:
+	def section_chords (self, section_name: str, progression: typing.Any) -> None:
 
-		"""Bind a frozen :class:`Progression` to a named form section.
+		"""Bind a :class:`Progression` to a named form section.
 
-		Every time *section_name* plays, the harmonic clock replays the
-		progression's chords in order instead of calling the live engine.
-		Sections without a bound progression continue generating live chords.
+		Every time *section_name* plays, the harmonic clock walks the
+		progression's spans instead of calling the live engine.  Sections
+		without a bound progression continue generating live chords.
+
+		Accepts a :class:`Progression` value (from :meth:`freeze`, the
+		``progression()`` factory, or hand-built) or anything the factory
+		accepts — an element list like ``[1, 6, 3, "bVII7"]`` or chord
+		names.  Key-relative content resolves now, against the composition
+		key and scale.
+
+		On exhaustion mid-section the progression loops when no graph style
+		is configured (and always when it contains a
+		:class:`~subsequence.progressions.PitchSet`); with a live engine,
+		exhaustion falls through to live stepping until the section changes.
 
 		Parameters:
 			section_name: Name of the section as defined in :meth:`form`.
-			progression: The :class:`Progression` returned by :meth:`freeze`.
+			progression: The progression to bind.
 
 		Raises:
 			ValueError: If a graph-based form has been configured and
@@ -1176,7 +1663,7 @@ class Composition:
 		Example::
 
 			composition.section_chords("verse",  verse_progression)
-			composition.section_chords("chorus", chorus_progression)
+			composition.section_chords("chorus", [1, 6, 3, 7])
 			# "bridge" is not bound — it generates live chords
 		"""
 
@@ -1191,7 +1678,47 @@ class Composition:
 				f"Known sections: {known}"
 			)
 
-		self._section_progressions[section_name] = progression
+		self._section_progressions[section_name] = self._coerce_progression(
+			progression, f"section_chords({section_name!r})"
+		)
+		self._harmony_horizon.invalidate_future()
+
+	def pin_chord (self, bar: int, chord: typing.Optional[typing.Any]) -> None:
+
+		"""Force the chord sounding at a bar — fiat over live generation.
+
+		Whatever the harmonic source (live walk, bound progression, section
+		progression) produces for *bar*, the pinned chord overrides it.
+		Pass ``None`` to remove a pin.
+
+		Parameters:
+			bar: 1-based bar number (the musician count).
+			chord: A chord name, int degree, roman string, ``Chord``,
+				``PitchSet``, or ``None`` to unpin.  Key-relative specs
+				resolve now, against the composition key and scale.
+
+		Example::
+
+			composition.pin_chord(8, "E7")    # the turnaround lands on E7
+			composition.pin_chord(8, None)    # let it walk again
+		"""
+
+		if not isinstance(bar, int) or isinstance(bar, bool) or bar < 1:
+			raise ValueError(f"bars are 1-based ints, got {bar!r}")
+
+		if chord is None:
+			self._pinned_chords.pop(bar, None)
+		else:
+			span = subsequence.progressions.parse_element(chord, beats = float(self.time_signature[0]))
+
+			if not span.is_concrete:
+				if self.key is None:
+					raise ValueError("pin_chord with a key-relative spec needs key= on the Composition")
+				span = span.resolve(subsequence.chords.key_name_to_pc(self.key), self.scale or "ionian")
+
+			self._pinned_chords[bar] = _span_chord(span)
+
+		self._harmony_horizon.invalidate_future()
 
 	def on_event (self, event_name: str, callback: typing.Callable[..., typing.Any]) -> None:
 
@@ -1329,6 +1856,9 @@ class Composition:
 
 		self._form_state.jump_to(section_name)
 
+		# The harmony horizon planned against the old section — revoke it.
+		self._harmony_horizon.invalidate_future()
+
 
 	def form_next (self, section_name: str) -> None:
 
@@ -1358,6 +1888,9 @@ class Composition:
 			raise ValueError("form_next() requires a form to be configured via composition.form().")
 
 		self._form_state.queue_next(section_name)
+
+		# The harmony horizon planned against the old continuation — revoke it.
+		self._harmony_horizon.invalidate_future()
 
 
 	def _list_hotkeys (self) -> None:
@@ -2580,10 +3113,9 @@ class Composition:
 				}
 
 		chord_name = None
-		if self._harmonic_state is not None:
-			chord = self._harmonic_state.get_current_chord()
-			if chord is not None:
-				chord_name = chord.name()
+		sounding_chord = self.current_chord()
+		if sounding_chord is not None:
+			chord_name = sounding_chord.name()
 
 		pattern_list = []
 		channel_offset = 0 if self._zero_indexed_channels else 1
@@ -3281,11 +3813,11 @@ class Composition:
 		self,
 		*,
 		channel: int,
-		progression: subsequence.progression.ProgressionSource,
-		harmonic_rhythm: subsequence.progression.HarmonicRhythmSpec,
+		progression: subsequence.progressions.ProgressionSource,
+		harmonic_rhythm: subsequence.progressions.HarmonicRhythmSpec,
 		bars: typing.Optional[float] = None,
 		beats: typing.Optional[float] = None,
-		voicing: subsequence.progression.VoicingSpec = (3, 4),
+		voicing: subsequence.progressions.VoicingSpec = (3, 4),
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
 		detached: typing.Optional[float] = None,
 		root: int = 60,
@@ -3293,7 +3825,7 @@ class Composition:
 		seed: typing.Optional[int] = None,
 		device: subsequence.midi_utils.DeviceId = None,
 		mirrors: typing.Optional[typing.Iterable[subsequence.pattern.MirrorSpec]] = None,
-	) -> subsequence.progression.ChordTimeline:
+	) -> subsequence.progressions.Progression:
 
 		"""Declare a self-contained chord part: a progression at a chosen harmonic rhythm.
 
@@ -3327,7 +3859,7 @@ class Composition:
 			mirrors: Optional additional ``(device, channel)`` destinations.
 
 		Returns:
-			The realised :class:`~subsequence.progression.ChordTimeline`.
+			The realised :class:`~subsequence.progressions.Progression`.
 		"""
 
 		beat_length, default_grid = self._resolve_length(beats, bars, None, None, beats_per_bar=self.time_signature[0])
@@ -3335,12 +3867,13 @@ class Composition:
 		resolved_key = key if key is not None else self.key
 
 		rng = random.Random(seed if seed is not None else self._seed)
-		timeline = subsequence.progression.realize(
+		timeline = subsequence.progressions.realize(
 			source = progression,
 			harmonic_rhythm = harmonic_rhythm,
 			key = resolved_key,
 			length = beat_length,
 			rng = rng,
+			scale = self.scale or "ionian",
 		)
 
 		captured_root = root
@@ -3354,7 +3887,7 @@ class Composition:
 
 			for chord, start, length in timeline:
 				ring = length - captured_detached if (captured_detached and captured_detached < length) else length
-				voices = subsequence.progression.resolve_voices(captured_voicing, p.rng)
+				voices = subsequence.progressions.resolve_voices(captured_voicing, p.rng)
 				p.chord(chord, root=captured_root, beat=start, duration=ring, count=voices, velocity=captured_velocity)
 
 		# Unique, stable name so multiple chord parts don't collide in
@@ -3514,8 +4047,9 @@ class Composition:
 		# Call the builder function
 		try:
 
-			if chord and self._harmonic_state is not None:
-				current_chord = self._harmonic_state.get_current_chord()
+			current_chord = self.current_chord() if chord else None
+
+			if current_chord is not None:
 				injected = _InjectedChord(current_chord, None)  # No voice leading for one-shots
 				fn(builder, injected)
 
@@ -3646,8 +4180,9 @@ class Composition:
 			self._osc_server.send("/bar", bar)
 			self._osc_server.send("/bpm", self._sequencer.current_bpm)
 
-			if self._harmonic_state:
-				self._osc_server.send("/chord", self._harmonic_state.current_chord.name())
+			sounding = self.current_chord()
+			if sounding is not None:
+				self._osc_server.send("/chord", sounding.name())
 
 			if self._form_state:
 				info = self._form_state.get_section_info()
@@ -3800,21 +4335,65 @@ class Composition:
 			if self._form_state is not None and form_stream is not None:
 				self._form_state._rng = form_stream
 
+		# The clocks fire BEFORE pattern rebuilds at the same pulse, and their
+		# lookahead is RAISED to the maximum pattern lookahead (never patterns
+		# clamped down): when a pattern rebuilds for its next cycle, the form
+		# state and the harmony window already describe that cycle.
+		bar_beats = float(self.time_signature[0])
+
+		pattern_lookaheads = [pending.reschedule_lookahead for pending in self._pending_patterns]
+		pattern_lookaheads += [pattern.reschedule_lookahead for pattern in self._running_patterns.values()]
+		max_pattern_lookahead = max(pattern_lookaheads, default = 1)
+
+		clock_lookahead = max(1.0, float(self._harmony_reschedule_lookahead), float(max_pattern_lookahead))
+
+		if clock_lookahead > bar_beats:
+			logger.warning(
+				"A pattern's reschedule_lookahead (%.2g beats) exceeds the bar length (%.2g) — "
+				"the harmony/form clocks fire at most one bar ahead, so that pattern may "
+				"rebuild before the window covers its cycle start.",
+				clock_lookahead, bar_beats,
+			)
+			clock_lookahead = bar_beats
+
+		# Minimum span >= maximum lookahead: the clock cannot prepare a chord
+		# boundary that arrives sooner than it fires.  Harmonic motion faster
+		# than this floor stays available at the part level (p.progression),
+		# where placement is not clock-bound.
+		def _check_span_floor (progression: typing.Optional[Progression], label: str) -> None:
+			if progression is None:
+				return
+			shortest = min(span.beats for span in progression.spans)
+			if shortest < clock_lookahead - 1e-9:
+				raise ValueError(
+					f"{label}: shortest chord span ({shortest:g} beats) is below the clock "
+					f"lookahead ({clock_lookahead:g} beats — the largest pattern lookahead). "
+					"Lengthen the span, lower the pattern lookaheads, or place fast harmony "
+					"at the part level with p.progression()."
+				)
+
+		_check_span_floor(self._bound_progression, "harmony(progression=)")
+		for section_name, section_progression in self._section_progressions.items():
+			_check_span_floor(section_progression, f"section_chords({section_name!r})")
+
 		# The form clock MUST be registered before the harmonic clock: same-pulse
-		# callbacks fire in registration order, and on a section-boundary bar the
-		# harmonic clock reads the current section (via _get_section_progression)
-		# to decide whether to replay frozen section chords.  Registering harmony
-		# first would make it read the OLD section on every boundary, shifting
-		# section_chords() replays by one bar and bleeding them across sections.
+		# fixed callbacks fire in registration order (and all fixed callbacks fire
+		# before callback sequences), and on a section-boundary bar the harmonic
+		# clock reads the current section (via _get_section_progression) to decide
+		# whether to walk that section's chords.  Registering harmony first would
+		# make it read the OLD section on every boundary, shifting section_chords()
+		# replays by one bar and bleeding them across sections.
 		if self._form_state is not None:
 
 			await schedule_form(
 				sequencer = self._sequencer,
 				form_state = self._form_state,
-				reschedule_lookahead = 1
+				reschedule_lookahead = clock_lookahead
 			)
 
-		if self._harmonic_state is not None and self._harmony_cycle_beats is not None:
+		self._harmony_horizon.reset()
+
+		if self._harmonic_state is not None or self._bound_progression is not None or self._section_progressions:
 
 			def _get_section_progression () -> typing.Optional[typing.Tuple[str, int, typing.Optional[Progression]]]:
 				"""Return (section_name, section_index, Progression|None) for the current section, or None."""
@@ -3829,9 +4408,13 @@ class Composition:
 			await schedule_harmonic_clock(
 				sequencer = self._sequencer,
 				get_harmonic_state = lambda: self._harmonic_state,
-				cycle_beats = self._harmony_cycle_beats,
-				reschedule_lookahead = self._harmony_reschedule_lookahead,
+				horizon = self._harmony_horizon,
+				bar_beats = bar_beats,
+				cycle_beats = self._harmony_cycle_beats or 4,
+				get_bound_progression = lambda: self._bound_progression,
 				get_section_progression = _get_section_progression,
+				get_pinned = self._pinned_chords.get,
+				reschedule_lookahead = clock_lookahead,
 			)
 
 		# Bar counter - always active so p.bar is available to all builders.
@@ -3999,7 +4582,7 @@ class Composition:
 					logger.exception("Error stopping keystroke listener")
 				self._keystroke_listener = None
 
-	def _build_pattern_from_pending (self, pending: _PendingPattern) -> subsequence.pattern.Pattern:
+	def _build_pattern_from_pending (self, pending: _PendingPattern, start_pulse: int = 0) -> subsequence.pattern.Pattern:
 
 		"""
 		Create a Pattern from a pending registration using a temporary subclass.
@@ -4007,7 +4590,9 @@ class Composition:
 		The pattern's play stream is dealt here, keyed by NAME (crc32 of
 		"seed:name" plus any reroll nonce), so registration order is
 		irrelevant and a pattern added live gets exactly the stream it would
-		have had at startup.
+		have had at startup.  ``start_pulse`` anchors the first cycle on the
+		beat axis so the initial build reads the harmony window at the right
+		place (the sequencer keeps the anchor current on every reschedule).
 		"""
 
 		composition_ref = self
@@ -4028,10 +4613,7 @@ class Composition:
 				super().__init__(
 					channel = pending.channel,
 					length = pending.length,
-					reschedule_lookahead = min(
-						pending.reschedule_lookahead,
-						composition_ref._harmony_reschedule_lookahead
-					),
+					reschedule_lookahead = pending.reschedule_lookahead,
 					device = pending.device,
 					mirrors = pending.mirrors,
 				)
@@ -4049,6 +4631,11 @@ class Composition:
 					subsequence.voicings.VoiceLeadingState() if pending.voice_leading else None
 				)
 				self._tweaks: typing.Dict[str, typing.Any] = {}
+
+				# Anchor of the cycle being built, on the absolute pulse axis.
+				# The sequencer updates this on every reschedule; the initial
+				# value is the pattern's first scheduled start.
+				self._cycle_start_pulse = start_pulse
 
 				self._rebuild()
 
@@ -4076,6 +4663,15 @@ class Composition:
 				if self._muted:
 					return
 
+				# The harmony view for this cycle, anchored at its start beat —
+				# under variable harmonic rhythm the window, not the engine's
+				# mutating singleton, is the source of truth.
+				harmony_view: typing.Optional[HarmonyView] = None
+
+				if not composition_ref._harmony_horizon.is_empty:
+					origin_beat = self._cycle_start_pulse / composition_ref._sequencer.pulses_per_beat
+					harmony_view = HarmonyView(composition_ref._harmony_horizon, origin_beat)
+
 				builder = subsequence.pattern_builder.PatternBuilder(
 					pattern = self,
 					cycle = current_cycle,
@@ -4092,15 +4688,32 @@ class Composition:
 					key = composition_ref.key,
 					scale = composition_ref.scale,
 					time_signature = composition_ref.time_signature,
-					held_notes = composition_ref._sequencer._held_notes
+					held_notes = composition_ref._sequencer._held_notes,
+					harmony = harmony_view
 				)
 
 				try:
 
-					if self._wants_chord and composition_ref._harmonic_state is not None:
-						chord = composition_ref._harmonic_state.get_current_chord()
-						injected = _InjectedChord(chord, self._voice_leading_state)
-						self._builder_fn(builder, injected)
+					if self._wants_chord:
+
+						# The two-parameter convention: the injected chord is
+						# the cycle-start snapshot from the window (falling
+						# back to the engine before the clock has run).
+						chord = harmony_view.chord if harmony_view is not None else (
+							composition_ref._harmonic_state.get_current_chord()
+							if composition_ref._harmonic_state is not None else None
+						)
+
+						if chord is not None:
+							injected = _InjectedChord(
+								chord,
+								self._voice_leading_state,
+								next_chord = harmony_view.next_chord if harmony_view is not None else None,
+								beats_remaining = harmony_view.until_change if harmony_view is not None else None,
+							)
+							self._builder_fn(builder, injected)
+						else:
+							self._builder_fn(builder)
 
 					else:
 						self._builder_fn(builder)

@@ -235,6 +235,7 @@ class TestFormJump:
 		self.comp._pending_hotkey_actions = []
 		self.comp._keystroke_listener = None
 		self.comp._hotkeys_enabled = False
+		self.comp._harmony_horizon = comp_mod._HarmonyHorizon()
 
 	def test_form_jump_no_form_raises (self) -> None:
 		with pytest.raises(ValueError, match="form"):

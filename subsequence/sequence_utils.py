@@ -5,6 +5,7 @@ sequence manipulation (rotate, legato, probability gate), and general-purpose
 generative helpers (random walk, weighted choice, shuffled choices, scale/clamp).
 """
 
+import itertools
 import math
 import random
 import typing
@@ -1575,3 +1576,71 @@ def build_metric_weights (time_signature: typing.Tuple[int, int] = (4, 4), grid:
 			weights.append(0.125)
 
 	return weights
+
+
+def vl_distance (
+	source: typing.Sequence[int],
+	target: typing.Sequence[int],
+	pitch_classes: bool = True,
+) -> int:
+
+	"""Voice-leading distance between two chords (Tymoczko's taxicab metric).
+
+	The smallest total semitone movement that turns *source* into *target*,
+	minimised over every way of assigning source notes to target notes.  When
+	the chords have different sizes, notes of the smaller chord may be doubled
+	(every note of both chords takes part — nothing is dropped).
+
+	Parameters:
+		source: Pitches of the first chord.
+		target: Pitches of the second chord.
+		pitch_classes: When True (default), pitches are reduced mod 12 and each
+			voice moves by the shortest path around the pitch-class circle (a
+			tritone is 6).  When False, pitches are absolute MIDI notes and
+			each voice moves by its literal semitone interval — use this to
+			score concrete voicings rather than abstract chords.
+
+	Returns:
+		Total semitone movement (an int).
+
+	Example:
+		```python
+		vl_distance([0, 4, 7], [9, 0, 4])   # C → Am: G moves to A, distance 2
+		vl_distance([0, 4, 7], [5, 9, 0])   # C → F: distance 3
+		```
+	"""
+
+	if not source or not target:
+		raise ValueError("vl_distance needs at least one pitch in each chord")
+
+	if pitch_classes:
+		left = [pitch % 12 for pitch in source]
+		right = [pitch % 12 for pitch in target]
+	else:
+		left = list(source)
+		right = list(target)
+
+	def step (a: int, b: int) -> int:
+		if pitch_classes:
+			diff = abs(a - b) % 12
+			return min(diff, 12 - diff)
+		return abs(a - b)
+
+	# Orient so `small` is doubled into `large`: every large note is assigned
+	# one small note, and every small note must be used at least once.
+	small, large = (left, right) if len(left) <= len(right) else (right, left)
+
+	best: typing.Optional[int] = None
+
+	for assignment in itertools.product(range(len(small)), repeat = len(large)):
+
+		if len(set(assignment)) < len(small):
+			continue	# a small-chord note was dropped — not a voice leading
+
+		total = sum(step(small[index], large[position]) for position, index in enumerate(assignment))
+
+		if best is None or total < best:
+			best = total
+
+	assert best is not None	# guaranteed: the identity-style assignment always survives
+	return best

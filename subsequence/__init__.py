@@ -170,7 +170,7 @@ Community and Feedback:
 - **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
 - **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
 
-Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``between``, ``ChordTimeline``, ``parse_chord``, ``register_scale``, ``scale_notes``, ``bank_select``.
+Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``.
 """
 
 import subsequence.chords
@@ -181,7 +181,7 @@ import subsequence.intervals
 import subsequence.melodic_state
 import subsequence.midi_utils
 import subsequence.motifs
-import subsequence.progression
+import subsequence.progressions
 import subsequence.tuning
 
 
@@ -194,13 +194,17 @@ ChordTone = subsequence.motifs.ChordTone
 Approach = subsequence.motifs.Approach
 MotifEvent = subsequence.motifs.MotifEvent
 ControlEvent = subsequence.motifs.ControlEvent
+Progression = subsequence.progressions.Progression
+ChordSpan = subsequence.progressions.ChordSpan
+PitchSet = subsequence.progressions.PitchSet
+progression = subsequence.progressions.progression
 Chord = subsequence.chords.Chord
 Groove = subsequence.groove.Groove
 MelodicState = subsequence.melodic_state.MelodicState
 Tuning = subsequence.tuning.Tuning
 between = subsequence.harmonic_rhythm.between
-ChordTimeline = subsequence.progression.ChordTimeline
 parse_chord = subsequence.chords.parse_chord
+register_chord_quality = subsequence.chords.register_chord_quality
 register_scale = subsequence.intervals.register_scale
 scale_notes = subsequence.intervals.scale_notes
 bank_select = subsequence.midi_utils.bank_select

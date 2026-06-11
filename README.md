@@ -1440,12 +1440,12 @@ comp.play()
 
 **The progression** can be generated from any [built-in chord graph](#built-in-chord-graphs) (`"phrygian_minor"`, `"aeolian_minor"`, `"lydian_major"`, …) or given explicitly as a list — `Chord` objects, or names parsed by `parse_chord`: `progression=["Cm7", "Dbmaj7", "Abmaj7", "Gm7"]`. An explicit list (or a `key=`) means the part needs no composition-wide key, so a drums-plus-one-chord-part sketch stays simple.
 
-`comp.chords()` returns a **`ChordTimeline`** — print it to see exactly what the engine chose:
+`comp.chords()` returns a **`Progression`** — print it to see exactly what the engine chose:
 
 ```
 >>> print(comp.chords(channel=3, bars=8, progression="phrygian_minor",
 ...                    harmonic_rhythm=between(dur.WHOLE, 3*dur.WHOLE, step=dur.WHOLE), seed=7))
-ChordTimeline — 6 chords over 32 beats
+Progression — 6 chords over 32 beats
     0.00 …   8.00   Cm       (8 beats)
     8.00 …  16.00   Gm       (8 beats)
    16.00 …  20.00   C#m      (4 beats)

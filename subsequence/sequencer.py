@@ -245,6 +245,32 @@ class ScheduledCallback:
 
 
 @dataclasses.dataclass
+class ScheduledCallbackSequence:
+
+	"""Tracks a self-rescheduling callback whose firing interval varies per hop.
+
+	The variable-interval counterpart to :class:`ScheduledCallback` — built
+	for clocks that walk irregular spans (the harmonic clock under a bound
+	progression).  Each fire targets a *boundary* pulse; the callback's
+	return value sets the distance to the next boundary.
+
+	Attributes:
+		callback: Called with the boundary pulse it is preparing.  Returns
+			the number of **beats** to the next boundary, or ``None`` to
+			stop firing (the sequence is dropped from the queue).
+		boundary_pulse: The pulse this fire prepares (the musical boundary,
+			not the fire time).
+		lookahead_pulses: How far before each boundary the callback fires.
+		next_fire_pulse: When the next fire is due.
+	"""
+
+	callback: typing.Callable[[int], typing.Optional[float]]
+	boundary_pulse: int
+	lookahead_pulses: int
+	next_fire_pulse: int
+
+
+@dataclasses.dataclass
 class BpmTransition:
 
 	"""State for a gradual BPM transition."""
@@ -391,6 +417,11 @@ class Sequencer:
 		self.callback_lock = asyncio.Lock()
 		self.callback_queue: typing.List[typing.Tuple[int, int, ScheduledCallback]] = []
 		self._callback_counter = itertools.count()
+
+		# Variable-interval callback sequences share callback_lock; they fire
+		# after the fixed callbacks at the same pulse (see
+		# _maybe_reschedule_patterns), preserving form-before-harmony ordering.
+		self.callback_sequence_queue: typing.List[typing.Tuple[int, int, ScheduledCallbackSequence]] = []
 
 		# FIFO tie-breaker for same-pulse MidiEvents in event_queue.  Without
 		# it, ``heapq`` ordering of equal-pulse events is undefined, which
@@ -1056,6 +1087,10 @@ class Sequencer:
 
 		length_pulses, lookahead_pulses = self._get_pattern_timing(pattern)
 
+		# Anchor the first cycle for window-reading rebuilds (kept current on
+		# every reschedule in _maybe_reschedule_patterns).
+		pattern._cycle_start_pulse = start_pulse
+
 		await self.schedule_pattern(pattern, start_pulse)
 
 		next_reschedule_pulse = start_pulse + length_pulses - lookahead_pulses
@@ -1111,6 +1146,52 @@ class Sequencer:
 		async with self.callback_lock:
 			counter = next(self._callback_counter)
 			heapq.heappush(self.callback_queue, (scheduled_callback.next_fire_pulse, counter, scheduled_callback))
+
+
+	async def schedule_callback_sequence (
+		self,
+		callback: typing.Callable[[int], typing.Optional[float]],
+		start_pulse: int = 0,
+		reschedule_lookahead: float = 1,
+	) -> None:
+
+		"""Schedule a self-rescheduling callback with a variable firing interval.
+
+		Where :meth:`schedule_callback_repeating` fires on a fixed beat
+		interval, this primitive lets the callback decide each hop: it is
+		called ``lookahead`` before every *boundary* pulse, receives that
+		boundary pulse, and returns the number of beats to the **next**
+		boundary — or ``None`` to stop.  Built for clocks that walk irregular
+		spans, e.g. the harmonic clock under a bound progression's
+		harmonic rhythm.
+
+		The first fire targets *start_pulse* as its boundary and is due
+		``lookahead`` before it (immediately, when that is already past —
+		the same backshift idiom as the repeating scheduler).
+
+		Parameters:
+			callback: ``fn(boundary_pulse) -> beats_to_next_boundary | None``.
+				May be sync or async.
+			start_pulse: The first boundary pulse.
+			reschedule_lookahead: How many beats before each boundary the
+				callback fires.
+		"""
+
+		lookahead_pulses = int(reschedule_lookahead * self.pulses_per_beat)
+
+		if lookahead_pulses < 0:
+			raise ValueError("Reschedule lookahead cannot be negative")
+
+		scheduled = ScheduledCallbackSequence(
+			callback = callback,
+			boundary_pulse = start_pulse,
+			lookahead_pulses = lookahead_pulses,
+			next_fire_pulse = start_pulse - lookahead_pulses,
+		)
+
+		async with self.callback_lock:
+			counter = next(self._callback_counter)
+			heapq.heappush(self.callback_sequence_queue, (scheduled.next_fire_pulse, counter, scheduled))
 
 
 	async def play (self) -> None:
@@ -1236,6 +1317,7 @@ class Sequencer:
 
 		async with self.callback_lock:
 			self.callback_queue = []
+			self.callback_sequence_queue = []
 			self._callback_counter = itertools.count()
 
 		# Note: ``_event_counter`` is intentionally NOT reset here.  The two
@@ -1408,7 +1490,8 @@ class Sequencer:
 				if self._jitter_log is None:
 					async with self.queue_lock:
 						if (not self.event_queue and not self.active_notes
-								and not self.reschedule_queue and not self.callback_queue):
+								and not self.reschedule_queue and not self.callback_queue
+								and not self.callback_sequence_queue):
 							logger.info("Sequence complete (no more events or active notes).")
 							self.running = False
 							break
@@ -1539,7 +1622,8 @@ class Sequencer:
 			# Stop when all events are exhausted (same check as internal clock).
 			async with self.queue_lock:
 				if (not self.event_queue and not self.active_notes
-						and not self.reschedule_queue and not self.callback_queue):
+						and not self.reschedule_queue and not self.callback_queue
+						and not self.callback_sequence_queue):
 					logger.info("Sequence complete (no more events or active notes).")
 					self.running = False
 					break
@@ -1585,6 +1669,51 @@ class Sequencer:
 				counter = next(self._callback_counter)
 				heapq.heappush(self.callback_queue, (scheduled_callback.next_fire_pulse, counter, scheduled_callback))
 
+		# Variable-interval sequences fire after the fixed callbacks at the
+		# same pulse (the form clock is fixed; the harmonic span clock is a
+		# sequence — form-before-harmony ordering is preserved) and before
+		# pattern rebuilds below.
+		sequences_to_fire: typing.List[ScheduledCallbackSequence] = []
+
+		async with self.callback_lock:
+
+			while self.callback_sequence_queue and self.callback_sequence_queue[0][0] <= pulse:
+				_, _, scheduled_sequence = heapq.heappop(self.callback_sequence_queue)
+				sequences_to_fire.append(scheduled_sequence)
+
+		requeue: typing.List[ScheduledCallbackSequence] = []
+
+		for scheduled_sequence in sequences_to_fire:
+
+			try:
+				result = scheduled_sequence.callback(scheduled_sequence.boundary_pulse)
+
+				if asyncio.iscoroutine(result):
+					result = await result
+
+			except Exception:
+				# Isolate a misbehaving callback so the clock survives; the
+				# sequence is dropped — with no interval there is no next hop.
+				logger.exception("Callback sequence failed (pulse %d) - sequence stopped", pulse)
+				continue
+
+			if result is None:
+				continue	# the sequence chose to stop
+
+			interval_pulses = max(1, int(float(result) * self.pulses_per_beat))
+			scheduled_sequence.boundary_pulse += interval_pulses
+			scheduled_sequence.next_fire_pulse = max(
+				pulse + 1,
+				scheduled_sequence.boundary_pulse - scheduled_sequence.lookahead_pulses,
+			)
+			requeue.append(scheduled_sequence)
+
+		if requeue:
+			async with self.callback_lock:
+				for scheduled_sequence in requeue:
+					counter = next(self._callback_counter)
+					heapq.heappush(self.callback_sequence_queue, (scheduled_sequence.next_fire_pulse, counter, scheduled_sequence))
+
 		async with self.pattern_lock:
 
 			while self.reschedule_queue and self.reschedule_queue[0][0] <= pulse:
@@ -1601,6 +1730,11 @@ class Sequencer:
 
 				next_start_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses
 				scheduled_pattern.cycle_start_pulse = next_start_pulse
+
+				# Anchor the upcoming cycle on the pattern itself, BEFORE
+				# on_reschedule() below — rebuilds read it to place the cycle
+				# on the absolute beat axis (the harmony window's axis).
+				scheduled_pattern.pattern._cycle_start_pulse = next_start_pulse
 
 				to_reschedule.append(scheduled_pattern)
 

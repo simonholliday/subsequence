@@ -19,7 +19,7 @@ import subsequence.mini_notation
 import subsequence.conductor
 import subsequence.pattern_algorithmic
 import subsequence.pattern_midi
-import subsequence.progression
+import subsequence.progressions
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class PatternBuilder(
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, scale: typing.Optional[str] = None, time_signature: typing.Tuple[int, int] = (4, 4), held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, scale: typing.Optional[str] = None, time_signature: typing.Tuple[int, int] = (4, 4), held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None, harmony: typing.Optional[typing.Any] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info.
 
@@ -151,6 +151,10 @@ class PatternBuilder(
 				``p.motif()``.  ``None`` means ionian/major.
 			time_signature: The composition's time signature, read via
 				``p.time_signature``; powers the metric-weight table.
+			harmony: Optional read-only harmony window view for this cycle
+				(``p.harmony``) — ``p.harmony.chord``, ``chord_at(beat)``,
+				``next_chord``, ``until_change``.  ``None`` until the
+				harmonic clock has published a window.
 			held_notes: Optional live held-note tracker from ``composition.note_input()``.
 				Read via ``p.held_notes()``.  ``None`` when no note input was declared
 				(and when rendering headlessly), so the accessor returns an empty list.
@@ -171,6 +175,7 @@ class PatternBuilder(
 		self.key: typing.Optional[str] = key  # composition key, for p.progression() chord generation
 		self.scale: typing.Optional[str] = scale  # composition scale/mode, for degree resolution
 		self.time_signature: typing.Tuple[int, int] = time_signature
+		self.harmony: typing.Optional[typing.Any] = harmony  # HarmonyView for this cycle, or None
 		self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = held_notes
 		self._tuning_applied: bool = False  # set by apply_tuning() to prevent double-apply
 
@@ -750,7 +755,7 @@ class PatternBuilder(
 				continue
 
 			self.note(
-				pitch = self._resolve_motif_pitch(event.pitch, root),
+				pitch = self._resolve_motif_pitch(event.pitch, root, beat + event.beat),
 				beat = beat + event.beat,
 				velocity = velocity if velocity is not None else event.velocity,
 				duration = event.duration,
@@ -767,9 +772,14 @@ class PatternBuilder(
 
 		return self
 
-	def _resolve_motif_pitch (self, pitch: typing.Any, root: int) -> typing.Union[int, str]:
+	def _resolve_motif_pitch (self, pitch: typing.Any, root: int, event_beat: float = 0.0) -> typing.Union[int, str]:
 
-		"""Resolve one stored pitch spec to a MIDI int or drum name, late."""
+		"""Resolve one stored pitch spec to a MIDI int or drum name, late.
+
+		``event_beat`` is the event's position within this cycle — chord-
+		relative specs resolve against the chord sounding *under the event*
+		(``p.harmony.chord_at``), not the cycle-start snapshot.
+		"""
 
 		if pitch is None:
 			raise ValueError(
@@ -784,18 +794,49 @@ class PatternBuilder(
 			return self._resolve_degree_pitch(pitch, root)
 
 		if isinstance(pitch, subsequence.motifs.ChordTone):
-			raise NotImplementedError(
-				"ChordTone pitches resolve against the harmonic clock, which is "
-				"not built yet — use scale degrees or MIDI notes for now"
-			)
+			return self._resolve_chord_tone_pitch(pitch, root, event_beat)
 
 		if isinstance(pitch, subsequence.motifs.Approach):
 			raise NotImplementedError(
 				"Approach pitches resolve against the NEXT chord via the harmony "
-				"window, which is not built yet"
+				"window — that arrives with the melody engine stage"
 			)
 
 		raise TypeError(f"Unknown pitch spec: {type(pitch).__name__}")
+
+	def _resolve_chord_tone_pitch (self, tone: "subsequence.motifs.ChordTone", root: int, event_beat: float) -> int:
+
+		"""Resolve a 1-based chord-tone index against the chord under the event.
+
+		Reads the harmony window (``p.harmony.chord_at(event_beat)``): indices
+		walk the sounding chord's tones nearest ``root``, cycling into higher
+		octaves past the chord's natural size, plus whole-octave shifts.
+		"""
+
+		if self.harmony is None:
+			raise ValueError(
+				"ChordTone pitches resolve against the harmonic clock — "
+				"call composition.harmony(...) (a style or a bound progression)"
+			)
+
+		chord = self.harmony.chord_at(event_beat)
+
+		if chord is None:
+			raise ValueError(
+				f"No chord is known at beat {event_beat:g} of this cycle — "
+				"the harmony window does not cover it"
+			)
+
+		tones = chord.tones(root, count = tone.index)
+		midi = int(tones[tone.index - 1]) + 12 * tone.octave
+
+		if not 0 <= midi <= 127:
+			raise ValueError(
+				f"Chord tone {tone.index} resolves to MIDI {midi}, outside 0–127 — "
+				"adjust root= or the tone's octaves"
+			)
+
+		return midi
 
 	def _resolve_degree_pitch (self, degree: "subsequence.motifs.Degree", root: int) -> int:
 
@@ -1396,51 +1437,61 @@ class PatternBuilder(
 			self.legato(legato)
 		return self
 
-	def progression (self, source: subsequence.progression.ProgressionSource, harmonic_rhythm: subsequence.progression.HarmonicRhythmSpec, key: typing.Optional[str] = None, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> subsequence.progression.ChordTimeline:
+	def progression (self, source: subsequence.progressions.ProgressionSource, harmonic_rhythm: subsequence.progressions.HarmonicRhythmSpec, key: typing.Optional[str] = None, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> subsequence.progressions.Progression:
 
 		"""Realise a chord progression across the pattern, returning it to place yourself.
 
-		Returns a :class:`~subsequence.progression.ChordTimeline` — an iterable of
-		``(chord, start, length)`` events laying a progression end-to-end across the
-		pattern's length, each chord given a length drawn from *harmonic_rhythm* (the
-		musical term for how often the chords change).  You loop over it and play each
-		chord however you like — block, strummed, or arpeggiated::
+		Returns a freshly realised :class:`~subsequence.progressions.Progression`
+		— an iterable of ``(chord, start, length)`` events laying a progression
+		end-to-end across the pattern's length, each chord given a length drawn
+		from *harmonic_rhythm* (the musical term for how often the chords
+		change).  You loop over it and play each chord however you like —
+		block, strummed, or arpeggiated::
 
 			for chord, start, length in p.progression("phrygian_minor",
 					harmonic_rhythm=between(WHOLE, 3 * WHOLE, step=WHOLE), seed=7):
 				p.strum(chord, root=48, beat=start, duration=length - 0.25, spacing=0.04, count=4)
 
+		This is the **part-level** progression seam: it re-realises a fresh
+		value each rebuild (the breathing behaviour), runs entirely outside
+		the global harmonic clock — so a part can inhabit its own harmonic
+		world (polytonality) or move faster than the clock's span floor —
+		and never advances engine state.
+
 		For a one-call block-chord part with no loop, use ``composition.chords()``.
 
 		Parameters:
 			source: A built-in chord-graph style name (e.g. ``"phrygian_minor"``) to
-				*generate* a progression, or an explicit list of chords — ``Chord``
-				objects or names like ``["Cm7", "Dbmaj7", "Abmaj7"]`` — cycled to fill
-				the pattern.
+				*generate* a progression; an explicit element list — ints where
+				diatonic, name or roman strings (``["Cm7", 6, "bVII"]``), ``Chord``
+				objects — cycled to fill the pattern; or a
+				:class:`~subsequence.progressions.Progression` value (its spans
+				cycled, decoration preserved).
 			harmonic_rhythm: How long each chord lasts, in beats.  One of: a single
 				number (static); a list of lengths (a shaped rhythm such as
 				``[WHOLE, HALF, HALF]``, cycled per chord); or ``between(low, high,
 				step=...)`` for a bounded, optionally-quantised random length.
-			key: Key for generating from a style (e.g. ``"C"``); defaults to the
-				composition's key.  Ignored when *source* is an explicit chord list.
+			key: Key for styles and key-relative elements (degrees/romans);
+				defaults to the composition's key.
 			seed: If given, the progression is realised from a fresh ``Random(seed)``
 				so it is identical on every cycle (a fixed phrase).  When omitted, the
 				pattern's own RNG is used, so it can vary per cycle (still reproducible
 				under a composition seed).
 
 		Returns:
-			A ``ChordTimeline`` you can iterate as ``(chord, start, length)`` tuples
-			(or read via ``.events`` / ``print()``).
+			A ``Progression`` you can iterate as ``(chord, start, length)`` tuples
+			(or read via ``.events()`` / ``print()``).
 		"""
 
 		rng = self._rng_from(seed, rng)
 		resolved_key = key if key is not None else self.key
-		return subsequence.progression.realize(
+		return subsequence.progressions.realize(
 			source = source,
 			harmonic_rhythm = harmonic_rhythm,
 			key = resolved_key,
 			length = float(self._pattern.length),
 			rng = rng,
+			scale = self.scale or "ionian",
 		)
 
 	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0, beat: float = 0.0, span: typing.Optional[float] = None) -> "PatternBuilder":

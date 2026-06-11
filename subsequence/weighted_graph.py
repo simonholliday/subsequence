@@ -19,12 +19,23 @@ class WeightedGraph (typing.Generic[NodeType]):
 		"""
 
 		self._edges: typing.Dict[NodeType, typing.Dict[NodeType, int]] = {}
+		self._labels: typing.Dict[typing.Tuple[NodeType, NodeType], str] = {}
 
 
-	def add_transition (self, source: NodeType, target: NodeType, weight: int) -> None:
+	def add_transition (self, source: NodeType, target: NodeType, weight: int, label: typing.Optional[str] = None) -> None:
 
 		"""
 		Add a weighted transition between two nodes.
+
+		Parameters:
+			source: Node the transition leaves from.
+			target: Node the transition arrives at.
+			weight: Positive transition weight.  Re-adding an existing
+				transition accumulates, strengthening the edge.
+			label: Optional edge label naming the transition's musical
+				function (e.g. ``"cadence"``, ``"deceptive"``).  A label
+				given on a re-add replaces the previous one; ``None``
+				leaves any existing label untouched.
 		"""
 
 		if weight <= 0:
@@ -39,6 +50,31 @@ class WeightedGraph (typing.Generic[NodeType]):
 
 		else:
 			self._edges[source][target] = weight
+
+		if label is not None:
+			self._labels[(source, target)] = label
+
+
+	def get_label (self, source: NodeType, target: NodeType) -> typing.Optional[str]:
+
+		"""
+		Return the label for a transition, or None if it has none.
+		"""
+
+		return self._labels.get((source, target))
+
+
+	def transitions_with_label (self, source: NodeType, label: str) -> typing.List[typing.Tuple[NodeType, int]]:
+
+		"""
+		Return the outgoing transitions from *source* that carry *label*.
+		"""
+
+		return [
+			(target, weight)
+			for target, weight in self.get_transitions(source)
+			if self._labels.get((source, target)) == label
+		]
 
 
 	def get_transitions (self, source: NodeType) -> typing.List[typing.Tuple[NodeType, int]]:

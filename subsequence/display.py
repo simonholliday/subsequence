@@ -579,9 +579,12 @@ class Display:
 			else:
 				parts.append("[form finished]")
 
-		# Current chord (only when harmony is configured).
-		if comp.harmonic_state is not None:
-			chord = comp.harmonic_state.get_current_chord()
+		# Current chord (only when harmony is configured).  Reads the harmony
+		# window at the playhead, so it tracks sub-bar harmonic rhythm and
+		# covers progression-only mode (no engine) — the display refreshes
+		# per beat, which bounds how stale it can be.
+		chord = comp.current_chord()
+		if chord is not None:
 			parts.append(f"Chord: {chord.name()}")
 
 		# Conductor signals (when any are registered).  builder_bar is the

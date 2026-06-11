@@ -98,6 +98,7 @@ CHORD_INTERVALS: typing.Dict[str, typing.List[int]] = {
 	"major_7th": [0, 4, 7, 11],
 	"minor_7th": [0, 3, 7, 10],
 	"half_diminished_7th": [0, 3, 6, 10],
+	"diminished_7th": [0, 3, 6, 9],
 	"sus2": [0, 2, 7],
 	"sus4": [0, 5, 7],
 }
@@ -111,6 +112,7 @@ CHORD_SUFFIX: typing.Dict[str, str] = {
 	"major_7th": "maj7",
 	"minor_7th": "m7",
 	"half_diminished_7th": "m7b5",
+	"diminished_7th": "dim7",
 	"sus2": "sus2",
 	"sus4": "sus4",
 }
@@ -243,12 +245,17 @@ class Chord:
 
 		"""
 		Return a human-friendly chord name.
+
+		A registered quality without a suffix prints as ``root(quality)``
+		(e.g. ``"C(quartal)"``) rather than masquerading as a plain major.
 		"""
 
 		root_name = PC_TO_NOTE_NAME[self.root_pc % 12]
-		suffix = CHORD_SUFFIX.get(self.quality, "")
 
-		return f"{root_name}{suffix}"
+		if self.quality not in CHORD_SUFFIX:
+			return f"{root_name}({self.quality})"
+
+		return f"{root_name}{CHORD_SUFFIX[self.quality]}"
 
 
 # Quality suffixes accepted by parse_chord(), including common alternates.  The
@@ -275,11 +282,101 @@ _SUFFIX_TO_QUALITY: typing.Dict[str, str] = {
 	"-7": "minor_7th",
 	"m7b5": "half_diminished_7th",
 	"ø": "half_diminished_7th",
+	"ø7": "half_diminished_7th",
 	"halfdim": "half_diminished_7th",
+	"dim7": "diminished_7th",
+	"o7": "diminished_7th",
+	"°7": "diminished_7th",
 	"sus2": "sus2",
 	"sus4": "sus4",
 	"sus": "sus4",
 }
+
+# Snapshots of the shipped tables, taken before any register_chord_quality()
+# call: built-in qualities and suffixes can never be overwritten.
+_BUILTIN_QUALITY_NAMES: typing.FrozenSet[str] = frozenset(CHORD_INTERVALS)
+_BUILTIN_SUFFIXES: typing.FrozenSet[str] = frozenset(_SUFFIX_TO_QUALITY)
+
+
+def register_chord_quality (
+	name: str,
+	intervals: typing.List[int],
+	suffix: typing.Optional[str] = None,
+) -> None:
+
+	"""Register a custom chord quality for use everywhere chords are used.
+
+	The counterpart to :func:`subsequence.intervals.register_scale` — it opens
+	the quality table so quartal stacks, clusters, and extended chords become
+	first-class symbolic chords: they work in progressions, graphs, voice
+	leading, and ``describe()`` output.
+
+	Built-in qualities (e.g. ``"minor"``) cannot be overwritten.  Custom names
+	may be re-registered freely — live reload re-runs registration on every
+	save, so this must not raise.
+
+	Parameters:
+		name: Quality name (used as ``Chord(root_pc, quality=name)``).
+		intervals: Semitone offsets from the root (e.g. ``[0, 5, 10]`` for a
+			quartal stack, ``[0, 3, 7, 10, 14]`` for a minor 9th).  Must start
+			with 0, ascend strictly, and stay within 0–24 (extensions reach
+			past the octave).
+		suffix: Optional chord-name suffix.  When given, ``parse_chord()``
+			accepts ``"A" + suffix`` and ``Chord.name()`` prints it — so
+			``register_chord_quality("minor_9th", [0, 3, 7, 10, 14], suffix="m9")``
+			makes ``"Am9"`` parse from then on.  Must not collide with a
+			built-in suffix.
+
+	Example:
+		```python
+		import subsequence
+
+		subsequence.register_chord_quality("quartal", [0, 5, 10], suffix="q4")
+		subsequence.parse_chord("Dq4")   # → Chord(root_pc=2, quality="quartal")
+		```
+	"""
+
+	if name in _BUILTIN_QUALITY_NAMES:
+		raise ValueError(
+			f"Cannot overwrite built-in chord quality '{name}'. "
+			"Choose a different name for your custom quality."
+		)
+
+	if not intervals:
+		raise ValueError("intervals must not be empty")
+	if not all(isinstance(i, int) and not isinstance(i, bool) for i in intervals):
+		raise ValueError("intervals must be whole numbers (semitone offsets)")
+	if intervals[0] != 0:
+		raise ValueError("intervals must start with 0 (the root)")
+	if any(b <= a for a, b in zip(intervals, intervals[1:])):
+		raise ValueError("intervals must be strictly ascending")
+	if any(i < 0 or i > 24 for i in intervals):
+		raise ValueError("intervals must contain values between 0 and 24")
+
+	if suffix is not None:
+		if suffix in _BUILTIN_SUFFIXES:
+			raise ValueError(
+				f"Suffix {suffix!r} is a built-in chord suffix and cannot be reused. "
+				"Choose a different suffix for your custom quality."
+			)
+		if not suffix or suffix[0] in "ABCDEFG#b0123456789":
+			raise ValueError(
+				f"Suffix {suffix!r} would be ambiguous in a chord name — "
+				"it must not be empty or start with a note letter, accidental, or digit"
+			)
+
+	# Re-registration: drop any suffix this quality registered previously, so
+	# renaming a suffix on live reload does not leave a stale alias behind.
+	for old_suffix in [s for s, q in _SUFFIX_TO_QUALITY.items() if q == name and s not in _BUILTIN_SUFFIXES]:
+		del _SUFFIX_TO_QUALITY[old_suffix]
+
+	CHORD_INTERVALS[name] = list(intervals)
+
+	if suffix is not None:
+		CHORD_SUFFIX[name] = suffix
+		_SUFFIX_TO_QUALITY[suffix] = name
+	else:
+		CHORD_SUFFIX.pop(name, None)
 
 
 def parse_chord (name: str) -> Chord:

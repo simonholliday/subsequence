@@ -22,8 +22,9 @@ import subsequence.harmonic_rhythm
 import subsequence.intervals
 import subsequence.melodic_state
 import subsequence.midi_utils
+import subsequence.motifs
 import subsequence.pattern_builder
-import subsequence.progression
+import subsequence.progressions
 import subsequence.sequence_utils
 import subsequence.tuning
 
@@ -34,7 +35,11 @@ classes_to_document: typing.List[typing.Type] = [
 	subsequence.melodic_state.MelodicState,
 	subsequence.tuning.Tuning,
 	subsequence.chords.Chord,
-	subsequence.progression.ChordTimeline,
+	subsequence.progressions.Progression,
+	subsequence.progressions.ChordSpan,
+	subsequence.progressions.PitchSet,
+	subsequence.motifs.Motif,
+	subsequence.motifs.Phrase,
 ]
 
 functions_to_document: typing.List[typing.Callable] = [
@@ -43,6 +48,12 @@ functions_to_document: typing.List[typing.Callable] = [
 	subsequence.midi_utils.bank_select,
 	subsequence.harmonic_rhythm.between,
 	subsequence.chords.parse_chord,
+	subsequence.chords.register_chord_quality,
+	subsequence.progressions.progression,
+	subsequence.motifs.motif,
+	subsequence.sequence_utils.vl_distance,
+	subsequence.sequence_utils.branch_sequence,
+	subsequence.sequence_utils.build_metric_weights,
 ]
 
 

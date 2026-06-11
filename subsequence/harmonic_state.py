@@ -219,6 +219,51 @@ class HarmonicState:
 		# Scale the boost portion by nir_strength (score starts at 1.0, boost is the excess)
 		return 1.0 + (score - 1.0) * self.nir_strength
 
+	def _transition_weight (
+		self,
+		source: subsequence.chords.Chord,
+		target: subsequence.chords.Chord,
+		weight: int
+	) -> float:
+
+		"""
+		Combine three forces that shape chord transition probabilities:
+
+		1. **Key gravity** — blends functional pull (tonic, dominant) with
+		   full diatonic pull, controlled by ``key_gravity_blend``.
+		2. **Melodic inertia (NIR)** — Narmour's cognitive expectation
+		   model favoring continuation after small steps and reversal
+		   after large leaps, controlled by ``nir_strength``.
+		3. **Root diversity** — exponential damping that discourages
+		   revisiting a root pitch class heard recently, controlled by
+		   ``root_diversity``. Each recent chord sharing the target's
+		   root multiplies the weight by ``root_diversity`` (default
+		   0.4), so the penalty grows stronger with each consecutive
+		   same-root step.
+
+		The final modifier is:
+
+			``(1 + gravity_boost) × nir_score × diversity``
+		"""
+
+		is_function = 1.0 if target in self._function_chords else 0.0
+		is_diatonic = 1.0 if target in self._diatonic_chords else 0.0
+
+		# Decision path: blend controls whether key gravity favors functional or full diatonic chords.
+		boost = (1.0 - self.key_gravity_blend) * is_function + self.key_gravity_blend * is_diatonic
+
+		# Apply NIR gravity
+		nir_score = self._calculate_nir_score(source, target)
+
+		# Root diversity: penalise transitions to a root heard recently.
+		recent_same_root = sum(
+			1 for h in self.history
+			if h.root_pc == target.root_pc
+		)
+		diversity = self.root_diversity ** recent_same_root
+
+		return (1.0 + boost) * nir_score * diversity
+
 	def step (self) -> subsequence.chords.Chord:
 
 		"""Advance to the next chord based on the transition graph."""
@@ -228,52 +273,48 @@ class HarmonicState:
 		if len(self.history) > 4:
 			self.history.pop(0)
 
-		def weight_modifier (
-			source: subsequence.chords.Chord,
-			target: subsequence.chords.Chord,
-			weight: int
-		) -> float:
-
-			"""
-			Combine three forces that shape chord transition probabilities:
-
-			1. **Key gravity** — blends functional pull (tonic, dominant) with
-			   full diatonic pull, controlled by ``key_gravity_blend``.
-			2. **Melodic inertia (NIR)** — Narmour's cognitive expectation
-			   model favoring continuation after small steps and reversal
-			   after large leaps, controlled by ``nir_strength``.
-			3. **Root diversity** — exponential damping that discourages
-			   revisiting a root pitch class heard recently, controlled by
-			   ``root_diversity``. Each recent chord sharing the target's
-			   root multiplies the weight by ``root_diversity`` (default
-			   0.4), so the penalty grows stronger with each consecutive
-			   same-root step.
-
-			The final modifier is:
-
-				``(1 + gravity_boost) × nir_score × diversity``
-			"""
-
-			is_function = 1.0 if target in self._function_chords else 0.0
-			is_diatonic = 1.0 if target in self._diatonic_chords else 0.0
-
-			# Decision path: blend controls whether key gravity favors functional or full diatonic chords.
-			boost = (1.0 - self.key_gravity_blend) * is_function + self.key_gravity_blend * is_diatonic
-
-			# Apply NIR gravity
-			nir_score = self._calculate_nir_score(source, target)
-
-			# Root diversity: penalise transitions to a root heard recently.
-			recent_same_root = sum(
-				1 for h in self.history
-				if h.root_pc == target.root_pc
-			)
-			diversity = self.root_diversity ** recent_same_root
-
-			return (1.0 + boost) * nir_score * diversity
-
 		# Decision path: chord changes occur here; key changes are not automatic.
-		self.current_chord = self.graph.choose_next(self.current_chord, self.rng, weight_modifier=weight_modifier)
+		self.current_chord = self.graph.choose_next(self.current_chord, self.rng, weight_modifier=self._transition_weight)
+
+		return self.current_chord
+
+	def plan_next (self) -> subsequence.chords.Chord:
+
+		"""Choose the next chord without committing it — the horizon's pre-step.
+
+		Draws from the RNG exactly as :meth:`step` would (the draw IS the
+		pre-commitment), but leaves ``current_chord`` and ``history``
+		untouched.  Pair with :meth:`commit_chord` when the planned chord
+		becomes the sounding one; ``commit_chord(plan_next())`` is draw-for-
+		draw equivalent to ``step()``.
+		"""
+
+		saved_history = list(self.history)
+
+		self.history.append(self.current_chord)
+		if len(self.history) > 4:
+			self.history.pop(0)
+
+		try:
+			return self.graph.choose_next(self.current_chord, self.rng, weight_modifier=self._transition_weight)
+		finally:
+			self.history = saved_history
+
+	def commit_chord (self, chord: subsequence.chords.Chord) -> subsequence.chords.Chord:
+
+		"""Make *chord* current with step()'s history bookkeeping, no RNG draw.
+
+		Used by the harmonic clock to commit a planned chord or replay a
+		frozen progression span while keeping NIR context coherent (the
+		outgoing chord enters history as the transition source, exactly as
+		``step()`` records it).
+		"""
+
+		self.history.append(self.current_chord)
+		if len(self.history) > 4:
+			self.history.pop(0)
+
+		self.current_chord = chord
 
 		return self.current_chord
 

@@ -129,17 +129,84 @@ def test_midi_ints_pass_through_and_drums_use_the_funnel () -> None:
 	assert _placed(p) == [(0.0, 72), (1.0, 36)]
 
 
-def test_chord_tone_and_approach_raise_clearly () -> None:
+def test_chord_tone_without_harmony_and_approach_raise_clearly () -> None:
 
-	"""Harmony-dependent specs fail loud until their context exists."""
+	"""ChordTone needs the clock (a clear ValueError without one); Approach waits for stage 5."""
 
 	p = _builder()
 
-	with pytest.raises(NotImplementedError, match="harmonic clock"):
+	with pytest.raises(ValueError, match="harmonic clock"):
 		p.motif(M.hits("kick", beats=[0], length=1).pitched("root"))
 
 	with pytest.raises(NotImplementedError, match="harmony window"):
 		p.motif(M.from_events([subsequence.MotifEvent(beat=0.0, pitch=Approach(Degree(1)))], length=1))
+
+
+class _StubHarmony:
+
+	"""A HarmonyView stand-in: chords keyed by cycle beat ranges."""
+
+	def __init__ (self, spans):
+		self._spans = spans	# list of (start, end, chord)
+
+	@property
+	def chord (self):
+		return self.chord_at(0.0)
+
+	def chord_at (self, beat):
+		for start, end, chord in self._spans:
+			if start <= beat < end:
+				return chord
+		return None
+
+
+def test_chord_tone_resolves_against_the_chord_under_the_event () -> None:
+
+	"""ChordTone indices voice the chord sounding at the EVENT's beat, not the cycle start."""
+
+	a_minor = subsequence.chords.parse_chord("Am")
+	f_major = subsequence.chords.parse_chord("F")
+	view = _StubHarmony([(0.0, 2.0, a_minor), (2.0, 4.0, f_major)])
+
+	p = _builder(harmony=view)
+	value = M.from_events([
+		subsequence.MotifEvent(beat=0.0, pitch=ChordTone("root")),
+		subsequence.MotifEvent(beat=1.0, pitch=ChordTone("third")),
+		subsequence.MotifEvent(beat=2.0, pitch=ChordTone("root")),
+	], length=4)
+
+	p.motif(value, root=60)
+
+	placed = _placed(p)
+	assert placed == [(0.0, 57), (1.0, 60), (2.0, 65)]	# A3, C4 (Am), then F4 (F)
+
+
+def test_chord_tone_octave_and_cycling () -> None:
+
+	"""Indices past the chord's size cycle into higher octaves; octave= shifts whole octaves."""
+
+	a_minor = subsequence.chords.parse_chord("Am")
+	view = _StubHarmony([(0.0, 4.0, a_minor)])
+
+	p = _builder(harmony=view)
+	p.motif(M.from_events([
+		subsequence.MotifEvent(beat=0.0, pitch=ChordTone(4)),
+		subsequence.MotifEvent(beat=1.0, pitch=ChordTone("root", octave=1)),
+	], length=4), root=60)
+
+	assert _placed(p) == [(0.0, 69), (1.0, 69)]	# A4: the cycled 4th tone; A3 + 12
+
+
+def test_chord_tone_outside_window_raises () -> None:
+
+	"""An event beat the window does not cover fails with the window message."""
+
+	view = _StubHarmony([(0.0, 1.0, subsequence.chords.parse_chord("Am"))])
+
+	p = _builder(harmony=view)
+
+	with pytest.raises(ValueError, match="window"):
+		p.motif(M.from_events([subsequence.MotifEvent(beat=2.0, pitch=ChordTone(1))], length=4))
 
 
 def test_skeleton_placement_raises () -> None:

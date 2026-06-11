@@ -126,6 +126,12 @@ class Pattern:
 		# stopped by the unregister() call, but no new cycles fire.
 		self._removed: bool = False
 
+		# Absolute pulse where the cycle currently being (re)built starts.
+		# Written by the sequencer on schedule and on every reschedule; read
+		# by rebuilds that place the cycle on the absolute beat axis (the
+		# harmony window).
+		self._cycle_start_pulse: int = 0
+
 		self.steps: typing.Dict[int, Step] = {}
 		self.cc_events: typing.List[CcEvent] = []
 		self.osc_events: typing.List[OscEvent] = []
