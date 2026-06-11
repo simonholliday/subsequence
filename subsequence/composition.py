@@ -1135,6 +1135,7 @@ class Composition:
 		self._bound_progression: typing.Optional[Progression] = None
 		self._pinned_chords: typing.Dict[int, typing.Any] = {}
 		self._harmony_horizon = _HarmonyHorizon()
+		self._section_motifs: typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any] = {}
 		self._pending_patterns: typing.List[_PendingPattern] = []
 		# Names of patterns declared by the most recent live-reload exec (added by
 		# pattern()/layer() as they run); the deletion diff in _apply_source_async
@@ -1772,6 +1773,51 @@ class Composition:
 			self._pinned_chords[bar] = _span_chord(span)
 
 		self._harmony_horizon.invalidate_future()
+
+	def section_motifs (self, section_name: str, value: typing.Any, part: typing.Optional[str] = None) -> None:
+
+		"""Bind a Motif or Phrase to a named form section (per optional part).
+
+		Patterns read the binding back with ``p.section_motif(part)`` (or use
+		the one-call :meth:`phrase_part`); a section with no binding for the
+		part is silent for that part — bind material or don't, no fallback
+		guessing.  Re-binding is idempotent, so the call is safe in a live
+		file: re-executing on save is the desired rebind.
+
+		Parameters:
+			section_name: Name of the section as defined in :meth:`form`.
+			value: A ``Motif`` or ``Phrase`` (anything exposing
+				``.length``/``.slice`` places).
+			part: Optional part label, so one section can carry several
+				bindings (``"lead"``, ``"bass"``, ...).
+
+		Raises:
+			ValueError: If a graph-based form has been configured and
+				*section_name* is not one of its sections.
+
+		Example::
+
+			composition.section_motifs("verse",  verse_line,  part="lead")
+			composition.section_motifs("chorus", chorus_line, part="lead")
+		"""
+
+		if not hasattr(value, "length") or not hasattr(value, "slice"):
+			raise TypeError(
+				f"section_motifs() binds Motif/Phrase values (.length/.slice) — got {type(value).__name__}"
+			)
+
+		if (
+			self._form_state is not None
+			and self._form_state._section_bars is not None
+			and section_name not in self._form_state._section_bars
+		):
+			known = ", ".join(sorted(self._form_state._section_bars))
+			raise ValueError(
+				f"Section '{section_name}' not found in form. "
+				f"Known sections: {known}"
+			)
+
+		self._section_motifs[(section_name, part)] = value
 
 	def on_event (self, event_name: str, callback: typing.Callable[..., typing.Any]) -> None:
 
@@ -3988,6 +4034,109 @@ class Composition:
 		self._pending_patterns.append(pending)
 		return timeline
 
+	def phrase_part (
+		self,
+		*,
+		channel: int,
+		part: typing.Optional[str] = None,
+		root: int = 60,
+		bars: typing.Optional[float] = None,
+		beats: typing.Optional[float] = None,
+		velocity: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
+		fit: typing.Optional[float] = None,
+		device: subsequence.midi_utils.DeviceId = None,
+		mirrors: typing.Optional[typing.Iterable[subsequence.pattern.MirrorSpec]] = None,
+	) -> None:
+
+		"""Declare a part that plays each section's bound Motif/Phrase.
+
+		The one-call consumer for :meth:`section_motifs` — it registers a
+		pattern on *channel* that walks whatever value is bound to the
+		current section for *part* (stateless position from the cycle
+		counter, via ``p.phrase()``).  A section with no binding for the
+		part is **silent** for that part — bind material or don't; no
+		fallback guessing.
+
+		Parameters:
+			channel: MIDI channel for the part.
+			part: The part label to read from the registry (``None`` = the
+				unlabelled binding).
+			root: Register anchor for degree resolution.
+			bars / beats: Cycle length of the part (defaults to 4 beats);
+				the phrase is sliced one cycle window at a time.
+			velocity: Optional override applied to every note.
+			fit: Passed through (active with the melody engine stage).
+			device: Optional output-device override.
+			mirrors: Optional additional ``(device, channel)`` destinations.
+
+		Example::
+
+			composition.section_motifs("verse",  verse_line,  part="lead")
+			composition.section_motifs("chorus", chorus_line, part="lead")
+			composition.phrase_part(channel=4, part="lead", root=72, bars=2)
+		"""
+
+		beat_length, default_grid = self._resolve_length(beats, bars, None, None, beats_per_bar=self.time_signature[0])
+		resolved_channel = self._resolve_channel(channel)
+
+		captured_part = part
+		captured_root = root
+		captured_velocity = velocity
+		captured_fit = fit
+
+		def phrase_builder (p: subsequence.pattern_builder.PatternBuilder) -> None:
+
+			"""Walk the current section's bound value (silent when unbound)."""
+
+			value = p.section_motif(captured_part)
+
+			if value is None:
+				return	# unbound section: silence for this part, by design
+
+			p.phrase(value, root=captured_root, velocity=captured_velocity, fit=captured_fit)
+
+		# Unique, stable name so multiple phrase parts don't collide —
+		# including two parts on the SAME channel (deterministic #2/#3
+		# suffixes in declaration order, the chords() convention).
+		base_name = f"phrase@{captured_part}@ch{resolved_channel}" if captured_part else f"phrase@ch{resolved_channel}"
+		phrase_name = base_name
+		suffix = 2
+
+		while phrase_name in self._declared_names:
+			phrase_name = f"{base_name}#{suffix}"
+			suffix += 1
+
+		phrase_builder.__name__ = phrase_name
+		self._declared_names.add(phrase_name)
+
+		primary: typing.Optional[typing.Tuple[int, int]]
+		if isinstance(device, str):
+			primary = None
+		else:
+			primary = (device if device is not None else 0, resolved_channel)
+		resolved_mirrors = self._resolve_mirrors(mirrors, primary=primary)
+
+		if self._is_live and phrase_builder.__name__ in self._running_patterns:
+			running = self._running_patterns[phrase_builder.__name__]
+			running._builder_fn = phrase_builder
+			running._wants_chord = False
+			logger.info(f"Hot-swapped phrase part: {phrase_builder.__name__}")
+			return
+
+		pending = _PendingPattern(
+			builder_fn = phrase_builder,
+			channel = resolved_channel,
+			length = beat_length,
+			default_grid = default_grid,
+			drum_note_map = None,
+			reschedule_lookahead = 1,
+			voice_leading = False,
+			mirrors = resolved_mirrors,
+			device = 0 if (device is None or isinstance(device, str)) else device,
+			raw_device = device,
+		)
+		self._pending_patterns.append(pending)
+
 	def trigger (
 		self,
 		fn: typing.Callable,
@@ -4742,7 +4891,8 @@ class Composition:
 					scale = composition_ref.scale,
 					time_signature = composition_ref.time_signature,
 					held_notes = composition_ref._sequencer._held_notes,
-					harmony = harmony_view
+					harmony = harmony_view,
+					section_motifs = composition_ref._section_motifs
 				)
 
 				try:

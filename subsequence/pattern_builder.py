@@ -112,7 +112,7 @@ class PatternBuilder(
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, scale: typing.Optional[str] = None, time_signature: typing.Tuple[int, int] = (4, 4), held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None, harmony: typing.Optional[typing.Any] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, scale: typing.Optional[str] = None, time_signature: typing.Tuple[int, int] = (4, 4), held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None, harmony: typing.Optional[typing.Any] = None, section_motifs: typing.Optional[typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info.
 
@@ -151,6 +151,8 @@ class PatternBuilder(
 				``p.motif()``.  ``None`` means ionian/major.
 			time_signature: The composition's time signature, read via
 				``p.time_signature``; powers the metric-weight table.
+			section_motifs: Optional reference to the composition's
+				section-motif registry, read by ``p.section_motif()``.
 			harmony: Optional read-only harmony window view for this cycle
 				(``p.harmony``) — ``p.harmony.chord``, ``chord_at(beat)``,
 				``next_chord``, ``until_change``.  ``None`` until the
@@ -176,6 +178,7 @@ class PatternBuilder(
 		self.scale: typing.Optional[str] = scale  # composition scale/mode, for degree resolution
 		self.time_signature: typing.Tuple[int, int] = time_signature
 		self.harmony: typing.Optional[typing.Any] = harmony  # HarmonyView for this cycle, or None
+		self._section_motifs: typing.Optional[typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]] = section_motifs
 		self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = held_notes
 		self._tuning_applied: bool = False  # set by apply_tuning() to prevent double-apply
 
@@ -912,6 +915,103 @@ class PatternBuilder(
 
 		else:
 			raise TypeError(f"Unknown control signal: {type(signal).__name__}")
+
+	def phrase (
+		self,
+		value: typing.Any,
+		root: int = 60,
+		velocity: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
+		fit: typing.Optional[float] = None,
+		resolution: typing.Optional[int] = None,
+		align: str = "pattern",
+		offset: float = 0.0,
+	) -> "PatternBuilder":
+
+		"""Place this cycle's window of a Phrase — position computed, never stored.
+
+		The playback position is stateless arithmetic over the engine's own
+		counters: ``pos = (p.cycle * pattern_length + offset) % phrase.length``
+		— deterministic under live reload, ``form_jump``, and render, with
+		zero new state.  A pattern shorter than the phrase walks through it
+		cycle by cycle; deliberately mismatched lengths are phase drift
+		(polymeter against the phrase).  When the cycle window crosses the
+		phrase's end, the phrase loops.
+
+		Patterns that should own the phrase's length call
+		``p.set_length(phrase.length)`` once instead.
+
+		Parameters:
+			value: A Phrase (or any value with ``.length``/``.slice``; a
+				Motif places its window directly).
+			root: Register anchor for degree resolution (see ``motif()``).
+			velocity: Optional override applied to every note.
+			fit: Passed through to ``motif()`` (active with the melody
+				engine stage).
+			resolution: Control-ramp pulse density (see ``motif()``).
+			align: ``"pattern"`` (default) counts pattern cycles;
+				``"section"`` uses the bar within the current form section,
+				so the phrase restarts when the section does.
+			offset: Beats added to the computed position (a phase shift).
+
+		Example:
+			```python
+			@comp.pattern(channel=4, bars=2)
+			def lead (p):
+				p.phrase(lead_line, root=72)
+			```
+		"""
+
+		length = getattr(value, "length", None)
+
+		if length is None or not hasattr(value, "slice"):
+			raise TypeError(f"phrase() places Phrase-like values (.length/.slice) — got {type(value).__name__}")
+		if length <= 0:
+			raise ValueError("cannot place an empty phrase")
+
+		if align == "pattern":
+			position = (self.cycle * float(self._pattern.length) + offset) % length
+		elif align == "section":
+			if self.section is None:
+				raise ValueError('phrase(align="section") needs a form — call composition.form(...)')
+			position = (self.section.bar * float(self.time_signature[0]) + offset) % length
+		else:
+			raise ValueError(f'align must be "pattern" or "section" — got {align!r}')
+
+		window_beats = float(self._pattern.length)
+		placed = 0.0
+
+		while placed < window_beats - 1e-9:
+
+			take = min(window_beats - placed, length - position)
+			piece = value.slice(position, position + take)
+			fragment = piece.flatten() if hasattr(piece, "flatten") else piece
+
+			self.motif(fragment, beat=placed, root=root, velocity=velocity, fit=fit, resolution=resolution)
+
+			placed += take
+			position = 0.0	# crossed the phrase end — loop to its start
+
+		return self
+
+	def section_motif (self, part: typing.Optional[str] = None) -> typing.Optional[typing.Any]:
+
+		"""The Motif/Phrase bound to the current section (and part), or ``None``.
+
+		Reads the ``composition.section_motifs()`` registry for the section
+		currently playing.  A section with no binding returns ``None`` —
+		bind material or rest; no fallback guessing::
+
+			@comp.pattern(channel=4, bars=2)
+			def lead (p):
+				line = p.section_motif("lead")
+				if line is not None:
+					p.phrase(line, root=72)
+		"""
+
+		if self.section is None or self._section_motifs is None:
+			return None
+
+		return self._section_motifs.get((self.section.name, part))
 
 	def capture (self, beat: float = 0.0, span: float = 4.0) -> "subsequence.motifs.Motif":
 

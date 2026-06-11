@@ -43,6 +43,7 @@ The top-level controller for a musical piece.
 | `osc(receive_port, send_port, send_host, receive_host) -> None` | Enable bi-directional Open Sound Control (OSC). |
 | `osc_map(address, handler) -> None` | Register a custom OSC handler. |
 | `pattern(channel, beats, bars, steps, step_duration, drum_note_map, cc_name_map, nrpn_name_map, reschedule_lookahead, voice_leading, device, mirrors) -> Callable` | Register a function as a repeating MIDI pattern. |
+| `phrase_part(channel, part, root, bars, beats, velocity, fit, device, mirrors) -> None` | Declare a part that plays each section's bound Motif/Phrase. |
 | `pin_chord(bar, chord) -> None` | Force the chord sounding at a bar — fiat over live generation. |
 | `play() -> None` | Start the composition. |
 | `render(bars, filename, max_minutes) -> None` | Render the composition to a MIDI file without real-time playback. |
@@ -50,6 +51,7 @@ The top-level controller for a musical piece.
 | `running_patterns *(property)*` | The currently active patterns, keyed by name. |
 | `schedule(fn, cycle_beats, reschedule_lookahead, wait_for_initial, defer) -> None` | Register a custom function to run on a repeating beat-based cycle. |
 | `section_chords(section_name, progression) -> None` | Bind a :class:`Progression` to a named form section. |
+| `section_motifs(section_name, value, part) -> None` | Bind a Motif or Phrase to a named form section (per optional part). |
 | `seed *(property)*` | The composition's random seed, or None when unseeded. |
 | `seed_for(name) -> Optional[int]` | Surface the effective derived seed for a named stream. |
 | `sequencer *(property)*` | The underlying ``Sequencer`` instance. |
@@ -73,7 +75,7 @@ The musician's 'palette' for creating musical content.
 
 | Method | Description |
 |---|---|
-| `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key, scale, time_signature, held_notes, harmony) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
+| `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key, scale, time_signature, held_notes, harmony, section_motifs) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
 | `apply_tuning(tuning, bend_range, channels, reference_note) -> 'PatternBuilder'` | Apply a microtonal tuning to this pattern via pitch bend injection. |
 | `arpeggio(notes, root, velocity, count, inversion, beat, span, spacing, duration, direction, seed, rng) -> 'PatternBuilder'` | Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time at regular beat intervals. |
 | `bar_cycle(length) -> subsequence.pattern_builder.BarCycle` | Return the current bar's position within a repeating cycle of bars. |
@@ -123,6 +125,7 @@ The musician's 'palette' for creating musical content.
 | `osc(address, *args, beat) -> 'subsequence.pattern_builder.PatternBuilder'` | Send an OSC message at a beat position. |
 | `osc_ramp(address, start, end, beat_start, beat_end, resolution, shape) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate an OSC float value over a beat range. |
 | `param(name, default) -> Any` | Read a tweakable parameter for this pattern. |
+| `phrase(value, root, velocity, fit, resolution, align, offset) -> 'PatternBuilder'` | Place this cycle's window of a Phrase — position computed, never stored. |
 | `pitch_bend(value, beat) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a single pitch bend message at a beat position. |
 | `pitch_bend_ramp(start, end, beat_start, beat_end, resolution, shape) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate pitch bend over a beat range. |
 | `portamento(time, shape, resolution, bend_range, wrap) -> 'subsequence.pattern_builder.PatternBuilder'` | Glide between all consecutive notes using pitch bend. |
@@ -137,6 +140,7 @@ The musician's 'palette' for creating musical content.
 | `rpn(parameter, value, beat, fine, null_reset) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a single RPN parameter write at a beat position. |
 | `rpn_ramp(parameter, start, end, beat_start, beat_end, resolution, shape, fine, null_reset) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate an RPN value over a beat range. |
 | `scale_velocities(factors, grid) -> 'PatternBuilder'` | Scale note velocities by a per-step multiplier list. |
+| `section_motif(part) -> Optional[Any]` | The Motif/Phrase bound to the current section (and part), or ``None``. |
 | `self_avoiding_walk(pitches, spacing, velocity, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melody using a self-avoiding random walk. |
 | `seq(notation, pitch, velocity, seed, rng) -> 'PatternBuilder'` | Build a pattern using an expressive string-based 'mini-notation'. |
 | `sequence(steps, pitches, velocities, durations, grid, probability, seed, rng) -> 'PatternBuilder'` | A multi-parameter step sequencer. |
@@ -267,6 +271,7 @@ An immutable musical figure: timed note events + control gestures + a length in 
 |---|---|
 | `__init__(events, length, controls) -> None` |  |
 | `accent(beat, amount) -> 'Motif'` | Add *amount* velocity to every note at the given beat position (0-based beats). |
+| `answer(to) -> 'Motif'` | Call → response: re-aim the tail to a stable degree. |
 | `cc(control, values, beats, length, probabilities) -> 'Motif'` | Discrete CC writes at beat positions — mirrors ``p.cc()``; names resolve at placement. |
 | `cc_ramp(control, start, end, beat_start, beat_end, shape, length, probability) -> 'Motif'` | A CC value swept ``start`` → ``end`` over a beat range — mirrors ``p.cc_ramp()``. |
 | `degrees(degrees, beats, velocities, durations, probabilities, length) -> 'Motif'` | A melody written as 1-based scale degrees, one per beat by default. |
@@ -298,6 +303,7 @@ An immutable musical figure: timed note events + control gestures + a length in 
 | `stretch(factor) -> 'Motif'` | Scale time by *factor* (2.0 = half-time feel): beats, durations, spans, and length. |
 | `then(other) -> 'Motif'` | Closed sequential concat: glue *other* after this motif into ONE longer motif. |
 | `transpose(steps, semitones) -> 'Motif'` | Transpose pitched content; the keyword names the unit. |
+| `vary(notes, position, seed, rng) -> 'Motif'` | Replace a few pitches, preserving the rhythm — the smallest variation. |
 | `with_velocity(velocity) -> 'Motif'` | Replace every note's velocity (an int, or a ``(low, high)`` random range). |
 
 
@@ -307,14 +313,16 @@ A sequence of Motifs with segmentation preserved.
 
 | Method | Description |
 |---|---|
-| `__init__(segments) -> None` | Coerce any iterable of Motifs. |
+| `__init__(segments, recipe) -> None` | Coerce any iterable of Motifs. |
 | `describe() -> str` | A readable summary: total length and each segment on its own line. |
+| `develop(motif, bars, plan, seed, beats_per_bar) -> 'Phrase'` | Grow a motif into a phrase by a plan — the phrase generator. |
 | `flatten() -> subsequence.motifs.Motif` | Erase segmentation: one long Motif (the monoid homomorphism onto ``then``). |
 | `invert(pivot) -> 'Phrase'` | Mirror pitches in every segment around one pivot (see :meth:`Motif.invert`). |
 | `length *(property)*` | Total length in beats (sum of segment lengths). |
 | `pitched(spec) -> 'Phrase'` | Replace every pitch, segment-wise. |
 | `quantize(grid) -> 'Phrase'` | Snap note onsets segment-wise. |
 | `replace(position, motif) -> 'Phrase'` | Replace the segment at a 1-based position (musicians count from one). |
+| `reroll(bar, bars, seed) -> 'Phrase'` | Regenerate only the named bars — rhythm and boundary pitches kept. |
 | `reverse() -> 'Phrase'` | Reverse the whole timeline: segments reverse order AND each reverses internally. |
 | `rhythm() -> 'Phrase'` | Strip pitches segment-wise: a phrase-shaped skeleton. |
 | `rotate(beats) -> 'Phrase'` | Rotate the whole timeline modulo the total length, then re-segment at the original boundaries. |

@@ -35,7 +35,9 @@ transforms (``transpose``, ``invert``, ``pitched``, ``accent``,
 
 import dataclasses
 import math
+import random
 import typing
+import warnings
 
 import subsequence.constants.velocity
 import subsequence.easing
@@ -896,6 +898,136 @@ class Motif:
 
 		return Motif(events=events, length=self.length, controls=self.controls)
 
+	def _nudged_pitch (self, pitch: PitchSpec, rng: random.Random) -> PitchSpec:
+
+		"""One varied pitch: a small melodic nudge that always changes the note.
+
+		Degrees move by scale steps, MIDI ints by semitones, chord tones by
+		index; an Approach's target is nudged.  Drum names raise — a varied
+		drum is a different instrument, not a variation.
+		"""
+
+		if isinstance(pitch, Degree):
+			steps = [pitch.step + delta for delta in (-2, -1, 1, 2) if pitch.step + delta >= 1]
+			return dataclasses.replace(pitch, step = rng.choice(steps))
+		if isinstance(pitch, ChordTone):
+			indices = [pitch.index + delta for delta in (-1, 1) if pitch.index + delta >= 1]
+			return ChordTone(rng.choice(indices), octave = pitch.octave)
+		if isinstance(pitch, Approach):
+			nudged = self._nudged_pitch(pitch.target, rng)
+			if not isinstance(nudged, (int, Degree, ChordTone)):
+				raise TypeError(f"cannot vary an Approach aimed at {type(nudged).__name__} content")
+			return Approach(nudged)
+		if isinstance(pitch, int):
+			return pitch + rng.choice((-2, -1, 1, 2))
+
+		raise TypeError(
+			f"vary() moves pitches — {type(pitch).__name__} content cannot vary "
+			"(a varied drum is a different instrument)"
+		)
+
+	def vary (
+		self,
+		notes: int = 1,
+		position: str = "end",
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
+	) -> "Motif":
+
+		"""Replace a few pitches, preserving the rhythm — the smallest variation.
+
+		Rhythm, velocities, durations, rests, and control gestures are
+		untouched; only the chosen notes' pitches move (by a small melodic
+		nudge: scale steps for degrees, semitones for MIDI ints).
+
+		Parameters:
+			notes: How many pitched notes to vary (clamped to what exists).
+			position: Which notes — ``"end"`` (the tail, the default),
+				``"start"``, or ``"anywhere"`` (drawn from the stream).
+			seed: Seed for the variation.  A standalone vary without a seed
+				warns — module-level nondeterminism breaks live reload.
+			rng: An explicit random stream (overrides ``seed``; used by
+				recipe machinery).
+
+		Example:
+			```python
+			answer = call.vary(notes=1, seed=4)     # same figure, new tail note
+			```
+		"""
+
+		if notes < 0:
+			raise ValueError(f"notes must be at least 0, got {notes}")
+		if position not in ("end", "start", "anywhere"):
+			raise ValueError(f'position must be "end", "start", or "anywhere" — got {position!r}')
+
+		if rng is None:
+			if seed is None:
+				warnings.warn(
+					"vary() without seed= is nondeterministic — pass seed= so the "
+					"value survives live reload",
+					stacklevel = 2,
+				)
+				rng = random.Random()
+			else:
+				rng = random.Random(seed)
+
+		pitched_indices = [index for index, event in enumerate(self.events) if event.pitch is not None]
+		count = min(notes, len(pitched_indices))
+
+		if count == 0:
+			return self
+
+		if position == "end":
+			chosen = pitched_indices[-count:]
+		elif position == "start":
+			chosen = pitched_indices[:count]
+		else:
+			chosen = sorted(rng.sample(pitched_indices, count))
+
+		events = list(self.events)
+
+		for index in chosen:
+			events[index] = dataclasses.replace(events[index], pitch = self._nudged_pitch(events[index].pitch, rng))
+
+		return Motif(events = tuple(events), length = self.length, controls = self.controls)
+
+	def answer (self, to: typing.Union[int, Degree] = 1) -> "Motif":
+
+		"""Call → response: re-aim the tail to a stable degree.
+
+		The classic consequent move — the figure repeats but its last pitched
+		note lands home (degree 1 by default; pass ``to=5`` for a half-close,
+		or a full ``Degree`` for register control).  Everything else —
+		rhythm, the other pitches, velocities, controls — is untouched.
+
+		Degree content only: absolute MIDI has no degrees to re-aim (build
+		the call with ``motif([...])``), and drums raise.
+		"""
+
+		target = to if isinstance(to, Degree) else Degree(int(to))
+
+		pitched_indices = [index for index, event in enumerate(self.events) if event.pitch is not None]
+
+		if not pitched_indices:
+			return self
+
+		last = self.events[pitched_indices[-1]]
+
+		if not isinstance(last.pitch, Degree):
+			raise TypeError(
+				f"answer() re-aims scale degrees — the tail is {type(last.pitch).__name__} "
+				"content (build the call with motif([...]) for degree content)"
+			)
+
+		if isinstance(to, int):
+			# Keep the call's register: only the step is re-aimed.
+			target = dataclasses.replace(last.pitch, step = int(to), chroma = 0)
+
+		events = list(self.events)
+		events[pitched_indices[-1]] = dataclasses.replace(last, pitch = target)
+
+		return Motif(events = tuple(events), length = self.length, controls = self.controls)
+
 	def pitched (self, spec: PitchSpec) -> "Motif":
 
 		"""
@@ -1085,19 +1217,80 @@ def _control_label (c: ControlEvent) -> str:
 # ── Phrase ──────────────────────────────────────────────────────────────────
 
 @dataclasses.dataclass(frozen=True)
+class _PhraseRecipe:
+
+	"""Provenance of a generated phrase — what reroll() regenerates from.
+
+	Generated values carry their recipe (the generator spec and seed) so
+	per-region regeneration is possible; a hand-written or transformed
+	phrase has none, and rerolling it raises loudly.
+
+	Attributes:
+		source: The motif the phrase was developed from.
+		plan: The unit-label tuple, or the recipe name.
+		bars: The phrase length in bars.
+		seed: The development seed (None = the unseeded warning path).
+		beats_per_bar: The bar size the plan was spread against.
+	"""
+
+	source: Motif
+	plan: typing.Union[typing.Tuple[str, ...], str]
+	bars: int
+	seed: typing.Optional[int]
+	beats_per_bar: float = 4.0
+
+
+def _contrast_unit (source: Motif, rng: random.Random) -> Motif:
+
+	"""A generated contrast unit: the source's rhythm, freshly re-pitched.
+
+	Roughly half the pitched notes move (small melodic nudges), so the unit
+	is recognisably related but melodically new.  The richer rhythm-first
+	generator arrives with the melody engine stage.
+	"""
+
+	pitched = sum(1 for event in source.events if event.pitch is not None)
+
+	return source.vary(notes = max(1, pitched // 2), position = "anywhere", rng = rng)
+
+
+def _call_response_units (call: Motif, seed: typing.Optional[int]) -> typing.List[Motif]:
+
+	"""The call_response recipe: call, answer, call, varied answer."""
+
+	response = call.answer()
+	varied = response.vary(notes = 1, position = "end", rng = random.Random(f"{seed}:cr:vary"))
+
+	return [call, response, call, varied]
+
+
+# The curated recipe table — names reserved for plans whose semantics exceed
+# a label skeleton.  Each takes (source_motif, seed) and returns the units.
+_PHRASE_RECIPES: typing.Dict[str, typing.Callable[[Motif, typing.Optional[int]], typing.List[Motif]]] = {
+	"call_response": _call_response_units,
+}
+
+
+@dataclasses.dataclass(frozen=True)
 class Phrase:
 
 	"""
 	A sequence of Motifs with segmentation preserved.
 
-	Segmentation is the unit of editing — it is what future development and
+	Segmentation is the unit of editing — it is what development and
 	per-region regeneration operate on.  ``flatten()`` erases it into one
 	long Motif.  Length is the sum of segment lengths.
+
+	A phrase made by :meth:`develop` carries its recipe, so
+	:meth:`reroll` can regenerate a region; transforms and hand edits
+	return recipe-less phrases (their notes no longer come from the
+	recipe, so there is nothing honest to regenerate from).
 	"""
 
 	segments: typing.Tuple[Motif, ...]
+	recipe: typing.Optional[_PhraseRecipe]
 
-	def __init__ (self, segments: typing.Iterable[Motif]) -> None:
+	def __init__ (self, segments: typing.Iterable[Motif], recipe: typing.Optional[_PhraseRecipe] = None) -> None:
 
 		"""Coerce any iterable of Motifs."""
 
@@ -1108,6 +1301,7 @@ class Phrase:
 				raise TypeError(f"Phrase segments must be Motifs — got {type(segment).__name__}")
 
 		object.__setattr__(self, "segments", segments)
+		object.__setattr__(self, "recipe", recipe)
 
 	@property
 	def length (self) -> float:
@@ -1115,6 +1309,204 @@ class Phrase:
 		"""Total length in beats (sum of segment lengths)."""
 
 		return sum(segment.length for segment in self.segments)
+
+	@classmethod
+	def develop (
+		cls,
+		motif: Motif,
+		bars: int = 8,
+		plan: typing.Optional[typing.Union[typing.Sequence[str], str]] = None,
+		seed: typing.Optional[int] = None,
+		beats_per_bar: float = 4.0,
+	) -> "Phrase":
+
+		"""Grow a motif into a phrase by a plan — the phrase generator.
+
+		``plan`` follows the standard form.  The literal form is a **list of
+		unit labels** — ``plan=["a", "a", "a", "b"]``, equivalently
+		``["a"] * 3 + ["b"]``: the first label is the given motif, each new
+		label is a generated contrast unit (the source's rhythm, freshly
+		re-pitched), a repeated label is a restatement, and *bars* spreads
+		evenly across the units.  A bare string is a **recipe name** from
+		the curated table — ``plan="call_response"`` (call, answer, call,
+		varied answer) — reserved for plans whose semantics exceed a label
+		skeleton.  A letter string is not a plan: a sequence of labels is a
+		sequence, so it is a list.
+
+		The result carries its recipe, so :meth:`reroll` can regenerate a
+		region later.
+
+		Parameters:
+			motif: The source unit (its length must be ``bars / len(units)``
+				bars — the plan's units tile the phrase exactly).
+			bars: Phrase length in bars (must divide evenly by the unit
+				count).
+			plan: A list of unit labels, or a recipe name.
+			seed: Seed for the generated units.  Without one, develop()
+				warns — module-level nondeterminism breaks live reload.
+			beats_per_bar: Bar size in beats (the value is context-free;
+				4 is the common-time default).
+
+		Example:
+			```python
+			call = subsequence.motif([5, 6, 5, 3, None, 1, 2, 3])
+			lead = subsequence.Phrase.develop(call, bars=8, plan="call_response", seed=11)
+			```
+		"""
+
+		if plan is None:
+			raise ValueError(
+				'develop() needs a plan= — a list of unit labels (plan=["a", "a", "a", "b"]) '
+				'or a recipe name (plan="call_response")'
+			)
+
+		if seed is None:
+			warnings.warn(
+				"develop() without seed= is nondeterministic — pass seed= so the "
+				"value survives live reload",
+				stacklevel = 2,
+			)
+
+		if isinstance(plan, str):
+
+			if plan not in _PHRASE_RECIPES:
+				known = ", ".join(sorted(_PHRASE_RECIPES))
+				hint = ""
+				if plan.isalpha() and plan == plan.lower() and len(set(plan)) < len(plan):
+					spelled = ", ".join(repr(c) for c in plan)
+					hint = f" A letter string is not a plan — a sequence of labels is a list: plan=[{spelled}]."
+				raise ValueError(f"Unknown phrase recipe {plan!r}. Known recipes: {known}.{hint}")
+
+			units = _PHRASE_RECIPES[plan](motif, seed)
+			stored_plan: typing.Union[typing.Tuple[str, ...], str] = plan
+
+		else:
+
+			labels = list(plan)
+
+			if not labels or not all(isinstance(label, str) and label for label in labels):
+				raise ValueError("plan labels must be non-empty strings, e.g. plan=['a', 'a', 'b']")
+
+			generated: typing.Dict[str, Motif] = {labels[0]: motif}
+
+			for label in labels:
+				if label not in generated:
+					generated[label] = _contrast_unit(motif, random.Random(f"{seed}:unit:{label}"))
+
+			units = [generated[label] for label in labels]
+			stored_plan = tuple(labels)
+
+		if bars % len(units) != 0:
+			raise ValueError(
+				f"bars={bars} does not divide evenly across {len(units)} plan units — "
+				"each unit must fill a whole number of bars"
+			)
+
+		unit_beats = bars * beats_per_bar / len(units)
+
+		if abs(motif.length - unit_beats) > 1e-9:
+			raise ValueError(
+				f"the motif is {motif.length:g} beats but each of the {len(units)} plan units "
+				f"spans {unit_beats:g} beats ({bars} bars / {len(units)} units) — "
+				"adjust bars, the plan, or the motif's length"
+			)
+
+		return cls(units, recipe = _PhraseRecipe(
+			source = motif,
+			plan = stored_plan,
+			bars = bars,
+			seed = seed,
+			beats_per_bar = beats_per_bar,
+		))
+
+	def reroll (
+		self,
+		bar: typing.Optional[int] = None,
+		bars: typing.Optional[typing.Sequence[int]] = None,
+		seed: typing.Optional[int] = None,
+	) -> "Phrase":
+
+		"""Regenerate only the named bars — rhythm and boundary pitches kept.
+
+		Within each named bar, the first and last pitched notes stay (the
+		boundary pins) and the interior pitches re-roll from the recipe's
+		stream; onsets, durations, velocities, rests, drums, and control
+		gestures are untouched.  Segmentation and the recipe survive, so
+		rerolls compose.
+
+		Only a phrase that carries a recipe can reroll — a hand-written or
+		transformed phrase raises loudly (its notes no longer come from a
+		generator, so regenerating them would invent music).
+
+		Parameters:
+			bar: A single 1-based bar to reroll.
+			bars: A list of 1-based bars (the paired plural spelling).
+			seed: Seed for the new pitches (salted per bar).  Without one,
+				reroll() warns.
+
+		Example:
+			```python
+			lead = lead.reroll(bar=7, seed=4)    # only bar 7; rhythm + boundaries kept
+			```
+		"""
+
+		if self.recipe is None:
+			raise ValueError(
+				"this phrase carries no recipe (it was written by hand, or transformed "
+				"since generation) — reroll() regenerates from a recipe; edit segments "
+				"with replace(), or rebuild with Phrase.develop()"
+			)
+
+		if (bar is None) == (bars is None):
+			raise ValueError("reroll() takes exactly one of bar= (an int) or bars= (a list)")
+
+		region = [bar] if bar is not None else list(bars or [])
+		beats_per_bar = self.recipe.beats_per_bar
+		total_bars = int(round(self.length / beats_per_bar))
+
+		for number in region:
+			if not isinstance(number, int) or isinstance(number, bool) or not 1 <= number <= total_bars:
+				raise ValueError(f"bar {number!r} is outside this phrase (1–{total_bars})")
+
+		if seed is None:
+			warnings.warn(
+				"reroll() without seed= is nondeterministic — pass seed= so the "
+				"value survives live reload",
+				stacklevel = 2,
+			)
+
+		windows = [
+			((number - 1) * beats_per_bar, number * beats_per_bar, random.Random(f"{seed}:reroll:{number}"))
+			for number in sorted(set(region))
+		]
+
+		new_segments: typing.List[Motif] = []
+		offset = 0.0
+
+		for segment in self.segments:
+
+			events = list(segment.events)
+
+			for window_start, window_end, rng in windows:
+
+				inside = [
+					index for index, event in enumerate(events)
+					if window_start <= offset + event.beat < window_end
+					and event.pitch is not None and not isinstance(event.pitch, str)
+				]
+
+				# Boundary pins: the first and last pitched notes of the bar
+				# stay; only the interior re-rolls.
+				for index in inside[1:-1]:
+					events[index] = dataclasses.replace(
+						events[index],
+						pitch = segment._nudged_pitch(events[index].pitch, rng),
+					)
+
+			new_segments.append(Motif(events = tuple(events), length = segment.length, controls = segment.controls))
+			offset += segment.length
+
+		return Phrase(new_segments, recipe = self.recipe)
 
 	def flatten (self) -> Motif:
 
