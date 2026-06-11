@@ -129,17 +129,21 @@ def test_midi_ints_pass_through_and_drums_use_the_funnel () -> None:
 	assert _placed(p) == [(0.0, 72), (1.0, 36)]
 
 
-def test_chord_tone_without_harmony_and_approach_raise_clearly () -> None:
+def test_harmony_dependent_specs_raise_clearly_without_the_clock () -> None:
 
-	"""ChordTone needs the clock (a clear ValueError without one); Approach waits for stage 5."""
+	"""ChordTone — and an Approach AT a chord tone — need the clock; degree targets do not."""
 
 	p = _builder()
 
 	with pytest.raises(ValueError, match="harmonic clock"):
 		p.motif(M.hits("kick", beats=[0], length=1).pitched("root"))
 
-	with pytest.raises(NotImplementedError, match="harmony window"):
-		p.motif(M.from_events([subsequence.MotifEvent(beat=0.0, pitch=Approach(Degree(1)))], length=1))
+	with pytest.raises(ValueError, match="harmonic clock"):
+		p.motif(M.from_events([subsequence.MotifEvent(beat=0.0, pitch=Approach(ChordTone("root")))], length=1))
+
+	# A Degree target resolves with no harmony at all: one semitone below it.
+	p.motif(M.from_events([subsequence.MotifEvent(beat=0.0, pitch=Approach(Degree(1)))], length=1))
+	assert _placed(p) == [(0.0, 56)]	# A minor tonic at 57, approached from below
 
 
 class _StubHarmony:

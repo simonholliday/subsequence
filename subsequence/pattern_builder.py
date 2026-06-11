@@ -713,6 +713,7 @@ class PatternBuilder(
 		root: int = 60,
 		velocity: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
 		fit: typing.Optional[float] = None,
+		fit_weights: typing.Optional[typing.List[float]] = None,
 		resolution: typing.Optional[int] = None,
 	) -> "PatternBuilder":
 
@@ -738,8 +739,18 @@ class PatternBuilder(
 				upward) and the melody keeps its written contour from there.
 			velocity: Optional override applied to every note (otherwise each
 				event's own velocity is used).
-			fit: Accepted now; the chord-tones-on-strong-beats dial becomes
-				active only when a harmonic context exists (not yet built).
+			fit: The chord-tones-on-strong-beats dial, 0.0–1.0: resolved
+				Degree/int pitches landing on strong beats (metric weight
+				>= 0.5) snap to the nearest chord tone with this
+				probability.  Defaults to the motif's own ``fit`` (0.7 on
+				generated motifs, none on hand-written ones — typed degrees
+				are sacred); inactive without a chord context.  ChordTone
+				and Approach events never snap — their harmony reading is
+				inherent (an Approach's chromaticism is the point).
+			fit_weights: Custom per-step metric weight list (the
+				``build_ghost_bias`` precedent) for additive or
+				non-isochronous meters; defaults to the time signature's
+				table.
 			resolution: Pulses between control-ramp messages (defaults to
 				each control verb's own default).  Kept out of the value by
 				design: beats and shapes are music, traffic density is wire.
@@ -750,6 +761,16 @@ class PatternBuilder(
 		if events is None or not hasattr(m, "length"):
 			raise TypeError(f"motif() places Motif-like values (.events/.length) — got {type(m).__name__}")
 
+		effective_fit = fit if fit is not None else getattr(m, "fit", None)
+		fit_table: typing.Optional[typing.List[float]] = None
+		snap_probability = 0.0
+
+		if effective_fit:
+			snap_probability = float(effective_fit)
+			fit_table = list(fit_weights) if fit_weights is not None else subsequence.sequence_utils.build_metric_weights(
+				self.time_signature, grid = self._default_grid
+			)
+
 		for event in events:
 
 			if span is not None and event.beat >= span:
@@ -757,8 +778,20 @@ class PatternBuilder(
 			if event.probability < 1.0 and self.rng.random() >= event.probability:
 				continue
 
+			resolved = self._resolve_motif_pitch(event.pitch, root, beat + event.beat)
+
+			# The fit dial reads only Degree/int content: drums have no
+			# pitch to snap, ChordTones already are chord tones, and an
+			# Approach's chromaticism is the point.
+			if (
+				fit_table is not None
+				and isinstance(resolved, int)
+				and isinstance(event.pitch, (int, subsequence.motifs.Degree))
+			):
+				resolved = self._fit_snap(resolved, beat + event.beat, snap_probability, fit_table)
+
 			self.note(
-				pitch = self._resolve_motif_pitch(event.pitch, root, beat + event.beat),
+				pitch = resolved,
 				beat = beat + event.beat,
 				velocity = velocity if velocity is not None else event.velocity,
 				duration = event.duration,
@@ -800,12 +833,94 @@ class PatternBuilder(
 			return self._resolve_chord_tone_pitch(pitch, root, event_beat)
 
 		if isinstance(pitch, subsequence.motifs.Approach):
-			raise NotImplementedError(
-				"Approach pitches resolve against the NEXT chord via the harmony "
-				"window — that arrives with the melody engine stage"
-			)
+			return self._resolve_approach_pitch(pitch, root, event_beat)
 
 		raise TypeError(f"Unknown pitch spec: {type(pitch).__name__}")
+
+	def _resolve_approach_pitch (self, approach: "subsequence.motifs.Approach", root: int, event_beat: float) -> int:
+
+		"""Resolve an Approach: one semitone below its target's pitch.
+
+		A ``ChordTone`` target reads the chord at the NEXT boundary after the
+		event (the harmony window's anticipation data) — the approach is the
+		tension, the target is where the harmony lands.  When the window
+		holds no committed next chord (the live mode horizon's edge), the
+		sounding chord stands in.  ``Degree``/``int`` targets resolve as
+		usual (no harmony needed).
+		"""
+
+		target = approach.target
+
+		if isinstance(target, subsequence.motifs.ChordTone):
+
+			if self.harmony is None:
+				raise ValueError(
+					"an Approach at a chord tone needs the harmonic clock — "
+					"call composition.harmony(...) (a style or a bound progression)"
+				)
+
+			chord = self.harmony.next_chord_at(event_beat)
+
+			if chord is None:
+				chord = self.harmony.chord_at(event_beat)
+			if chord is None:
+				raise ValueError(
+					f"No chord is known around beat {event_beat:g} of this cycle — "
+					"the harmony window does not cover it"
+				)
+
+			tones = chord.tones(root, count = target.index)
+			resolved = int(tones[target.index - 1]) + 12 * target.octave
+
+		elif isinstance(target, subsequence.motifs.Degree):
+			resolved = self._resolve_degree_pitch(target, root)
+
+		elif isinstance(target, int):
+			resolved = target
+
+		else:
+			raise TypeError(f"cannot approach {type(target).__name__} content")
+
+		return resolved - 1
+
+	def _fit_snap (self, pitch: int, event_beat: float, fit: float, weights: typing.List[float]) -> int:
+
+		"""The fit dial: snap a strong-beat pitch to the nearest chord tone, with probability *fit*.
+
+		Strong beats are the metric-weight table's >= 0.5 positions
+		(downbeats and beats); off-grid events take the nearest grid
+		position's weight.  Inactive without a chord context.
+		"""
+
+		if self.harmony is None:
+			return pitch
+
+		bar_beats = float(self.time_signature[0])
+		grid = len(weights)
+		step = (event_beat % bar_beats) * grid / bar_beats
+		weight = weights[int(round(step)) % grid]
+
+		if weight < 0.5:
+			return pitch
+		if self.rng.random() >= fit:
+			return pitch
+
+		chord = self.harmony.chord_at(event_beat)
+
+		if chord is None:
+			return pitch
+
+		chord_pcs = {tone % 12 for tone in chord.tones(pitch)}
+
+		if pitch % 12 in chord_pcs:
+			return pitch
+
+		# Nearest chord tone, ties upward.
+		for delta in (1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6):
+			if (pitch + delta) % 12 in chord_pcs and 0 <= pitch + delta <= 127:
+				return pitch + delta
+
+		return pitch
 
 	def _resolve_chord_tone_pitch (self, tone: "subsequence.motifs.ChordTone", root: int, event_beat: float) -> int:
 

@@ -120,8 +120,9 @@ class Approach:
 	"""
 	A half-step approach into a target pitch at the next chord boundary.
 
-	Parses today; resolution requires the harmony window and is not yet
-	available — placing a motif containing one raises with a clear message.
+	Resolves at placement, one semitone below its target (the leading-tone
+	approach); a ``ChordTone`` target reads the NEXT chord through the
+	harmony window, so the approach lands as the harmony arrives.
 	"""
 
 	target: typing.Union[int, Degree, ChordTone]
@@ -348,6 +349,7 @@ class Motif:
 	events: typing.Tuple[MotifEvent, ...]
 	length: float
 	controls: typing.Tuple[ControlEvent, ...] = ()
+	fit: typing.Optional[float] = None		# placement default for the fit dial; set by generate()
 
 	def __post_init__ (self) -> None:
 
@@ -704,6 +706,7 @@ class Motif:
 			events = self.events + tuple(dataclasses.replace(e, beat=e.beat + self.length) for e in other.events),
 			length = self.length + other.length,
 			controls = self.controls + tuple(dataclasses.replace(c, beat=c.beat + self.length) for c in other.controls),
+			fit = self.fit,
 		)
 
 	@classmethod
@@ -717,6 +720,233 @@ class Motif:
 			result = result.then(m)
 
 		return result
+
+	@classmethod
+	def generate (
+		cls,
+		rhythm: typing.Any,
+		length: typing.Optional[float] = None,
+		scale: typing.Optional[typing.Union[str, typing.Sequence[int]]] = None,
+		contour: typing.Optional[str] = None,
+		end_on: typing.Optional[typing.Union[int, Degree]] = None,
+		pins: typing.Optional[typing.Dict[int, typing.Union[int, Degree]]] = None,
+		max_pitches: typing.Optional[int] = None,
+		velocities: typing.Any = _DEFAULT_VELOCITY,
+		durations: typing.Any = 0.25,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
+		state: typing.Optional[typing.Any] = None,
+		nir_strength: float = 0.5,
+		pitch_diversity: float = 0.6,
+		tessitura_strength: float = 0.6,
+	) -> "Motif":
+
+		"""Generate a melodic motif — rhythm first, pitches walked, a value out.
+
+		The melody engine emitting a value: you give the **rhythm** (an onset
+		list in beats, or another motif whose rhythm to borrow — cross-pattern
+		rhythm reuse is shared values); the engine walks pitches over it
+		through the soft scoring factors (NIR expectation, contour envelope,
+		tessitura regression, diversity), honouring any pins.
+
+		The result emits **scale degrees** (resolved at placement against the
+		composition key/scale), so a generated hook transposes, varies, and
+		develops like a hand-written one.  ``scale=`` constrains *candidate
+		choice only*: a name or interval list masks which pitches the walk
+		may use, spelled relative to its best-fit reference (major or minor)
+		— bind it in a composition whose scale matches that family and
+		resolution is exact.  An explicit MIDI pitch pool (a list of note
+		numbers) switches to absolute output (the sieve/atonal path).
+
+		Parameters:
+			rhythm: Onset beats (``[0, 1, 1.5, 1.75, 2.5]``) or a Motif
+				(its onsets are borrowed).
+			length: Motif length in beats; defaults to the onsets rounded
+				up to a whole 4-beat bar.
+			scale: A scale name, an interval list, or an explicit MIDI
+				pitch pool.  ``None`` = the plain seven degrees.
+			contour: Envelope shaping the line's height over its span —
+				``"arch"``, ``"valley"``, ``"ascending"``, ``"descending"``.
+			end_on: Degree the line must end on — sugar for ``pins={-1: ...}``.
+			pins: ``{position: degree}`` — 1-based note positions (``-1`` =
+				the last, the Python idiom); the engine fills between.
+			max_pitches: Cap on distinct pitches (a tight pool is a hook);
+				keeps the most central candidates.
+			velocities / durations: Scalar or per-note list (the parallel-
+				list convention).
+			seed: Seed for the walk (required or warned — module-level
+				nondeterminism breaks live reload).
+			rng: Explicit stream (overrides ``seed``).
+			state: A ``MelodicState`` whose settings and history seed the
+				walk.  It is **copied** — building a value never mutates a
+				module-level live object.
+			nir_strength / pitch_diversity / tessitura_strength: The walk's
+				dials when no ``state`` is given.
+
+		Example:
+			```python
+			hook = subsequence.Motif.generate(
+				rhythm=[0, 1, 1.5, 1.75, 2.5], scale="minor_pentatonic",
+				contour="arch", end_on=1, seed=7,
+			)
+			```
+		"""
+
+		import subsequence.melodic_state
+
+		onsets = list(rhythm.onsets()) if hasattr(rhythm, "onsets") else [float(b) for b in rhythm]
+
+		if not onsets:
+			raise ValueError("generate() needs at least one onset — the rhythm comes first")
+		if sorted(onsets) != onsets:
+			raise ValueError("rhythm onsets must ascend")
+
+		if length is None:
+			length = max(4.0, math.ceil((onsets[-1] + 1e-9) / 4.0) * 4.0)
+		if onsets[-1] >= length:
+			raise ValueError(f"the last onset ({onsets[-1]:g}) falls outside length={length:g}")
+
+		if rng is None:
+			if seed is None:
+				warnings.warn(
+					"generate() without seed= is nondeterministic — pass seed= so the "
+					"value survives live reload",
+					stacklevel = 2,
+				)
+				rng = random.Random()
+			else:
+				rng = random.Random(seed)
+
+		# --- The candidate pool ------------------------------------------------
+		absolute_pool: typing.Optional[typing.List[int]] = None
+		intervals: typing.List[int]
+
+		if scale is None:
+			intervals = list(subsequence.intervals.scale_pitch_classes(0, "ionian"))
+		elif isinstance(scale, str):
+			intervals = list(subsequence.intervals.scale_pitch_classes(0, scale))
+		else:
+			values = [int(v) for v in scale]
+			if values and (min(values) != 0 or max(values) > 11):
+				absolute_pool = sorted(values)		# an explicit MIDI pool: absolute output
+				intervals = []
+			else:
+				intervals = sorted(set(values))
+
+		# Best-fit reference scale for degree spelling: whichever of major/
+		# minor contains more of the pool (ties to major).  Bound under a
+		# matching composition scale, resolution is exact.
+		if absolute_pool is None:
+			ionian = set(subsequence.intervals.scale_pitch_classes(0, "ionian"))
+			aeolian = set(subsequence.intervals.scale_pitch_classes(0, "minor"))
+			reference_name = "minor" if sum(i in aeolian for i in intervals) > sum(i in ionian for i in intervals) else "ionian"
+			reference = list(subsequence.intervals.scale_pitch_classes(0, reference_name))
+
+		# --- The walking state (copied, never mutated in place) ----------------
+		if state is not None:
+			walker = state.clone()
+		else:
+			walker = subsequence.melodic_state.MelodicState(
+				nir_strength = nir_strength,
+				pitch_diversity = pitch_diversity,
+				tessitura_strength = tessitura_strength,
+				chord_weight = 0.0,		# values have no chord context; fit applies at placement
+			)
+
+		if absolute_pool is not None:
+			walker.set_pool(absolute_pool)
+		else:
+			# Offsets over ~1.5 octaves anchored at 60 — register is decided
+			# at placement (root=), so the anchor is arbitrary and erased.
+			walker.set_pool([60 + octave * 12 + interval for octave in (0, 1) for interval in intervals if octave * 12 + interval <= 19])
+
+		if max_pitches is not None:
+			if max_pitches < 1:
+				raise ValueError("max_pitches must be at least 1")
+			pool = sorted(walker._pitch_pool)
+			centre = pool[len(pool) // 2]
+			walker.set_pool(sorted(sorted(pool, key = lambda p: (abs(p - centre), p))[:max_pitches]))
+
+		# --- Pins ---------------------------------------------------------------
+		resolved_pins: typing.Dict[int, int] = {}
+		combined = dict(pins or {})
+
+		if end_on is not None:
+			if -1 in combined or len(onsets) in combined:
+				raise ValueError("end_on conflicts with a pin on the last note — they name the same position")
+			combined[-1] = end_on
+
+		for pin_position, pin_spec in combined.items():
+			if not isinstance(pin_position, int) or isinstance(pin_position, bool):
+				raise ValueError(f"pin positions are 1-based ints (or -1 for last), got {pin_position!r}")
+			index = pin_position - 1 if pin_position >= 1 else len(onsets) + pin_position
+			if not 0 <= index < len(onsets):
+				raise ValueError(f"pin position {pin_position} is outside the {len(onsets)}-note rhythm")
+			if absolute_pool is not None:
+				resolved_pins[index] = int(pin_spec if isinstance(pin_spec, int) else pin_spec.step)
+			else:
+				degree = pin_spec if isinstance(pin_spec, Degree) else Degree(int(pin_spec))
+				step_index = (degree.step - 1) % len(reference)
+				carry = (degree.step - 1) // len(reference)
+				resolved_pins[index] = 60 + reference[step_index] + 12 * (carry + degree.octave) + degree.chroma
+
+		# --- The walk -----------------------------------------------------------
+		envelopes: typing.Dict[str, typing.Callable[[float], float]] = {
+			"arch": lambda pos: 0.15 + 0.8 * math.sin(math.pi * pos),
+			"valley": lambda pos: 0.95 - 0.8 * math.sin(math.pi * pos),
+			"ascending": lambda pos: 0.1 + 0.85 * pos,
+			"descending": lambda pos: 0.95 - 0.85 * pos,
+		}
+
+		if contour is not None and contour not in envelopes:
+			known = ", ".join(sorted(envelopes))
+			raise ValueError(f"unknown contour {contour!r} — expected one of: {known}")
+
+		chosen_pitches: typing.List[int] = []
+
+		for index, onset in enumerate(onsets):
+
+			if index in resolved_pins:
+				pitch = resolved_pins[index]
+				walker.record(pitch)	# pins enter the NIR context like chosen notes
+			else:
+				span_position = index / (len(onsets) - 1) if len(onsets) > 1 else 0.0
+				target = envelopes[contour](span_position) if contour is not None else None
+				picked = walker.choose_next(None, rng, beat = onset, position = span_position, contour_target = target)
+				pitch = picked if picked is not None else walker._pitch_pool[0]
+
+			chosen_pitches.append(pitch)
+
+		# --- Emission ------------------------------------------------------------
+		velocity_values = _expand("velocities", velocities, len(onsets))
+		duration_values = _expand("durations", durations, len(onsets))
+
+		events = []
+
+		for index, (onset, pitch) in enumerate(zip(onsets, chosen_pitches)):
+
+			spec: PitchSpec
+
+			if absolute_pool is not None:
+				spec = pitch
+			else:
+				offset = pitch - 60
+				octave, pc = divmod(offset, 12)
+				if pc in reference:
+					spec = Degree(reference.index(pc) + 1, octave = octave)
+				elif (pc + 1) % 12 in reference and pc + 1 <= 11:
+					spec = Degree(reference.index(pc + 1) + 1, octave = octave, chroma = -1)
+				else:
+					spec = Degree(reference.index(pc - 1) + 1, octave = octave, chroma = 1)
+
+			events.append(MotifEvent(
+				beat = onset,
+				pitch = spec,
+				velocity = velocity_values[index],
+				duration = float(duration_values[index]),
+			))
+
+		return cls(events = tuple(events), length = float(length), fit = 0.7)
 
 	def stack (self, other: typing.Union["Motif", "Phrase"]) -> "Motif":
 
@@ -738,6 +968,7 @@ class Motif:
 			events = self.events + merged.events,
 			length = max(self.length, merged.length),
 			controls = self.controls + merged.controls,
+			fit = self.fit,
 		)
 
 	def slice (self, start: float, end: float) -> "Motif":
@@ -771,7 +1002,7 @@ class Motif:
 			else:
 				controls.append(dataclasses.replace(c, beat=c.beat - start))
 
-		return Motif(events=events, length=end - start, controls=tuple(controls))
+		return Motif(events=events, length=end - start, controls=tuple(controls), fit=self.fit)
 
 	def __add__ (self, other: typing.Any) -> "Phrase":
 
@@ -828,7 +1059,7 @@ class Motif:
 			for c in self.controls
 		)
 
-		return Motif(events=events, length=self.length, controls=controls)
+		return Motif(events=events, length=self.length, controls=controls, fit=self.fit)
 
 	def rotate (self, beats: float) -> "Motif":
 
@@ -840,7 +1071,7 @@ class Motif:
 		events = tuple(dataclasses.replace(e, beat=(e.beat + beats) % self.length) for e in self.events)
 		controls = tuple(dataclasses.replace(c, beat=(c.beat + beats) % self.length) for c in self.controls)
 
-		return Motif(events=events, length=self.length, controls=controls)
+		return Motif(events=events, length=self.length, controls=controls, fit=self.fit)
 
 	def stretch (self, factor: float) -> "Motif":
 
@@ -858,7 +1089,7 @@ class Motif:
 			for c in self.controls
 		)
 
-		return Motif(events=events, length=self.length * factor, controls=controls)
+		return Motif(events=events, length=self.length * factor, controls=controls, fit=self.fit)
 
 	def quantize (self, grid: float) -> "Motif":
 
@@ -872,7 +1103,7 @@ class Motif:
 			for e in self.events
 		)
 
-		return Motif(events=events, length=self.length, controls=self.controls)
+		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
 	def accent (self, beat: float, amount: int = 20) -> "Motif":
 
@@ -888,7 +1119,7 @@ class Motif:
 			for e in self.events
 		)
 
-		return Motif(events=events, length=self.length, controls=self.controls)
+		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
 	def with_velocity (self, velocity: typing.Union[int, typing.Tuple[int, int]]) -> "Motif":
 
@@ -896,7 +1127,7 @@ class Motif:
 
 		events = tuple(dataclasses.replace(e, velocity=velocity) for e in self.events)
 
-		return Motif(events=events, length=self.length, controls=self.controls)
+		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
 	def _nudged_pitch (self, pitch: PitchSpec, rng: random.Random) -> PitchSpec:
 
@@ -932,6 +1163,7 @@ class Motif:
 		position: str = "end",
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
+		keep_contour: bool = False,
 	) -> "Motif":
 
 		"""Replace a few pitches, preserving the rhythm — the smallest variation.
@@ -948,6 +1180,12 @@ class Motif:
 				warns — module-level nondeterminism breaks live reload.
 			rng: An explicit random stream (overrides ``seed``; used by
 				recipe machinery).
+			keep_contour: When True, the variation preserves the line's
+				CSEG — every varied note keeps its rank relations with
+				every other note, so the melodic shape is identical (the
+				motif-identity guard).  Where no nudge can preserve the
+				contour, that note stays unchanged — shape wins over
+				motion.
 
 		Example:
 			```python
@@ -987,9 +1225,82 @@ class Motif:
 		events = list(self.events)
 
 		for index in chosen:
-			events[index] = dataclasses.replace(events[index], pitch = self._nudged_pitch(events[index].pitch, rng))
+			if keep_contour:
+				replacement = self._contour_safe_nudge(events, index, pitched_indices, rng)
+				if replacement is not None:
+					events[index] = dataclasses.replace(events[index], pitch = replacement)
+			else:
+				events[index] = dataclasses.replace(events[index], pitch = self._nudged_pitch(events[index].pitch, rng))
 
-		return Motif(events = tuple(events), length = self.length, controls = self.controls)
+		return Motif(events = tuple(events), length = self.length, controls = self.controls, fit = self.fit)
+
+	@staticmethod
+	def _rank_value (pitch: PitchSpec) -> float:
+
+		"""A comparable height for contour ranking (uniform content only)."""
+
+		if isinstance(pitch, Degree):
+			return pitch.octave * 7 + pitch.step + 0.4 * pitch.chroma
+		if isinstance(pitch, ChordTone):
+			return pitch.octave * 4 + pitch.index
+		if isinstance(pitch, int):
+			return float(pitch)
+
+		raise TypeError(f"keep_contour needs rankable pitches — {type(pitch).__name__} content has no height")
+
+	def _contour_safe_nudge (
+		self,
+		events: typing.List[MotifEvent],
+		index: int,
+		pitched_indices: typing.List[int],
+		rng: random.Random,
+	) -> typing.Optional[PitchSpec]:
+
+		"""A nudge for events[index] that preserves its CSEG rank relations.
+
+		Candidates are the usual small nudges, filtered to those keeping the
+		note's above/below/equal relation to every other pitched note.  One
+		rng draw happens regardless (stream stability); ``None`` means no
+		candidate preserves the shape — leave the note alone.
+		"""
+
+		pitch = events[index].pitch
+
+		if isinstance(pitch, Degree):
+			candidates: typing.List[PitchSpec] = [
+				dataclasses.replace(pitch, step = pitch.step + delta)
+				for delta in (-2, -1, 1, 2) if pitch.step + delta >= 1
+			]
+		elif isinstance(pitch, int):
+			candidates = [pitch + delta for delta in (-2, -1, 1, 2)]
+		else:
+			raise TypeError(f"keep_contour cannot vary {type(pitch).__name__} content")
+
+		original = self._rank_value(pitch)
+		others = [
+			(self._rank_value(events[other].pitch), other)
+			for other in pitched_indices if other != index
+		]
+
+		def preserves (candidate: PitchSpec) -> bool:
+			height = self._rank_value(candidate)
+			for other_height, _ in others:
+				before = (original > other_height) - (original < other_height)
+				after = (height > other_height) - (height < other_height)
+				if before != after:
+					return False
+			return True
+
+		surviving = [candidate for candidate in candidates if preserves(candidate)]
+
+		# One draw either way, so adding keep_contour never shifts the stream
+		# consumed by the notes around this one.
+		draw = rng.random()
+
+		if not surviving:
+			return None
+
+		return surviving[int(draw * len(surviving)) % len(surviving)]
 
 	def answer (self, to: typing.Union[int, Degree] = 1) -> "Motif":
 
@@ -1026,7 +1337,7 @@ class Motif:
 		events = list(self.events)
 		events[pitched_indices[-1]] = dataclasses.replace(last, pitch = target)
 
-		return Motif(events = tuple(events), length = self.length, controls = self.controls)
+		return Motif(events = tuple(events), length = self.length, controls = self.controls, fit = self.fit)
 
 	def pitched (self, spec: PitchSpec) -> "Motif":
 
@@ -1043,7 +1354,7 @@ class Motif:
 
 		events = tuple(dataclasses.replace(e, pitch=spec) for e in self.events)
 
-		return Motif(events=events, length=self.length, controls=self.controls)
+		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
 	def rhythm (self) -> "Motif":
 
@@ -1108,7 +1419,7 @@ class Motif:
 
 		events = tuple(dataclasses.replace(e, pitch=move(e.pitch)) for e in self.events)
 
-		return Motif(events=events, length=self.length, controls=self.controls)
+		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
 	def invert (self, pivot: typing.Optional[int] = None) -> "Motif":
 
@@ -1151,7 +1462,7 @@ class Motif:
 
 		events = tuple(dataclasses.replace(e, pitch=mirror(e.pitch)) for e in self.events)
 
-		return Motif(events=events, length=self.length, controls=self.controls)
+		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
 	# ── description ─────────────────────────────────────────────────────
 
@@ -1265,9 +1576,10 @@ def _call_response_units (call: Motif, seed: typing.Optional[int]) -> typing.Lis
 
 
 # The curated recipe table — names reserved for plans whose semantics exceed
-# a label skeleton.  Each takes (source_motif, seed) and returns the units.
-_PHRASE_RECIPES: typing.Dict[str, typing.Callable[[Motif, typing.Optional[int]], typing.List[Motif]]] = {
-	"call_response": _call_response_units,
+# a label skeleton.  Each entry is (unit_count, builder); the builder takes
+# (source_motif, seed) and returns exactly unit_count units.
+_PHRASE_RECIPES: typing.Dict[str, typing.Tuple[int, typing.Callable[[Motif, typing.Optional[int]], typing.List[Motif]]]] = {
+	"call_response": (4, _call_response_units),
 }
 
 
@@ -1367,8 +1679,9 @@ class Phrase:
 				stacklevel = 2,
 			)
 
+		# How many units the plan asks for — known before any unit is built,
+		# so a short motif can tile up to the unit size first.
 		if isinstance(plan, str):
-
 			if plan not in _PHRASE_RECIPES:
 				known = ", ".join(sorted(_PHRASE_RECIPES))
 				hint = ""
@@ -1376,40 +1689,47 @@ class Phrase:
 					spelled = ", ".join(repr(c) for c in plan)
 					hint = f" A letter string is not a plan — a sequence of labels is a list: plan=[{spelled}]."
 				raise ValueError(f"Unknown phrase recipe {plan!r}. Known recipes: {known}.{hint}")
-
-			units = _PHRASE_RECIPES[plan](motif, seed)
-			stored_plan: typing.Union[typing.Tuple[str, ...], str] = plan
-
+			unit_count = _PHRASE_RECIPES[plan][0]
 		else:
-
 			labels = list(plan)
-
 			if not labels or not all(isinstance(label, str) and label for label in labels):
 				raise ValueError("plan labels must be non-empty strings, e.g. plan=['a', 'a', 'b']")
+			unit_count = len(labels)
 
-			generated: typing.Dict[str, Motif] = {labels[0]: motif}
-
-			for label in labels:
-				if label not in generated:
-					generated[label] = _contrast_unit(motif, random.Random(f"{seed}:unit:{label}"))
-
-			units = [generated[label] for label in labels]
-			stored_plan = tuple(labels)
-
-		if bars % len(units) != 0:
+		if bars % unit_count != 0:
 			raise ValueError(
-				f"bars={bars} does not divide evenly across {len(units)} plan units — "
+				f"bars={bars} does not divide evenly across {unit_count} plan units — "
 				"each unit must fill a whole number of bars"
 			)
 
-		unit_beats = bars * beats_per_bar / len(units)
+		unit_beats = bars * beats_per_bar / unit_count
 
-		if abs(motif.length - unit_beats) > 1e-9:
+		if motif.length <= 0:
+			raise ValueError("cannot develop an empty motif")
+
+		tiling = unit_beats / motif.length
+
+		if abs(tiling - round(tiling)) > 1e-9 or round(tiling) < 1:
 			raise ValueError(
-				f"the motif is {motif.length:g} beats but each of the {len(units)} plan units "
-				f"spans {unit_beats:g} beats ({bars} bars / {len(units)} units) — "
-				"adjust bars, the plan, or the motif's length"
+				f"the motif is {motif.length:g} beats but each of the {unit_count} plan units "
+				f"spans {unit_beats:g} beats ({bars} bars / {unit_count} units) — units must be "
+				"a whole tiling of the motif (adjust bars, the plan, or the motif's length)"
 			)
+
+		# A 1-bar hook in 2-bar units repeats — the unit is the tile, and
+		# answer()/vary() act on the whole tile (its tail is the unit's tail).
+		source = motif if round(tiling) == 1 else Motif.join([motif] * int(round(tiling)))
+
+		if isinstance(plan, str):
+			units = _PHRASE_RECIPES[plan][1](source, seed)
+			stored_plan: typing.Union[typing.Tuple[str, ...], str] = plan
+		else:
+			generated: typing.Dict[str, Motif] = {labels[0]: source}
+			for label in labels:
+				if label not in generated:
+					generated[label] = _contrast_unit(source, random.Random(f"{seed}:unit:{label}"))
+			units = [generated[label] for label in labels]
+			stored_plan = tuple(labels)
 
 		return cls(units, recipe = _PhraseRecipe(
 			source = motif,

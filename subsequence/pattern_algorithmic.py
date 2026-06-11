@@ -33,6 +33,8 @@ class PatternAlgorithmicMixin:
 	rng: random.Random
 	cycle: int
 	data: typing.Dict[str, typing.Any]
+	key: typing.Optional[str]
+	scale: typing.Optional[str]
 
 	if typing.TYPE_CHECKING:
 		# Cross-mixin method stubs: implemented by PatternBuilder,
@@ -875,12 +877,16 @@ class PatternAlgorithmicMixin:
 
 		rng = self._rng_from(seed, rng)
 
+		# A state built without key/mode adopts the composition's here
+		# (idempotent — explicit constructor arguments always win).
+		state.configure_defaults(self.key, self.scale)
+
 		n_steps = int(self._pattern.length / spacing)
 		beat = 0.0
 
 		for _ in range(n_steps):
 
-			pitch = state.choose_next(chord_tones, rng)
+			pitch = state.choose_next(chord_tones, rng, beat=beat)
 
 			if pitch is not None:
 				vel = self._resolve_velocity(velocity, rng)

@@ -487,6 +487,12 @@ class HarmonyView:
 
 		return self._horizon.next_chord_after(self._origin)
 
+	def next_chord_at (self, beat: float) -> typing.Optional[typing.Any]:
+
+		"""The chord following the one sounding at *beat* of THIS cycle, when known."""
+
+		return self._horizon.next_chord_after(self._origin + beat)
+
 	@property
 	def until_change (self) -> typing.Optional[float]:
 

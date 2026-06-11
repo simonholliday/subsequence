@@ -1844,3 +1844,59 @@ def constrained_walk (
 		walk.append(chosen)
 
 	return walk
+
+
+def cseg (pitches: typing.Sequence[float]) -> typing.List[int]:
+
+	"""Contour segment: each pitch's rank within the line (Morris's CSEG).
+
+	The melodic shape abstracted from exact pitch: ``[60, 67, 64]`` and
+	``[50, 59, 55]`` both rank ``[0, 2, 1]``.  Equal pitches share a rank.
+
+	Example:
+		```python
+		cseg([60, 67, 64])   # → [0, 2, 1]
+		cseg([5, 5, 3])      # → [1, 1, 0]
+		```
+	"""
+
+	if not pitches:
+		return []
+
+	distinct = sorted(set(pitches))
+
+	return [distinct.index(pitch) for pitch in pitches]
+
+
+def csim (a: typing.Sequence[float], b: typing.Sequence[float]) -> float:
+
+	"""Contour similarity between two equal-length lines (Marvin/Laprade CSIM).
+
+	The fraction of pairwise order relations (above/below/equal) the two
+	contours share — 1.0 for identical shapes, regardless of exact pitch.
+
+	Raises ``ValueError`` for mismatched lengths (similarity between
+	different-length contours is not defined here).
+	"""
+
+	if len(a) != len(b):
+		raise ValueError(f"csim() compares equal-length lines — got {len(a)} and {len(b)}")
+
+	count = len(a)
+
+	if count < 2:
+		return 1.0
+
+	def relation (x: float, y: float) -> int:
+		return (x > y) - (x < y)
+
+	agreements = 0
+	pairs = 0
+
+	for i in range(count):
+		for j in range(i + 1, count):
+			pairs += 1
+			if relation(a[i], a[j]) == relation(b[i], b[j]):
+				agreements += 1
+
+	return agreements / pairs

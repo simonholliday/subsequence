@@ -116,7 +116,7 @@ The musician's 'palette' for creating musical content.
 | `lsystem(pitch_map, axiom, rules, generations, spacing, velocity, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a note sequence using L-system string rewriting. |
 | `markov(transitions, pitch_map, velocity, duration, spacing, start, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a sequence by walking a first-order Markov chain. |
 | `melody(state, spacing, velocity, duration, chord_tones, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melodic line by querying a persistent :class:`~subsequence.melodic_state.MelodicState`. |
-| `motif(m, beat, span, root, velocity, fit, resolution) -> 'PatternBuilder'` | Place an immutable :class:`~subsequence.motifs.Motif` onto the pattern. |
+| `motif(m, beat, span, root, velocity, fit, fit_weights, resolution) -> 'PatternBuilder'` | Place an immutable :class:`~subsequence.motifs.Motif` onto the pattern. |
 | `note(pitch, beat, velocity, duration) -> 'PatternBuilder'` | Place a single MIDI note at a specific beat position. |
 | `note_off(pitch, beat) -> 'PatternBuilder'` | Place an explicit Note Off event to silence a drone. |
 | `note_on(pitch, beat, velocity) -> 'PatternBuilder'` | Place an explicit Note On event without a duration. Useful for drones or infinite sustains. Must be paired with a `note_off()` later to silence the note. |
@@ -176,8 +176,12 @@ Persistent melodic context that applies NIR scoring to single-note lines.
 
 | Method | Description |
 |---|---|
-| `__init__(key, mode, low, high, nir_strength, chord_weight, rest_probability, pitch_diversity) -> None` | Initialise a melodic state for a given key, mode, and MIDI register. |
-| `choose_next(chord_tones, rng) -> Optional[int]` | Score all pitch-pool candidates and return the chosen pitch, or None for a rest. |
+| `__init__(key, mode, low, high, nir_strength, chord_weight, rest_probability, pitch_diversity, tessitura_strength) -> None` | Initialise a melodic state for a given key, mode, and MIDI register. |
+| `choose_next(chord_tones, rng, beat, position, contour_target) -> Optional[int]` | Score all pitch-pool candidates and return the chosen pitch, or None for a rest. |
+| `clone() -> 'MelodicState'` | An independent copy — settings, factors, pool, and history. |
+| `configure_defaults(key, mode) -> None` | Adopt the composition's key/scale where this state left them unset. |
+| `record(pitch) -> None` | Append a pitch to the melodic history (capped at 4 entries). |
+| `set_pool(pitches) -> None` | Replace the pitch pool with explicit MIDI pitches — the experimental seam. |
 
 
 ## `Tuning`
@@ -269,7 +273,7 @@ An immutable musical figure: timed note events + control gestures + a length in 
 
 | Method | Description |
 |---|---|
-| `__init__(events, length, controls) -> None` |  |
+| `__init__(events, length, controls, fit) -> None` |  |
 | `accent(beat, amount) -> 'Motif'` | Add *amount* velocity to every note at the given beat position (0-based beats). |
 | `answer(to) -> 'Motif'` | Call → response: re-aim the tail to a stable degree. |
 | `cc(control, values, beats, length, probabilities) -> 'Motif'` | Discrete CC writes at beat positions — mirrors ``p.cc()``; names resolve at placement. |
@@ -279,6 +283,7 @@ An immutable musical figure: timed note events + control gestures + a length in 
 | `empty() -> 'Motif'` | The empty motif (zero events, zero length) — the identity for ``then``. |
 | `euclidean(pulses, steps, pitch, length, velocities, durations, probabilities) -> 'Motif'` | A euclidean rhythm as a value: *pulses* spread evenly across *steps* over *length* beats. |
 | `from_events(events, length, controls) -> 'Motif'` | Build a motif from explicit events (power use; length defaults to the next whole beat). |
+| `generate(rhythm, length, scale, contour, end_on, pins, max_pitches, velocities, durations, seed, rng, state, nir_strength, pitch_diversity, tessitura_strength) -> 'Motif'` | Generate a melodic motif — rhythm first, pitches walked, a value out. |
 | `hits(pitch, beats, length, velocities, durations, probabilities) -> 'Motif'` | One pitch (usually a drum name) at a list of beat positions — the ``hit()`` convention. |
 | `invert(pivot) -> 'Motif'` | Mirror pitches around a pivot: MIDI content around a MIDI pivot, degree content around a degree pivot (default: the first note's pitch). Drum motifs raise. |
 | `join(motifs) -> 'Motif'` | Fold a list of motifs into one with ``then`` (empty list → ``Motif.empty()``). |
@@ -303,7 +308,7 @@ An immutable musical figure: timed note events + control gestures + a length in 
 | `stretch(factor) -> 'Motif'` | Scale time by *factor* (2.0 = half-time feel): beats, durations, spans, and length. |
 | `then(other) -> 'Motif'` | Closed sequential concat: glue *other* after this motif into ONE longer motif. |
 | `transpose(steps, semitones) -> 'Motif'` | Transpose pitched content; the keyword names the unit. |
-| `vary(notes, position, seed, rng) -> 'Motif'` | Replace a few pitches, preserving the rhythm — the smallest variation. |
+| `vary(notes, position, seed, rng, keep_contour) -> 'Motif'` | Replace a few pitches, preserving the rhythm — the smallest variation. |
 | `with_velocity(velocity) -> 'Motif'` | Replace every note's velocity (an int, or a ``(low, high)`` random range). |
 
 
@@ -361,6 +366,8 @@ Functions for generating and transforming sequences.
 | `branch_sequence(pitches, depth, path, mutation, rng) -> List[int]` | Navigate a fractal tree of pitch-sequence transforms and return one variation. |
 | `build_metric_weights(time_signature, grid) -> List[float]` | Per-step metric weights for one bar — how "strong" each grid position is. |
 | `constrained_walk(graph, start, length, rng, pins, end, avoid, weight_modifier, before_choice, after_choice) -> List[~T]` | Walk a weighted graph under constraints — the shared hybrid kernel. |
+| `cseg(pitches) -> List[int]` | Contour segment: each pitch's rank within the line (Morris's CSEG). |
+| `csim(a, b) -> float` | Contour similarity between two equal-length lines (Marvin/Laprade CSIM). |
 | `de_bruijn(k, n) -> List[int]` | Generate a de Bruijn sequence B(k, n). |
 | `fibonacci_rhythm(steps, length) -> List[float]` | Generate beat positions spaced by the golden ratio (Fibonacci spiral). |
 | `generate_bresenham_sequence(steps, pulses) -> List[int]` | Generate a rhythm using Bresenham's line algorithm. |
