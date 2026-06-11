@@ -718,6 +718,8 @@ async def schedule_harmonic_clock (
 				if pinned is not None:
 					chord_like = pinned
 
+			assert span_beats is not None	# every branch above either set it or returned
+
 			# Sync the engine so freeze()/NIR/live fall-through stay coherent.
 			bare = _bare_chord(chord_like)
 
@@ -741,7 +743,7 @@ async def schedule_harmonic_clock (
 		if next_bar <= beat + 1e-9:
 			next_bar = beat + bar_beats
 
-		next_fire = min(state["next_change"], next_bar)
+		next_fire = min(float(state["next_change"]), next_bar)
 
 		return max(next_fire - beat, 1.0 / pulses_per_beat)
 
@@ -844,7 +846,7 @@ async def schedule_task (
 async def schedule_form (
 	sequencer: subsequence.sequencer.Sequencer,
 	form_state: subsequence.form_state.FormState,
-	reschedule_lookahead: int = 1
+	reschedule_lookahead: float = 1
 ) -> None:
 
 	"""Schedule the form state to advance each bar."""

@@ -716,7 +716,7 @@ class Motif:
 
 		return result
 
-	def stack (self, other: "Motif") -> "Motif":
+	def stack (self, other: typing.Union["Motif", "Phrase"]) -> "Motif":
 
 		"""
 		Parallel merge (the spelled form of ``&``): event union, length = max.
@@ -726,15 +726,16 @@ class Motif:
 		"""
 
 		if isinstance(other, Phrase):
-			other = other.flatten()
-
-		if not isinstance(other, Motif):
+			merged = other.flatten()
+		elif isinstance(other, Motif):
+			merged = other
+		else:
 			raise TypeError(f"stack() takes a Motif or Phrase — got {type(other).__name__}")
 
 		return Motif(
-			events = self.events + other.events,
-			length = max(self.length, other.length),
-			controls = self.controls + other.controls,
+			events = self.events + merged.events,
+			length = max(self.length, merged.length),
+			controls = self.controls + merged.controls,
 		)
 
 	def slice (self, start: float, end: float) -> "Motif":
@@ -952,7 +953,10 @@ class Motif:
 				return None
 
 			if isinstance(pitch, Approach):
-				return Approach(move(pitch.target))
+				moved = move(pitch.target)
+				if not isinstance(moved, (int, Degree, ChordTone)):
+					raise TypeError(f"transpose cannot aim an Approach at {type(moved).__name__} content")
+				return Approach(moved)
 
 			if steps is not None:
 				if isinstance(pitch, Degree):
@@ -961,6 +965,8 @@ class Motif:
 					f"transpose(steps=) moves scale degrees — {type(pitch).__name__} content "
 					f"has no degrees (use semitones= for MIDI ints)"
 				)
+
+			assert semitones is not None	# exactly one of steps/semitones is set (validated above)
 
 			if isinstance(pitch, int):
 				return pitch + semitones

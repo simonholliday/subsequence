@@ -32,6 +32,7 @@ class PatternLike (typing.Protocol):
 	length: float
 	reschedule_lookahead: float
 	steps: typing.Dict[int, typing.Any]
+	_cycle_start_pulse: int
 
 
 	def on_reschedule (self) -> None:
@@ -257,14 +258,15 @@ class ScheduledCallbackSequence:
 	Attributes:
 		callback: Called with the boundary pulse it is preparing.  Returns
 			the number of **beats** to the next boundary, or ``None`` to
-			stop firing (the sequence is dropped from the queue).
+			stop firing (the sequence is dropped from the queue).  May be
+			sync or async.
 		boundary_pulse: The pulse this fire prepares (the musical boundary,
 			not the fire time).
 		lookahead_pulses: How far before each boundary the callback fires.
 		next_fire_pulse: When the next fire is due.
 	"""
 
-	callback: typing.Callable[[int], typing.Optional[float]]
+	callback: typing.Callable[[int], typing.Union[typing.Optional[float], typing.Coroutine[typing.Any, typing.Any, typing.Optional[float]]]]
 	boundary_pulse: int
 	lookahead_pulses: int
 	next_fire_pulse: int
@@ -1150,7 +1152,7 @@ class Sequencer:
 
 	async def schedule_callback_sequence (
 		self,
-		callback: typing.Callable[[int], typing.Optional[float]],
+		callback: typing.Callable[[int], typing.Union[typing.Optional[float], typing.Coroutine[typing.Any, typing.Any, typing.Optional[float]]]],
 		start_pulse: int = 0,
 		reschedule_lookahead: float = 1,
 	) -> None:

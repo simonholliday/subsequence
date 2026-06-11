@@ -388,7 +388,7 @@ class ChordSpan:
 				return text + self._decoration_suffix(resolved=False)
 			return self.resolve(key_pc, scale).label()
 
-		base = self.chord.name()
+		base = str(self.chord.name())
 		return base + self._decoration_suffix(resolved=True)
 
 	def _decoration_suffix (self, resolved: bool) -> str:
@@ -1042,7 +1042,10 @@ class Progression:
 
 		"""Reshape the harmonic rhythm — a scalar for all spans, or a list cycled per span."""
 
-		values = [beats] if isinstance(beats, (int, float)) and not isinstance(beats, bool) else list(beats)
+		if isinstance(beats, bool):
+			raise TypeError(f"with_rhythm takes beats or a list of beats, got bool: {beats!r}")
+
+		values = [float(beats)] if isinstance(beats, (int, float)) else [float(b) for b in beats]
 
 		if not values:
 			raise ValueError("with_rhythm list is empty — pass at least one length")
@@ -1173,7 +1176,10 @@ def progression (
 	if not elements:
 		raise ValueError("progression list is empty — pass at least one chord")
 
-	if isinstance(beats, (int, float)) and not isinstance(beats, bool):
+	if isinstance(beats, bool):
+		raise TypeError(f"beats takes a number or a list of lengths, got bool: {beats!r}")
+
+	if isinstance(beats, (int, float)):
 		lengths = [float(beats)] * len(elements)
 	else:
 		values = [float(b) for b in beats]
