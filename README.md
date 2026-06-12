@@ -1404,6 +1404,39 @@ def bass (p, chord):
 - NIR history is restored at the start of each frozen replay so every re-entry begins with the same harmonic context as when the progression was originally generated.
 - `freeze()` can be called before or after `form()`.
 
+### Cadences
+
+A cadence is a named close — the way a passage of harmony arrives somewhere. Subsequence ships four, named the way a producer hears them, with the theory names accepted as aliases:
+
+| Name | Theory name | Arrival | Melody lands on |
+|------|-------------|---------|-----------------|
+| `"strong"` | authentic | V → I | 1 |
+| `"soft"` | plagal | IV → I | 1 |
+| `"open"` | half | IV → V (hangs) | 5 |
+| `"fakeout"` | deceptive | V → vi | 1 (the harmony swerves under it) |
+
+The same names work everywhere a close can be asked for:
+
+```python
+# On a progression value — tail substitution:
+verse = subsequence.progression(["Am", "F", "C", "G"]).cadence("open")   # Am F Dm E
+
+# In generation — the walk approaches the close:
+chorus = subsequence.progression(style="functional_major", key="C", bars=8,
+                                 seed=3, cadence="strong")               # ... G C
+frozen = composition.freeze(8, cadence="open")                           # hang on V at bar 8
+
+# In melody generation — the line closes on the cadence degree:
+hook = subsequence.Motif.generate(rhythm=[0, 1, 1.5, 2.5], cadence="strong", seed=7)
+
+# Live — ask the engine to steer toward a close (the request hooks):
+composition.request_cadence("open", bar=16)        # one-shot: arrive hanging on V at bar 16
+composition.section_cadence("verse", "open")       # every verse approaches a half close
+composition.section_cadence("chorus", "strong")    # every chorus lands home
+```
+
+`request_cadence` and `section_cadence` steer the **live** engine: the remaining chord changes up to the named bar are planned as a constrained walk through the engine's real weights, so the harmony *approaches* the close rather than jumping to it. Bound progressions are data and ignore requests (their closes are written — use `.cadence()` on the value instead). A request the engine cannot walk to lands by fiat, with a warning in the log.
+
 ### Chord parts: progressions with a harmonic rhythm
 
 The harmony engine above hands every pattern the *current* chord, changing on a fixed clock. Sometimes you instead want **one self-contained chord part** — a known progression played on a single synth, where the chords are deliberately *not* all the same length. How long each chord lasts — how often the harmony changes — is called the **harmonic rhythm**, and `comp.chords()` lets you declare it directly.

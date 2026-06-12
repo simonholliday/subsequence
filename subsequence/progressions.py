@@ -27,6 +27,7 @@ import re
 import typing
 import warnings
 
+import subsequence.cadences
 import subsequence.chords
 import subsequence.harmonic_rhythm
 import subsequence.harmonic_state
@@ -342,6 +343,47 @@ def resolve_constraint (spec: typing.Any, key_pc: int, scale: str, what: str) ->
 		return parsed.resolve(key_pc, scale)
 
 	return typing.cast(subsequence.chords.Chord, parsed)
+
+
+def cadence_pins (
+	name: str,
+	bars: int,
+	pins: typing.Optional[typing.Dict[int, typing.Any]],
+	end: typing.Optional[typing.Any],
+) -> typing.Dict[int, typing.Any]:
+
+	"""Compile a cadence name into pins on the final bars of a walk.
+
+	The shared translation for ``Progression.generate(cadence=)`` and
+	``Composition.freeze(cadence=)``: the formula occupies the last bars,
+	merged with the caller's own pins.  Conflicts raise loudly — ``end=``
+	and a pin on a formula bar both name what the cadence already fixes.
+	"""
+
+	spec = subsequence.cadences.cadence_formula(name)
+	count = len(spec.formula)
+
+	if end is not None:
+		raise ValueError(
+			f"cadence={name!r} already fixes the final bar — it conflicts with end={end!r} "
+			"(drop end=, or spell the tail yourself with pins=)"
+		)
+
+	if bars < count:
+		raise ValueError(f"cadence={name!r} needs {count} bars for its formula, but bars={bars}")
+
+	merged = dict(pins or {})
+
+	for offset, element in enumerate(spec.formula):
+		position = bars - count + 1 + offset
+		if position in merged:
+			raise ValueError(
+				f"cadence={name!r} fixes bar {position}, which conflicts with "
+				f"pins[{position}]={merged[position]!r}"
+			)
+		merged[position] = element
+
+	return merged
 
 
 def _roman_from_chord (chord: subsequence.chords.Chord, tonic_pc: int) -> RomanChord:
@@ -1014,6 +1056,7 @@ class Progression:
 		pins: typing.Optional[typing.Dict[int, typing.Any]] = None,
 		end: typing.Optional[typing.Any] = None,
 		avoid: typing.Optional[typing.Sequence[typing.Any]] = None,
+		cadence: typing.Optional[str] = None,
 		dominant_7th: bool = True,
 		gravity: float = 1.0,
 		nir_strength: float = 0.5,
@@ -1058,6 +1101,10 @@ class Progression:
 				no int can ask for it).
 			avoid: Chords excluded from the walk.  Naming a chord outside
 				the style's vocabulary is allowed (trivially satisfied).
+			cadence: A cadence name (``"strong"``/``"soft"``/``"open"``/
+				``"fakeout"``, theory aliases accepted) — its formula
+				becomes pins on the final bars, so the walk *approaches*
+				the close.  Conflicts with ``end=`` or pins on those bars.
 			dominant_7th / gravity / nir_strength / minor_turnaround_weight /
 				root_diversity: The engine parameters, exactly as
 				:meth:`Composition.harmony` takes them.
@@ -1073,6 +1120,10 @@ class Progression:
 
 		if bars < 1:
 			raise ValueError("bars must be at least 1")
+
+		if cadence is not None:
+			pins = cadence_pins(cadence, bars, pins, end)
+			end = None
 
 		if rng is None:
 			if seed is None:
@@ -1275,6 +1326,45 @@ class Progression:
 
 		return dataclasses.replace(self, spans=spans)
 
+	def cadence (self, name: str = "strong") -> "Progression":
+
+		"""Substitute a cadence formula into the tail — the close, named.
+
+		The final spans take the formula's chords (``"strong"`` is V→I,
+		``"soft"`` IV→I, ``"open"`` IV→V, ``"fakeout"`` V→vi; theory names —
+		authentic, plagal, half, deceptive — work as aliases).  Each replaced
+		span keeps its beats; its old chord and decorations go.  Formula
+		chords are key-relative (ints follow the bound scale's qualities,
+		``"V"`` is the major dominant by convention), so the tail resolves
+		wherever the progression is bound — a concrete progression becomes
+		mixed and resolves its tail at bind time, like any roman content.
+
+		Example::
+
+			verse = subsequence.progression(["Am", "F", "C", "G"]).cadence("open")
+			# Am  F  F  E — the half close, hanging on the dominant
+
+		Raises:
+			ValueError: If the cadence name is unknown, or the progression
+				has fewer spans than the formula.
+		"""
+
+		spec = subsequence.cadences.cadence_formula(name)
+		count = len(spec.formula)
+
+		if len(self.spans) < count:
+			raise ValueError(
+				f"cadence({name!r}) substitutes the last {count} chords, but this "
+				f"progression has only {len(self.spans)}"
+			)
+
+		tail = tuple(
+			parse_element(element, beats = span.beats)
+			for element, span in zip(spec.formula, self.spans[-count:])
+		)
+
+		return dataclasses.replace(self, spans = self.spans[:-count] + tail)
+
 	def with_rhythm (self, beats: typing.Union[float, typing.List[float]]) -> "Progression":
 
 		"""Reshape the harmonic rhythm — a scalar for all spans, or a list cycled per span."""
@@ -1361,6 +1451,7 @@ def progression (
 	pins: typing.Optional[typing.Dict[int, typing.Any]] = None,
 	end: typing.Optional[typing.Any] = None,
 	avoid: typing.Optional[typing.Sequence[typing.Any]] = None,
+	cadence: typing.Optional[str] = None,
 	dominant_7th: bool = True,
 	gravity: float = 1.0,
 	nir_strength: float = 0.5,
@@ -1416,6 +1507,7 @@ def progression (
 			pins = pins,
 			end = end,
 			avoid = avoid,
+			cadence = cadence,
 			dominant_7th = dominant_7th,
 			gravity = gravity,
 			nir_strength = nir_strength,

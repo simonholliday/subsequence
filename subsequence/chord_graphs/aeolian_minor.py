@@ -73,8 +73,8 @@ class AeolianMinor (subsequence.chord_graphs.ChordGraph):
 		graph.add_transition(natural_dominant, tonic, WEIGHT_WEAK)
 
 		# --- Minor plagal ---
-		graph.add_transition(subdominant, tonic, WEIGHT_PLAGAL)
-		graph.add_transition(subdominant, dominant, WEIGHT_MEDIUM)
+		graph.add_transition(subdominant, tonic, WEIGHT_PLAGAL, label="soft")
+		graph.add_transition(subdominant, dominant, WEIGHT_MEDIUM, label="open")
 		graph.add_transition(subdominant, submediant, WEIGHT_WEAK)
 
 		# --- Aeolian cycle: i -> bVI -> bVII -> i ---
@@ -90,8 +90,8 @@ class AeolianMinor (subsequence.chord_graphs.ChordGraph):
 		graph.add_transition(flat_two, dominant, WEIGHT_COMMON)
 
 		# --- Harmonic minor cadence: V -> i ---
-		graph.add_transition(dominant, tonic, WEIGHT_STRONG)
-		graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE)
+		graph.add_transition(dominant, tonic, WEIGHT_STRONG, label="strong")
+		graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE, label="fakeout")
 
 		# --- Chromatic connectors ---
 		graph.add_transition(supertonic_dim, dominant, WEIGHT_MEDIUM)
@@ -113,8 +113,8 @@ class AeolianMinor (subsequence.chord_graphs.ChordGraph):
 			dominant_7th = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="dominant_7th")
 
 			graph.add_transition(dominant, dominant_7th, WEIGHT_WEAK)
-			graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG)
-			graph.add_transition(dominant_7th, submediant, WEIGHT_DECEPTIVE)
+			graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG, label="strong")
+			graph.add_transition(dominant_7th, submediant, WEIGHT_DECEPTIVE, label="fakeout")
 
 		return graph, tonic
 

@@ -1287,7 +1287,7 @@ async def test_section_progression_walks_spans (patch_midi: None) -> None:
 	cb, horizon, first = await _capture_clock(
 		get_harmonic_state = lambda: hs,
 		cycle_beats = 4,
-		get_section_progression = lambda: ("verse", 0, prog),
+		get_section_progression = lambda: ("verse", 0, 4, prog),
 	)
 
 	# Beat 0 was populated at schedule time: the section's FIRST chord sounds
@@ -1316,7 +1316,7 @@ async def test_section_change_restarts_the_progression (patch_midi: None) -> Non
 	cb, horizon, _ = await _capture_clock(
 		get_harmonic_state = lambda: hs,
 		cycle_beats = 4,
-		get_section_progression = lambda: (current_section[0], current_section[1], prog),
+		get_section_progression = lambda: (current_section[0], current_section[1], 4, prog),
 	)
 
 	cb(4 * 24)
@@ -1341,7 +1341,7 @@ async def test_unbound_section_steps_live_with_planned_window (patch_midi: None)
 	cb, horizon, _ = await _capture_clock(
 		get_harmonic_state = lambda: hs,
 		cycle_beats = 4,
-		get_section_progression = lambda: ("bridge", 0, None),
+		get_section_progression = lambda: ("bridge", 0, 4, None),
 	)
 
 	# Beat 0 sounds the tonic (no step at start), and one step is pre-committed.
@@ -1372,7 +1372,7 @@ async def test_section_replay_restores_trailing_history (patch_midi: None) -> No
 	cb, _, _ = await _capture_clock(
 		get_harmonic_state = lambda: hs,
 		cycle_beats = 4,
-		get_section_progression = lambda: ("verse", 0, prog),
+		get_section_progression = lambda: ("verse", 0, 4, prog),
 	)
 
 	# The schedule-time beat-0 fire entered the section and restored history
@@ -1393,7 +1393,7 @@ async def test_exhausted_section_falls_through_to_live_with_style (patch_midi: N
 	cb, _, _ = await _capture_clock(
 		get_harmonic_state = lambda: hs,
 		cycle_beats = 4,
-		get_section_progression = lambda: ("verse", 0, prog),
+		get_section_progression = lambda: ("verse", 0, 4, prog),
 	)
 
 	assert hs.current_chord.name() == "Am"

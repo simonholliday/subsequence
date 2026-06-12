@@ -39,6 +39,7 @@ import random
 import typing
 import warnings
 
+import subsequence.cadences
 import subsequence.constants.velocity
 import subsequence.easing
 import subsequence.sequence_utils
@@ -729,6 +730,7 @@ class Motif:
 		scale: typing.Optional[typing.Union[str, typing.Sequence[int]]] = None,
 		contour: typing.Optional[str] = None,
 		end_on: typing.Optional[typing.Union[int, Degree]] = None,
+		cadence: typing.Optional[str] = None,
 		pins: typing.Optional[typing.Dict[int, typing.Union[int, Degree]]] = None,
 		max_pitches: typing.Optional[int] = None,
 		velocities: typing.Any = _DEFAULT_VELOCITY,
@@ -768,6 +770,10 @@ class Motif:
 			contour: Envelope shaping the line's height over its span —
 				``"arch"``, ``"valley"``, ``"ascending"``, ``"descending"``.
 			end_on: Degree the line must end on — sugar for ``pins={-1: ...}``.
+			cadence: A cadence name (``"strong"``/``"soft"``/``"open"``/
+				``"fakeout"``) — the line closes on that cadence's melodic
+				degree (1 for the full closes and the fakeout, 5 for the
+				open half).  Sugar for ``end_on=``; conflicts with it.
 			pins: ``{position: degree}`` — 1-based note positions (``-1`` =
 				the last, the Python idiom); the engine fills between.
 			max_pitches: Cap on distinct pitches (a tight pool is a hook);
@@ -795,6 +801,11 @@ class Motif:
 		import subsequence.melodic_state
 
 		onsets = list(rhythm.onsets()) if hasattr(rhythm, "onsets") else [float(b) for b in rhythm]
+
+		if cadence is not None:
+			if end_on is not None:
+				raise ValueError("cadence= already names the close degree — it conflicts with end_on=")
+			end_on = subsequence.cadences.cadence_formula(cadence).close_degree
 
 		if not onsets:
 			raise ValueError("generate() needs at least one onset — the rhythm comes first")
@@ -1542,6 +1553,8 @@ class _PhraseRecipe:
 		bars: The phrase length in bars.
 		seed: The development seed (None = the unseeded warning path).
 		beats_per_bar: The bar size the plan was spread against.
+		cadence: The cadence name the phrase closes on (``sentence()``/
+			``period()`` record it; ``develop()`` leaves it ``None``).
 	"""
 
 	source: Motif
@@ -1549,6 +1562,7 @@ class _PhraseRecipe:
 	bars: int
 	seed: typing.Optional[int]
 	beats_per_bar: float = 4.0
+	cadence: typing.Optional[str] = None
 
 
 def _contrast_unit (source: Motif, rng: random.Random) -> Motif:
@@ -1573,6 +1587,37 @@ def _call_response_units (call: Motif, seed: typing.Optional[int]) -> typing.Lis
 	varied = response.vary(notes = 1, position = "end", rng = random.Random(f"{seed}:cr:vary"))
 
 	return [call, response, call, varied]
+
+
+def _tile_source (motif: Motif, bars: int, unit_count: int, beats_per_bar: float) -> Motif:
+
+	"""Validate the bars/unit arithmetic and tile the motif up to one unit.
+
+	A 1-bar hook in 2-bar units repeats — the unit is the tile, and
+	answer()/vary() act on the whole tile (its tail is the unit's tail).
+	"""
+
+	if bars % unit_count != 0:
+		raise ValueError(
+			f"bars={bars} does not divide evenly across {unit_count} plan units — "
+			"each unit must fill a whole number of bars"
+		)
+
+	unit_beats = bars * beats_per_bar / unit_count
+
+	if motif.length <= 0:
+		raise ValueError("cannot develop an empty motif")
+
+	tiling = unit_beats / motif.length
+
+	if abs(tiling - round(tiling)) > 1e-9 or round(tiling) < 1:
+		raise ValueError(
+			f"the motif is {motif.length:g} beats but each of the {unit_count} plan units "
+			f"spans {unit_beats:g} beats ({bars} bars / {unit_count} units) — units must be "
+			"a whole tiling of the motif (adjust bars, the plan, or the motif's length)"
+		)
+
+	return motif if round(tiling) == 1 else Motif.join([motif] * int(round(tiling)))
 
 
 # The curated recipe table — names reserved for plans whose semantics exceed
@@ -1696,29 +1741,7 @@ class Phrase:
 				raise ValueError("plan labels must be non-empty strings, e.g. plan=['a', 'a', 'b']")
 			unit_count = len(labels)
 
-		if bars % unit_count != 0:
-			raise ValueError(
-				f"bars={bars} does not divide evenly across {unit_count} plan units — "
-				"each unit must fill a whole number of bars"
-			)
-
-		unit_beats = bars * beats_per_bar / unit_count
-
-		if motif.length <= 0:
-			raise ValueError("cannot develop an empty motif")
-
-		tiling = unit_beats / motif.length
-
-		if abs(tiling - round(tiling)) > 1e-9 or round(tiling) < 1:
-			raise ValueError(
-				f"the motif is {motif.length:g} beats but each of the {unit_count} plan units "
-				f"spans {unit_beats:g} beats ({bars} bars / {unit_count} units) — units must be "
-				"a whole tiling of the motif (adjust bars, the plan, or the motif's length)"
-			)
-
-		# A 1-bar hook in 2-bar units repeats — the unit is the tile, and
-		# answer()/vary() act on the whole tile (its tail is the unit's tail).
-		source = motif if round(tiling) == 1 else Motif.join([motif] * int(round(tiling)))
+		source = _tile_source(motif, bars, unit_count, beats_per_bar)
 
 		if isinstance(plan, str):
 			units = _PHRASE_RECIPES[plan][1](source, seed)
@@ -2049,3 +2072,120 @@ def motif (
 		probabilities = probabilities,
 		length = length,
 	)
+
+
+def sentence (
+	motif: Motif,
+	bars: int = 8,
+	cadence: str = "strong",
+	seed: typing.Optional[int] = None,
+	beats_per_bar: float = 4.0,
+) -> Phrase:
+
+	"""The classical sentence, as a thin combinator — idea, idea, drive, close.
+
+	Four units: the basic idea stated twice (the presentation), a generated
+	contrast unit (the continuation — the source's rhythm, freshly
+	re-pitched), and a second contrast unit whose tail lands on the
+	cadence's close degree (the cadential close).  An 8-bar sentence from a
+	2-bar idea is the textbook proportion; a shorter idea tiles up to the
+	unit size first.
+
+	The melodic side of a cadence only — pair it with the harmonic side
+	(``prog.cadence()``, ``Progression.generate(cadence=)``, or
+	``request_cadence()``) and the two arrive together.
+
+	Parameters:
+		motif: The basic idea (degree content — the close re-aims a degree).
+		bars: Sentence length (must divide evenly across the 4 units).
+		cadence: The close — ``"strong"`` lands on 1, ``"open"`` on 5,
+			``"soft"``/``"fakeout"`` on 1 (theory aliases accepted).
+		seed: Seed for the generated continuation units (seed-or-warn).
+		beats_per_bar: Bar size in beats (context-free; 4 is the default).
+
+	Example:
+		```python
+		idea = subsequence.motif([5, 6, 5, 3, None, 1, 2, 3])
+		verse_lead = subsequence.sentence(idea, bars=8, cadence="open", seed=11)
+		```
+	"""
+
+	spec = subsequence.cadences.cadence_formula(cadence)
+
+	if seed is None:
+		warnings.warn(
+			"sentence() without seed= is nondeterministic — pass seed= so the "
+			"value survives live reload",
+			stacklevel = 2,
+		)
+
+	source = _tile_source(motif, bars, 4, beats_per_bar)
+
+	continuation = _contrast_unit(source, random.Random(f"{seed}:sentence:continuation"))
+	cadential = _contrast_unit(source, random.Random(f"{seed}:sentence:cadential")).answer(to = spec.close_degree)
+
+	return Phrase([source, source, continuation, cadential], recipe = _PhraseRecipe(
+		source = motif,
+		plan = "sentence",
+		bars = bars,
+		seed = seed,
+		beats_per_bar = beats_per_bar,
+		cadence = spec.name,
+	))
+
+
+def period (
+	antecedent: typing.Union[Motif, Phrase],
+	cadence: str = "strong",
+	beats_per_bar: float = 4.0,
+) -> Phrase:
+
+	"""The classical period, as a thin combinator — question, then answer.
+
+	Two halves: the antecedent with its tail re-aimed to the open half-close
+	(degree 5 — the question), then the same material restated with its tail
+	on the cadence's close degree (the answer).  The two halves differ
+	exactly at their closes — the open/closed contrast *is* the period.
+
+	Deterministic: no notes are generated, only the two tail notes re-aim
+	(so there is no seed).  Vary the consequent yourself for a looser
+	restatement: ``period(a).reroll(bar=7, seed=4)``.
+
+	Parameters:
+		antecedent: The first half — a Motif, or a Phrase whose segmentation
+			is kept (only its last segment's tail re-aims).
+		cadence: The consequent's close — ``"strong"`` lands on 1 (theory
+			aliases accepted).
+		beats_per_bar: Bar size in beats, recorded for ``reroll()`` windows.
+
+	Example:
+		```python
+		idea = subsequence.motif([3, 4, 5, 1, None, 6, 5, 4], length=8)
+		lead = subsequence.period(idea)        # 16 beats: half-close, then home
+		```
+	"""
+
+	spec = subsequence.cadences.cadence_formula(cadence)
+	open_degree = subsequence.cadences.cadence_formula("open").close_degree
+
+	units = list(antecedent.segments) if isinstance(antecedent, Phrase) else [antecedent]
+
+	if not units or sum(unit.length for unit in units) <= 0:
+		raise ValueError("cannot build a period from an empty antecedent")
+
+	tail = units[-1]
+
+	antecedent_units = units[:-1] + [tail.answer(to = open_degree)]
+	consequent_units = units[:-1] + [tail.answer(to = spec.close_degree)]
+
+	source = antecedent.flatten() if isinstance(antecedent, Phrase) else antecedent
+	total_beats = 2 * sum(unit.length for unit in units)
+
+	return Phrase(antecedent_units + consequent_units, recipe = _PhraseRecipe(
+		source = source,
+		plan = "period",
+		bars = int(round(total_beats / beats_per_bar)),
+		seed = None,
+		beats_per_bar = beats_per_bar,
+		cadence = spec.name,
+	))

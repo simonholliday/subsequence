@@ -170,9 +170,10 @@ Community and Feedback:
 - **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
 - **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
 
-Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``.
+Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``sentence``, ``period``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``Cadence``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``.
 """
 
+import subsequence.cadences
 import subsequence.chords
 import subsequence.composition
 import subsequence.groove
@@ -189,6 +190,9 @@ Composition = subsequence.composition.Composition
 Motif = subsequence.motifs.Motif
 Phrase = subsequence.motifs.Phrase
 motif = subsequence.motifs.motif
+sentence = subsequence.motifs.sentence
+period = subsequence.motifs.period
+Cadence = subsequence.cadences.Cadence
 Degree = subsequence.motifs.Degree
 ChordTone = subsequence.motifs.ChordTone
 Approach = subsequence.motifs.Approach

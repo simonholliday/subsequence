@@ -21,7 +21,7 @@ The top-level controller for a musical piece.
 | `form_jump(section_name) -> None` | Jump the form to a named section immediately. |
 | `form_next(section_name) -> None` | Queue the next section — takes effect when the current section ends. |
 | `form_state *(property)*` | The active ``subsequence.form_state.FormState``, or ``None`` if ``form()`` has not been called. |
-| `freeze(bars, end, pins, avoid) -> 'Progression'` | Capture a chord progression from the live harmony engine. |
+| `freeze(bars, end, pins, avoid, cadence) -> 'Progression'` | Capture a chord progression from the live harmony engine. |
 | `get_tweaks(name) -> Dict[str, Any]` | Return a copy of the current tweaks for a running pattern. |
 | `harmonic_state *(property)*` | The active ``HarmonicState``, or ``None`` if ``harmony()`` has not been called. |
 | `harmony(style, cycle_beats, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity, reschedule_lookahead, progression) -> None` | Configure the harmonic logic and chord change intervals. |
@@ -47,9 +47,11 @@ The top-level controller for a musical piece.
 | `pin_chord(bar, chord) -> None` | Force the chord sounding at a bar — fiat over live generation. |
 | `play() -> None` | Start the composition. |
 | `render(bars, filename, max_minutes) -> None` | Render the composition to a MIDI file without real-time playback. |
+| `request_cadence(cadence, bar) -> None` | Ask the live engine to approach a cadence arriving at a bar. |
 | `reroll(name) -> None` | Deal a named stream a fresh deterministic seed — try a new variation. |
 | `running_patterns *(property)*` | The currently active patterns, keyed by name. |
 | `schedule(fn, cycle_beats, reschedule_lookahead, wait_for_initial, defer) -> None` | Register a custom function to run on a repeating beat-based cycle. |
+| `section_cadence(section_name, cadence) -> None` | Close every pass of a section with a cadence — the standing request. |
 | `section_chords(section_name, progression) -> None` | Bind a :class:`Progression` to a named form section. |
 | `section_motifs(section_name, value, part) -> None` | Bind a Motif or Phrase to a named form section (per optional part). |
 | `seed *(property)*` | The composition's random seed, or None when unseeded. |
@@ -223,11 +225,12 @@ A frozen sequence of :class:`ChordSpan` — the governing harmony value.
 |---|---|
 | `__init__(spans, trailing_history) -> None` |  |
 | `borrow(slot) -> 'Progression'` | Borrow the chord(s) at the given 1-based slot(s) from the parallel scale. |
+| `cadence(name) -> 'Progression'` | Substitute a cadence formula into the tail — the close, named. |
 | `chords *(property)*` | The bare chords, one per span (concrete progressions only). |
 | `describe(key, scale) -> str` | A readable, one-chord-per-line summary. |
 | `events() -> Tuple[subsequence.progressions.ChordEvent, ...]` | The realised timeline as a tuple (iteration, materialised). |
 | `extend(*extensions, only) -> 'Progression'` | Add chord extensions (``7``/``9``/``11``/``13``/``"sus4"``/...) to every span. |
-| `generate(style, bars, beats, key, scale, seed, rng, pins, end, avoid, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity) -> 'Progression'` | Generate a progression from a chord-graph walk — the hybrid generator. |
+| `generate(style, bars, beats, key, scale, seed, rng, pins, end, avoid, cadence, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity) -> 'Progression'` | Generate a progression from a chord-graph walk — the hybrid generator. |
 | `inversions(spec) -> 'Progression'` | Set chord inversions — a single int for all spans, or a list cycled per span. |
 | `is_concrete *(property)*` | True when every span is key-independent (no romans/degrees). |
 | `length *(property)*` | Total length in beats (the sum of span lengths). |
@@ -283,7 +286,7 @@ An immutable musical figure: timed note events + control gestures + a length in 
 | `empty() -> 'Motif'` | The empty motif (zero events, zero length) — the identity for ``then``. |
 | `euclidean(pulses, steps, pitch, length, velocities, durations, probabilities) -> 'Motif'` | A euclidean rhythm as a value: *pulses* spread evenly across *steps* over *length* beats. |
 | `from_events(events, length, controls) -> 'Motif'` | Build a motif from explicit events (power use; length defaults to the next whole beat). |
-| `generate(rhythm, length, scale, contour, end_on, pins, max_pitches, velocities, durations, seed, rng, state, nir_strength, pitch_diversity, tessitura_strength) -> 'Motif'` | Generate a melodic motif — rhythm first, pitches walked, a value out. |
+| `generate(rhythm, length, scale, contour, end_on, cadence, pins, max_pitches, velocities, durations, seed, rng, state, nir_strength, pitch_diversity, tessitura_strength) -> 'Motif'` | Generate a melodic motif — rhythm first, pitches walked, a value out. |
 | `hits(pitch, beats, length, velocities, durations, probabilities) -> 'Motif'` | One pitch (usually a drum name) at a list of beat positions — the ``hit()`` convention. |
 | `invert(pivot) -> 'Motif'` | Mirror pitches around a pivot: MIDI content around a MIDI pivot, degree content around a degree pivot (default: the first note's pitch). Drum motifs raise. |
 | `join(motifs) -> 'Motif'` | Fold a list of motifs into one with ``then`` (empty list → ``Motif.empty()``). |
@@ -349,8 +352,11 @@ A sequence of Motifs with segmentation preserved.
 | `between(low, high, step) -> subsequence.harmonic_rhythm.HarmonicRhythm` | A harmonic rhythm that varies *between* two lengths (in beats). |
 | `parse_chord(name) -> subsequence.chords.Chord` | Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a :class:`Chord`. |
 | `register_chord_quality(name, intervals, suffix) -> None` | Register a custom chord quality for use everywhere chords are used. |
-| `progression(source, beats, style, bars, key, scale, seed, rng, pins, end, avoid, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity) -> subsequence.progressions.Progression` | Build a :class:`Progression` — the lowercase factory. |
+| `progression(source, beats, style, bars, key, scale, seed, rng, pins, end, avoid, cadence, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity) -> subsequence.progressions.Progression` | Build a :class:`Progression` — the lowercase factory. |
 | `motif(degrees, beats, velocities, durations, probabilities, length) -> subsequence.motifs.Motif` | The lowercase shortcut: a melody as 1-based scale degrees. |
+| `sentence(motif, bars, cadence, seed, beats_per_bar) -> subsequence.motifs.Phrase` | The classical sentence, as a thin combinator — idea, idea, drive, close. |
+| `period(antecedent, cadence, beats_per_bar) -> subsequence.motifs.Phrase` | The classical period, as a thin combinator — question, then answer. |
+| `cadence_formula(name) -> subsequence.cadences.Cadence` | Look up a cadence by producer name or theory alias, loudly. |
 | `vl_distance(source, target, pitch_classes) -> int` | Voice-leading distance between two chords (Tymoczko's taxicab metric). |
 | `branch_sequence(pitches, depth, path, mutation, rng) -> List[int]` | Navigate a fractal tree of pitch-sequence transforms and return one variation. |
 | `build_metric_weights(time_signature, grid) -> List[float]` | Per-step metric weights for one bar — how "strong" each grid position is. |

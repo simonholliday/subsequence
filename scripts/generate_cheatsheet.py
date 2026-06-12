@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import subsequence
 import subsequence.chords
 import subsequence.composition
+import subsequence.cadences
 import subsequence.groove
 import subsequence.harmonic_rhythm
 import subsequence.intervals
@@ -51,6 +52,9 @@ functions_to_document: typing.List[typing.Callable] = [
 	subsequence.chords.register_chord_quality,
 	subsequence.progressions.progression,
 	subsequence.motifs.motif,
+	subsequence.motifs.sentence,
+	subsequence.motifs.period,
+	subsequence.cadences.cadence_formula,
 	subsequence.sequence_utils.vl_distance,
 	subsequence.sequence_utils.branch_sequence,
 	subsequence.sequence_utils.build_metric_weights,

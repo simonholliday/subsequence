@@ -12,6 +12,7 @@ import signal
 import types
 import typing
 import zlib
+import subsequence.cadences
 import subsequence.chord_graphs
 import subsequence.chords
 import subsequence.constants
@@ -531,9 +532,12 @@ async def schedule_harmonic_clock (
 	cycle_beats: int = 4,
 	get_bound_progression: typing.Optional[typing.Callable[[], typing.Optional["Progression"]]] = None,
 	get_section_progression: typing.Optional[
-		typing.Callable[[], typing.Optional[typing.Tuple[str, int, typing.Optional["Progression"]]]]
+		typing.Callable[[], typing.Optional[typing.Tuple[str, int, int, typing.Optional["Progression"]]]]
 	] = None,
 	get_pinned: typing.Optional[typing.Callable[[int], typing.Optional[typing.Any]]] = None,
+	cadence_requests: typing.Optional[typing.Dict[int, str]] = None,
+	resolve_cadence: typing.Optional[typing.Callable[[str], typing.List[subsequence.chords.Chord]]] = None,
+	get_section_cadence: typing.Optional[typing.Callable[[str], typing.Optional[str]]] = None,
 	reschedule_lookahead: float = 1,
 ) -> None:
 
@@ -556,9 +560,18 @@ async def schedule_harmonic_clock (
 	``get_harmonic_state``, ``get_bound_progression``, and ``get_pinned``
 	are evaluated on every tick so mid-playback calls to ``harmony()``,
 	re-binds, and new pins take effect immediately.  ``get_section_progression``
-	returns ``(name, index, Progression|None)`` for the current section
+	returns ``(name, index, bars, Progression|None)`` for the current section
 	(``index`` increments on every entry, so verse→verse re-entry resets
 	correctly) or ``None`` when no form is active.
+
+	``cadence_requests`` is the request-hook seam: a mutable ``{bar: name}``
+	dict (shared with ``Composition.request_cadence``) the live walk steers
+	toward — at the first boundary with a pending request, the remaining
+	changes up to its bar are planned as a constrained walk pinned to the
+	cadence formula (resolved by ``resolve_cadence``) and then committed
+	one boundary at a time.  ``get_section_cadence`` turns a section entry
+	into a request arriving at that section's final bar (live sections
+	only).  Requests whose bar passes unserved expire with a warning.
 
 	The clock fires ``reschedule_lookahead`` beats before each boundary —
 	raised by the caller to the maximum pattern lookahead, so the window
@@ -576,7 +589,89 @@ async def schedule_harmonic_clock (
 		"bound_seen": None,			# identity of the bound progression last walked
 		"bound_exhausted": False,
 		"planned": None,			# the live engine's pre-committed next chord
+		"cadence_queue": [],		# planned approach chords (None = step live at that boundary)
 	}
+
+	def _plan_cadence_request (beat: float, hs: subsequence.harmonic_state.HarmonicState) -> None:
+
+		"""Compile the nearest pending cadence request into the approach queue.
+
+		A live freeze-ahead: a constrained walk from the engine's current
+		chord to the request's bar, pinned to the cadence formula at the
+		tail, drawn through the engine's real weights on the play stream.
+		The engine's state is snapshot-restored — chords commit one by one
+		as their boundaries actually sound.  An unwalkable formula falls
+		back to fiat (live steps up to the approach, the formula committed
+		at its bars), loudly.
+		"""
+
+		if not cadence_requests or resolve_cadence is None:
+			return
+
+		cb = float(cycle_beats)
+		target_bar = min(cadence_requests)
+		target_beat = (target_bar - 1) * bar_beats
+
+		if target_beat < beat - 1e-9:
+			return		# stale; the expiry pass warns and drops it
+
+		name = cadence_requests.pop(target_bar)
+
+		try:
+			formula = resolve_cadence(name)
+		except (ValueError, TypeError) as error:
+			logger.warning(f"cadence request {name!r} at bar {target_bar} cannot resolve: {error}")
+			return
+
+		remaining = (target_beat - beat) / cb
+		steps = int(remaining + 1e-9) + 1		# chord changes from here to the arrival, inclusive
+
+		if abs(remaining - round(remaining)) > 1e-9:
+			logger.warning(
+				f"cadence request {name!r}: bar {target_bar} does not land on a chord "
+				f"boundary ({cb:g}-beat cycles) — the arrival sounds at the boundary before it"
+			)
+
+		tail = list(formula[-steps:])
+
+		if steps < len(formula):
+			logger.warning(
+				f"cadence request {name!r} at bar {target_bar}: only {steps} chord change(s) "
+				f"before the arrival — approaching with the formula's tail alone"
+			)
+
+		length = steps + 1		# walk position 1 is the chord sounding now
+		pins = {length - len(tail) + 1 + index: chord for index, chord in enumerate(tail)}
+
+		saved_history = list(hs.history)
+		saved_current = hs.current_chord
+
+		def _commit (chosen: subsequence.chords.Chord) -> None:
+			hs.current_chord = chosen
+
+		try:
+			walked = subsequence.sequence_utils.constrained_walk(
+				hs.graph,
+				hs.current_chord,
+				length,
+				rng = hs.rng,
+				pins = pins,
+				weight_modifier = hs._transition_weight,
+				before_choice = hs._record_transition_source,
+				after_choice = _commit,
+			)
+		except ValueError as error:
+			logger.warning(
+				f"cadence request {name!r} at bar {target_bar} is not walkable from "
+				f"{saved_current.name()} ({error}) — the arrival lands by fiat"
+			)
+			state["cadence_queue"] = [None] * (steps - len(tail)) + tail
+			return
+		finally:
+			hs.history = saved_history
+			hs.current_chord = saved_current
+
+		state["cadence_queue"] = list(walked[1:])
 
 	def _data_future (
 		progression: "Progression",
@@ -626,7 +721,7 @@ async def schedule_harmonic_clock (
 		if get_section_progression is not None:
 			info = get_section_progression()
 			if info is not None:
-				_section_name, section_index, section_progression = info
+				_section_name, section_index, section_bars, section_progression = info
 
 				if section_index != state["last_section_index"]:
 					state["last_section_index"] = section_index
@@ -640,6 +735,30 @@ async def schedule_harmonic_clock (
 					# progression was frozen, so every replay starts alike.
 					if section_progression is not None and section_progression.trailing_history and hs is not None:
 						hs.history = list(section_progression.trailing_history)
+
+					# A registered section cadence becomes a bar request: the
+					# arrival lands on this section's final bar.  Live sections
+					# only — bound chords are data and cannot be steered.
+					if (
+						get_section_cadence is not None
+						and cadence_requests is not None
+						and section_progression is None
+						and section_bars > 0
+					):
+						section_cadence_name = get_section_cadence(_section_name)
+						if section_cadence_name is not None:
+							entry_bar = int(beat // bar_beats) + 1
+							cadence_requests.setdefault(entry_bar + section_bars - 1, section_cadence_name)
+
+		# Cadence requests expire when their bar passes unserved — harmony was
+		# data-bound the whole approach, or the request arrived too late.
+		if cadence_requests:
+			for expired_bar in [b for b in cadence_requests if (b - 1) * bar_beats < beat - 1e-9]:
+				expired_name = cadence_requests.pop(expired_bar)
+				logger.warning(
+					f"cadence request {expired_name!r} at bar {expired_bar} expired unserved — "
+					"the bar passed while harmony was data-bound, or the request arrived too late"
+				)
 
 		bound_progression = get_bound_progression() if get_bound_progression is not None else None
 
@@ -710,10 +829,23 @@ async def schedule_harmonic_clock (
 				if initial:
 					chord_like = hs.current_chord	# the tonic sounds first; no step at beat 0
 				else:
-					if state["planned"] is None:
-						state["planned"] = hs.plan_next()
-					chord_like = state["planned"]
-					state["planned"] = None
+					if not state["cadence_queue"]:
+						_plan_cadence_request(beat, hs)
+
+					queued: typing.Optional[typing.Any] = None
+
+					if state["cadence_queue"]:
+						queued = state["cadence_queue"].pop(0)
+
+					if queued is not None:
+						# A planned approach supersedes the pre-committed step.
+						state["planned"] = None
+						chord_like = queued
+					else:
+						if state["planned"] is None:
+							state["planned"] = hs.plan_next()
+						chord_like = state["planned"]
+						state["planned"] = None
 
 				span_beats = float(cycle_beats)
 				from_live = True
@@ -740,9 +872,14 @@ async def schedule_harmonic_clock (
 			state["next_change"] = beat + span_beats
 
 			# Live mode pre-commits one step so the window holds [current, next].
+			# A planned cadence approach already knows its next chord — publish
+			# it without drawing (a fiat gap, queue head None, plans normally).
 			if from_live and hs is not None:
-				state["planned"] = hs.plan_next()
-				horizon.set_planned(state["next_change"], state["next_change"] + float(cycle_beats), state["planned"])
+				if state["cadence_queue"] and state["cadence_queue"][0] is not None:
+					horizon.set_planned(state["next_change"], state["next_change"] + float(cycle_beats), state["cadence_queue"][0])
+				else:
+					state["planned"] = hs.plan_next()
+					horizon.set_planned(state["next_change"], state["next_change"] + float(cycle_beats), state["planned"])
 
 		# Fire again at the earlier of the next chord change and the next bar
 		# line — bar fires keep section bookkeeping aligned under long spans.
@@ -1136,10 +1273,13 @@ class Composition:
 
 		self._harmonic_state: typing.Optional[subsequence.harmonic_state.HarmonicState] = None
 		self._harmony_cycle_beats: typing.Optional[int] = None
+		self._harmony_style: typing.Optional[str] = None
 		self._harmony_reschedule_lookahead: float = 1
 		self._section_progressions: typing.Dict[str, Progression] = {}
 		self._bound_progression: typing.Optional[Progression] = None
 		self._pinned_chords: typing.Dict[int, typing.Any] = {}
+		self._cadence_requests: typing.Dict[int, str] = {}
+		self._section_cadences: typing.Dict[str, str] = {}
 		self._harmony_horizon = _HarmonyHorizon()
 		self._section_motifs: typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any] = {}
 		self._pending_patterns: typing.List[_PendingPattern] = []
@@ -1560,6 +1700,8 @@ class Composition:
 			if preserved_current is not None and self._harmonic_state.graph.get_transitions(preserved_current):
 				self._harmonic_state.current_chord = preserved_current
 
+			self._harmony_style = style if isinstance(style, str) else None
+
 		if progression is not None:
 			self._bound_progression = self._coerce_progression(progression, "harmony(progression=)")
 
@@ -1569,12 +1711,28 @@ class Composition:
 		# A re-call invalidates whatever the horizon had planned.
 		self._harmony_horizon.invalidate_future()
 
+	def _constraint_scale (self) -> str:
+
+		"""The scale that hybrid-constraint ints resolve against.
+
+		The composition's own scale when set; otherwise inferred from the
+		harmony style (``aeolian_minor`` → minor, matching
+		:meth:`Progression.generate`'s documented inference), falling back
+		to ionian.  Roman strings carry their quality and never need it.
+		"""
+
+		if self.scale is not None:
+			return self.scale
+
+		return subsequence.progressions._STYLE_SCALES.get(self._harmony_style or "", "ionian")
+
 	def freeze (
 		self,
 		bars: int,
 		end: typing.Optional[typing.Any] = None,
 		pins: typing.Optional[typing.Dict[int, typing.Any]] = None,
 		avoid: typing.Optional[typing.Sequence[typing.Any]] = None,
+		cadence: typing.Optional[str] = None,
 	) -> "Progression":
 
 		"""Capture a chord progression from the live harmony engine.
@@ -1603,6 +1761,10 @@ class Composition:
 				major dominant in minor.
 			pins: ``{bar: chord}`` — 1-based fiat positions.
 			avoid: Chords excluded from the walk.
+			cadence: A cadence name (``"strong"``/``"soft"``/``"open"``/
+				``"fakeout"``, theory aliases accepted) — its formula pins
+				the final bars, so the walk approaches the close.
+				Conflicts with ``end=`` or pins on those bars.
 
 		Returns:
 			A :class:`Progression` with the captured chords and trailing
@@ -1626,7 +1788,11 @@ class Composition:
 		if bars < 1:
 			raise ValueError("bars must be at least 1")
 
-		scale = self.scale or "ionian"
+		if cadence is not None:
+			pins = subsequence.progressions.cadence_pins(cadence, bars, pins, end)
+			end = None
+
+		scale = self._constraint_scale()
 		key_pc = subsequence.chords.key_name_to_pc(self.key) if self.key is not None else hs.key_root_pc
 
 		resolved_pins = {
@@ -1779,6 +1945,69 @@ class Composition:
 			self._pinned_chords[bar] = _span_chord(span)
 
 		self._harmony_horizon.invalidate_future()
+
+	def request_cadence (self, cadence: str = "strong", bar: typing.Optional[int] = None) -> None:
+
+		"""Ask the live engine to approach a cadence arriving at a bar.
+
+		The request hook: where :meth:`pin_chord` is fiat, this is a
+		*steered approach* — at the next chord boundary the clock plans the
+		remaining changes up to *bar* as a constrained walk through the
+		engine's real weights, pinned to the cadence formula at the tail
+		(``"strong"`` arrives V→I, ``"soft"`` IV→I, ``"open"`` IV→V,
+		``"fakeout"`` V→vi; theory aliases accepted).  The chords still
+		commit one boundary at a time, so the journey continues through the
+		close.
+
+		One-shot: the request is consumed when planned.  Live harmony only —
+		bound/section progressions are data and cannot be steered; a request
+		whose bar passes unserved expires with a warning.  If the formula is
+		not walkable from where the harmony stands, the arrival lands by
+		fiat (loudly).  Ask at least a pattern-lookahead ahead: patterns may
+		already have rendered against the previously planned chord.
+
+		Parameters:
+			cadence: The cadence name.
+			bar: The 1-based bar the cadence's final chord arrives at
+				(required; in practice ≥ 2 — bar 1 cannot be approached).
+
+		Example::
+
+			composition.request_cadence("open", bar=16)    # hang on V at bar 16
+		"""
+
+		spec = subsequence.cadences.cadence_formula(cadence)
+
+		if bar is None or not isinstance(bar, int) or isinstance(bar, bool) or bar < 1:
+			raise ValueError(f"request_cadence needs bar= — the 1-based bar the cadence arrives at (got {bar!r})")
+
+		self._cadence_requests[bar] = spec.name
+		self._harmony_horizon.invalidate_future()
+
+	def section_cadence (self, section_name: str, cadence: typing.Optional[str] = "strong") -> None:
+
+		"""Close every pass of a section with a cadence — the standing request.
+
+		Each time *section_name* is entered, the clock registers a
+		:meth:`request_cadence` arriving at the section's final bar, so the
+		harmony approaches the close as the section ends.  Live harmony
+		only: a section with bound chords (:meth:`section_chords`) is data
+		and ignores the registration — its closes are written, not steered.
+		Pass ``None`` to unregister.
+
+		Example::
+
+			composition.form([("verse", 8), ("chorus", 8)])
+			composition.section_cadence("verse", "open")     # every verse hangs on V
+			composition.section_cadence("chorus", "strong")  # every chorus lands home
+		"""
+
+		if cadence is None:
+			self._section_cadences.pop(section_name, None)
+			return
+
+		spec = subsequence.cadences.cadence_formula(cadence)
+		self._section_cadences[section_name] = spec.name
 
 	def section_motifs (self, section_name: str, value: typing.Any, part: typing.Optional[str] = None) -> None:
 
@@ -4603,15 +4832,25 @@ class Composition:
 
 		if self._harmonic_state is not None or self._bound_progression is not None or self._section_progressions:
 
-			def _get_section_progression () -> typing.Optional[typing.Tuple[str, int, typing.Optional[Progression]]]:
-				"""Return (section_name, section_index, Progression|None) for the current section, or None."""
+			def _get_section_progression () -> typing.Optional[typing.Tuple[str, int, int, typing.Optional[Progression]]]:
+				"""Return (section_name, section_index, bars, Progression|None) for the current section, or None."""
 				if self._form_state is None:
 					return None
 				info = self._form_state.get_section_info()
 				if info is None:
 					return None
 				prog = self._section_progressions.get(info.name)
-				return (info.name, info.index, prog)
+				return (info.name, info.index, info.bars, prog)
+
+			def _resolve_cadence_formula (name: str) -> typing.List[subsequence.chords.Chord]:
+				"""Resolve a cadence formula against the composition key and scale, at plan time."""
+				hs = self._harmonic_state
+				key_pc = subsequence.chords.key_name_to_pc(self.key) if self.key is not None else (hs.key_root_pc if hs is not None else 0)
+				spec = subsequence.cadences.cadence_formula(name)
+				return [
+					subsequence.progressions.resolve_constraint(element, key_pc, self._constraint_scale(), f"cadence {name!r}")
+					for element in spec.formula
+				]
 
 			await schedule_harmonic_clock(
 				sequencer = self._sequencer,
@@ -4622,6 +4861,9 @@ class Composition:
 				get_bound_progression = lambda: self._bound_progression,
 				get_section_progression = _get_section_progression,
 				get_pinned = self._pinned_chords.get,
+				cadence_requests = self._cadence_requests,
+				resolve_cadence = _resolve_cadence_formula,
+				get_section_cadence = self._section_cadences.get,
 				reschedule_lookahead = clock_lookahead,
 			)
 

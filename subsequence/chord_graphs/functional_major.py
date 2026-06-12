@@ -54,11 +54,14 @@ class DiatonicMajor (subsequence.chord_graphs.ChordGraph):
 		graph.add_transition(mediant, submediant, WEIGHT_COMMON)
 		graph.add_transition(mediant, subdominant, WEIGHT_WEAK)
 
-		graph.add_transition(subdominant, dominant, WEIGHT_STRONG)
+		graph.add_transition(subdominant, dominant, WEIGHT_STRONG, label="open")
 		graph.add_transition(subdominant, supertonic, WEIGHT_COMMON)
+		# The plagal close (IV → I, the "Amen") — outside strict functional
+		# motion, so weak; it also makes the "soft" cadence formula walkable.
+		graph.add_transition(subdominant, tonic, WEIGHT_WEAK, label="soft")
 
-		graph.add_transition(dominant, tonic, WEIGHT_STRONG)
-		graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE)
+		graph.add_transition(dominant, tonic, WEIGHT_STRONG, label="strong")
+		graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE, label="fakeout")
 
 		graph.add_transition(submediant, supertonic, WEIGHT_COMMON)
 		graph.add_transition(submediant, subdominant, WEIGHT_COMMON)
@@ -79,8 +82,8 @@ class DiatonicMajor (subsequence.chord_graphs.ChordGraph):
 			dominant_7th = subsequence.chords.Chord(root_pc=dominant.root_pc, quality="dominant_7th")
 
 			graph.add_transition(dominant, dominant_7th, WEIGHT_WEAK)
-			graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG)
-			graph.add_transition(dominant_7th, submediant, WEIGHT_DECEPTIVE)
+			graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG, label="strong")
+			graph.add_transition(dominant_7th, submediant, WEIGHT_DECEPTIVE, label="fakeout")
 
 		return graph, tonic
 
