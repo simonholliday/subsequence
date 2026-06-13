@@ -36,6 +36,7 @@ import subsequence.web_ui
 import subsequence.weighted_graph
 import subsequence.conductor
 import subsequence.form_state
+import subsequence.forms
 import subsequence.link_clock
 
 
@@ -990,19 +991,34 @@ async def schedule_task (
 async def schedule_form (
 	sequencer: subsequence.sequencer.Sequencer,
 	form_state: subsequence.form_state.FormState,
-	reschedule_lookahead: float = 1
+	reschedule_lookahead: float = 1,
+	on_bar: typing.Optional[typing.Callable[[int, bool], None]] = None,
 ) -> None:
 
-	"""Schedule the form state to advance each bar."""
+	"""Schedule the form state to advance each bar.
 
-	# Log the initial section.
+	Emits a ``"section"`` event on the sequencer's emitter at play start
+	and on every section change (one lookahead-beat early, like every form
+	decision), carrying the new :class:`~subsequence.form_state.SectionInfo`
+	(``None`` when the form finishes).  ``on_bar`` is the boundary hook —
+	called once per bar with ``(boundary_pulse, section_changed)`` after the
+	form advances; the transition machinery rides it.
+	"""
+
+	lookahead_pulses = int(reschedule_lookahead * sequencer.pulses_per_beat)
+
+	# Log and announce the initial section.
 	initial_section = form_state.get_section_info()
 	if initial_section:
 		logger.info(f"Form: {initial_section.name}")
+	sequencer.events.emit_sync("section", initial_section)
+
+	if on_bar is not None:
+		on_bar(0, True)		# the first bar is a boundary too (a 1-bar opener can end)
 
 	def advance_form (pulse: int) -> None:
 
-		"""Advance the form by one bar, logging section changes."""
+		"""Advance the form by one bar, logging and announcing section changes."""
 
 		section_changed = form_state.advance()
 
@@ -1012,6 +1028,12 @@ async def schedule_form (
 				logger.info(f"Form: {section.name}")
 			else:
 				logger.info("Form: finished")
+			sequencer.events.emit_sync("section", section)
+
+		if on_bar is not None:
+			# Fixed callbacks fire lookahead-early; the bar line itself is
+			# lookahead pulses ahead of the fire pulse.
+			on_bar(pulse + lookahead_pulses, section_changed)
 
 	# Form advances once per bar based on the global time signature.
 	_BEATS_PER_BAR: int = sequencer.time_signature[0]
@@ -1078,6 +1100,36 @@ async def run_until_stopped (sequencer: subsequence.sequencer.Sequencer) -> None
 	await sequencer.stop()
 
 
+@dataclasses.dataclass
+class _Transition:
+
+	"""One declarative boundary rule registered by ``Composition.transition()``.
+
+	Attributes:
+		before: The incoming section name the rule fires before, or ``"*"``
+			for any *different* section.
+		fill: A Motif (anything with ``.events``/``.length``) to play in the
+			final bar.
+		channel: Resolved 0-indexed channel for the fill.
+		beat: Beat offset of the fill within the final bar.
+		mute: Pattern names to mute over the boundary approach.
+		beats: Mute window in beats (rounded UP to whole bars — muting is
+			bar-granular).
+		drum_note_map: Explicit drum map for the fill (otherwise borrowed
+			from a registered pattern on the same channel).
+		device: Output device index for the fill.
+	"""
+
+	before: str
+	fill: typing.Optional[typing.Any] = None
+	channel: typing.Optional[int] = None
+	beat: float = 0.0
+	mute: typing.Optional[typing.List[str]] = None
+	beats: typing.Optional[float] = None
+	drum_note_map: typing.Optional[typing.Dict[str, int]] = None
+	device: int = 0
+
+
 class _PendingPattern:
 
 	"""
@@ -1098,6 +1150,7 @@ class _PendingPattern:
 		device: int = 0,
 		raw_device: subsequence.midi_utils.DeviceId = None,
 		mirrors: typing.Optional[typing.Iterable[subsequence.pattern.MirrorSpec]] = None,
+		min_energy: typing.Optional[float] = None,
 	) -> None:
 
 		"""
@@ -1126,6 +1179,7 @@ class _PendingPattern:
 		self.device = device
 		self.raw_device: subsequence.midi_utils.DeviceId = raw_device
 		self.mirrors: typing.List[subsequence.pattern.MirrorSpec] = list(mirrors) if mirrors else []
+		self.min_energy = min_energy
 
 
 class _PendingScheduled:
@@ -1282,6 +1336,16 @@ class Composition:
 		self._section_cadences: typing.Dict[str, str] = {}
 		self._harmony_horizon = _HarmonyHorizon()
 		self._section_motifs: typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any] = {}
+		self._energy_map: typing.Dict[str, typing.Union[float, typing.Tuple[float, float]]] = {}
+		self._form_has_payload: bool = False
+		self._form_key: typing.Optional[str] = None
+		self._form_scale: typing.Optional[str] = None
+		# Cache of section progressions resolved against an effective key/scale
+		# (key-relative section harmony re-keys per occurrence; resolution is a
+		# pure function of (content, key, scale), so this is just memoisation).
+		self._resolved_section_cache: typing.Dict[typing.Tuple[str, typing.Optional[str], typing.Optional[str]], Progression] = {}
+		self._transitions: typing.List[_Transition] = []
+		self._transition_muted: typing.Set[str] = set()
 		self._pending_patterns: typing.List[_PendingPattern] = []
 		# Names of patterns declared by the most recent live-reload exec (added by
 		# pattern()/layer() as they run); the deletion diff in _apply_source_async
@@ -1555,6 +1619,96 @@ class Composition:
 
 		return None
 
+	def _effective_key_scale (
+		self,
+		section_info: typing.Optional["subsequence.form_state.SectionInfo"],
+	) -> typing.Tuple[typing.Optional[str], typing.Optional[str]]:
+
+		"""Resolve the key and scale in force, by the key-source precedence.
+
+		The layered chain, key and scale resolved **independently** so a
+		section can move the tonic, the mode, or both:
+		``Section.key`` > form key (``form(key=)`` / ``Form(key=)``) >
+		``Composition.key``, and likewise for scale.  This is the one place
+		the tier order lives; every placement site routes through it so the
+		section key reaches every compositional element uniformly (the
+		three-intent model: only *key-relative* content reads this — absolute
+		content ignores it, chord-relative content tracks the chord).
+		"""
+
+		key: typing.Optional[str] = None
+		scale: typing.Optional[str] = None
+
+		if section_info is not None:
+			key = section_info.key
+			scale = section_info.scale
+
+		if key is None:
+			key = self._form_key
+		if key is None:
+			key = self.key
+
+		if scale is None:
+			scale = self._form_scale
+		if scale is None:
+			scale = self.scale
+
+		return key, scale
+
+	def _resolve_section_progression (
+		self,
+		info: "subsequence.form_state.SectionInfo",
+	) -> typing.Optional[Progression]:
+
+		"""Resolve a section's bound progression against its effective key/scale.
+
+		Concrete progressions (names, ``PitchSet``, frozen captures) are
+		returned unchanged.  Key-relative ones resolve against the section's
+		effective key+scale — memoised per ``(name, key, scale)`` so a stable
+		section reuses one realisation and span identity is stable across
+		ticks.  If no key is resolvable at this moment the section is skipped
+		(returns ``None`` → falls through to the bound/live source) with a
+		warning; the authoritative check runs at :meth:`play`/:meth:`render`.
+		"""
+
+		raw = self._section_progressions.get(info.name)
+
+		if raw is None or raw.is_concrete:
+			return raw
+
+		key, scale = self._effective_key_scale(info)
+
+		if key is None:
+			logger.warning(
+				"section_chords(%r) is key-relative but no key resolves for this section — "
+				"skipping (the chords fall through to the live/bound source)",
+				info.name,
+			)
+			return None
+
+		cache_key = (info.name, key, scale)
+		cached = self._resolved_section_cache.get(cache_key)
+
+		if cached is not None:
+			return cached
+
+		try:
+			resolved = raw.resolve(key, scale or "ionian")
+		except ValueError as error:
+			# A degree out of range for the effective scale, or an unknown
+			# scale — never let it escape the clock callback (that would kill
+			# harmony for the rest of playback).  Skip the section; the _run
+			# pre-flight catches the common case far earlier.
+			logger.warning(
+				"section_chords(%r) cannot resolve against %s %s (%s) — skipping; "
+				"the chords fall through to the live/bound source",
+				info.name, key, scale or "ionian", error,
+			)
+			return None
+
+		self._resolved_section_cache[cache_key] = resolved
+		return resolved
+
 	@property
 	def form_state (self) -> typing.Optional["subsequence.form_state.FormState"]:
 		"""The active ``subsequence.form_state.FormState``, or ``None`` if ``form()`` has not been called."""
@@ -1590,7 +1744,9 @@ class Composition:
 
 		Binding freezes one realisation (the value type's identity), so
 		key-relative content resolves here, at bind time, against the
-		composition's key and scale.
+		composition's key and scale.  Used by the *global* bound progression
+		(``harmony(progression=)``) — which is not section-scoped, so it has
+		nothing to re-key against.
 		"""
 
 		value = source if isinstance(source, Progression) else subsequence.progressions.progression(source)
@@ -1604,6 +1760,20 @@ class Composition:
 			value = value.resolve(self.key, self.scale or "ionian")
 
 		return value
+
+	def _coerce_section_progression (self, source: typing.Any) -> Progression:
+
+		"""Coerce a section progression, keeping key-relative content UNRESOLVED.
+
+		Section harmony re-keys per occurrence (the section/form/composition
+		key in force when the section plays), so a key-relative progression is
+		stored relative and resolved late, in the clock, against the section's
+		effective key+scale — unlike the global bound progression, which
+		freezes at bind.  Concrete content (chord names, frozen captures,
+		``PitchSet``) is already absolute and never moves.
+		"""
+
+		return source if isinstance(source, Progression) else subsequence.progressions.progression(source)
 
 	def harmony (
 		self,
@@ -1632,7 +1802,8 @@ class Composition:
 
 		Parameters:
 			style: The harmonic style to use. Built-in: "functional_major"
-				(alias "diatonic_major"), "turnaround", "aeolian_minor",
+				(alias "diatonic_major"), "hooktheory_major" (alias
+				"pop_major"), "turnaround", "aeolian_minor",
 				"phrygian_minor", "lydian_major", "dorian_minor",
 				"chromatic_mediant", "suspended", "mixolydian", "whole_tone",
 				"diminished". See README for full descriptions.
@@ -1869,13 +2040,26 @@ class Composition:
 		Accepts a :class:`Progression` value (from :meth:`freeze`, the
 		``progression()`` factory, or hand-built) or anything the factory
 		accepts — an element list like ``[1, 6, 3, "bVII7"]`` or chord
-		names.  Key-relative content resolves now, against the composition
-		key and scale.
+		names.
+
+		**Key-relative content re-keys per occurrence.**  A progression
+		written in degrees or romans is *key-relative* content: it resolves
+		late, each time the section plays, against that section's effective
+		key and scale (``Section.key`` > form key > composition key, with
+		mode following the same chain).  So a ``Section(key="A")`` plays the
+		same numbered progression a tone higher — its chords and its degrees
+		share one tonic.  *Absolute* content — chord names (``"Am"``),
+		:class:`~subsequence.progressions.PitchSet`, and frozen captures from
+		:meth:`freeze` — names exact chords and is never transposed by a key.
 
 		On exhaustion mid-section the progression loops when no graph style
-		is configured (and always when it contains a
-		:class:`~subsequence.progressions.PitchSet`); with a live engine,
-		exhaustion falls through to live stepping until the section changes.
+		is configured (and always when it contains a ``PitchSet``); with a
+		live engine, exhaustion **falls through to live stepping in the
+		COMPOSITION key** — the live graph engine does not transpose for a
+		section (a stateful walk does not modulate mid-stream), so a
+		re-keyed section that runs out of written chords hands off to
+		composition-key harmony.  Bind a full-length progression (or set
+		``at_end``/loop intent) if you need the whole section in its key.
 
 		Parameters:
 			section_name: Name of the section as defined in :meth:`form`.
@@ -1885,6 +2069,9 @@ class Composition:
 			ValueError: If a graph-based form has been configured and
 				*section_name* is not one of its sections.  List and generator
 				forms yield names lazily, so they cannot be validated here.
+				(A key-relative progression with no resolvable key for the
+				section is caught at :meth:`play`/:meth:`render`, once the
+				form's keys are known.)
 
 		Example::
 
@@ -1904,9 +2091,8 @@ class Composition:
 				f"Known sections: {known}"
 			)
 
-		self._section_progressions[section_name] = self._coerce_progression(
-			progression, f"section_chords({section_name!r})"
-		)
+		self._section_progressions[section_name] = self._coerce_section_progression(progression)
+		self._resolved_section_cache = {}
 		self._harmony_horizon.invalidate_future()
 
 	def pin_chord (self, bar: int, chord: typing.Optional[typing.Any]) -> None:
@@ -1920,12 +2106,17 @@ class Composition:
 		Parameters:
 			bar: 1-based bar number (the musician count).
 			chord: A chord name, int degree, roman string, ``Chord``,
-				``PitchSet``, or ``None`` to unpin.  Key-relative specs
-				resolve now, against the composition key and scale.
+				``PitchSet``, or ``None`` to unpin.  A **key-relative** spec
+				(int degree, roman) re-keys like section harmony: it resolves
+				late, against the effective key of the section sounding at
+				that bar (so ``pin_chord(8, "V")`` is the dominant of
+				wherever bar 8 lands).  A **concrete** spec (name, ``Chord``,
+				``PitchSet``) is absolute and never moves.
 
 		Example::
 
 			composition.pin_chord(8, "E7")    # the turnaround lands on E7
+			composition.pin_chord(8, "V")     # the dominant of bar 8's section
 			composition.pin_chord(8, None)    # let it walk again
 		"""
 
@@ -1935,16 +2126,66 @@ class Composition:
 		if chord is None:
 			self._pinned_chords.pop(bar, None)
 		else:
+			# Store the parsed span — relative pins resolve late (per section)
+			# at the clock; concrete pins are absolute.
 			span = subsequence.progressions.parse_element(chord, beats = float(self.time_signature[0]))
 
 			if not span.is_concrete:
-				if self.key is None:
-					raise ValueError("pin_chord with a key-relative spec needs key= on the Composition")
-				span = span.resolve(subsequence.chords.key_name_to_pc(self.key), self.scale or "ionian")
+				# Raise early only when no key is resolvable for this bar — the
+				# bar's own section (sequence forms) may supply one even with no
+				# composition/form key.
+				probe_info = self._form_state.section_info_at_bar(bar) if self._form_state is not None else None
+				probe_key, _ = self._effective_key_scale(probe_info)
+				if probe_key is None:
+					raise ValueError(
+						"pin_chord with a key-relative spec (degree/roman) needs a key — set key= on "
+						"the Composition, a form key, or a Section.key for that bar (the pin re-keys "
+						"to the section's effective key)"
+					)
 
-			self._pinned_chords[bar] = _span_chord(span)
+			self._pinned_chords[bar] = span
 
 		self._harmony_horizon.invalidate_future()
+
+	def _resolve_pin (self, bar: int) -> typing.Optional[typing.Any]:
+
+		"""Resolve a stored pin to a chord-like, re-keying relative pins per section.
+
+		Concrete pins return their chord directly; key-relative pins resolve
+		against the effective key of the section sounding now (the clock
+		reads this as it reaches each bar).  Returns ``None`` (no pin / a
+		relative pin with no resolvable key, warned) so the clock falls
+		through to its normal source.
+		"""
+
+		span = self._pinned_chords.get(bar)
+
+		if span is None:
+			return None
+
+		if span.is_concrete:
+			return _span_chord(span)
+
+		# Key the pin to the section that OWNS this bar (the clock's lookahead
+		# can project a pin into a later, differently-keyed section while the
+		# playhead is still earlier) — fall back to the playhead section where
+		# a per-bar section is not computable (graph/generator forms).
+		info: typing.Optional["subsequence.form_state.SectionInfo"] = None
+		if self._form_state is not None:
+			info = self._form_state.section_info_at_bar(bar)
+			if info is None:
+				info = self._form_state.get_section_info()
+
+		key, scale = self._effective_key_scale(info)
+
+		if key is None:
+			logger.warning(
+				"pin_chord(%d, ...) is key-relative but no key resolves for that bar — ignoring the pin",
+				bar,
+			)
+			return None
+
+		return _span_chord(span.resolve(subsequence.chords.key_name_to_pc(key), scale or "ionian"))
 
 	def request_cadence (self, cadence: str = "strong", bar: typing.Optional[int] = None) -> None:
 
@@ -3775,26 +4016,49 @@ class Composition:
 	def form (
 		self,
 		sections: typing.Union[
-			typing.List[typing.Tuple[str, int]],
+			"subsequence.forms.Form",
+			typing.List[typing.Any],
 			typing.Iterator[typing.Tuple[str, int]],
 			typing.Dict[str, typing.Tuple[int, typing.Optional[typing.List[typing.Tuple[str, int]]]]]
 		],
 		loop: bool = False,
-		start: typing.Optional[str] = None
+		start: typing.Optional[str] = None,
+		at_end: str = "stop",
+		key: typing.Optional[str] = None,
+		scale: typing.Optional[str] = None,
 	) -> None:
 
 		"""
 		Define the structure (sections) of the composition.
 
-		You can define form in three ways:
-		1. **Graph (Dict)**: Dynamic transitions based on weights.
-		2. **Sequence (List)**: A fixed order of sections.
-		3. **Generator**: A Python generator that yields `(name, bars)` pairs.
+		You can define form in four ways:
+		1. **Form value**: a frozen :class:`~subsequence.forms.Form` of
+		   :class:`~subsequence.forms.Section` values — the payload home
+		   (energy, key per section); editable, navigable.
+		2. **Sequence (List)**: a fixed order of ``(name, bars)`` tuples
+		   or Sections (lists coerce — they are the same form).
+		3. **Graph (Dict)**: dynamic transitions based on weights.
+		4. **Generator**: a Python generator that yields `(name, bars)` pairs.
+
+		Form-value and list forms are **navigable**: ``form_jump()`` and
+		``form_next()`` work on them (the jump lands on the next occurrence
+		of the name, wrapping).
 
 		Parameters:
-			sections: The form definition (Dict, List, or Generator).
-			loop: Whether to cycle back to the start (List mode only).
+			sections: The form definition (Form, List, Dict, or Generator).
+			loop: Sugar for ``at_end="loop"``.
 			start: The section to start with (Graph mode only).
+			at_end: What happens when a sequence form runs out —
+				``"stop"`` (the form finishes and patterns see no section;
+				default), ``"hold"`` (the final section repeats until
+				navigated away from), or ``"loop"`` (start over).  Graphs
+				end via their terminal sections instead.
+			key: A form-level key — the **form tier** of the key-source
+				chain (``Section.key`` overrides it; it overrides the
+				composition key).  Re-anchors key-relative content for the
+				whole form.  When *sections* is a ``Form`` value carrying its
+				own ``key``, that value is used unless this argument overrides.
+			scale: A form-level scale/mode, paired with ``key``.
 
 		Example:
 			```python
@@ -3805,6 +4069,12 @@ class Composition:
 				("verse", 8),
 				("chorus", 16)
 			])
+
+			# The same structure with payloads, held open at the end
+			S = subsequence.Section
+			comp.form(subsequence.Form([
+				S("verse", 8, energy=0.5), S("chorus", 8, energy=0.9),
+			]), at_end="hold")
 			```
 		"""
 
@@ -3817,8 +4087,361 @@ class Composition:
 			sections,
 			loop = loop,
 			start = start,
-			rng = self._stream(f"form:{self._form_count}")
+			rng = self._stream(f"form:{self._form_count}"),
+			at_end = at_end,
 		)
+
+		# A Form value carries energy payloads — that counts as an energy
+		# source for the min_energy registration check in _run().
+		self._form_has_payload = isinstance(sections, subsequence.forms.Form) or (
+			isinstance(sections, list) and any(isinstance(element, subsequence.forms.Section) for element in sections)
+		)
+
+		# Form-tier key/scale: an explicit argument wins; otherwise a Form
+		# value's own key/scale seeds the tier.  Re-binding the form drops any
+		# stale per-section resolution cache.
+		if isinstance(sections, subsequence.forms.Form):
+			self._form_key = key if key is not None else sections.key
+			self._form_scale = scale if scale is not None else sections.scale
+		else:
+			self._form_key = key
+			self._form_scale = scale
+
+		self._resolved_section_cache = {}
+
+	def form_freeze (self, sections: typing.Optional[int] = None) -> "subsequence.forms.Form":
+
+		"""Freeze the graph form's walk into an editable :class:`~subsequence.forms.Form`.
+
+		Walks a **clone** of the live form state — the same RNG state, so the
+		frozen path is exactly the path the live graph would have played —
+		and returns it as a Form value: inspect it, edit it
+		(``path.replace(3, bars=16)``), and rebind it with
+		``composition.form(path, at_end=...)``.  The live form state is
+		untouched (rebinding replaces it).
+
+		Parameters:
+			sections: Number of sections to freeze.  Without it, the walk
+				runs until a terminal section; a graph with no terminal
+				sections requires ``sections=`` explicitly.
+
+		Raises:
+			ValueError: If no graph form is bound (a list form is already a
+				frozen sequence), the form has already finished, or the walk
+				cannot terminate.
+
+		Example::
+
+			composition.form({...}, start="intro")
+			path = composition.form_freeze()          # the walk, frozen
+			composition.form(path, at_end="stop")     # rebind the editable value
+		"""
+
+		fs = self._form_state
+
+		if fs is None or fs._graph is None or fs._section_bars is None:
+			raise ValueError(
+				"form_freeze() freezes a graph form's walk — call form() with a dict first "
+				"(a list form is already a frozen sequence)"
+			)
+
+		if fs._current is None:
+			raise ValueError("the form has already finished — nothing left to freeze")
+
+		if sections is not None and sections < 1:
+			raise ValueError("sections must be at least 1")
+
+		if sections is None and not fs._terminal_sections:
+			raise ValueError(
+				"this graph has no terminal section, so the walk would never end — "
+				"pass sections=n to bound it"
+			)
+
+		# Clone the RNG state: the frozen walk reproduces the live form's
+		# future draws without consuming them.
+		rng = random.Random()
+		rng.setstate(fs._rng.getstate())
+
+		walked = [fs._current]
+		next_name = fs._next_section_name		# already decided by the live state
+
+		while next_name is not None:
+			if sections is not None and len(walked) >= sections:
+				break
+			if sections is None and len(walked) >= 10000:
+				raise ValueError(
+					"form_freeze() walked 10000 sections without reaching a terminal — "
+					"the terminals look unreachable; pass sections=n to bound the walk"
+				)
+
+			walked.append(subsequence.forms.Section(name = next_name, bars = fs._section_bars[next_name]))
+			next_name = None if next_name in fs._terminal_sections else fs._graph.choose_next(next_name, rng)
+
+		# Carry the form-tier key/scale onto the frozen value so a freeze →
+		# rebind round-trip is lossless (an explicit form(key=) on rebind
+		# still overrides).
+		return subsequence.forms.Form(walked, key = self._form_key, scale = self._form_scale)
+
+	def energy (self, energies: typing.Dict[str, typing.Union[float, typing.Tuple[float, float]]]) -> None:
+
+		"""Set per-section energy — the arranging dial, as one plain dict.
+
+		``{"verse": 0.5, "chorus": 0.9, "build": (0.3, 1.0)}`` — a float is
+		the section's level; a ``(start, end)`` tuple interpolates across the
+		section (a build).  Patterns read ``p.energy`` (0.5 when nothing is
+		configured) and gate themselves, or declare ``min_energy=`` on
+		``pattern()`` for automatic muting.
+
+		The dict **overrides** any energy payload carried by bound
+		:class:`~subsequence.forms.Section` values — it is the later,
+		performance-level dial.  Re-calling replaces the whole mapping
+		(idempotent, live-reload friendly).
+
+		Example::
+
+			composition.energy({"intro": 0.2, "verse": 0.55, "drop": 0.95})
+		"""
+
+		validated: typing.Dict[str, typing.Union[float, typing.Tuple[float, float]]] = {}
+
+		for name, value in energies.items():
+			if isinstance(value, tuple):
+				if len(value) != 2:
+					raise ValueError(f"energy ramp for {name!r} must be (start, end), got {value!r}")
+				start_level, end_level = float(value[0]), float(value[1])
+				for level in (start_level, end_level):
+					if not 0.0 <= level <= 1.0:
+						raise ValueError(f"energy for {name!r} must be 0.0–1.0, got {value!r}")
+				validated[name] = (start_level, end_level)
+			else:
+				level = float(value)
+				if not 0.0 <= level <= 1.0:
+					raise ValueError(f"energy for {name!r} must be 0.0–1.0, got {value!r}")
+				validated[name] = level
+
+		self._energy_map = validated
+
+	def _current_energy (self, info: typing.Optional[subsequence.form_state.SectionInfo]) -> float:
+
+		"""Resolve the energy for a section snapshot.
+
+		Priority: the ``energy()`` dict (ramps interpolate by section
+		progress) > the bound Section payload > 0.5.
+		"""
+
+		if info is None:
+			return 0.5
+
+		spec = self._energy_map.get(info.name)
+
+		if spec is None:
+			return info.energy
+
+		if isinstance(spec, tuple):
+			start_level, end_level = spec
+			return start_level + (end_level - start_level) * info.progress
+
+		return spec
+
+	def on_section (self, callback: typing.Callable[..., typing.Any]) -> None:
+
+		"""Register a callback fired on every section change.
+
+		The callback receives the new :class:`~subsequence.form_state.SectionInfo`
+		(or ``None`` when the form finishes).  It fires from the form clock,
+		one lookahead-beat **early** — in time to affect the new section's
+		first patterns — and once at play start for the opening section.
+
+		Example::
+
+			composition.on_section(lambda info: print(f"now: {info.name if info else 'end'}"))
+		"""
+
+		self.on_event("section", callback)
+
+	def transition (
+		self,
+		before: str,
+		fill: typing.Optional[typing.Any] = None,
+		channel: typing.Optional[int] = None,
+		beat: float = 0.0,
+		mute: typing.Optional[typing.List[str]] = None,
+		beats: typing.Optional[float] = None,
+		drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+		device: subsequence.midi_utils.DeviceId = None,
+	) -> None:
+
+		"""Declare boundary material — the automatic fill or mute, one line.
+
+		``before`` names the incoming section (``"chorus"``), or ``"*"`` for
+		any *different* section (repeats don't fire it).  Two actions,
+		combinable:
+
+		- ``fill=`` (+ ``channel=``, ``beat=``): a Motif played in the last
+		  bar before the boundary, starting at ``beat`` of that bar.  Drum
+		  names resolve through ``drum_note_map=`` if given, otherwise the
+		  map is borrowed from a registered pattern on the same channel.
+		- ``mute=`` (+ ``beats=``): pattern names muted over the approach
+		  and unmuted at the boundary.  Muting is **bar-granular** (the
+		  existing rule), so ``beats`` rounds up to whole bars.  Performer
+		  mutes win: a pattern you muted yourself stays muted.
+
+		Transitions stack — call once per rule.  Registration is additive
+		and idempotent per identical rule.
+
+		Example::
+
+			composition.transition(before="*", fill=FILL, channel=10, beat=2.0)
+			composition.transition(before="drop", mute=["pads"], beats=4)
+		"""
+
+		if fill is None and mute is None:
+			raise ValueError("transition() needs fill= and/or mute= — it declares what happens at the boundary")
+
+		if fill is not None:
+			if channel is None:
+				raise ValueError("transition(fill=) needs channel= — the fill must land somewhere")
+			if not hasattr(fill, "events") or not hasattr(fill, "length"):
+				raise TypeError(f"fill must be a Motif-like value with .events/.length, got {type(fill).__name__}")
+
+		if mute is not None and beats is None:
+			beats = float(self.time_signature[0])		# one bar by default
+
+		rule = _Transition(
+			before = before,
+			fill = fill,
+			channel = self._resolve_channel(channel) if channel is not None else None,
+			beat = float(beat),
+			mute = list(mute) if mute is not None else None,
+			beats = beats,
+			drum_note_map = drum_note_map,
+			device = self._resolve_device_id(device),
+		)
+
+		if rule not in self._transitions:
+			self._transitions.append(rule)
+
+	def _transition_drum_map (self, channel: typing.Optional[int]) -> typing.Optional[typing.Dict[str, int]]:
+
+		"""Borrow a drum map from a registered pattern on the same channel."""
+
+		if channel is None:
+			return None
+
+		for pending in self._pending_patterns:
+			if pending.channel == channel and pending.drum_note_map:
+				return pending.drum_note_map
+
+		for running in self._running_patterns.values():
+			candidate = getattr(running, "_drum_note_map", None)
+			if running.channel == channel and candidate:
+				return typing.cast(typing.Dict[str, int], candidate)
+
+		return None
+
+	def _fire_fill (self, rule: _Transition, start_pulse: int) -> None:
+
+		"""Build a transition fill as a one-shot pattern and schedule it."""
+
+		assert rule.fill is not None and rule.channel is not None
+
+		drum_map = rule.drum_note_map if rule.drum_note_map is not None else self._transition_drum_map(rule.channel)
+
+		pattern = subsequence.pattern.Pattern(
+			channel = rule.channel,
+			length = float(rule.fill.length),
+			device = rule.device,
+		)
+
+		harmony_view: typing.Optional[HarmonyView] = None
+		if not self._harmony_horizon.is_empty:
+			harmony_view = HarmonyView(self._harmony_horizon, start_pulse / self._sequencer.pulses_per_beat)
+
+		# The fill sounds in the outgoing section's final bar, so a degree-
+		# bearing fill resolves against THAT section's effective key/scale —
+		# previously it took the composition key, ignoring the section.
+		fill_section = self._form_state.get_section_info() if self._form_state else None
+		fill_key, fill_scale = self._effective_key_scale(fill_section)
+
+		builder = subsequence.pattern_builder.PatternBuilder(
+			pattern = pattern,
+			cycle = 0,
+			drum_note_map = drum_map,
+			section = fill_section,
+			bar = self._builder_bar,
+			conductor = self.conductor,
+			rng = self._stream(f"transition:{rule.before}:{start_pulse}") or random.Random(),
+			tweaks = {},
+			default_grid = 16,
+			data = self.data,
+			key = fill_key,
+			scale = fill_scale,
+			time_signature = self.time_signature,
+			harmony = harmony_view,
+		)
+
+		try:
+			builder.motif(rule.fill)
+		except Exception:
+			logger.exception("transition fill failed to build — the boundary plays without it")
+			return
+
+		self._schedule_one_shot(pattern, start_pulse)
+
+	def _check_transitions (self, boundary_pulse: int, section_changed: bool) -> None:
+
+		"""The form clock's boundary hook: fire fills, manage approach mutes.
+
+		Called once per bar (lookahead-early, with the bar-line pulse).
+		Fill rules fire when the current bar is the section's last before a
+		matching boundary; mute rules close over the approach window
+		(rounded up to whole bars — muting is bar-granular) and reopen at
+		the boundary.  Performer mutes are never touched.
+		"""
+
+		if section_changed and self._transition_muted:
+			# The boundary arrived — restore only what we muted ourselves.
+			for name in self._transition_muted:
+				running = self._running_patterns.get(name)
+				if running is not None:
+					running._muted = False
+			self._transition_muted.clear()
+
+		if not self._transitions or self._form_state is None:
+			return
+
+		info = self._form_state.get_section_info()
+
+		if info is None or info.next_section is None:
+			return
+
+		bar_beats = float(self.time_signature[0])
+		bars_remaining = info.bars - info.bar
+
+		for rule in self._transitions:
+
+			if rule.before == "*":
+				if info.next_section == info.name:
+					continue		# a repeat is not a boundary
+			elif info.next_section != rule.before:
+				continue
+
+			if rule.fill is not None and bars_remaining == 1:
+				self._fire_fill(rule, boundary_pulse + int(round(rule.beat * self._sequencer.pulses_per_beat)))
+
+			if rule.mute:
+				window_beats = rule.beats if rule.beats is not None else bar_beats
+				window_bars = max(1, int((window_beats + bar_beats - 1e-9) // bar_beats))
+
+				if bars_remaining <= window_bars:
+					for name in rule.mute:
+						running = self._running_patterns.get(name)
+						if running is None or name in self._transition_muted:
+							continue
+						if running._muted:
+							continue		# the performer's mute — not ours to manage
+						running._muted = True
+						self._transition_muted.add(name)
 
 	@staticmethod
 	def _resolve_length (
@@ -3887,6 +4510,7 @@ class Composition:
 		voice_leading: bool = False,
 		device: subsequence.midi_utils.DeviceId = None,
 		mirrors: typing.Optional[typing.Iterable[subsequence.pattern.MirrorSpec]] = None,
+		min_energy: typing.Optional[float] = None,
 	) -> typing.Callable:
 
 		"""
@@ -3930,6 +4554,10 @@ class Composition:
 				``device`` is the integer index returned by ``midi_output()`` (0 =
 				primary).  ``channel`` follows this composition's channel-numbering
 				convention.  See also ``mirror()`` / ``unmirror()`` for live toggling.
+			min_energy: Automatic energy gating — the pattern is silent while
+				the current section's energy (``composition.energy()`` dict,
+				or the bound Section payload) is below this threshold.
+				Composes with ``mute()``: a performer mute always wins.
 
 		Example:
 			```python
@@ -4010,6 +4638,7 @@ class Composition:
 				device = 0 if (resolved_device is None or isinstance(resolved_device, str)) else resolved_device,
 				raw_device = resolved_device,
 				mirrors = resolved_mirrors,
+				min_energy = min_energy,
 			)
 
 			self._pending_patterns.append(pending)
@@ -4464,6 +5093,17 @@ class Composition:
 		# Create a temporary Pattern
 		pattern = subsequence.pattern.Pattern(channel=resolved_channel, length=beat_length, device=resolved_device_idx, mirrors=resolved_mirrors)
 
+		# Resolve the section context once: the one-shot inherits the section's
+		# effective key/scale (so a triggered degree resolves like everywhere
+		# else) and a harmony view at the current playhead (so ChordTone /
+		# Approach resolve too).
+		trigger_section = self._form_state.get_section_info() if self._form_state else None
+		trigger_key, trigger_scale = self._effective_key_scale(trigger_section)
+
+		trigger_harmony: typing.Optional[HarmonyView] = None
+		if not self._harmony_horizon.is_empty:
+			trigger_harmony = HarmonyView(self._harmony_horizon, self._sequencer.pulse_count / self._sequencer.pulses_per_beat)
+
 		# Create a PatternBuilder
 		builder = subsequence.pattern_builder.PatternBuilder(
 			pattern=pattern,
@@ -4471,14 +5111,22 @@ class Composition:
 			drum_note_map=drum_note_map,
 			cc_name_map=cc_name_map,
 			nrpn_name_map=nrpn_name_map,
-			section=self._form_state.get_section_info() if self._form_state else None,
+			section=trigger_section,
 			bar=self._builder_bar,
 			conductor=self.conductor,
 			rng=random.Random(),  # Fresh random state for each trigger
 			tweaks={},
 			default_grid=default_grid,
 			data=self.data,
-			held_notes=self._sequencer._held_notes
+			# A one-shot resolves key-relative content against the same
+			# effective key/scale as the section it fires into (previously
+			# omitted entirely — degrees raised even in a keyed composition).
+			key=trigger_key,
+			scale=trigger_scale,
+			time_signature=self.time_signature,
+			held_notes=self._sequencer._held_notes,
+			harmony=trigger_harmony,
+			energy=self._current_energy(trigger_section)
 		)
 
 		# Call the builder function
@@ -4510,7 +5158,12 @@ class Composition:
 			quantize_pulses = int(quantize * pulses_per_beat)
 			start_pulse = ((current_pulse // quantize_pulses) + 1) * quantize_pulses
 
-		# Schedule the pattern for one-shot execution
+		self._schedule_one_shot(pattern, start_pulse)
+
+	def _schedule_one_shot (self, pattern: subsequence.pattern.Pattern, start_pulse: int) -> None:
+
+		"""Schedule a one-shot pattern at an absolute pulse, thread-safely."""
+
 		try:
 			# Probe only: raises RuntimeError when not on the event loop.
 			asyncio.get_running_loop()
@@ -4813,6 +5466,54 @@ class Composition:
 		for section_name, section_progression in self._section_progressions.items():
 			_check_span_floor(section_progression, f"section_chords({section_name!r})")
 
+		# Key-relative section progressions resolve late, per occurrence — so
+		# verify they WILL resolve now, before playback, rather than surfacing
+		# a silent skip (or a dead clock) mid-render.  For each occurrence's
+		# effective key+scale: a missing key, or a degree/scale that does not
+		# resolve, is raised here with an actionable message.
+		fs = self._form_state
+
+		for section_name, section_progression in self._section_progressions.items():
+			if section_progression.is_concrete:
+				continue
+
+			# The (key, scale) contexts this section may be resolved against.
+			contexts: typing.List[typing.Tuple[typing.Optional[str], typing.Optional[str]]] = []
+			if fs is not None and fs._sequence is not None and any(s.name == section_name for s in fs._sequence):
+				for section in fs._sequence:
+					if section.name != section_name:
+						continue
+					ctx = (section.key or self._form_key or self.key, section.scale or self._form_scale or self.scale)
+					if ctx not in contexts:
+						contexts.append(ctx)
+			else:
+				contexts.append((self._form_key or self.key, self._form_scale or self.scale))
+
+			for ctx_key, ctx_scale in contexts:
+				if ctx_key is None:
+					raise ValueError(
+						f"section_chords({section_name!r}) is key-relative (degrees/romans) but no key "
+						"resolves for it — set key= on the Composition, a form key (form(key=...)), or "
+						f"a Section.key on every {section_name!r} section."
+					)
+				try:
+					section_progression.resolve(ctx_key, ctx_scale or "ionian")
+				except ValueError as error:
+					raise ValueError(
+						f"section_chords({section_name!r}) does not resolve against its effective key "
+						f"{ctx_key} {ctx_scale or 'ionian'}: {error}"
+					)
+
+		# min_energy with nothing feeding p.energy is a silent no-op — warn loudly.
+		energy_gated = [p.builder_fn.__name__ for p in self._pending_patterns if p.min_energy is not None]
+
+		if energy_gated and not self._energy_map and not self._form_has_payload:
+			logger.warning(
+				f"min_energy is set on {', '.join(energy_gated)} but no energy source is "
+				"configured — p.energy is always 0.5 (call composition.energy() or bind a "
+				"Form whose Sections carry energy)"
+			)
+
 		# The form clock MUST be registered before the harmonic clock: same-pulse
 		# fixed callbacks fire in registration order (and all fixed callbacks fire
 		# before callback sequences), and on a section-boundary bar the harmonic
@@ -4825,7 +5526,8 @@ class Composition:
 			await schedule_form(
 				sequencer = self._sequencer,
 				form_state = self._form_state,
-				reschedule_lookahead = clock_lookahead
+				reschedule_lookahead = clock_lookahead,
+				on_bar = self._check_transitions,
 			)
 
 		self._harmony_horizon.reset()
@@ -4833,13 +5535,18 @@ class Composition:
 		if self._harmonic_state is not None or self._bound_progression is not None or self._section_progressions:
 
 			def _get_section_progression () -> typing.Optional[typing.Tuple[str, int, int, typing.Optional[Progression]]]:
-				"""Return (section_name, section_index, bars, Progression|None) for the current section, or None."""
+				"""Return (section_name, section_index, bars, Progression|None) for the current section, or None.
+
+				The progression is resolved against the section's effective
+				key/scale here (key-relative section harmony re-keys per
+				occurrence); concrete content passes through unchanged.
+				"""
 				if self._form_state is None:
 					return None
 				info = self._form_state.get_section_info()
 				if info is None:
 					return None
-				prog = self._section_progressions.get(info.name)
+				prog = self._resolve_section_progression(info)
 				return (info.name, info.index, info.bars, prog)
 
 			def _resolve_cadence_formula (name: str) -> typing.List[subsequence.chords.Chord]:
@@ -4860,7 +5567,7 @@ class Composition:
 				cycle_beats = self._harmony_cycle_beats or 4,
 				get_bound_progression = lambda: self._bound_progression,
 				get_section_progression = _get_section_progression,
-				get_pinned = self._pinned_chords.get,
+				get_pinned = self._resolve_pin,
 				cadence_requests = self._cadence_requests,
 				resolve_cadence = _resolve_cadence_formula,
 				get_section_cadence = self._section_cadences.get,
@@ -5077,6 +5784,8 @@ class Composition:
 				self._cycle_count = 0
 				self._rng = pattern_rng
 				self._muted = False
+				self._min_energy = pending.min_energy
+				self._energy_gated = False
 				self._voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = (
 					subsequence.voicings.VoiceLeadingState() if pending.voice_leading else None
 				)
@@ -5113,6 +5822,27 @@ class Composition:
 				if self._muted:
 					return
 
+				section_info = composition_ref._form_state.get_section_info() if composition_ref._form_state else None
+				energy = composition_ref._current_energy(section_info)
+				effective_key, effective_scale = composition_ref._effective_key_scale(section_info)
+
+				# Automatic energy gating: below the threshold the pattern is
+				# silent this cycle (composing with _muted — a performer mute
+				# always wins).  Gate flips log once.
+				if self._min_energy is not None:
+					gated = energy < self._min_energy
+
+					if gated != self._energy_gated:
+						state_word = "closed" if gated else "open"
+						logger.info(
+							f"Pattern '{self._builder_fn.__name__}': energy gate {state_word} "
+							f"(energy {energy:.2f}, min_energy {self._min_energy:g})"
+						)
+						self._energy_gated = gated
+
+					if gated:
+						return
+
 				# The harmony view for this cycle, anchored at its start beat —
 				# under variable harmonic rhythm the window, not the engine's
 				# mutating singleton, is the source of truth.
@@ -5128,19 +5858,23 @@ class Composition:
 					drum_note_map = self._drum_note_map,
 					cc_name_map = self._cc_name_map,
 					nrpn_name_map = self._nrpn_name_map,
-					section = composition_ref._form_state.get_section_info() if composition_ref._form_state else None,
+					section = section_info,
 					bar = composition_ref._builder_bar,
 					conductor = composition_ref.conductor,
 					rng = self._rng,
 					tweaks = self._tweaks,
 					default_grid = self._default_grid,
 					data = composition_ref.data,
-					key = composition_ref.key,
-					scale = composition_ref.scale,
+					# The effective key/scale re-anchors key-relative content
+					# (degrees, romans, generated material) to the section /
+					# form / composition tier in force — mode travels too.
+					key = effective_key,
+					scale = effective_scale,
 					time_signature = composition_ref.time_signature,
 					held_notes = composition_ref._sequencer._held_notes,
 					harmony = harmony_view,
-					section_motifs = composition_ref._section_motifs
+					section_motifs = composition_ref._section_motifs,
+					energy = energy,
 				)
 
 				try:

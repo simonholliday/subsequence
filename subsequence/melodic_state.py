@@ -305,23 +305,30 @@ class MelodicState:
 
 	def configure_defaults (self, key: typing.Optional[str], mode: typing.Optional[str]) -> None:
 
-		"""Adopt the composition's key/scale where this state left them unset.
+		"""Adopt the surrounding key/scale where this state left them unset.
 
-		Called by ``p.melody()`` on first use; idempotent, and never
-		overrides explicit constructor arguments or an explicit pool.
+		Called by ``p.melody()`` every build.  It **tracks** the builder's
+		current key/scale (which is the section's effective key under a form),
+		so a state placed across sections follows each section's key — its
+		melodic *history* is untouched, only the pitch pool and tonic move.
+		An explicit constructor key/scale or an explicit pool always wins and
+		is never overridden.
 		"""
 
-		if self._configured or self._explicit_pool:
+		if self._explicit_pool:
 			return
 
 		self._configured = True
 		changed = False
 
-		if not self._explicit_key and key is not None:
+		# Re-track on every call (not just the first): a persistent state used
+		# across sections must follow the live key, or the first section to
+		# place it would freeze the key forever.
+		if not self._explicit_key and key is not None and key != self.key:
 			self.key = key
 			changed = True
 
-		if not self._explicit_mode and mode is not None:
+		if not self._explicit_mode and mode is not None and mode != self.mode:
 			self.mode = mode
 			changed = True
 

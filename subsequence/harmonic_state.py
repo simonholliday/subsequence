@@ -6,6 +6,7 @@ import subsequence.chord_graphs.chromatic_mediant
 import subsequence.chord_graphs.diminished
 import subsequence.chord_graphs.dorian_minor
 import subsequence.chord_graphs.functional_major
+import subsequence.chord_graphs.hooktheory_major
 import subsequence.chord_graphs.lydian_major
 import subsequence.chord_graphs.mixolydian
 import subsequence.chord_graphs.phrygian_minor
@@ -53,6 +54,8 @@ def _resolve_graph_style (
 		"aeolian_minor": subsequence.chord_graphs.aeolian_minor.AeolianMinor,
 		"lydian_major":  subsequence.chord_graphs.lydian_major.LydianMajor,
 		"dorian_minor":  subsequence.chord_graphs.dorian_minor.DorianMinor,
+		"hooktheory_major": subsequence.chord_graphs.hooktheory_major.HooktheoryMajor,
+		"pop_major": subsequence.chord_graphs.hooktheory_major.HooktheoryMajor,
 	}
 	if style in _D7_STYLES:
 		return _D7_STYLES[style](include_dominant_7th)

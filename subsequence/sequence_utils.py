@@ -1900,3 +1900,279 @@ def csim (a: typing.Sequence[float], b: typing.Sequence[float]) -> float:
 				agreements += 1
 
 	return agreements / pairs
+
+
+# ---------------------------------------------------------------------------
+# Xenakis sieves — one integer-set kernel serving scales, pitch pools, rhythm
+# grids, and bar selection alike (the experimental composer's primitive).
+# ---------------------------------------------------------------------------
+
+
+def sieve (
+	classes: typing.Sequence[typing.Tuple[int, int]],
+	hi: int,
+	lo: int = 0,
+) -> typing.List[int]:
+
+	"""Xenakis sieve: the sorted integers in ``[lo, hi)`` in any of the classes.
+
+	A sieve (Xenakis's *crible*) is a logical formula over **residual
+	classes** that denotes a subset of the integers.  This primary form takes
+	a list of ``(modulus, residue)`` pairs and returns their **union** over a
+	bounded range — every ``x`` in ``[lo, hi)`` with ``x % modulus == residue``
+	for at least one class.  The integers index *any* ordered parameter, so
+	one kernel builds custom scales (over 0–11 semitones), non-octave pitch
+	pools, rhythm grids, and bar-selection masks.
+
+	For intersection and complement, compose :func:`residual_class` objects
+	with ``&``, ``|``, ``~`` and evaluate the result (see :class:`Sieve`).
+
+	Parameters:
+		classes: ``(modulus, residue)`` pairs.  ``modulus`` must be ≥ 1; the
+			residue is taken modulo the modulus.
+		hi: Exclusive upper bound.
+		lo: Inclusive lower bound (default 0).
+
+	Returns:
+		The sorted, de-duplicated integers in range that satisfy any class.
+
+	Raises:
+		ValueError: If a modulus is below 1.
+
+	Example:
+		```python
+		sieve([(12, 0), (12, 2), (12, 4), (12, 5), (12, 7), (12, 9), (12, 11)], hi=12)
+		# → [0, 2, 4, 5, 7, 9, 11]  — the major scale as a sieve
+		sieve([(2, 0)], hi=12)          # → [0, 2, 4, 6, 8, 10]  — whole-tone
+		sieve([(5, 0), (7, 1)], lo=60, hi=96)   # a non-octave pitch pool
+		```
+	"""
+
+	for modulus, _residue in classes:
+		if modulus < 1:
+			raise ValueError(f"sieve modulus must be at least 1 — got {modulus}")
+
+	hits = {
+		x
+		for x in range(lo, hi)
+		for modulus, residue in classes
+		if x % modulus == residue % modulus
+	}
+
+	return sorted(hits)
+
+
+class Sieve:
+
+	"""A composable Xenakis sieve — residual classes under ``&`` ``|`` ``~``.
+
+	The full algebra layer over :func:`sieve`: build a :class:`Sieve` with
+	:func:`residual_class` (alias ``rc``) and combine with union (``|``),
+	intersection (``&``), and complement (``~``), then :meth:`evaluate` over
+	a range.  Membership is decided per integer, so complement is well-defined
+	without a range until evaluation.
+
+	Example:
+		```python
+		from subsequence.sequence_utils import residual_class as rc
+		((rc(2, 0) | rc(3, 0)) & ~rc(4, 1)).evaluate(hi=24)
+		```
+	"""
+
+	def __init__ (self, predicate: typing.Callable[[int], bool]) -> None:
+
+		"""Wrap a membership predicate (use :func:`residual_class` to make one)."""
+
+		self._predicate = predicate
+
+	def __contains__ (self, value: int) -> bool:
+
+		"""Membership test for a single integer."""
+
+		return self._predicate(value)
+
+	def __or__ (self, other: "Sieve") -> "Sieve":
+
+		"""Union — in either sieve."""
+
+		return Sieve(lambda x: self._predicate(x) or other._predicate(x))
+
+	def __and__ (self, other: "Sieve") -> "Sieve":
+
+		"""Intersection — in both sieves."""
+
+		return Sieve(lambda x: self._predicate(x) and other._predicate(x))
+
+	def __invert__ (self) -> "Sieve":
+
+		"""Complement — every integer NOT in this sieve."""
+
+		return Sieve(lambda x: not self._predicate(x))
+
+	def evaluate (self, hi: int, lo: int = 0) -> typing.List[int]:
+
+		"""The sorted integers in ``[lo, hi)`` that belong to this sieve."""
+
+		return [x for x in range(lo, hi) if self._predicate(x)]
+
+
+def residual_class (modulus: int, residue: int) -> Sieve:
+
+	"""A single residual class ``{x : x % modulus == residue}`` as a :class:`Sieve`.
+
+	The atom of sieve algebra (Xenakis's notation ``modulus @ residue``).
+	Combine with ``&`` ``|`` ``~`` and call :meth:`Sieve.evaluate`.
+	"""
+
+	if modulus < 1:
+		raise ValueError(f"residual-class modulus must be at least 1 — got {modulus}")
+
+	reduced = residue % modulus
+
+	return Sieve(lambda x: x % modulus == reduced)
+
+
+# ---------------------------------------------------------------------------
+# Toussaint rhythm measures — evenness, off-beatness, syncopation (analysis
+# primitives from "The Geometry of Musical Rhythm").
+# ---------------------------------------------------------------------------
+
+
+def rhythmic_evenness (onsets: typing.Sequence[int], grid: int, normalize: bool = True) -> float:
+
+	"""How evenly onsets are spread around the cycle (Toussaint's evenness).
+
+	Places the *grid* pulses as equally spaced points on a unit circle and
+	sums the chord lengths between every pair of onsets (``2·sin(π·d/grid)``
+	for a pulse distance ``d``).  A maximally even rhythm (a regular polygon —
+	the Euclidean rhythms) maximises this sum; clustered onsets minimise it.
+
+	Parameters:
+		onsets: 0-based onset indices (duplicates and out-of-range values are
+			reduced modulo *grid* and de-duplicated).
+		grid: Pulses in the cycle.
+		normalize: Divide by the maximally-even sum for *k* onsets, giving
+			``(0, 1]`` (1.0 = perfectly even).  ``False`` returns the raw sum.
+
+	Returns:
+		The evenness, in ``(0, 1]`` when normalised (1.0 for fewer than two
+		onsets).
+
+	Example:
+		```python
+		rhythmic_evenness([0, 3, 6], 8)     # tresillo — near 1.0
+		rhythmic_evenness([0, 1, 2], 8)     # clustered — much lower
+		```
+	"""
+
+	if grid < 1:
+		raise ValueError(f"grid must be at least 1 — got {grid}")
+
+	reduced = sorted({o % grid for o in onsets})
+	k = len(reduced)
+
+	if k < 2:
+		return 1.0
+
+	raw = sum(
+		2.0 * math.sin(math.pi * abs(reduced[a] - reduced[b]) / grid)
+		for a in range(k)
+		for b in range(a + 1, k)
+	)
+
+	if not normalize:
+		return raw
+
+	# The maximally-even arrangement of k points on the grid is the regular
+	# k-gon: pairwise distances 2·sin(π·i/k) for each of the k rotations.
+	maximum = sum(2.0 * math.sin(math.pi * i / k) * (k - i) for i in range(1, k))
+
+	return raw / maximum if maximum > 0 else 1.0
+
+
+def offbeatness (onsets: typing.Sequence[int], grid: int) -> int:
+
+	"""How many onsets fall on intrinsically off-beat pulses (Toussaint).
+
+	The on-beat pulses are the vertices of every regular sub-polygon of the
+	cycle (the divisor meters); the off-beat pulses are exactly those coprime
+	to *grid*.  Off-beatness counts onsets landing on coprime positions — a
+	meter-independent syncopation flavour (high for rhythms that fight every
+	even subdivision).
+
+	Parameters:
+		onsets: 0-based onset indices (reduced modulo *grid*, de-duplicated).
+		grid: Pulses in the cycle.
+
+	Returns:
+		The count of distinct onsets on off-beat (coprime) pulses.
+
+	Example:
+		```python
+		offbeatness([0, 4, 8, 12], 16)   # 0 — all on the strong polygon
+		offbeatness([0, 3, 6, 10, 13], 16)   # 2 — bossa, off-beats on pulses 3 and 13
+		```
+	"""
+
+	if grid < 1:
+		raise ValueError(f"grid must be at least 1 — got {grid}")
+
+	reduced = {o % grid for o in onsets}
+
+	# The downbeat (pulse 0) is always on-beat; the explicit guard also handles
+	# grid==1, where gcd(0, 1) == 1 would otherwise misclassify it.
+	return sum(1 for p in reduced if p != 0 and math.gcd(p, grid) == 1)
+
+
+def syncopation (
+	onsets: typing.Sequence[int],
+	grid: int,
+	time_signature: typing.Tuple[int, int] = (4, 4),
+	weights: typing.Optional[typing.Sequence[float]] = None,
+) -> float:
+
+	"""How much a rhythm pulls away from its metric strong points.
+
+	A weighted off-beat measure: each onset contributes ``max_weight −
+	weight_at_its_pulse`` from the metric-weight table (so onsets on the
+	downbeat add nothing, onsets on the weakest pulses add the most),
+	normalised by the onset count.  Uses :func:`build_metric_weights` by
+	default; pass a custom per-pulse *weights* list for additive or
+	non-isochronous meters.
+
+	Parameters:
+		onsets: 0-based onset indices (reduced modulo *grid*, de-duplicated).
+		grid: Pulses in the cycle.
+		time_signature: Shapes the default weight table.
+		weights: Optional explicit per-pulse weights (length *grid*).
+
+	Returns:
+		Mean weight deficit per onset, in ``[0, max_weight − min_weight]``
+		(0.0 only when every onset sits on the downbeat, or there are none;
+		the downbeat alone carries the maximum weight, so even on-beat
+		rhythms score a little above 0).
+
+	Example:
+		```python
+		syncopation([0], 16)             # 0.0 — the downbeat only
+		syncopation([0, 4, 8, 12], 16)   # low — on the beats, but beat 1 is strongest
+		syncopation([3, 7, 11, 15], 16)  # high — every onset on a weak pulse
+		```
+	"""
+
+	if grid < 1:
+		raise ValueError(f"grid must be at least 1 — got {grid}")
+
+	table = list(weights) if weights is not None else build_metric_weights(time_signature, grid)
+
+	if len(table) != grid:
+		raise ValueError(f"weights must have one value per grid step ({grid}) — got {len(table)}")
+
+	reduced = sorted({o % grid for o in onsets})
+
+	if not reduced:
+		return 0.0
+
+	strongest = max(table)
+
+	return sum(strongest - table[p] for p in reduced) / len(reduced)

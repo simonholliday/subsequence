@@ -117,7 +117,12 @@ def test_frozen_value_takes_spice (patch_midi: None) -> None:
 
 def test_section_chords_accepts_element_lists (patch_midi: None) -> None:
 
-	"""section_chords coerces lists through the factory and resolves them."""
+	"""section_chords coerces lists through the factory and keeps them RELATIVE.
+
+	Key-relative section harmony re-keys per occurrence, so the stored value
+	stays un-resolved (degrees/romans) and resolves late against the
+	section's effective key.
+	"""
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="A", scale="minor")
 	composition.section_chords("verse", [1, 6])
@@ -125,7 +130,8 @@ def test_section_chords_accepts_element_lists (patch_midi: None) -> None:
 	bound = composition._section_progressions["verse"]
 
 	assert isinstance(bound, subsequence.Progression)
-	assert [chord.name() for chord in bound.chords] == ["Am", "F"]
+	assert not bound.is_concrete		# stored relative, not frozen at bind
+	assert [chord.name() for chord in bound.resolve("A", "minor").chords] == ["Am", "F"]
 
 
 # ---------------------------------------------------------------------------
@@ -134,15 +140,19 @@ def test_section_chords_accepts_element_lists (patch_midi: None) -> None:
 
 def test_pin_chord_stores_and_unpins (patch_midi: None) -> None:
 
-	"""Pins parse like progression elements; None removes them."""
+	"""Pins parse like progression elements; None removes them.
+
+	Concrete pins resolve to their exact chord; a relative pin re-keys
+	against the section in force (here, just the composition's A minor).
+	"""
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="A", scale="minor")
 
 	composition.pin_chord(8, "E7")
-	assert composition._pinned_chords[8] == subsequence.chords.parse_chord("E7")
+	assert composition._resolve_pin(8).name() == "E7"		# concrete: exact
 
-	composition.pin_chord(8, 5)		# a degree pin resolves against the key
-	assert composition._pinned_chords[8].name() == "Em"
+	composition.pin_chord(8, 5)		# a degree pin re-keys against the effective key
+	assert composition._resolve_pin(8).name() == "Em"		# degree 5 in A minor
 
 	composition.pin_chord(8, None)
 	assert 8 not in composition._pinned_chords
@@ -369,6 +379,7 @@ def test_sketch_a_verse_by_hand_chorus_generated_under_a_constraint (tmp_path: p
 	assert heard[3] == "G9"
 
 	# Chorus: generated under the constraint — the last bar is the cadential
-	# major dominant, resolved against the composition key at bind time.
+	# major dominant, resolved against the section's effective key at the
+	# clock (the chorus has no key override, so the composition's A minor).
 	assert heard[7] == "E"
-	assert composition._section_progressions["chorus"].chords[0].name() == "Am"
+	assert composition._section_progressions["chorus"].resolve("A", "minor").chords[0].name() == "Am"

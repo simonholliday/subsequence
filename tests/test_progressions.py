@@ -253,8 +253,11 @@ def test_factory_unknown_preset_raises () -> None:
 
 	"""A bare string is a preset name; unknown names fail with the list hint."""
 
-	with pytest.raises(ValueError, match="preset"):
-		subsequence.progressions.progression("trance_epic")
+	with pytest.raises(ValueError, match="Unknown progression preset"):
+		subsequence.progressions.progression("not_a_real_preset")
+
+	# A known preset resolves to its genre loop (the table ships in stage 8).
+	assert [c.name() for c in subsequence.progressions.progression("trance_epic").resolve("A", "aeolian").chords] == ["Am", "F", "C", "G"]
 
 
 def test_factory_style_generation_is_seeded () -> None:

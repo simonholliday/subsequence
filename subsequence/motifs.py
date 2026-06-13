@@ -52,6 +52,38 @@ _DEFAULT_VELOCITY = subsequence.constants.velocity.DEFAULT_VELOCITY
 # squeal eight octaves up.
 _MAX_PLAUSIBLE_DEGREE = 24
 
+# World-rhythm timelines: name → (onset step indices, grid pulses, default
+# voice).  Onset positions are the exact pulse indices catalogued in
+# Toussaint, "The Geometry of Musical Rhythm" — the clave family and tresillo/
+# cinquillo on a 16- or 8-pulse bar, the West-African bell patterns on 12.
+# Read by Motif.preset().  Default voices are General MIDI percussion names
+# (so a preset with no pitch= sounds against the standard GM drum map);
+# override with pitch= for any other kit.
+_WORLD_RHYTHMS: typing.Dict[str, typing.Tuple[typing.Tuple[int, ...], int, str]] = {
+	# Cuban clave family (16-pulse bar).
+	"son_clave_3_2":    ((0, 3, 6, 10, 12), 16, "claves"),
+	"son_clave_2_3":    ((2, 4, 8, 11, 14), 16, "claves"),
+	"rumba_clave_3_2":  ((0, 3, 7, 10, 12), 16, "claves"),
+	"rumba_clave_2_3":  ((2, 4, 8, 11, 15), 16, "claves"),
+	"bossa_nova_clave": ((0, 3, 6, 10, 13), 16, "side_stick"),
+	# Tresillo / cinquillo (the 3-3-2 family).
+	"tresillo":         ((0, 3, 6), 8, "low_conga"),
+	"tresillo_16":      ((0, 6, 12), 16, "low_conga"),
+	"cinquillo":        ((0, 2, 3, 5, 6), 8, "low_conga"),
+	# West-African / Cuban 4-4 bell timelines (16-pulse).
+	"shiko":            ((0, 4, 6, 10, 12), 16, "cowbell"),
+	"soukous":          ((0, 3, 6, 10, 11), 16, "cowbell"),
+	"gahu":             ((0, 3, 6, 10, 14), 16, "cowbell"),
+	"samba_necklace":   ((0, 3, 5, 7, 10, 12, 14), 16, "side_stick"),
+	# The "standard pattern" / bembé bell on a 12-pulse cycle.
+	"bembe":            ((0, 2, 4, 5, 7, 9, 11), 12, "cowbell"),
+	# bembe_euclidean is the specific Toussaint-catalogued Euclidean rotation
+	# of the bembé necklace (intervals 2-1-2-2-1-2-2); it differs from this
+	# library's own generate_euclidean_sequence(12, 7) default rotation.
+	"bembe_euclidean":  ((0, 2, 3, 5, 7, 8, 10), 12, "cowbell"),
+	"fume_fume":        ((0, 2, 4, 6, 7, 9, 11), 12, "cowbell"),
+}
+
 _CHORD_TONE_NAMES = {"root": 1, "third": 2, "fifth": 3, "seventh": 4}
 
 
@@ -551,6 +583,64 @@ class Motif:
 			[pitch] * len(onsets),
 			onsets,
 			velocities, durations, probabilities, length,
+		)
+
+	@classmethod
+	def preset (
+		cls,
+		name: str,
+		pitch: typing.Optional[typing.Union[int, str]] = None,
+		length: float = 4.0,
+		velocities: typing.Any = _DEFAULT_VELOCITY,
+		durations: typing.Any = 0.1,
+		probabilities: typing.Any = 1.0,
+	) -> "Motif":
+
+		"""A named world-rhythm timeline as a value — ``Motif.preset("son_clave_3_2")``.
+
+		Looks a curated timeline up in the world-rhythm table (clave family,
+		West-African bell patterns, tresillo/cinquillo, samba) and lays its
+		onsets across *length* beats.  Onset positions are exact pulse indices
+		from Toussaint's "The Geometry of Musical Rhythm"; each preset declares
+		its own grid (16 for the clave/4-4 timelines, 12 for the bell
+		patterns) and a default drum voice.
+
+		Parameters:
+			name: A preset name (``KeyError``-style ValueError lists them all).
+			pitch: The voice — a drum name or MIDI int; defaults to the
+				preset's General-MIDI voice (``"claves"``, ``"cowbell"``,
+				``"side_stick"``, ``"low_conga"``), so it sounds against the
+				standard GM drum map without a ``pitch=``.
+			length: Total beats the cycle spans (4 = one common-time bar).
+			velocities / durations / probabilities: The parallel-list params.
+
+		Returns:
+			A drum/pitched :class:`Motif` of the timeline's onsets.
+
+		Raises:
+			ValueError: If *name* is not a known preset.
+
+		Example:
+			```python
+			clave = subsequence.Motif.preset("son_clave_3_2")              # GM "claves"
+			bell  = subsequence.Motif.preset("bembe", pitch="cowbell")     # 12-pulse
+			```
+		"""
+
+		if name not in _WORLD_RHYTHMS:
+			known = ", ".join(sorted(_WORLD_RHYTHMS))
+			raise ValueError(f"Unknown rhythm preset {name!r}. Known presets: {known}.")
+
+		steps, grid, voice = _WORLD_RHYTHMS[name]
+
+		return cls.steps(
+			steps = list(steps),
+			pitches = pitch if pitch is not None else voice,
+			velocities = velocities,
+			durations = durations,
+			probabilities = probabilities,
+			step_duration = length / grid,
+			length = length,
 		)
 
 	# ── control-gesture constructors (mirror the pattern_midi verbs) ────

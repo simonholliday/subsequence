@@ -17,7 +17,9 @@ The top-level controller for a musical piece.
 | `clock_output(enabled) -> None` | Send MIDI timing clock to connected hardware. |
 | `current_chord() -> Optional[Any]` | The chord sounding at the playhead, or ``None`` without harmony. |
 | `display(enabled, grid, grid_scale) -> None` | Enable or disable the live terminal dashboard. |
-| `form(sections, loop, start) -> None` | Define the structure (sections) of the composition. |
+| `energy(energies) -> None` | Set per-section energy — the arranging dial, as one plain dict. |
+| `form(sections, loop, start, at_end, key, scale) -> None` | Define the structure (sections) of the composition. |
+| `form_freeze(sections) -> 'subsequence.forms.Form'` | Freeze the graph form's walk into an editable :class:`~subsequence.forms.Form`. |
 | `form_jump(section_name) -> None` | Jump the form to a named section immediately. |
 | `form_next(section_name) -> None` | Queue the next section — takes effect when the current section ends. |
 | `form_state *(property)*` | The active ``subsequence.form_state.FormState``, or ``None`` if ``form()`` has not been called. |
@@ -40,9 +42,10 @@ The top-level controller for a musical piece.
 | `mute(name) -> None` | Mute a running pattern by name. |
 | `note_input(channel, release_ms, latch, input_device) -> None` | Track notes held on a MIDI keyboard for live arpeggiation. |
 | `on_event(event_name, callback) -> None` | Register a callback for a sequencer event (e.g., "bar", "start", "stop"). |
+| `on_section(callback) -> None` | Register a callback fired on every section change. |
 | `osc(receive_port, send_port, send_host, receive_host) -> None` | Enable bi-directional Open Sound Control (OSC). |
 | `osc_map(address, handler) -> None` | Register a custom OSC handler. |
-| `pattern(channel, beats, bars, steps, step_duration, drum_note_map, cc_name_map, nrpn_name_map, reschedule_lookahead, voice_leading, device, mirrors) -> Callable` | Register a function as a repeating MIDI pattern. |
+| `pattern(channel, beats, bars, steps, step_duration, drum_note_map, cc_name_map, nrpn_name_map, reschedule_lookahead, voice_leading, device, mirrors, min_energy) -> Callable` | Register a function as a repeating MIDI pattern. |
 | `phrase_part(channel, part, root, bars, beats, velocity, fit, device, mirrors) -> None` | Declare a part that plays each section's bound Motif/Phrase. |
 | `pin_chord(bar, chord) -> None` | Force the chord sounding at a bar — fiat over live generation. |
 | `play() -> None` | Start the composition. |
@@ -59,6 +62,7 @@ The top-level controller for a musical piece.
 | `sequencer *(property)*` | The underlying ``Sequencer`` instance. |
 | `set_bpm(bpm) -> None` | Instantly change the tempo. |
 | `target_bpm(bpm, bars, shape) -> None` | Smoothly ramp the tempo to a target value over a number of bars. |
+| `transition(before, fill, channel, beat, mute, beats, drum_note_map, device) -> None` | Declare boundary material — the automatic fill or mute, one line. |
 | `trigger(fn, channel, beats, bars, steps, step_duration, quantize, drum_note_map, cc_name_map, nrpn_name_map, chord, device, mirrors) -> None` | Trigger a one-shot pattern immediately or on a quantized boundary. |
 | `tuning(source, cents, ratios, equal, bend_range, channels, reference_note, exclude_drums) -> None` | Set a global microtonal tuning for the composition. |
 | `tweak(name, **kwargs) -> None` | Override parameters for a running pattern. |
@@ -77,7 +81,7 @@ The musician's 'palette' for creating musical content.
 
 | Method | Description |
 |---|---|
-| `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key, scale, time_signature, held_notes, harmony, section_motifs) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
+| `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key, scale, time_signature, held_notes, harmony, section_motifs, energy) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
 | `apply_tuning(tuning, bend_range, channels, reference_note) -> 'PatternBuilder'` | Apply a microtonal tuning to this pattern via pitch bend injection. |
 | `arpeggio(notes, root, velocity, count, inversion, beat, span, spacing, duration, direction, seed, rng) -> 'PatternBuilder'` | Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time at regular beat intervals. |
 | `bar_cycle(length) -> subsequence.pattern_builder.BarCycle` | Return the current bar's position within a repeating cycle of bars. |
@@ -181,7 +185,7 @@ Persistent melodic context that applies NIR scoring to single-note lines.
 | `__init__(key, mode, low, high, nir_strength, chord_weight, rest_probability, pitch_diversity, tessitura_strength) -> None` | Initialise a melodic state for a given key, mode, and MIDI register. |
 | `choose_next(chord_tones, rng, beat, position, contour_target) -> Optional[int]` | Score all pitch-pool candidates and return the chosen pitch, or None for a rest. |
 | `clone() -> 'MelodicState'` | An independent copy — settings, factors, pool, and history. |
-| `configure_defaults(key, mode) -> None` | Adopt the composition's key/scale where this state left them unset. |
+| `configure_defaults(key, mode) -> None` | Adopt the surrounding key/scale where this state left them unset. |
 | `record(pitch) -> None` | Append a pitch to the melodic history (capped at 4 entries). |
 | `set_pool(pitches) -> None` | Replace the pitch pool with explicit MIDI pitches — the experimental seam. |
 
@@ -228,6 +232,7 @@ A frozen sequence of :class:`ChordSpan` — the governing harmony value.
 | `cadence(name) -> 'Progression'` | Substitute a cadence formula into the tail — the close, named. |
 | `chords *(property)*` | The bare chords, one per span (concrete progressions only). |
 | `describe(key, scale) -> str` | A readable, one-chord-per-line summary. |
+| `elaborate(depth, seed) -> 'Progression'` | Steedman-inspired chord elaboration — approach each chord by fifths. |
 | `events() -> Tuple[subsequence.progressions.ChordEvent, ...]` | The realised timeline as a tuple (iteration, materialised). |
 | `extend(*extensions, only) -> 'Progression'` | Add chord extensions (``7``/``9``/``11``/``13``/``"sus4"``/...) to every span. |
 | `generate(style, bars, beats, key, scale, seed, rng, pins, end, avoid, cadence, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity) -> 'Progression'` | Generate a progression from a chord-graph walk — the hybrid generator. |
@@ -299,6 +304,7 @@ An immutable musical figure: timed note events + control gestures + a length in 
 | `pitch_bend(values, beats, length, probabilities) -> 'Motif'` | Discrete pitch-bend writes (-1.0 to 1.0) at beat positions — mirrors ``p.pitch_bend()``. |
 | `pitch_bend_ramp(start, end, beat_start, beat_end, shape, length, probability) -> 'Motif'` | Pitch bend swept ``start`` → ``end`` (-1.0 to 1.0) over a beat range — mirrors ``p.pitch_bend_ramp()``. |
 | `pitched(spec) -> 'Motif'` | Replace every pitch with one spec — a kick rhythm becomes a bass line. |
+| `preset(name, pitch, length, velocities, durations, probabilities) -> 'Motif'` | A named world-rhythm timeline as a value — ``Motif.preset("son_clave_3_2")``. |
 | `quantize(grid) -> 'Motif'` | Snap note onsets to the nearest multiple of *grid* beats (control gestures untouched). |
 | `reverse() -> 'Motif'` | Mirror the figure in time; ramps swap direction (a rising sweep falls). |
 | `rhythm() -> 'Motif'` | Strip pitches (and control gestures): a reusable rhythmic skeleton. |
@@ -341,6 +347,29 @@ A sequence of Motifs with segmentation preserved.
 | `with_velocity(velocity) -> 'Phrase'` | Replace every note's velocity, segment-wise. |
 
 
+## `Section`
+
+One section of a form — the payload home.
+
+| Method | Description |
+|---|---|
+| `__init__(name, bars, energy, key, scale) -> None` |  |
+
+
+## `Form`
+
+A frozen sequence of Sections — the editable, bindable form value.
+
+| Method | Description |
+|---|---|
+| `__init__(sections, key, scale) -> None` | Coerce any iterable of Sections / (name, bars) tuples. |
+| `bars *(property)*` | Total length in bars. |
+| `describe() -> str` | A readable one-section-per-line summary. |
+| `insert(slot, section) -> 'Form'` | Insert a section *at* a 1-based slot (existing sections shift right). |
+| `replace(slot, section, **changes) -> 'Form'` | Replace the section at a 1-based slot — whole, or by field. |
+| `with_energy(energies) -> 'Form'` | Set the energy payload on named sections — ``{"chorus": 0.9}``. |
+
+
 ## Global Functions
 
 
@@ -360,6 +389,11 @@ A sequence of Motifs with segmentation preserved.
 | `vl_distance(source, target, pitch_classes) -> int` | Voice-leading distance between two chords (Tymoczko's taxicab metric). |
 | `branch_sequence(pitches, depth, path, mutation, rng) -> List[int]` | Navigate a fractal tree of pitch-sequence transforms and return one variation. |
 | `build_metric_weights(time_signature, grid) -> List[float]` | Per-step metric weights for one bar — how "strong" each grid position is. |
+| `sieve(classes, hi, lo) -> List[int]` | Xenakis sieve: the sorted integers in ``[lo, hi)`` in any of the classes. |
+| `residual_class(modulus, residue) -> subsequence.sequence_utils.Sieve` | A single residual class ``{x : x % modulus == residue}`` as a :class:`Sieve`. |
+| `rhythmic_evenness(onsets, grid, normalize) -> float` | How evenly onsets are spread around the cycle (Toussaint's evenness). |
+| `offbeatness(onsets, grid) -> int` | How many onsets fall on intrinsically off-beat pulses (Toussaint). |
+| `syncopation(onsets, grid, time_signature, weights) -> float` | How much a rhythm pulls away from its metric strong points. |
 
 ## Sequence Utilities (`subsequence.sequence_utils`)
 
@@ -386,6 +420,7 @@ Functions for generating and transforming sequences.
 | `logistic_map(r, steps, x0) -> List[float]` | Generate a deterministic chaos sequence using the logistic map. |
 | `lorenz_attractor(steps, dt, sigma, rho, beta, x0, y0, z0) -> List[Tuple[float, float, float]]` | Integrate the Lorenz attractor and return normalised (x, y, z) tuples. |
 | `lsystem_expand(axiom, rules, generations, rng) -> str` | Expand an L-system string by applying production rules. |
+| `offbeatness(onsets, grid) -> int` | How many onsets fall on intrinsically off-beat pulses (Toussaint). |
 | `perlin_1d(x, seed) -> float` | Generate smooth 1D noise at position *x*. |
 | `perlin_1d_sequence(start, spacing, count, seed) -> List[float]` | Generate a sequence of smooth 1D noise values. |
 | `perlin_2d(x, y, seed) -> float` | Generate smooth 2D noise at position *(x, y)*. |
@@ -394,11 +429,15 @@ Functions for generating and transforming sequences.
 | `probability_gate(sequence, probability, rng) -> List[int]` | Filter a binary sequence by probability. |
 | `random_walk(n, low, high, step, rng, start) -> List[int]` | Generate values that drift by small steps within a range. |
 | `reaction_diffusion_1d(width, steps, feed_rate, kill_rate, du, dv) -> List[float]` | Simulate a 1D Gray-Scott reaction-diffusion system. |
+| `residual_class(modulus, residue) -> subsequence.sequence_utils.Sieve` | A single residual class ``{x : x % modulus == residue}`` as a :class:`Sieve`. |
+| `rhythmic_evenness(onsets, grid, normalize) -> float` | How evenly onsets are spread around the cycle (Toussaint's evenness). |
 | `rotate(indices, shift, length) -> List[int]` | Circularly rotate step indices by the specified amount, wrapping at *length*. |
 | `scale_clamp(value, in_min, in_max, out_min, out_max) -> float` | Scale a value from an input range to an output range and clamp the result. |
 | `self_avoiding_walk(n, low, high, rng, start) -> List[int]` | Generate a self-avoiding random walk on an integer lattice. |
 | `sequence_to_indices(sequence) -> List[int]` | Extract step indices where hits occur in a binary sequence. |
 | `shuffled_choices(pool, n, rng) -> List[~T]` | Choose N items from a pool with no immediate repetition. |
+| `sieve(classes, hi, lo) -> List[int]` | Xenakis sieve: the sorted integers in ``[lo, hi)`` in any of the classes. |
+| `syncopation(onsets, grid, time_signature, weights) -> float` | How much a rhythm pulls away from its metric strong points. |
 | `thue_morse(n) -> List[int]` | Generate the Thue-Morse sequence. |
 | `vl_distance(source, target, pitch_classes) -> int` | Voice-leading distance between two chords (Tymoczko's taxicab metric). |
 | `weighted_choice(options, rng) -> ~T` | Pick one item from a list of (value, weight) pairs. |

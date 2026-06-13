@@ -216,9 +216,17 @@ class TestFormStateJumpTo:
 		with pytest.raises(ValueError, match="unknown_section"):
 			state.jump_to("unknown_section")
 
-	def test_jump_non_graph_mode_raises (self) -> None:
+	def test_jump_list_mode_navigates (self) -> None:
+		"""List forms are navigable (stage 7): the jump lands on the named occurrence."""
 		state = subsequence.form_state.FormState(sections=[("verse", 4), ("chorus", 4)])
-		with pytest.raises(ValueError, match="graph mode"):
+		state.jump_to("chorus")
+		info = state.get_section_info()
+		assert info is not None and info.name == "chorus" and info.bar == 0
+
+	def test_jump_generator_mode_raises (self) -> None:
+		"""A generator form cannot be navigated — there is no timeline to search."""
+		state = subsequence.form_state.FormState(sections=iter([("verse", 4), ("chorus", 4)]))
+		with pytest.raises(ValueError, match="generator"):
 			state.jump_to("chorus")
 
 

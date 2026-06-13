@@ -18,6 +18,7 @@ import subsequence
 import subsequence.chords
 import subsequence.composition
 import subsequence.cadences
+import subsequence.forms
 import subsequence.groove
 import subsequence.harmonic_rhythm
 import subsequence.intervals
@@ -41,6 +42,8 @@ classes_to_document: typing.List[typing.Type] = [
 	subsequence.progressions.PitchSet,
 	subsequence.motifs.Motif,
 	subsequence.motifs.Phrase,
+	subsequence.forms.Section,
+	subsequence.forms.Form,
 ]
 
 functions_to_document: typing.List[typing.Callable] = [
@@ -58,6 +61,11 @@ functions_to_document: typing.List[typing.Callable] = [
 	subsequence.sequence_utils.vl_distance,
 	subsequence.sequence_utils.branch_sequence,
 	subsequence.sequence_utils.build_metric_weights,
+	subsequence.sequence_utils.sieve,
+	subsequence.sequence_utils.residual_class,
+	subsequence.sequence_utils.rhythmic_evenness,
+	subsequence.sequence_utils.offbeatness,
+	subsequence.sequence_utils.syncopation,
 ]
 
 

@@ -28,7 +28,7 @@ What makes it different:
   harmony, and a Markov chain can shift behaviour between sections.
 - **Optional chord graph.** Define weighted chord and key transitions
   via probability graphs, with gravity and automatic voice leading.
-  Eleven built-in palettes and frozen progressions to lock some sections
+  A dozen built-in palettes and frozen progressions to lock some sections
   while others evolve freely. Layer on cognitive harmony for
   Narmour-based melodic inertia.
 - **Sub-microsecond clock.** Hybrid sleep+spin timing achieves typical
@@ -170,11 +170,13 @@ Community and Feedback:
 - **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
 - **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
 
-Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``sentence``, ``period``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``Cadence``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``.
+Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``sentence``, ``period``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``Cadence``, ``Section``, ``Form``, ``roles``, ``sieve``, ``residual_class``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``.
 """
 
 import subsequence.cadences
 import subsequence.chords
+import subsequence.forms
+import subsequence.roles
 import subsequence.composition
 import subsequence.groove
 import subsequence.harmonic_rhythm
@@ -183,6 +185,7 @@ import subsequence.melodic_state
 import subsequence.midi_utils
 import subsequence.motifs
 import subsequence.progressions
+import subsequence.sequence_utils
 import subsequence.tuning
 
 
@@ -193,6 +196,8 @@ motif = subsequence.motifs.motif
 sentence = subsequence.motifs.sentence
 period = subsequence.motifs.period
 Cadence = subsequence.cadences.Cadence
+Section = subsequence.forms.Section
+Form = subsequence.forms.Form
 Degree = subsequence.motifs.Degree
 ChordTone = subsequence.motifs.ChordTone
 Approach = subsequence.motifs.Approach
@@ -212,3 +217,6 @@ register_chord_quality = subsequence.chords.register_chord_quality
 register_scale = subsequence.intervals.register_scale
 scale_notes = subsequence.intervals.scale_notes
 bank_select = subsequence.midi_utils.bank_select
+roles = subsequence.roles
+sieve = subsequence.sequence_utils.sieve
+residual_class = subsequence.sequence_utils.residual_class

@@ -6,18 +6,29 @@ Defines :class:`SectionInfo` (immutable per-bar snapshot) and
 These are registered on the :class:`~subsequence.composition.Composition`
 via :meth:`~subsequence.composition.Composition.form` and read by pattern
 builders through ``p.section``.
+
+A form may be a :class:`~subsequence.forms.Form` value (Sections with
+energy/key payloads), a plain list of ``(name, bars)`` tuples or Sections,
+a generator yielding ``(name, bars)`` pairs, or a weighted-graph dict.
+Everything normalises to :class:`~subsequence.forms.Section` internally —
+the payload travels with the section either way.
 """
 
 import dataclasses
-import itertools
 import logging
 import random
 import typing
 
+import subsequence.forms
 import subsequence.weighted_graph
 
 
 logger = logging.getLogger(__name__)
+
+
+# Form-end behaviours (sequence and generator modes; graphs end via their
+# terminal sections).
+_AT_END_CHOICES: typing.FrozenSet[str] = frozenset({"stop", "hold", "loop"})
 
 
 @dataclasses.dataclass
@@ -38,6 +49,13 @@ class SectionInfo:
 			form will end after this section).  This is pre-decided when
 			the current section begins, so patterns can plan lead-ins.
 			A performer or code can override it with ``composition.form_next()``.
+		energy: The section's energy payload (0.5 unless a bound
+			:class:`~subsequence.forms.Form` says otherwise; the
+			``composition.energy()`` dict overrides it at read time).
+		key: The section's key override, or ``None`` (a higher tier — form
+			key, then composition key — supplies it).
+		scale: The section's scale/mode override, or ``None`` (falls back
+			through the form scale to the composition scale).
 
 	Example:
 		```python
@@ -54,8 +72,8 @@ class SectionInfo:
 				vel = int(60 + 40 * p.section.progress)
 				p.hit_steps("hh", list(range(16)), velocity=vel)
 
-			# Plan a lead-in on the last bar before a chorus
-			if p.section and p.section.last_bar and p.section.next_section == "chorus":
+			# Plan a lead-in on the last bar before a different section
+			if p.section and p.section.ending:
 				p.hit_steps("snare", [0, 2, 4, 6, 8, 10, 12, 14], velocity=100)
 		```
 	"""
@@ -65,6 +83,9 @@ class SectionInfo:
 	bars: int
 	index: int
 	next_section: typing.Optional[str] = None
+	energy: float = 0.5
+	key: typing.Optional[str] = None
+	scale: typing.Optional[str] = None
 
 	@property
 	def progress (self) -> float:
@@ -90,6 +111,22 @@ class SectionInfo:
 
 		return self.bar == self.bars - 1
 
+	@property
+	def ending (self) -> bool:
+
+		"""True on the last bar before a DIFFERENT section.
+
+		A repeat (verse → verse) is not an ending, and neither is the
+		form's end — ``ending`` marks the bars where transition material
+		(fills, mutes) belongs.
+		"""
+
+		return (
+			self.last_bar
+			and self.next_section is not None
+			and self.next_section != self.name
+		)
+
 
 class FormState:
 
@@ -98,30 +135,45 @@ class FormState:
 	def __init__ (
 		self,
 		sections: typing.Union[
-			typing.List[typing.Tuple[str, int]],
+			"subsequence.forms.Form",
+			typing.List[typing.Any],
 			typing.Iterator[typing.Tuple[str, int]],
 			typing.Dict[str, typing.Tuple[int, typing.Optional[typing.List[typing.Tuple[str, int]]]]]
 		],
 		loop: bool = False,
 		start: typing.Optional[str] = None,
-		rng: typing.Optional[random.Random] = None
+		rng: typing.Optional[random.Random] = None,
+		at_end: str = "stop",
 	) -> None:
 
 		"""
-		Initialize from a list, iterator, or dict of weighted section transitions.
+		Initialize from a Form, list, iterator, or dict of weighted section transitions.
 
 		Parameters:
-			sections: Form definition. A list of `(name, bars)` tuples, an iterator 
-				yielding `(name, bars)` tuples, or a dictionary defining a weighted 
-				directed graph for generative progression.
-			loop: When using a list, whether to cycle back to the beginning 
-				automatically (default `False`).
-			start: Name of the starting section when using a graph dict. If omitted, 
+			sections: Form definition. A :class:`~subsequence.forms.Form`
+				value, a list of Sections / `(name, bars)` tuples, an
+				iterator yielding `(name, bars)` tuples, or a dictionary
+				defining a weighted directed graph for generative progression.
+			loop: Sugar for ``at_end="loop"`` (sequence mode).
+			start: Name of the starting section when using a graph dict. If omitted,
 				it defaults to the first key in the dictionary.
 			rng: Optional seeded ``random.Random`` for deterministic graph decisions.
+			at_end: What happens when a sequence/generator form runs out —
+				``"stop"`` (the form finishes; default), ``"hold"`` (the
+				final section repeats until navigated away from), or
+				``"loop"`` (start over).  Graphs end via their terminal
+				sections, so a graph only accepts ``"stop"``.
 		"""
 
-		self._current: typing.Optional[typing.Tuple[str, int]] = None
+		if at_end not in _AT_END_CHOICES:
+			choices = ", ".join(sorted(_AT_END_CHOICES))
+			raise ValueError(f"at_end must be one of {choices}, got {at_end!r}")
+
+		if loop:
+			at_end = "loop"
+
+		self._at_end: str = at_end
+		self._current: typing.Optional[subsequence.forms.Section] = None
 		self._bar_in_section: int = 0
 		self._section_index: int = 0
 		self._total_bars: int = 0
@@ -133,6 +185,12 @@ class FormState:
 		self._rng: random.Random = rng or random.Random()
 		self._iterator: typing.Optional[typing.Iterator[typing.Tuple[str, int]]] = None
 
+		# Sequence mode state (list or Form): the whole timeline is known,
+		# which is what makes jump_to()/queue_next() navigable.
+		self._sequence: typing.Optional[typing.List[subsequence.forms.Section]] = None
+		self._position: int = 0
+		self._queued_position: typing.Optional[int] = None
+
 		# Terminal sections (graph mode only): sections with None transitions.
 		self._terminal_sections: typing.Set[str] = set()
 
@@ -141,12 +199,18 @@ class FormState:
 		# Overridable at any time via queue_next().
 		self._next_section_name: typing.Optional[str] = None
 
-		# Iterator peek buffer (list/generator mode only).
-		self._peeked: typing.Optional[typing.Tuple[str, int]] = None
+		# Iterator peek buffer (generator mode only).
+		self._peeked: typing.Optional[subsequence.forms.Section] = None
 		self._peek_exhausted: bool = False
 
 		if isinstance(sections, dict):
 			# Graph mode: build a WeightedGraph from the dict.
+			if at_end != "stop":
+				raise ValueError(
+					f"at_end={at_end!r} applies to sequence forms — a graph form ends "
+					"via its terminal sections (give a section None transitions)"
+				)
+
 			self._graph = subsequence.weighted_graph.WeightedGraph()
 			self._section_bars = {}
 
@@ -166,30 +230,33 @@ class FormState:
 			if start_name not in self._section_bars:
 				raise ValueError(f"Start section '{start_name}' not found in form definition")
 
-			self._current = (start_name, self._section_bars[start_name])
+			self._current = subsequence.forms.Section(name = start_name, bars = self._section_bars[start_name])
 			self._pick_next()
 
-		elif isinstance(sections, list):
-			for name, bars in sections:
-				if bars < 1:
-					raise ValueError(f"Section '{name}' must last at least 1 bar, got {bars}")
+		elif isinstance(sections, (subsequence.forms.Form, list)):
+			# Sequence mode: the timeline is a known, navigable list.
+			elements = sections.sections if isinstance(sections, subsequence.forms.Form) else sections
+			self._sequence = [subsequence.forms._coerce_section(element) for element in elements]
 
-			# List mode: convert to iterator, optionally cycling.
-			self._iterator = itertools.cycle(sections) if loop else iter(sections)
-
-			try:
-				self._current = next(self._iterator)
-			except StopIteration:
+			if self._sequence:
+				self._current = self._sequence[0]
+			else:
 				self._finished = True
 
-			self._peek_iterator()
+			self._pick_next()
 
 		else:
 			# Generator/iterator mode: use directly.
+			if at_end == "loop":
+				raise ValueError(
+					'at_end="loop" cannot replay a generator form — pass a list '
+					'(or Form) if the form should cycle'
+				)
+
 			self._iterator = sections
 
 			try:
-				self._current = next(self._iterator)
+				self._current = subsequence.forms._coerce_section(next(self._iterator))
 			except StopIteration:
 				self._finished = True
 
@@ -200,35 +267,92 @@ class FormState:
 		"""Pre-decide the next section so patterns can read it as a lookahead.
 
 		In graph mode, calls ``choose_next()`` on the weighted graph.
-		In iterator mode, delegates to ``_peek_iterator()``.
+		In sequence mode, reads the timeline (respecting ``at_end``).
+		In generator mode, delegates to ``_peek_iterator()``.
 		"""
 
 		if self._graph is not None:
 			assert self._current is not None
-			current_name = self._current[0]
+			current_name = self._current.name
 
 			if current_name in self._terminal_sections:
 				self._next_section_name = None
 			else:
 				self._next_section_name = self._graph.choose_next(current_name, self._rng)
+
+		elif self._sequence is not None:
+			if self._queued_position is not None:
+				self._next_section_name = self._sequence[self._queued_position].name
+			else:
+				upcoming = self._sequence_next_position()
+				self._next_section_name = self._sequence[upcoming].name if upcoming is not None else (
+					self._current.name if self._at_end == "hold" and self._current is not None else None
+				)
+
 		else:
 			self._peek_iterator()
+
+	def _sequence_next_position (self) -> typing.Optional[int]:
+
+		"""The natural next position in sequence mode, or None at the end.
+
+		``at_end="loop"`` wraps; ``"hold"`` and ``"stop"`` both return
+		None here — hold's repeat is decided at the boundary in
+		:meth:`advance` (the position does not move).
+		"""
+
+		assert self._sequence is not None
+
+		following = self._position + 1
+
+		if following < len(self._sequence):
+			return following
+
+		if self._at_end == "loop":
+			return 0
+
+		return None
 
 	def _peek_iterator (self) -> None:
 
 		"""Peek the next element from the iterator into a one-element buffer."""
 
 		if self._peek_exhausted or self._iterator is None:
-			self._next_section_name = None
+			self._next_section_name = (
+				self._current.name
+				if self._at_end == "hold" and self._current is not None and self._peek_exhausted
+				else None
+			)
 			return
 
 		try:
-			self._peeked = next(self._iterator)
-			self._next_section_name = self._peeked[0]
+			self._peeked = subsequence.forms._coerce_section(next(self._iterator))
+			self._next_section_name = self._peeked.name
 		except StopIteration:
 			self._peeked = None
-			self._next_section_name = None
 			self._peek_exhausted = True
+			self._next_section_name = (
+				self._current.name if self._at_end == "hold" and self._current is not None else None
+			)
+
+	def _find_occurrence (self, section_name: str, what: str) -> int:
+
+		"""Find the next occurrence of a name in the sequence, searching forward and wrapping."""
+
+		assert self._sequence is not None
+
+		count = len(self._sequence)
+
+		for step in range(1, count + 1):
+			candidate = (self._position + step) % count
+			if self._sequence[candidate].name == section_name:
+				return candidate
+
+		known = ", ".join(sorted({section.name for section in self._sequence}))
+		raise ValueError(
+			f"Section '{section_name}' not found in form. "
+			f"Known sections: {known}"
+		)
 
 	def queue_next (self, section_name: str) -> None:
 
@@ -236,21 +360,30 @@ class FormState:
 
 		Overrides the automatically pre-decided next section.  The queued
 		section takes effect at the natural section boundary — the current
-		section plays to completion first.
+		section plays to completion first.  In sequence mode the form
+		continues from the queued occurrence onward.
 
-		Only available in graph mode.
+		Available in graph and sequence (list/Form) modes; a generator form
+		cannot be navigated.
 
 		Args:
 			section_name: The section to queue.
 
 		Raises:
-			ValueError: If not in graph mode or the section name is unknown.
+			ValueError: If the form is a generator, or the name is unknown.
 		"""
+
+		if self._sequence is not None:
+			self._queued_position = self._find_occurrence(section_name, "queue_next")
+			self._next_section_name = section_name
+			self._finished = False
+			logger.info(f"Form: next → {section_name}")
+			return
 
 		if self._section_bars is None:
 			raise ValueError(
-				"queue_next() is only available in graph mode. "
-				"Call composition.form() with a dict to use this feature."
+				"queue_next() needs a navigable form (a graph dict, a list, or a Form value) — "
+				"a generator form cannot be navigated"
 			)
 
 		if section_name not in self._section_bars:
@@ -261,7 +394,7 @@ class FormState:
 			)
 
 		self._next_section_name = section_name
-		logger.info(f"Form: next \u2192 {section_name}")
+		logger.info(f"Form: next → {section_name}")
 
 	def advance (self) -> bool:
 
@@ -274,9 +407,8 @@ class FormState:
 		self._total_bars += 1
 
 		assert self._current is not None, "Form state invariant: current should not be None when not finished"
-		_, current_bars = self._current
 
-		if self._bar_in_section >= current_bars:
+		if self._bar_in_section >= self._current.bars:
 
 			if self._graph is not None:
 				# Graph mode: consume the pre-decided (or queued) next section.
@@ -288,20 +420,54 @@ class FormState:
 
 				assert self._section_bars is not None
 				next_name = self._next_section_name
-				self._current = (next_name, self._section_bars[next_name])
+				self._current = subsequence.forms.Section(name = next_name, bars = self._section_bars[next_name])
+				self._section_index += 1
+				self._bar_in_section = 0
+				self._pick_next()
+				return True
+
+			elif self._sequence is not None:
+				# Sequence mode: a queued jump wins; otherwise the timeline
+				# (with at_end deciding what happens past the last section).
+				if self._queued_position is not None:
+					self._position = self._queued_position
+					self._queued_position = None
+				else:
+					following = self._sequence_next_position()
+
+					if following is None:
+						if self._at_end == "hold":
+							# The final section repeats (a re-entry: the index
+							# bumps so bound material restarts correctly).
+							self._section_index += 1
+							self._bar_in_section = 0
+							self._pick_next()
+							return True
+
+						self._finished = True
+						self._current = None
+						return True
+
+					self._position = following
+
+				self._current = self._sequence[self._position]
 				self._section_index += 1
 				self._bar_in_section = 0
 				self._pick_next()
 				return True
 
 			else:
-				# Iterator mode: consume from the peek buffer.
+				# Generator mode: consume from the peek buffer.
 				if self._peeked is not None:
 					self._current = self._peeked
 					self._peeked = None
 					self._section_index += 1
 					self._bar_in_section = 0
 					self._peek_iterator()
+					return True
+				elif self._at_end == "hold":
+					self._section_index += 1
+					self._bar_in_section = 0
 					return True
 				else:
 					self._finished = True
@@ -317,15 +483,70 @@ class FormState:
 		if self._finished or self._current is None:
 			return None
 
-		name, bars = self._current
-
 		return SectionInfo(
-			name = name,
+			name = self._current.name,
 			bar = self._bar_in_section,
-			bars = bars,
+			bars = self._current.bars,
 			index = self._section_index,
-			next_section = self._next_section_name
+			next_section = self._next_section_name,
+			energy = self._current.energy,
+			key = self._current.key,
+			scale = self._current.scale,
 		)
+
+	def section_info_at_bar (self, bar: int) -> typing.Optional[SectionInfo]:
+
+		"""Return the section covering a 1-based GLOBAL bar, or ``None``.
+
+		Available for **sequence** forms only (lists and ``Form`` values — the
+		whole timeline is known, so a bar maps to a section by accumulating
+		``Section.bars``).  Graph and generator forms have no fixed layout
+		ahead of the playhead, so they return ``None`` (callers fall back to
+		the playhead section).  A looping form wraps; a finite form past its
+		end returns ``None``.
+
+		Used to key a relative ``pin_chord`` to the section that *owns* the
+		pinned bar rather than the section at the playhead — they differ when
+		the harmonic clock's lookahead projects a pin into a later, possibly
+		differently-keyed, section.  This is a layout lookup (linear from bar
+		1); live ``form_jump`` is not reflected, which is acceptable for
+		pre-set pins (the playhead path stays authoritative for live moves).
+		"""
+
+		if self._sequence is None or bar < 1:
+			return None
+
+		total = sum(section.bars for section in self._sequence)
+
+		if total <= 0:
+			return None
+
+		index0 = bar - 1
+
+		if index0 >= total:
+			if self._at_end == "loop":
+				index0 = index0 % total
+			else:
+				return None
+
+		cursor = 0
+
+		for position, section in enumerate(self._sequence):
+			if cursor <= index0 < cursor + section.bars:
+				following = self._sequence[position + 1].name if position + 1 < len(self._sequence) else None
+				return SectionInfo(
+					name = section.name,
+					bar = index0 - cursor,
+					bars = section.bars,
+					index = position,
+					next_section = following,
+					energy = section.energy,
+					key = section.key,
+					scale = section.scale,
+				)
+			cursor += section.bars
+
+		return None
 
 	@property
 	def total_bars (self) -> int:
@@ -338,13 +559,15 @@ class FormState:
 
 		"""Force the form to a named section immediately.
 
-		Only available in **graph mode** (when ``composition.form()`` was called
-		with a dict).  The section restarts from bar 0; its normal progression
-		through the weighted graph resumes from there.
+		Available in **graph mode** (dict forms) and **sequence mode**
+		(list/Form forms — the jump lands on the next occurrence of the
+		name, searching forward and wrapping, and the form continues from
+		there).  A generator form cannot be navigated.
 
-		The musical effect is not heard until the *next pattern rebuild cycle*,
-		because already-queued MIDI notes are unaffected.  This is the same
-		natural quantization that applies to all ``composition.data`` writes and
+		The section restarts from bar 0.  The musical effect is not heard
+		until the *next pattern rebuild cycle*, because already-queued MIDI
+		notes are unaffected.  This is the same natural quantization that
+		applies to all ``composition.data`` writes and
 		``composition.tweak()`` calls.
 
 		Args:
@@ -352,17 +575,28 @@ class FormState:
 				form definition passed to ``composition.form()``.
 
 		Raises:
-			ValueError: If not in graph mode or the section name is unknown.
+			ValueError: If the form is a generator, or the name is unknown.
 
 		Example::
 
 			composition.form_jump("chorus")   # via Composition helper
 		"""
 
+		if self._sequence is not None:
+			self._position = self._find_occurrence(section_name, "jump_to")
+			self._current = self._sequence[self._position]
+			self._bar_in_section = 0
+			self._section_index += 1
+			self._finished = False
+			self._queued_position = None
+			self._pick_next()
+			logger.info(f"Form: jump → {section_name}")
+			return
+
 		if self._section_bars is None:
 			raise ValueError(
-				"jump_to() is only available in graph mode. "
-				"Call composition.form() with a dict to use this feature."
+				"jump_to() needs a navigable form (a graph dict, a list, or a Form value) — "
+				"a generator form cannot be navigated"
 			)
 
 		if section_name not in self._section_bars:
@@ -372,9 +606,9 @@ class FormState:
 				f"Known sections: {known}"
 			)
 
-		self._current = (section_name, self._section_bars[section_name])
+		self._current = subsequence.forms.Section(name = section_name, bars = self._section_bars[section_name])
 		self._bar_in_section = 0
 		self._section_index += 1
 		self._finished = False
 		self._pick_next()
-		logger.info(f"Form: jump \u2192 {section_name}")
+		logger.info(f"Form: jump → {section_name}")

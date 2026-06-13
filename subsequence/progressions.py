@@ -52,9 +52,41 @@ VoicingSpec = typing.Union[int, typing.Tuple[int, int]]
 # common-time default; pass beats= for anything else.
 DEFAULT_SPAN_BEATS: float = 4.0
 
-# Genre preset table — the progression("name") syntax is reserved now; the
-# data ships in the presets stage.
-_PRESETS: typing.Dict[str, typing.List[typing.Any]] = {}
+# Genre preset table — ``progression("name")`` looks a recognizable, genre-
+# tagged loop up here.  Elements are roman numerals (key-relative, quality
+# explicit), so a preset resolves under whatever key it is bound to.  Curated,
+# not a catalogue (per the design's "curated small presets over catalogs"), and
+# all-distinct.  NOTE: minor/modal loops spell their non-major-diatonic chords
+# with a FLAT accidental (bVI, bIII, bVII) — the scale-proof "major-relative"
+# form, so they resolve to the same chords under any scale, NOT bare uppercase
+# numerals (which would read the resolution scale's degree and come out wrong
+# under the default ionian).
+_PRESETS: typing.Dict[str, typing.List[typing.Any]] = {
+	# Pop / rock.
+	"pop_axis":           ["I", "V", "vi", "IV"],            # the "Axis of Awesome" four chords
+	"pop_axis_vi_start":  ["vi", "IV", "I", "V"],            # the axis rotated to a minor start
+	"doo_wop":            ["I", "vi", "IV", "V"],            # the 50s progression
+	"doo_wop_ii":         ["I", "vi", "ii", "V"],            # doo-wop with ii for IV
+	# EDM / trance / cinematic minor.
+	"trance_epic":        ["i", "bVI", "bIII", "bVII"],      # uplifting-trance minor loop
+	"trance_vamp":        ["i", "bVII", "bVI", "bVII"],      # hypnotic two-direction minor vamp
+	"minor_pop":          ["i", "bVI", "bVII", "i"],         # aeolian rise back to the tonic
+	# Minor / modal.
+	"andalusian":         ["i", "bVII", "bVI", "V"],         # the Andalusian cadence (descending tetrachord)
+	"phrygian_vamp":      ["i", "bII", "i", "bII"],          # the Spanish/Phrygian half-step
+	"dorian_vamp":        ["i", "IV"],                       # minor tonic to the major (dorian) IV
+	"mixolydian_vamp":    ["I", "bVII", "IV", "I"],          # the classic-rock bVII
+	# Jazz.
+	"ii_v_i":             ["ii7", "V7", "Imaj7"],            # the major ii-V-I
+	"ii_v_i_minor":       ["iiø7", "V7", "i"],               # the minor ii-V-i
+	"rhythm_changes_a":   ["I", "vi", "ii", "V", "I", "vi", "ii", "V", "I", "I7", "IV", "iv", "I", "V", "I", "I"],
+	# Blues.
+	"twelve_bar_blues":   ["I7", "I7", "I7", "I7", "IV7", "IV7", "I7", "I7", "V7", "IV7", "I7", "V7"],
+	"quick_change_blues": ["I7", "IV7", "I7", "I7", "IV7", "IV7", "I7", "I7", "V7", "IV7", "I7", "V7"],
+	# Classic / baroque loops.
+	"pachelbel":          ["I", "V", "vi", "iii", "IV", "I", "IV", "V"],          # Pachelbel's Canon
+	"pachelbel_minor":    ["i", "v", "bVI", "bIII", "iv", "i", "iv", "V"],        # its minor rendering
+}
 
 
 class ChordEvent (typing.NamedTuple):
@@ -301,6 +333,8 @@ _ROMAN_NUMERALS: typing.Tuple[str, ...] = ("I", "II", "III", "IV", "V", "VI", "V
 _STYLE_SCALES: typing.Dict[str, str] = {
 	"functional_major": "ionian",
 	"diatonic_major": "ionian",
+	"hooktheory_major": "ionian",
+	"pop_major": "ionian",
 	"turnaround": "ionian",
 	"turnaround_global": "ionian",
 	"aeolian_minor": "minor",
@@ -883,7 +917,7 @@ def parse_element (element: typing.Any, beats: float = DEFAULT_SPAN_BEATS) -> Ch
 	if isinstance(element, str):
 		stripped = element.strip()
 		if stripped and stripped[0] in "ABCDEFG":
-			return ChordSpan(chord=subsequence.chords.parse_chord(stripped), beats=beats)
+			return _parse_chord_name(stripped, beats)
 		roman, inversion = parse_roman(stripped)
 		return ChordSpan(chord=roman, beats=beats, inversion=inversion)
 
@@ -896,6 +930,30 @@ def parse_element (element: typing.Any, beats: float = DEFAULT_SPAN_BEATS) -> Ch
 # ---------------------------------------------------------------------------
 # The Progression value
 # ---------------------------------------------------------------------------
+
+
+def _parse_chord_name (name: str, beats: float) -> ChordSpan:
+
+	"""Parse a chord-name element, splitting a trailing extension onto the span.
+
+	``"Dm9"`` is D minor decorated with a 9 — the quality table holds bare
+	qualities, and the 9/11/13 ride the span as extensions (decoration lives
+	on spans, never chords).  ``"Dm7"`` stays a plain quality (m7 is in the
+	table); the split only happens when the full name does not parse.
+	"""
+
+	try:
+		return ChordSpan(chord = subsequence.chords.parse_chord(name), beats = beats)
+	except ValueError as original:
+		for extension in ("13", "11", "9"):
+			if name.endswith(extension) and len(name) > len(extension):
+				base = name[:-len(extension)]
+				try:
+					chord = subsequence.chords.parse_chord(base)
+				except ValueError:
+					continue
+				return ChordSpan(chord = chord, beats = beats, extensions = (int(extension),))
+		raise original
 
 
 def _check_slot (slot: int, count: int) -> int:
@@ -1384,6 +1442,110 @@ class Progression:
 
 		return dataclasses.replace(self, spans=spans)
 
+	def elaborate (self, depth: int = 1, seed: typing.Optional[int] = None) -> "Progression":
+
+		"""Steedman-inspired chord elaboration — approach each chord by fifths.
+
+		Implements the heart of Mark Steedman's generative grammar for
+		jazz/blues chord sequences: every chord is **approached** by a chain
+		of secondary dominants propagated backward around the cycle of fifths
+		(Rule 3, "the perfect cadence propagated backward"), carved out of that
+		chord's own span (Rule 1, metric subdivision).  ``depth`` is literally
+		how many fifth-steps back the chain extends:
+
+		- ``depth=0`` — identity (the bare progression).
+		- ``depth=1`` — a secondary dominant before each chord: ``[X]`` →
+		  ``[V7/X, X]`` (e.g. a bar of C becomes G7 C).
+		- ``depth=2`` — a secondary ii–V: ``[ii/X, V7/X, X]`` (Dm7 G7 C).
+		- ``depth≥3`` — the chain extends (…V7/V7/X), the furthest-back chord
+		  is made minor — the ``ii`` of *its own local dominant* (the next
+		  link in the chain), forming a ii–V into that link, not the
+		  target's own ii — and dominants are recoloured by **tritone
+		  substitution** with even odds (Rule 4) for chromatic descents.
+		  This tritone choice is the only nondeterministic part, so ``seed``
+		  is taken (or warned) at depth ≥ 3.
+
+		Its flagship is the 12-bar blues with depth-per-chorus — elaborate a
+		``"twelve_bar_blues"`` more each chorus and the ii–V turnarounds and
+		tritone subs accumulate.
+
+		The progression must be **concrete** (resolved to rooted chords);
+		the inserted dominants are computed by pitch-class arithmetic.  Each
+		chord keeps its decorations on the final (resolved) sub-span; the
+		inserted approach chords are bare dominant/minor sevenths.  Note that
+		each span is divided into ``depth + 1`` equal sub-spans, so deep
+		elaboration of a short harmonic rhythm can drop sub-spans below the
+		harmony clock's lookahead floor — which raises at ``play()``/
+		``render()`` if the result is bound to the global clock (it is free
+		of that floor at the part level, ``p.progression()``).
+
+		Parameters:
+			depth: Elaboration depth (≥ 0).
+			seed: Seed for the depth-≥3 tritone-substitution choices.
+
+		Returns:
+			A new :class:`Progression` with the approach chords inserted.
+
+		Raises:
+			ValueError: If *depth* is negative, the progression is
+				key-relative, or any span is a rootless
+				:class:`PitchSet`.
+
+		Example:
+			```python
+			blues = subsequence.progression("twelve_bar_blues").resolve("C")
+			chorus2 = blues.elaborate(2, seed=4)      # ii–V turnarounds throughout
+			```
+		"""
+
+		if depth < 0:
+			raise ValueError("elaborate depth must be at least 0")
+
+		self._require_concrete("elaborate")
+
+		if depth == 0:
+			return self
+
+		for span in self.spans:
+			if isinstance(span.chord, PitchSet):
+				raise ValueError("elaborate needs rooted chords — a PitchSet has no root to approach by fifths")
+
+		if depth >= 3 and seed is None:
+			warnings.warn(
+				"elaborate(depth>=3) makes tritone-substitution choices — pass seed= so the "
+				"result survives live reload",
+				stacklevel = 2,
+			)
+
+		rng = random.Random(seed)
+		new_spans: typing.List[ChordSpan] = []
+
+		for span in self.spans:
+
+			target_root = span.chord.root_pc
+			sub_beats = span.beats / (depth + 1)
+
+			# The backward cycle-of-fifths chain, furthest-back first: chord j
+			# sits a fifth above chord j-1's target, i.e. root = X + 7·j.  The
+			# furthest-back (j == depth) is made minor — the ii of its OWN
+			# local dominant (the next link), forming a ii–V into that link —
+			# once the chain is long enough (depth >= 2) to spell one.
+			for j in range(depth, 0, -1):
+				root = (target_root + 7 * j) % 12
+				quality = "minor_7th" if (j == depth and depth >= 2) else "dominant_7th"
+
+				# Tritone substitution recolours a dominant to the dom7 a
+				# tritone away (same guide tones, chromatic resolution).
+				if quality == "dominant_7th" and depth >= 3 and rng.random() < 0.5:
+					root = (root + 6) % 12
+
+				new_spans.append(ChordSpan(chord = subsequence.chords.Chord(root_pc = root, quality = quality), beats = sub_beats))
+
+			# The target keeps its own chord and decorations, on its sub-span.
+			new_spans.append(dataclasses.replace(span, beats = sub_beats))
+
+		return dataclasses.replace(self, spans = tuple(new_spans))
+
 	# -- description ----------------------------------------------------------
 
 	def describe (self, key: typing.Optional[typing.Union[str, int]] = None, scale: str = "ionian") -> str:
@@ -1521,10 +1683,10 @@ def progression (
 	if isinstance(source, str):
 		if source in _PRESETS:
 			return progression(_PRESETS[source], beats=beats)
+		known = ", ".join(sorted(_PRESETS))
 		raise ValueError(
-			f"Unknown progression preset {source!r} (the preset table ships in a later release). "
-			"A progression is a list — pass the chords as elements, e.g. progression([1, 6, 3, 7]) "
-			"or progression(['Am', 'F', 'C', 'G'])."
+			f"Unknown progression preset {source!r}. Known presets: {known}. "
+			"Or pass a list — progression([1, 6, 3, 7]) / progression(['Am', 'F', 'C', 'G'])."
 		)
 
 	if source is None:

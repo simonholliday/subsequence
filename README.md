@@ -897,7 +897,10 @@ composition.form(my_form())
 | `progress` | `float` | `bar / bars` (0.0 → ~1.0) |
 | `first_bar` | `bool` | True on the first bar of the section |
 | `last_bar` | `bool` | True on the last bar of the section |
+| `ending` | `bool` | True on the last bar before a *different* section (repeats don't count) |
 | `next_section` | `str?` | Name of the upcoming section, or `None` at the end |
+| `energy` | `float` | The section's energy payload (0.5 unless a bound `Form` says otherwise) |
+| `key` | `str?` | The section's key override, or `None` (the composition key) |
 
 `next_section` is pre-decided when the current section begins (graph mode picks probabilistically; list mode peeks the iterator). Use it for lead-ins:
 
@@ -914,6 +917,121 @@ A performer or code can override the pre-decided next section with `composition.
 - **`p.cycle`** - how many times *this pattern* has rebuilt. Increments every time the pattern function runs.
 
 For a `beats=4` pattern in 4/4, they're always equal. For a `beats=8` pattern, `p.cycle` is half `p.bar` (the pattern runs once every two bars). For a `beats=2` pattern, `p.cycle` is double `p.bar`. Use `p.bar` for composition-wide synchronisation (e.g. "fire on bar 8") and `p.cycle` for pattern-local variation (e.g. "every 4th rebuild of this pattern").
+
+### Form values: Section and Form
+
+A form can also be a **value** — a frozen `Form` of `Section`s, each carrying its payload (`bars`, `energy`, an optional `key` override). Values are inspectable and editable before binding:
+
+```python
+S = subsequence.Section
+form = subsequence.Form([
+    S("verse", bars=8, energy=0.55), S("chorus", bars=8, energy=0.9),
+    S("outro", bars=4, energy=0.3),
+])
+
+print(form)                          # listen on paper first
+form = form.replace(3, bars=8)       # 1-based slots; field edits or whole Sections
+form = form.with_energy({"chorus": 0.95})
+
+composition.form(form, at_end="stop")
+```
+
+`at_end=` names what happens when a sequence form runs out: `"stop"` (the form finishes — the default), `"hold"` (the final section repeats until you navigate away), or `"loop"` (start over; `loop=True` is sugar for it).
+
+**Form freeze.** A graph form can be frozen into an editable value — the walk is seeded, so the frozen path is exactly the path the live graph would have played:
+
+```python
+composition.form({...}, start="intro")     # the graph
+path = composition.form_freeze()           # walk → editable Form (until a terminal section)
+path = path.replace(2, bars=24)            # stretch the verse
+composition.form(path, at_end="stop")      # rebind the edited value
+```
+
+**Navigation works on every navigable form**: `composition.form_jump("chorus")` and `composition.form_next("chorus")` work on graph forms *and* sequence forms (the jump lands on the next occurrence of the name, wrapping). Only generator forms cannot be navigated.
+
+**`Section.key`** and **`Section.scale`** re-anchor the section — see [How key resolution works](#how-key-resolution-works) below for the full model and the modulation story.
+
+### How key resolution works
+
+Whether the key moves a piece of content depends on **how you spelled it** — that is the contract. There are three intents:
+
+| Intent | How you spell it | Resolves against | Does a key move it? |
+|--------|------------------|------------------|---------------------|
+| **Absolute** | note names (`"Am"`), MIDI pitches (`Motif.notes([60])`), `PitchSet`, frozen `freeze()` captures, drum names | nothing — the exact notes | **No** — ever |
+| **Key-relative** | scale degrees (`motif([1,5,6])`), romans (`"V"`, `[1,4,5]`), generated relative material | a key + scale | **Yes** |
+| **Chord-relative** | `ChordTone("third")`, `Approach(...)`, the `fit` dial | the sounding/next chord | No — it tracks the chord, whatever key that chord is in |
+
+So `progression(["Am", "F"])` never moves (you named exact chords), `progression([1, 6])` follows the key (you wrote intervals), and `ChordTone("root")` plays the root of whatever chord is sounding regardless of key. The same applies everywhere — a motif, a chord part, a generated phrase — so you never have to remember per-feature exceptions.
+
+**The key a relative thing resolves against is layered**, most specific wins:
+
+```
+Section.key  >  form key (form(key=...) / Form(key=...))  >  Composition(key=...)
+```
+
+Key and scale/mode resolve independently, so a section can move the tonic, the mode, or both.
+
+**Modulation — the truck-driver's key change.** Because a numbered progression is key-relative, the *same* progression bound to two sections in two keys plays in two keys — chords and melody move together:
+
+```python
+S = subsequence.Section
+composition.form(subsequence.Form([
+    S("chorus", 8),
+    S("chorus_final", 8, key="D"),     # up a tone for the last chorus
+]))
+
+prog = subsequence.progression([1, 5, 6, 4])     # written once, in numbers
+composition.section_chords("chorus", prog)        # plays in C (the composition key)
+composition.section_chords("chorus_final", prog)  # the SAME value, now in D
+```
+
+If you wanted the chords to *stay put* under a moving melody, you'd spell them absolute — `["C", "G", "Am", "F"]` — and they wouldn't budge. That choice is yours, made by how you write the chords.
+
+Two boundaries worth knowing:
+
+- **The live graph engine stays in the composition key.** `harmony(style="...")` generates chords in one key for the whole piece — it doesn't modulate per section (a stateful walk doesn't transpose mid-stream). To modulate generated harmony, write the section's changes (relative or absolute) with `section_chords`.
+- **A re-keyed section that runs out of written chords falls through to the live engine in the composition key.** If `Section("verse", bars=8, key="D")` has only 4 bars of `section_chords` bound, bars 5–8 hand off to composition-key harmony. Bind the full section length if you want it all in the section's key. (Rare, but documented so it's never a surprise.)
+
+### Energy: the arranging dial
+
+`composition.energy({...})` sets a per-section energy level — one plain dict, with `(start, end)` tuples interpolating across a section (the build gesture):
+
+```python
+composition.energy({"intro": 0.2, "verse": 0.55, "build": (0.3, 1.0), "drop": 0.95})
+```
+
+Patterns read `p.energy` (0.5 when nothing is configured) and gate themselves, or declare a threshold and let the gate be automatic:
+
+```python
+@composition.pattern(channel=10, beats=4, drum_note_map=DRUM_MAP)
+def drums (p):
+    p.motif(KICK)
+    if p.energy >= 0.6:
+        p.euclidean("hh", pulses=int(5 + 6 * p.energy), velocity=(60, 90))
+
+@composition.pattern(channel=10, beats=4, drum_note_map=DRUM_MAP, min_energy=0.8)
+def perc (p):
+    p.bresenham("conga", 7)      # silent until the energy reaches 0.8
+```
+
+The dict **overrides** any energy payload carried by bound `Section` values (the dict is the later, performance-level dial). `min_energy` composes with `mute()`/`unmute()` — a performer mute always wins.
+
+### Section boundaries: transitions and the section event
+
+`composition.transition()` declares boundary material in one line — an automatic fill before a section change, or a mute over the approach:
+
+```python
+composition.transition(before="*", fill=FILL, channel=10, beat=2.0)   # any change: fill in the last bar
+composition.transition(before="drop", mute=["pads"], beats=4)         # pads drop out approaching the drop
+```
+
+`before` names the incoming section, or `"*"` for any *different* section (repeats don't fire it). Fills play in the final bar, starting at `beat`; their drum names resolve through the rule's `drum_note_map=` or, if omitted, a map borrowed from a registered pattern on the same channel. Mutes are bar-granular (`beats` rounds up to whole bars) and reopen at the boundary.
+
+`composition.on_section(fn)` fires on every section change (one lookahead-beat early, in time to affect the new section's first patterns), receiving the new `SectionInfo` — or `None` when the form finishes:
+
+```python
+composition.on_section(lambda info: print(f"now: {info.name if info else 'end'}"))
+```
 
 #### Bar-cycle position - `p.bar_cycle(length)`
 
@@ -1502,6 +1620,112 @@ def keys (p):
 `p.progression()` *realises* the progression but places nothing itself — the verb in the loop does. Swap `p.strum` for `p.chord`, `p.broken_chord`, or `p.arpeggio(chord, root=…, beat=start, span=length, …)` to change the articulation; every parameter of those methods is yours to use. (`comp.chords()` is exactly this loop wrapped up for the plain block-chord case.)
 
 **Fixed or breathing.** `comp.chords()` realises its phrase once, so it repeats identically. `p.progression()` realises on each rebuild, so omitting `seed=` lets the lengths breathe from cycle to cycle (still reproducible under the composition's own `seed=`); pass `seed=` for a fixed phrase. Velocity humanises per voice via the usual `velocity=(low, high)` convention.
+
+### Presets
+
+Curated starting points — recognizable material you reach for by name and then bend.
+
+**Genre progressions.** `progression("name")` is a named, key-relative loop:
+
+```python
+verse  = subsequence.progression("trance_epic")     # i VI III VII — epic minor
+chorus = subsequence.progression("doo_wop")         # I vi IV V
+blues  = subsequence.progression("twelve_bar_blues")
+```
+
+About two dozen ship — `pop_axis`, `doo_wop`, `andalusian`, `mixolydian_vamp`, `ii_v_i`, `pachelbel`, `rhythm_changes_a`, and more (an unknown name lists them all). They're ordinary progressions: spice them, `.cadence()` them, bind them to sections — and because they're key-relative, they follow whatever key they're bound to.
+
+**World rhythms.** `Motif.preset("name", pitch=...)` is a timeline at its exact pulse positions (from Toussaint's *Geometry of Musical Rhythm*):
+
+```python
+clave = subsequence.Motif.preset("son_clave_3_2", pitch="rim")    # the 3-2 son clave
+bell  = subsequence.Motif.preset("bembe", pitch="bell")          # the 12-pulse standard pattern
+```
+
+The clave family (son/rumba/bossa, 2-3 and 3-2), tresillo/cinquillo, the West-African bell timelines (shiko, gahu, soukous, bembé, fume-fume), and samba all ship. They're Motifs — transform, `&`-stack, and place them like any other.
+
+**Role bundles.** `subsequence.roles` holds taste-default parameter bundles you splat and override (no role API — just data):
+
+```python
+comp.phrase_part(channel=2, part="bass", **subsequence.roles.BASS)    # low, locked to chord tones
+comp.phrase_part(channel=4, part="lead", **subsequence.roles.LEAD, root=78)   # override anything
+```
+
+### Elaboration: `prog.elaborate(depth)`
+
+`elaborate(depth)` approaches every chord by a backward cycle-of-fifths dominant chain (Steedman's jazz/blues grammar) — `depth` is how many fifth-steps back it reaches. Its flagship is the 12-bar blues elaborated more each chorus:
+
+```python
+blues = subsequence.progression("twelve_bar_blues").resolve("C")
+chorus1 = blues                 # plain: C7 … F7 … G7 …
+chorus2 = blues.elaborate(1)    # a V7 before each chord (G7 C7 …)
+chorus3 = blues.elaborate(2)    # secondary ii-Vs (Dm7 G7 C7 …)
+chorus4 = blues.elaborate(3, seed=4)   # extended chains + tritone subs
+```
+
+`depth=0` is the bare progression; the result is concrete (resolve or bind under a key first), and each chord keeps its decorations on its subdivided slot.
+
+### Sieves and rhythm measures
+
+For the experimental composer: `sieve()` is Xenakis's integer-set kernel — residual classes that serve as custom scales, non-octave pitch pools, rhythm grids, or bar-selection masks alike:
+
+```python
+from subsequence import sieve, residual_class as rc
+
+sieve([(12, 0), (12, 2), (12, 4), (12, 5), (12, 7), (12, 9), (12, 11)], hi=12)  # the major scale
+sieve([(5, 0), (7, 1)], lo=60, hi=96)                  # a non-octave pitch pool
+((rc(2, 0) | rc(3, 0)) & ~rc(4, 1)).evaluate(hi=24)    # the full union/intersection/complement algebra
+```
+
+And Toussaint's rhythm measures analyse a list of onset pulses: `rhythmic_evenness(onsets, grid)` (how close to maximally even — the Euclidean rhythms score ~1.0), `offbeatness(onsets, grid)` (onsets on intrinsically off-beat pulses), `syncopation(onsets, grid)` (weighted pull away from the strong beats).
+
+### Cookbook
+
+A few recipes that compose the primitives above — patterns, not features.
+
+**Per-section tempo** — ease the BPM at each section boundary (`on_section` + the eased `target_bpm`):
+
+```python
+TEMPI = {"verse": 120, "chorus": 128, "bridge": 112}
+
+def shift_tempo (info):
+    if info and info.name in TEMPI:
+        comp.target_bpm(TEMPI[info.name], bars=1, shape="ease_in_out")   # glide over a bar
+
+comp.on_section(shift_tempo)
+```
+
+**A single-note rhythmic lead** — one pitch, all groove, locked to the kick's rhythm (the *same value* the drums use):
+
+```python
+KICK = subsequence.Motif.preset("tresillo_16", pitch="kick")
+
+@comp.pattern(channel=4, beats=4)
+def stab (p, chord):
+    p.motif(KICK.pitched(subsequence.ChordTone("root")), root=48)   # the kick rhythm, on the chord root
+```
+
+**"Something changes every 8 bars"** — a seeded chooser over a small move set, written on the bar counter:
+
+```python
+@comp.pattern(channel=3, bars=2)
+def pads (p):
+    move = p.rng.choice(["play", "drop", "octave_up"])   # re-rolled per cycle on the seeded stream
+    if p.bar_cycle(8) == 7:          # the 8th bar of every 8-bar block
+        move = "drop"
+    if move != "drop":
+        lift = 12 if move == "octave_up" else 0
+        p.chord(p.harmony.chord, root=60 + lift)
+```
+
+**A probability overlay** — thin a busy part by chance, re-rolled each cycle on the seeded stream:
+
+```python
+@comp.pattern(channel=10, beats=4, drum_note_map=DRUMS)
+def hats (p):
+    p.euclidean("hh", pulses=11, velocity=(50, 80))
+    p.dropout(0.2)        # 20% of hits silenced this cycle (seeded, reproducible)
+```
 
 ## 5. Live Performance & Tools
 

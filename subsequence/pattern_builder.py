@@ -112,7 +112,7 @@ class PatternBuilder(
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, scale: typing.Optional[str] = None, time_signature: typing.Tuple[int, int] = (4, 4), held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None, harmony: typing.Optional[typing.Any] = None, section_motifs: typing.Optional[typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]] = None) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, scale: typing.Optional[str] = None, time_signature: typing.Tuple[int, int] = (4, 4), held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None, harmony: typing.Optional[typing.Any] = None, section_motifs: typing.Optional[typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]] = None, energy: float = 0.5) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info.
 
@@ -160,6 +160,9 @@ class PatternBuilder(
 			held_notes: Optional live held-note tracker from ``composition.note_input()``.
 				Read via ``p.held_notes()``.  ``None`` when no note input was declared
 				(and when rendering headlessly), so the accessor returns an empty list.
+			energy: The current section's energy level (0.0–1.0), read via
+				``p.energy`` — the arranging dial.  0.5 when no energy source
+				is configured.
 		"""
 
 		self._pattern = pattern
@@ -178,6 +181,7 @@ class PatternBuilder(
 		self.scale: typing.Optional[str] = scale  # composition scale/mode, for degree resolution
 		self.time_signature: typing.Tuple[int, int] = time_signature
 		self.harmony: typing.Optional[typing.Any] = harmony  # HarmonyView for this cycle, or None
+		self.energy: float = energy  # current section's energy (the arranging dial)
 		self._section_motifs: typing.Optional[typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]] = section_motifs
 		self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = held_notes
 		self._tuning_applied: bool = False  # set by apply_tuning() to prevent double-apply
