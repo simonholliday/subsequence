@@ -885,7 +885,14 @@ class PatternBuilder(
 		else:
 			raise TypeError(f"cannot approach {type(target).__name__} content")
 
-		return resolved - 1
+		pitch = resolved - 1
+
+		if not 0 <= pitch <= 127:
+			raise ValueError(
+				f"Approach resolves to MIDI {pitch}, outside 0–127 — adjust root= or the target's octave"
+			)
+
+		return pitch
 
 	def _fit_snap (self, pitch: int, event_beat: float, fit: float, weights: typing.List[float]) -> int:
 
@@ -2333,7 +2340,7 @@ class PatternBuilder(
 	def reverse (self) -> "PatternBuilder":
 
 		"""
-		Flip the pattern backwards in time.
+		Flip the pattern backwards in time (retrograde).
 		"""
 
 		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
@@ -2341,7 +2348,11 @@ class PatternBuilder(
 		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
 
 		for position, step in old_steps.items():
-			new_position = (total_pulses - 1) - position
+			# Reflect around the bar so onsets stay on the grid and the downbeat
+			# is fixed — a true retrograde reverses the inter-onset intervals
+			# (e.g. [0, 24] → [0, 72] in a 96-pulse bar, not the off-grid
+			# [71, 95] the old (total-1)-position produced).
+			new_position = (total_pulses - position) % total_pulses
 
 			if new_position not in new_steps:
 				new_steps[new_position] = subsequence.pattern.Step()

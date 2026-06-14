@@ -273,6 +273,24 @@ def test_generate_copies_the_state () -> None:
 	assert state.history == before
 
 
+def test_generate_ignores_state_rest_probability () -> None:
+
+	"""generate is rhythm-first: a state's rest_probability never stalls the walk.
+
+	Regression: a supplied MelodicState with rest_probability > 0 made
+	choose_next return None, and generate fell back to a fixed pool note —
+	producing a stuck, repeated degree instead of a walked line.
+	"""
+
+	state = subsequence.MelodicState(key="C", mode="minor", low=48, high=72, rest_probability=0.9)
+
+	value = M.generate(rhythm=[0, 1, 2, 3, 4, 5, 6, 7], state=state, seed=2)
+
+	distinct = {(e.pitch.step, e.pitch.octave) for e in value.events}
+	assert len(distinct) > 1						# a real line, not a single stuck note
+	assert state.rest_probability == 0.9			# the caller's state is left untouched
+
+
 # ---------------------------------------------------------------------------
 # vary(keep_contour=True)
 # ---------------------------------------------------------------------------

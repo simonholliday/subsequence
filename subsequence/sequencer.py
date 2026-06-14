@@ -5,6 +5,7 @@ import heapq
 import itertools
 import datetime
 import logging
+import threading
 import time
 import typing
 
@@ -429,6 +430,13 @@ class Sequencer:
 		# it, ``heapq`` ordering of equal-pulse events is undefined, which
 		# breaks NRPN/RPN bursts (CC 99 → 98 → 6 → 38 must stay in order).
 		self._event_counter = itertools.count()
+
+		# Serialises actual port writes.  Every send runs on the event-loop
+		# thread EXCEPT instant-mode cc_forward, which fires on the mido input
+		# callback thread — without this lock the two threads could interleave
+		# bytes on the same port and corrupt a multi-byte message.
+		self._port_send_lock = threading.Lock()
+
 		self.data: typing.Dict[str, typing.Any] = {}
 
 		# Timing variables
@@ -804,7 +812,9 @@ class Sequencer:
 					port = self._output_devices.get(out_dev)
 					if port is not None:
 						try:
-							port.send(out_msg)
+							# Instant mode fires on the mido callback thread, so the
+							# send must take the lock the loop thread also holds.
+							self._locked_send(port, out_msg)
 						except Exception:
 							logger.exception("CC forward send failed")
 				else:
@@ -1226,7 +1236,7 @@ class Sequencer:
 
 		for port in self._output_devices:
 			try:
-				port.send(mido.Message(message_type))
+				self._locked_send(port, mido.Message(message_type))
 			except Exception:
 				logger.exception(f"Failed to send MIDI {message_type} message")
 
@@ -1473,6 +1483,13 @@ class Sequencer:
 				# terminal rendering latency (~10-50 ms). This is expected and acceptable for
 				# a visual status line — it cannot be tightened without restructuring the loop.
 				self._check_bar_change(self.pulse_count, pulses_per_bar)
+
+				if not self.running:
+					# A render bar-limit trips inside _check_bar_change; stop before
+					# dispatching this pulse so the first beat of the next (unrendered)
+					# bar never leaks into the recording.
+					break  # type: ignore[unreachable]
+
 				self._check_beat_change(self.pulse_count, self.pulses_per_beat)
 				if self.clock_output:
 					self._send_clock_message("clock")
@@ -1842,7 +1859,7 @@ class Sequencer:
 				port = self._output_devices.get(dev)
 				if port is not None:
 					try:
-						port.send(mido.Message('note_off', channel=channel, note=note, velocity=0))
+						self._locked_send(port, mido.Message('note_off', channel=channel, note=note, velocity=0))
 					except Exception:
 						logger.exception("Failed to send note_off during stop")
 			self.active_notes.clear()
@@ -1872,7 +1889,7 @@ class Sequencer:
 				port = self._output_devices.get(dev)
 				if port is not None:
 					try:
-						port.send(mido.Message('note_off', channel=channel, note=note, velocity=0))
+						self._locked_send(port, mido.Message('note_off', channel=channel, note=note, velocity=0))
 					except Exception:
 						logger.exception(f"Failed to send note_off during unregister (dev={dev}, ch={channel}, note={note})")
 				self.active_notes.discard((dev, channel, note))
@@ -1946,6 +1963,17 @@ class Sequencer:
 			handle.cancel()
 		self._pending_sends.clear()
 
+	def _locked_send (self, port: typing.Any, message: typing.Any) -> None:
+
+		"""Write one message to a port under the send lock.
+
+		The lock keeps the loop thread and the instant cc_forward callback
+		thread from interleaving bytes on the same port.
+		"""
+
+		with self._port_send_lock:
+			port.send(message)
+
 	def _send_midi (self, event: MidiEvent) -> None:
 
 		"""
@@ -1967,7 +1995,7 @@ class Sequencer:
 				if msg is None:
 					return
 
-				port.send(msg)
+				self._locked_send(port, msg)
 
 			except Exception:
 				logger.exception("MIDI send failed (device may be disconnected)")
@@ -1988,17 +2016,21 @@ class Sequencer:
 
 			try:
 
-				# 2. Send "All Notes Off" (CC 123) and "All Sound Off" (CC 120) to all 16 channels
-				for channel in range(16):
-					port.send(mido.Message('control_change', channel=channel, control=123, value=0))
-					port.send(mido.Message('control_change', channel=channel, control=120, value=0))
+				# Hold the send lock so an instant cc_forward on the callback
+				# thread cannot interleave with the panic sweep.
+				with self._port_send_lock:
 
-				# 3. Use built-in panic and reset
-				port.panic()
+					# 2. Send "All Notes Off" (CC 123) and "All Sound Off" (CC 120) to all 16 channels
+					for channel in range(16):
+						port.send(mido.Message('control_change', channel=channel, control=123, value=0))
+						port.send(mido.Message('control_change', channel=channel, control=120, value=0))
 
-				# Note: reset() might close/reopen ports or clear internal buffers depending on backend,
-				# but mido docs say it sends "All Notes Off" and "Reset All Controllers".
-				port.reset()
+					# 3. Use built-in panic and reset
+					port.panic()
+
+					# Note: reset() might close/reopen ports or clear internal buffers depending on backend,
+					# but mido docs say it sends "All Notes Off" and "Reset All Controllers".
+					port.reset()
 
 			except Exception:
 				logger.exception("MIDI panic failed (device may be disconnected)")

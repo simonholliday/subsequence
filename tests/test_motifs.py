@@ -573,6 +573,19 @@ def test_invert_degrees () -> None:
 	assert _pitches(m) == [Degree(5), Degree(3), Degree(1)]
 
 
+def test_invert_reflects_degree_octaves () -> None:
+
+	"""A degree's register flips under inversion: an octave up lands an octave down.
+
+	Regression: ``invert`` used to mirror only ``step`` and leave ``octave``
+	untouched, so an octave-bearing degree inverted to itself (wrong pitch).
+	"""
+
+	m = subsequence.motif([1, Degree(1, octave=1)]).invert(pivot=1)
+
+	assert _pitches(m) == [Degree(1, octave=0), Degree(1, octave=-1)]
+
+
 def test_controls_ignore_pitch_transforms () -> None:
 
 	"""Transposing a riff does not rescale its bend depths."""

@@ -87,6 +87,18 @@ def test_form_state_loop () -> None:
 	assert section.index == 2
 
 
+def test_form_state_loop_conflicting_at_end_raises () -> None:
+
+	"""loop=True with a contradictory at_end fails loudly instead of silently winning."""
+
+	with pytest.raises(ValueError, match="loop=True conflicts"):
+		subsequence.form_state.FormState([("A", 2)], loop=True, at_end="hold")
+
+	# The sugar (loop=True with the default at_end) is still accepted.
+	form = subsequence.form_state.FormState([("A", 2)], loop=True)
+	assert form._at_end == "loop"
+
+
 def test_form_state_finite_exhausts () -> None:
 
 	"""A non-looping form should return None after all sections are complete."""

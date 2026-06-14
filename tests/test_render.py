@@ -132,6 +132,33 @@ def test_render_writes_pattern_notes (tmp_path: pathlib.Path, patch_midi: None) 
 	assert any(msg.note == 60 for msg in note_ons)
 
 
+def test_render_does_not_leak_the_next_bar_downbeat (tmp_path: pathlib.Path, patch_midi: None) -> None:
+
+	"""render(bars=N) stops exactly at the limit — bar N's downbeat is not rendered.
+
+	Regression: the bar limit tripped inside _check_bar_change but the loop still
+	dispatched that pulse, so the first beat of the next (unrendered) bar leaked
+	into the file.
+	"""
+
+	filename = str(tmp_path / "limit.mid")
+	composition = subsequence.Composition(bpm=480)
+
+	@composition.pattern(channel=1, beats=4)
+	def p (p) -> None:
+		p.note(60, beat=0)			# a note on every bar's downbeat
+
+	composition.render(bars=2, filename=filename)
+
+	mid = mido.MidiFile(filename)
+	note_ons = [
+		msg for track in mid.tracks for msg in track
+		if not isinstance(msg, mido.MetaMessage) and msg.type == "note_on" and msg.velocity > 0
+	]
+
+	assert len(note_ons) == 2		# bars 0 and 1 only — no third note at bar 2's downbeat
+
+
 # ---------------------------------------------------------------------------
 # Time cap stops render
 # ---------------------------------------------------------------------------

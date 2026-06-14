@@ -357,7 +357,7 @@ def test_energy_priority_dict_over_payload_over_default (patch_midi: None) -> No
 
 def test_energy_ramp_interpolates_across_the_section (patch_midi: None) -> None:
 
-	"""(start, end) tuples are the build gesture — linear over section progress."""
+	"""(start, end) tuples are the build gesture — linear, reaching end on the last bar."""
 
 	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
 	composition.form([("build", 4)])
@@ -366,10 +366,27 @@ def test_energy_ramp_interpolates_across_the_section (patch_midi: None) -> None:
 	state = composition._form_state
 	assert state is not None
 
-	assert composition._current_energy(state.get_section_info()) == pytest.approx(0.2)
+	assert composition._current_energy(state.get_section_info()) == pytest.approx(0.2)		# bar 0 = start
+
+	state.advance()
+	assert composition._current_energy(state.get_section_info()) == pytest.approx(0.2 + 0.8 / 3)
 
 	state.advance(); state.advance()
-	assert composition._current_energy(state.get_section_info()) == pytest.approx(0.2 + 0.8 * 0.5)
+	assert composition._current_energy(state.get_section_info()) == pytest.approx(1.0)		# last bar = end
+
+
+def test_energy_ramp_single_bar_section_sits_at_end (patch_midi: None) -> None:
+
+	"""A one-bar build has no span to ramp over, so it plays at its destination level."""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+	composition.form([("hit", 1)])
+	composition.energy({"hit": (0.2, 1.0)})
+
+	state = composition._form_state
+	assert state is not None
+
+	assert composition._current_energy(state.get_section_info()) == pytest.approx(1.0)
 
 
 def test_min_energy_gates_the_pattern (patch_midi: None) -> None:
@@ -540,6 +557,23 @@ def test_transition_validation (patch_midi: None) -> None:
 
 	with pytest.raises(ValueError, match="channel="):
 		composition.transition(before="*", fill=subsequence.Motif.hits("snare", beats=[0], length=1))
+
+
+def test_transition_device_name_defers_resolution (patch_midi: None) -> None:
+
+	"""A transition fill routed to a named device keeps the name raw until play().
+
+	Regression: the device was resolved at registration, but device names are
+	not populated until ``play()`` opens the ports — so a string name collapsed
+	to device 0 (with a spurious warning) and the fill played on the wrong port.
+	"""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
+
+	composition.transition(before="*", fill=subsequence.motif([1]), channel=10, device="Aux Synth")
+
+	rule = composition._transitions[0]
+	assert rule.device == "Aux Synth"		# stored raw, not eagerly collapsed to 0
 
 
 def test_transition_fill_fires_in_the_final_bar (patch_midi: None) -> None:

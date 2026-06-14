@@ -170,6 +170,8 @@ class FormState:
 			raise ValueError(f"at_end must be one of {choices}, got {at_end!r}")
 
 		if loop:
+			if at_end not in ("stop", "loop"):
+				raise ValueError(f"loop=True conflicts with at_end={at_end!r} — pass one or the other")
 			at_end = "loop"
 
 		self._at_end: str = at_end

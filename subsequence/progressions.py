@@ -510,9 +510,15 @@ class ChordSpan:
 	@property
 	def is_concrete (self) -> bool:
 
-		"""True when the chord needs no key context to sound."""
+		"""True when the chord (and any pedal bass) needs no key context to sound.
 
-		return not isinstance(self.chord, RomanChord)
+		A ``"tonic"`` pedal bass is key-relative, so a span carrying one is not
+		concrete until :meth:`resolve` pins it to a key.  Note-name basses are
+		resolved to a pitch class eagerly in :meth:`Progression.over`, so they
+		never linger here as strings.
+		"""
+
+		return not isinstance(self.chord, RomanChord) and not isinstance(self.bass, str)
 
 	@property
 	def is_decorated (self) -> bool:
@@ -765,12 +771,18 @@ class DecoratedChord:
 
 	def bass_note (self, root_midi: int, octave_offset: int = -1) -> int:
 
-		"""The chord root shifted by octaves (the slash bass pc when one is set)."""
+		"""The chord root shifted by octaves (the slash bass pc when one is set).
+
+		The slash bass uses the same register as the plain root bass — an octave
+		below the chord at the default ``octave_offset=-1`` — so a bass line over
+		a mix of plain and slash chords doesn't jump up an octave on the slash
+		ones.
+		"""
 
 		if isinstance(self._span.bass, int):
 			lowest = self.root_note(root_midi)
 			bass = lowest - ((lowest - self._span.bass) % 12)
-			return bass + 12 * (octave_offset + 1)
+			return bass + 12 * octave_offset
 
 		return self.root_note(root_midi) + (12 * octave_offset)
 
@@ -1330,13 +1342,15 @@ class Progression:
 
 		"""Put the progression over a slash/pedal bass — *the* trance/techno move.
 
-		*bass* is a pitch class int, a note name (``"G"``), or ``"tonic"``
-		(resolved against the key at query time).  ``only=`` restricts it to
-		the given 1-based slots (slash chords rather than a full pedal).
+		*bass* is a pitch class int, a note name (``"G"``), or ``"tonic"``.  A
+		note name is key-independent, so it resolves to its pitch class right
+		here; ``"tonic"`` follows the key and stays relative until the
+		progression is resolved.  ``only=`` restricts it to the given 1-based
+		slots (slash chords rather than a full pedal).
 		"""
 
 		if isinstance(bass, str) and bass != "tonic":
-			subsequence.chords.key_name_to_pc(bass)	# validate early; resolution stays late
+			bass = subsequence.chords.key_name_to_pc(bass)	# note names are key-independent — resolve now
 		elif isinstance(bass, int) and not 0 <= bass <= 11:
 			raise ValueError(f"a bass pitch class must be 0–11, got {bass}")
 
@@ -1748,8 +1762,8 @@ def _require_key (what: typing.Any, key: typing.Optional[str]) -> str:
 
 	if not key:
 		raise ValueError(
-			"this progression contains key-relative chords (degrees/romans) — "
-			"pass key= or set the Composition key"
+			"this progression contains key-relative content (degrees, romans, or a "
+			"'tonic' pedal bass) — pass key= or set the Composition key"
 		)
 
 	return key

@@ -54,6 +54,16 @@ def test_resolve_velocity_tuple_draws_from_range () -> None:
 		assert 60 <= v <= 90
 
 
+def test_resolve_velocity_rejects_reversed_range () -> None:
+
+	"""A swapped (high, low) tuple fails at the call site, not deep in randint."""
+
+	_, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="low <= high"):
+		builder._resolve_velocity((110, 80))
+
+
 def test_resolve_velocity_tuple_consumes_exactly_one_draw () -> None:
 
 	"""A (low, high) range advances the RNG by exactly one ``randint`` draw.

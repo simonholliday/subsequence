@@ -622,6 +622,50 @@ def test_slash_bass_note () -> None:
 	decorated = subsequence.progressions.DecoratedChord(span)
 
 	assert decorated.bass_note(60) % 12 == 7
+	assert decorated.bass_note(60) == 43			# G2 — same low register as a plain root bass
+
+
+def test_concrete_note_name_slash_bass_voices_without_manual_resolve () -> None:
+
+	"""A note-name slash bass sounds on the plain concrete path (no resolve() call).
+
+	Regression: ``over("G")`` on a concrete progression used to be dropped from
+	the voicing because a string bass left the span "concrete" and unresolved.
+	Note names are key-independent and now resolve eagerly, so the bass sounds
+	whether the chord is iterated directly or laid out by ``realize()``.
+	"""
+
+	concrete = subsequence.progressions.progression(["C"], key="C").over("G")
+
+	iterated = list(concrete)[0].chord.tones(60)
+	assert 55 in iterated						# G3 is voiced below the triad
+	assert iterated == [55, 60, 64, 67]
+
+	realized = subsequence.progressions.realize(concrete, 4.0, "C", 4.0, random.Random(0))
+	assert list(realized)[0].chord.tones(60) == [55, 60, 64, 67]
+
+
+def test_tonic_pedal_voices_through_realize_with_a_key () -> None:
+
+	"""A ``"tonic"`` pedal follows the key and sounds when realised with one."""
+
+	value = subsequence.progressions.progression(["F"], key="C").over("tonic")
+
+	realized = subsequence.progressions.realize(value, 4.0, "C", 4.0, random.Random(0))
+	tones = list(realized)[0].chord.tones(60)
+
+	assert tones[0] % 12 == 0					# C (the tonic) sits in the bass
+	assert tones[0] == min(tones)
+
+
+def test_tonic_pedal_without_a_key_raises_rather_than_dropping () -> None:
+
+	"""A keyless ``"tonic"`` pedal fails loudly instead of silently vanishing."""
+
+	value = subsequence.progressions.progression(["F"]).over("tonic")
+
+	with pytest.raises(ValueError):
+		list(subsequence.progressions.realize(value, 4.0, None, 4.0, random.Random(0)))
 
 
 # ---------------------------------------------------------------------------

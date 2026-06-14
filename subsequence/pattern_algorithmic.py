@@ -100,9 +100,15 @@ class PatternAlgorithmicMixin:
 		if isinstance(velocity, tuple):
 			if len(velocity) != 2:
 				raise ValueError(f"velocity tuple must be (low, high), got {velocity!r}")
+
+			low, high = int(velocity[0]), int(velocity[1])
+			if low > high:
+				raise ValueError(f"velocity range must be (low, high) with low <= high, got {velocity!r}")
+
 			if rng is None:
 				rng = self.rng
-			return rng.randint(int(velocity[0]), int(velocity[1]))
+
+			return rng.randint(low, high)
 		if isinstance(velocity, bool):
 			raise TypeError(f"velocity must be int or (low, high) tuple, got bool: {velocity!r}")
 		if isinstance(velocity, (int, float)):

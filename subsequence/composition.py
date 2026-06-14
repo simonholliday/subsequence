@@ -1117,7 +1117,9 @@ class _Transition:
 			bar-granular).
 		drum_note_map: Explicit drum map for the fill (otherwise borrowed
 			from a registered pattern on the same channel).
-		device: Output device index for the fill.
+		device: Output device (index, name, or None) for the fill — kept raw and
+			resolved when the fill fires, since device names are not known until
+			play() opens the ports.
 	"""
 
 	before: str
@@ -1127,7 +1129,7 @@ class _Transition:
 	mute: typing.Optional[typing.List[str]] = None
 	beats: typing.Optional[float] = None
 	drum_note_map: typing.Optional[typing.Dict[str, int]] = None
-	device: int = 0
+	device: subsequence.midi_utils.DeviceId = None
 
 
 class _PendingPattern:
@@ -4239,7 +4241,15 @@ class Composition:
 
 		if isinstance(spec, tuple):
 			start_level, end_level = spec
-			return start_level + (end_level - start_level) * info.progress
+
+			# A build reaches its declared end ON the final bar, so the ramp spans
+			# bar 0 → bar (bars-1).  (info.progress is bar/bars, which would top
+			# out one bar short and never deliver end.)  A one-bar section sits at
+			# the destination level.
+			span = info.bars - 1
+			fraction = info.bar / span if span > 0 else 1.0
+
+			return start_level + (end_level - start_level) * fraction
 
 		return spec
 
@@ -4315,7 +4325,7 @@ class Composition:
 			mute = list(mute) if mute is not None else None,
 			beats = beats,
 			drum_note_map = drum_note_map,
-			device = self._resolve_device_id(device),
+			device = device,			# resolved at fire time — names aren't known until play()
 		)
 
 		if rule not in self._transitions:
@@ -4350,7 +4360,7 @@ class Composition:
 		pattern = subsequence.pattern.Pattern(
 			channel = rule.channel,
 			length = float(rule.fill.length),
-			device = rule.device,
+			device = self._resolve_device_id(rule.device),
 		)
 
 		harmony_view: typing.Optional[HarmonyView] = None

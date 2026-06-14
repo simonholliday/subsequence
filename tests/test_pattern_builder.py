@@ -1315,24 +1315,36 @@ def test_set_length_affects_repeat () -> None:
 # --- Pattern Transforms ---
 
 
-def test_reverse_mirrors_positions () -> None:
+def test_reverse_is_a_grid_preserving_retrograde () -> None:
 
-	"""reverse() should mirror note positions so the first note moves to the end."""
+	"""reverse() reflects onsets around the bar, keeping them on the grid.
+
+	A true retrograde reverses the inter-onset intervals with the downbeat
+	fixed, so an asymmetric figure flips order without drifting off-grid.
+	"""
 
 	pattern, builder = _make_builder(length=4)
 
-	# Place notes at beats 0, 1, 2, 3 (pulses 0, 24, 48, 72).
+	# Beats 0 and 1 (pulses 0, 24) — asymmetric, so order genuinely changes.
+	builder.hit(60, beats=[0, 1], velocity=100)
+
+	builder.reverse()
+
+	# pulse 0 → 0 (downbeat fixed), pulse 24 → 72 — both still on the 24-pulse grid.
+	assert sorted(pattern.steps.keys()) == [0, 72]
+
+
+def test_reverse_of_a_symmetric_pattern_is_itself () -> None:
+
+	"""Four-on-the-floor is its own retrograde — and stays on the grid."""
+
+	pattern, builder = _make_builder(length=4)
+
 	builder.hit(60, beats=[0, 1, 2, 3], velocity=100)
 
 	builder.reverse()
 
-	total_pulses = int(4 * subsequence.constants.MIDI_QUARTER_NOTE)  # 96
-	positions = sorted(pattern.steps.keys())
-
-	# Beat 0 (pulse 0) → pulse 95, beat 1 (pulse 24) → pulse 71, etc.
-	expected = sorted([total_pulses - 1 - p for p in [0, 24, 48, 72]])
-
-	assert positions == expected
+	assert sorted(pattern.steps.keys()) == [0, 24, 48, 72]
 
 
 def test_reverse_empty_pattern () -> None:
@@ -1614,15 +1626,13 @@ def test_every_fires_on_cycle_zero () -> None:
 		cycle = 0,
 	)
 
-	builder.note(60, beat=0, velocity=100)
+	builder.note(60, beat=1, velocity=100)		# pulse 24 — moves under reverse (0 is the fixed point)
 
 	builder.every(8, lambda p: p.reverse())
 
-	# Reverse should have fired - note at pulse 0 moves to total_pulses - 1.
-	total_pulses = int(4 * subsequence.constants.MIDI_QUARTER_NOTE)
-
-	assert (total_pulses - 1) in pattern.steps
-	assert 0 not in pattern.steps
+	# Reverse should have fired — the grid-preserving retrograde sends pulse 24 to 72.
+	assert 72 in pattern.steps
+	assert 24 not in pattern.steps
 
 
 # --- sequence() ---

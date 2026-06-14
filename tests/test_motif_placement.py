@@ -146,6 +146,17 @@ def test_harmony_dependent_specs_raise_clearly_without_the_clock () -> None:
 	assert _placed(p) == [(0.0, 56)]	# A minor tonic at 57, approached from below
 
 
+def test_approach_below_midi_zero_raises_clearly () -> None:
+
+	"""An Approach that resolves below MIDI 0 fails loudly, like the degree/chord-tone resolvers."""
+
+	p = _builder()
+
+	# An int target of 0 leaves the leading-tone approach at -1 — out of range.
+	with pytest.raises(ValueError, match="outside 0"):
+		p.motif(M.from_events([subsequence.MotifEvent(beat=0.0, pitch=Approach(0))], length=1))
+
+
 class _StubHarmony:
 
 	"""A HarmonyView stand-in: chords keyed by cycle beat ranges."""

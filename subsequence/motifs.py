@@ -42,6 +42,7 @@ import warnings
 import subsequence.cadences
 import subsequence.constants.velocity
 import subsequence.easing
+import subsequence.intervals
 import subsequence.sequence_utils
 
 
@@ -946,6 +947,9 @@ class Motif:
 		# --- The walking state (copied, never mutated in place) ----------------
 		if state is not None:
 			walker = state.clone()
+			walker.rest_probability = 0.0		# generate is rhythm-first: every onset gets a
+												# note, so the walker never rests (and never falls
+												# back to a stuck repeat) — rests come from the rhythm
 		else:
 			walker = subsequence.melodic_state.MelodicState(
 				nir_strength = nir_strength,
@@ -1558,7 +1562,11 @@ class Motif:
 						f"invert() around degree {pivot} sends degree {pitch.step} below the tonic — "
 						f"raise the pivot or use Degree octaves"
 					)
-				return dataclasses.replace(pitch, step=mirrored, chroma=-pitch.chroma)
+				# Reflection around the pivot (read at octave 0) is an isometry, so a
+				# note's register flips too: a degree an octave above the pivot lands an
+				# octave below it.  Negating octave needs no scale length and leaves
+				# octave-0 content unchanged.
+				return dataclasses.replace(pitch, step=mirrored, octave=-pitch.octave, chroma=-pitch.chroma)
 			raise TypeError(f"invert() cannot mirror {type(pitch).__name__} content")
 
 		events = tuple(dataclasses.replace(e, pitch=mirror(e.pitch)) for e in self.events)

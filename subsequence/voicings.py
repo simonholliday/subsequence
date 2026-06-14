@@ -67,9 +67,11 @@ def voice_lead (intervals: typing.List[int], root_midi: int, previous_voicing: t
 	"""Find the inversion closest to a previous voicing.
 
 	Tries every inversion, in the nearest octaves, and picks the candidate
-	with the smallest total semitone movement from ``previous_voicing``. If
-	``previous_voicing`` is ``None`` or the chord sizes differ, returns root
-	position.
+	with the smallest total semitone movement from ``previous_voicing``.
+	Voices are compared *positionally* (voice ``i`` to voice ``i``), so this
+	picks the best inversion rather than the globally optimal voice
+	reassignment.  If ``previous_voicing`` is ``None`` or the chord sizes
+	differ, returns root position.
 
 	Parameters:
 		intervals: Chord intervals in semitones from root (e.g., ``[0, 4, 7]``)
