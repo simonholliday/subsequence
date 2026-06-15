@@ -22,5 +22,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[test]"
 
+      - name: Check docstring markup
+        run: python scripts/check_docstring_markup.py subsequence
+
       - name: Run tests
         run: python -m pytest tests/ -q

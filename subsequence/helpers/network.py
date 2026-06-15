@@ -1,7 +1,7 @@
 """Network utility functions.
 
 Provides robust local IP and broadcast address discovery without requiring
-external dependencies like `psutil`.
+external dependencies like ``psutil``.
 """
 
 import socket

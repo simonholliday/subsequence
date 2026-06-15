@@ -1,21 +1,23 @@
 """Chord definitions and pitch class utilities.
 
-This module provides chord quality definitions, pitch class mappings, and the `Chord` class
+This module provides chord quality definitions, pitch class mappings, and the ``Chord`` class
 for representing and manipulating chords.
 
 Module-level constants:
-- `NOTE_NAME_TO_PC`: Maps note names (e.g., `"C"`, `"F#"`, `"Bb"`) to pitch classes (0-11)
-- `PC_TO_NOTE_NAME`: Maps pitch classes to note names
-- `CHORD_INTERVALS`: Maps chord quality names to interval lists (semitones from root)
-- `CHORD_SUFFIX`: Maps chord quality names to human-readable suffixes (e.g., `"m"`, `"7"`)
+
+- ``NOTE_NAME_TO_PC``: Maps note names (e.g., ``"C"``, ``"F#"``, ``"Bb"``) to pitch classes (0-11)
+- ``PC_TO_NOTE_NAME``: Maps pitch classes to note names
+- ``CHORD_INTERVALS``: Maps chord quality names to interval lists (semitones from root)
+- ``CHORD_SUFFIX``: Maps chord quality names to human-readable suffixes (e.g., ``"m"``, ``"7"``)
 
 Module-level helpers:
-- `key_name_to_pc(key_name)`: Validate a key name and return its pitch class (0–11).
-  Raises `ValueError` for unknown names. This is the canonical key validation function
-  used by `harmony.py`, `pattern_builder.snap_to_scale()`, and `chord_graphs.validate_key_name()`.
 
-Chord qualities: `"major"`, `"minor"`, `"diminished"`, `"augmented"`, `"dominant_7th"`,
-`"major_7th"`, `"minor_7th"`, `"half_diminished_7th"`, `"sus2"`, `"sus4"`
+- ``key_name_to_pc(key_name)``: Validate a key name and return its pitch class (0–11).
+  Raises ``ValueError`` for unknown names. This is the canonical key validation function
+  used by ``harmony.py``, ``pattern_builder.snap_to_scale()``, and ``chord_graphs.validate_key_name()``.
+
+Chord qualities: ``"major"``, ``"minor"``, ``"diminished"``, ``"augmented"``, ``"dominant_7th"``,
+``"major_7th"``, ``"minor_7th"``, ``"half_diminished_7th"``, ``"sus2"``, ``"sus4"``
 """
 
 import dataclasses

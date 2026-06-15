@@ -1223,15 +1223,16 @@ class Composition:
 	"""
 	The top-level controller for a musical piece.
 	
-	The `Composition` object manages the global clock (Sequencer), the harmonic
+	The ``Composition`` object manages the global clock (Sequencer), the harmonic
 	progression (HarmonicState), the song structure (subsequence.form_state.FormState), and all MIDI patterns.
 	It serves as the main entry point for defining your music.
 	
 	Typical workflow:
-	1. Initialize `Composition` with BPM and Key.
+
+	1. Initialize ``Composition`` with BPM and Key.
 	2. Define harmony and form (optional).
-	3. Register patterns using the `@composition.pattern` decorator.
-	4. Call `composition.play()` to start the music.
+	3. Register patterns using the ``@composition.pattern`` decorator.
+	4. Call ``composition.play()`` to start the music.
 	"""
 
 	def __init__ (
@@ -1266,11 +1267,11 @@ class Composition:
 				    import mido
 				    for n in mido.get_output_names(): print(n)
 
-				If `None`, Subsequence auto-discovers — uses the only
+				If ``None``, Subsequence auto-discovers — uses the only
 				available device, or prompts to choose if several exist.
 			bpm: Initial tempo in beats per minute (default 120).
 			key: The root key of the piece (e.g., "C", "F#", "Bb").
-				Required if you plan to use `harmony()`.
+				Required if you plan to use ``harmony()``.
 			scale: The scale/mode of the piece (e.g. "minor", "dorian",
 				or any registered scale name).  Used to resolve scale
 				degrees in motifs; defaults to major (ionian) when unset.
@@ -3269,7 +3270,7 @@ class Composition:
 		Enable the live coding eval server.
 
 		This allows you to connect to a running composition using the
-		`subsequence.live_client` REPL and hot-swap pattern code or
+		``subsequence.live_client`` REPL and hot-swap pattern code or
 		modify variables in real-time.
 
 		Security:
@@ -3380,6 +3381,7 @@ class Composition:
 		or for one-shot session loads with no file backing.
 
 		Behaviour mirrors ``watch()``:
+
 		* The source is exec'd into a fresh namespace with ``composition``
 		  and ``subsequence`` in scope.
 		* ``@composition.pattern`` decorators in the source hot-swap their
@@ -3393,6 +3395,7 @@ class Composition:
 		  and ``play()`` picks them up in the usual way.
 
 		Errors are raised so the caller can act on them:
+
 		* ``SyntaxError`` if ``source`` fails to compile.
 		* The exception raised inside ``exec()`` for any runtime error.
 		* ``RuntimeError`` if called from inside the composition's own
@@ -3489,6 +3492,7 @@ class Composition:
 		deletions and torn down.
 
 		Called from two places:
+
 		* ``Composition.load_patterns()`` via ``run_coroutine_threadsafe``.
 		* ``LiveReloader._reload_async`` directly (already on the loop).
 		"""
@@ -3577,8 +3581,8 @@ class Composition:
 		"""
 		Enable bi-directional Open Sound Control (OSC).
 
-		Subsequence will listen for commands (like `/bpm` or `/mute`) and
-		broadcast its internal state (like `/chord` or `/bar`) over UDP.
+		Subsequence will listen for commands (like ``/bpm`` or ``/mute``) and
+		broadcast its internal state (like ``/chord`` or ``/bar``) over UDP.
 
 		Parameters:
 			receive_port: Port to listen for incoming OSC messages (default 9000).
@@ -3607,7 +3611,7 @@ class Composition:
 
 		Parameters:
 			address: OSC address pattern to match (e.g. ``"/my/param"``).
-			handler: Callable invoked with ``(address, *args)`` when a
+			handler: Callable invoked with ``(address, ``*args``)`` when a
 				matching message arrives.
 
 		Example::
@@ -3932,7 +3936,7 @@ class Composition:
 
 		Parameters:
 			name: The function name of the pattern.
-			**kwargs: Parameter names and their new values.
+			``**kwargs``: Parameter names and their new values.
 
 		Example (from the live REPL)::
 
@@ -4034,13 +4038,14 @@ class Composition:
 		Define the structure (sections) of the composition.
 
 		You can define form in four ways:
+
 		1. **Form value**: a frozen :class:`~subsequence.forms.Form` of
 		   :class:`~subsequence.forms.Section` values — the payload home
 		   (energy, key per section); editable, navigable.
 		2. **Sequence (List)**: a fixed order of ``(name, bars)`` tuples
 		   or Sections (lists coerce — they are the same form).
 		3. **Graph (Dict)**: dynamic transitions based on weights.
-		4. **Generator**: a Python generator that yields `(name, bars)` pairs.
+		4. **Generator**: a Python generator that yields ``(name, bars)`` pairs.
 
 		Form-value and list forms are **navigable**: ``form_jump()`` and
 		``form_next()`` work on them (the jump lands on the next occurrence
@@ -4467,12 +4472,14 @@ class Composition:
 		Resolve the beat_length and default_grid from the duration parameters.
 
 		Two modes:
+
 		- **Duration mode** (no ``step_duration``): specify ``beats=`` or ``bars=``.
 		  ``beats=4`` = 4 quarter notes; ``bars=2`` = 8 beats.
 		- **Step mode** (with ``step_duration``): specify ``steps=`` and ``step_duration=``.
 		  ``steps=6, step_duration=dur.SIXTEENTH`` = 6 sixteenth notes = 1.5 beats.
 
 		Constraints:
+
 		- ``beats`` and ``bars`` are mutually exclusive.
 		- ``steps`` requires ``step_duration``; ``step_duration`` requires ``steps``.
 		- ``steps`` cannot be combined with ``beats`` or ``bars``.

@@ -209,8 +209,9 @@ def select_output_device (device_name: typing.Optional[str] = None) -> typing.Tu
 	"""
 	Select and open a MIDI output device.
 
-	If `device_name` is provided, attempts to open that specific device.
-	If `device_name` is None, auto-discovers available devices:
+	If ``device_name`` is provided, attempts to open that specific device.
+	If ``device_name`` is None, auto-discovers available devices:
+
 	- If exactly one device exists, it is selected automatically.
 	- If multiple devices exist, prompts the user to choose one from the console.
 	- If no devices exist, logs an error and returns None.
@@ -282,8 +283,8 @@ def select_input_device (device_name: typing.Optional[str] = None, callback: typ
 	"""
 	Select and open a MIDI input device.
 
-	If `device_name` is provided, attempts to open exactly that device.
-	If `device_name` is None, returns None without prompting (input is optional/advanced).
+	If ``device_name`` is provided, attempts to open exactly that device.
+	If ``device_name`` is None, returns None without prompting (input is optional/advanced).
 	To enforce input, the caller should check the return value.
 
 	A named device that is not present raises ValueError rather than falling

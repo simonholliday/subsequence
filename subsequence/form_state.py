@@ -37,7 +37,7 @@ class SectionInfo:
 	"""
 	An immutable snapshot of the current section in the compositional form.
 
-	Patterns read `p.section` to make context-aware decisions, such as increasing
+	Patterns read ``p.section`` to make context-aware decisions, such as increasing
 	intensity as a section progresses or playing variation only in certain blocks.
 
 	Attributes:
@@ -151,8 +151,8 @@ class FormState:
 
 		Parameters:
 			sections: Form definition. A :class:`~subsequence.forms.Form`
-				value, a list of Sections / `(name, bars)` tuples, an
-				iterator yielding `(name, bars)` tuples, or a dictionary
+				value, a list of Sections / ``(name, bars)`` tuples, an
+				iterator yielding ``(name, bars)`` tuples, or a dictionary
 				defining a weighted directed graph for generative progression.
 			loop: Sugar for ``at_end="loop"`` (sequence mode).
 			start: Name of the starting section when using a graph dict. If omitted,

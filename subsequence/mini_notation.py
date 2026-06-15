@@ -29,11 +29,12 @@ def parse (notation: str, total_duration: float = 4.0) -> typing.List[ParsedEven
 	It distributes events evenly across the specified duration.
 
 	**Syntax:**
-	- `x y z`: Items separated by spaces are distributed across the total duration.
-	- `[a b]`: Groups items into a single subdivided step.
-	- `~` or `.`: A rest.
-	- `_`: Extends the previous note (sustain).
-	- `x?0.6`: Probability suffix — fires with the given probability (0.0–1.0).
+
+	- ``x y z``: Items separated by spaces are distributed across the total duration.
+	- ``[a b]``: Groups items into a single subdivided step.
+	- ``~`` or ``.``: A rest.
+	- ``_``: Extends the previous note (sustain).
+	- ``x?0.6``: Probability suffix — fires with the given probability (0.0–1.0).
 
 	Parameters:
 		notation: The string to parse.
@@ -41,7 +42,7 @@ def parse (notation: str, total_duration: float = 4.0) -> typing.List[ParsedEven
 			events over (default 4.0).
 
 	Returns:
-		A list of `ParsedEvent` objects with calculated times and durations.
+		A list of ``ParsedEvent`` objects with calculated times and durations.
 
 	Example:
 		```python
@@ -139,7 +140,7 @@ def _parse_recursive (tokens: list, start_time: float, duration: float) -> typin
 def _post_process_sustains (events: typing.List[ParsedEvent]) -> typing.List[ParsedEvent]:
 
 	"""
-	Merge `_` events into the previous event's duration.
+	Merge ``_`` events into the previous event's duration.
 	"""
 
 	if not events:

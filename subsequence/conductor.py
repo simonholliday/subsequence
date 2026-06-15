@@ -156,7 +156,7 @@ class Conductor:
 	"""
 	A registry for global automation signals.
 	
-	The `Conductor` allows you to define time-varying signals (like LFOs or 
+	The ``Conductor`` allows you to define time-varying signals (like LFOs or 
 	ramps) that are available to all pattern builders. This is ideal for 
 	modulating parameters (like velocity or filter cutoff) over long 
 	compositional timeframes.

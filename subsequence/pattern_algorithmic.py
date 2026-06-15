@@ -362,6 +362,7 @@ class PatternAlgorithmicMixin:
 		Parameters:
 			grid: The total number of steps in the sequence (usually 16 or 32).
 			bias: The probability distribution shape to generate:
+
 				- ``"uniform"``    - 1.0 everywhere.
 				- ``"offbeat"``    - 1.0 on 8th note off-beats (&), 0.3 on 16ths (e/a), 0.05 on downbeats.
 				- ``"sixteenths"`` - 1.0 on 16th notes (e/a), 0.3 on 8th off-beats (&), 0.05 on downbeats.

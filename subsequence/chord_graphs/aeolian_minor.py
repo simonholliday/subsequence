@@ -23,6 +23,7 @@ class AeolianMinor (subsequence.chord_graphs.ChordGraph):
 
 	Focuses on the interplay between the natural minor scale and its
 	common variations:
+
 	- Aeolian (i, iv, v, bVI, bVII)
 	- Harmonic Minor (V, vii°) for stronger cadences
 	- Phrygian (bII) for tension

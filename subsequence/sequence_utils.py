@@ -174,7 +174,7 @@ def weighted_choice (options: typing.List[typing.Tuple[T, float]], rng: random.R
 	higher probability of selection.
 
 	Parameters:
-		options: List of `(value, weight)` tuples
+		options: List of ``(value, weight)`` tuples
 		rng: Random number generator instance
 
 	Example:

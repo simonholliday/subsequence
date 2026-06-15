@@ -34,9 +34,9 @@ def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 		n: The target length for the returned list.
 
 	Returns:
-		A list of length `n`. If `value` is a scalar, returns `[value] * n`.
-		If `value` is a list longer than `n`, truncates it and logs a warning.
-		If `value` is a list shorter than `n`, repeats the last value and logs a warning.
+		A list of length ``n``. If ``value`` is a scalar, returns ``[value] * n``.
+		If ``value`` is a list longer than ``n``, truncates it and logs a warning.
+		If ``value`` is a list shorter than ``n``, repeats the last value and logs a warning.
 	"""
 
 	if isinstance(value, (int, float, str)):
@@ -104,7 +104,7 @@ class PatternBuilder(
 	"""
 	The musician's 'palette' for creating musical content.
 
-	A `PatternBuilder` instance (commonly named `p`) is passed to every
+	A ``PatternBuilder`` instance (commonly named ``p``) is passed to every
 	pattern function. It provides methods for placing notes, generating rhythms,
 	and transforming the resulting sequence (e.g., swinging, reversing, or transposing).
 
@@ -498,7 +498,7 @@ class PatternBuilder(
 
 		Parameters:
 			pitch: MIDI note number (0-127) or a drum name string from
-				the pattern's `drum_note_map`.
+				the pattern's ``drum_note_map``.
 			beat: The beat position (0.0 is the start). Negative values
 				wrap from the end (e.g., -1.0 is one beat before the end).
 			velocity: MIDI velocity (0-127, default 100), or a
@@ -542,7 +542,7 @@ class PatternBuilder(
 		"""
 		Place an explicit Note On event without a duration.
 		Useful for drones or infinite sustains. Must be paired with
-		a `note_off()` later to silence the note.
+		a ``note_off()`` later to silence the note.
 
 		Parameters:
 			pitch: MIDI note number (0-127) or a drum name string.
@@ -601,9 +601,9 @@ class PatternBuilder(
 	def drone (self, pitch: typing.Union[int, str], beat: float = 0.0, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
 
 		"""
-		A musical alias for `note_on`. Places a raw Note On event without a duration,
+		A musical alias for ``note_on``. Places a raw Note On event without a duration,
 		typically used for sustained notes that span multiple cycles.
-		Must be silenced later using `drone_off()`.
+		Must be silenced later using ``drone_off()``.
 
 		Parameters:
 			pitch: MIDI note number (0-127) or a drum name string.
@@ -618,8 +618,8 @@ class PatternBuilder(
 	def drone_off (self, pitch: typing.Union[int, str]) -> "PatternBuilder":
 
 		"""
-		A musical alias for `note_off`. Places a raw Note Off event at beat 0.0.
-		Used to stop a sequence started by `drone()`.
+		A musical alias for ``note_off``. Places a raw Note Off event at beat 0.0.
+		Used to stop a sequence started by ``drone()``.
 		
 		Parameters:
 			pitch: MIDI note number (0-127) or a drum name string.
@@ -1232,16 +1232,17 @@ class PatternBuilder(
 		The notation distributes events evenly across the current pattern length.
 
 		**Syntax:**
-		- `x y z`: Items separated by spaces are distributed across the bar.
-		- `[a b]`: Groups items into a single subdivided step.
-		- `~` or `.`: A rest.
-		- `_`: Extends the previous note (sustain).
-		- `x?0.6`: Probability suffix — fires with the given probability (0.0–1.0).
+
+		- ``x y z``: Items separated by spaces are distributed across the bar.
+		- ``[a b]``: Groups items into a single subdivided step.
+		- ``~`` or ``.``: A rest.
+		- ``_``: Extends the previous note (sustain).
+		- ``x?0.6``: Probability suffix — fires with the given probability (0.0–1.0).
 
 		Parameters:
 			notation: The mini-notation string.
 			pitch: If provided, all symbols in the string are triggers for
-				this specific pitch. If `None`, symbols are interpreted as
+				this specific pitch. If ``None``, symbols are interpreted as
 				pitches (e.g., "60" or "kick").
 			velocity: MIDI velocity (default 100), or a ``(low, high)``
 				tuple for a fresh random draw per event.
@@ -1504,11 +1505,11 @@ class PatternBuilder(
 		"""
 		Place a chord at ``beat`` (the start of the pattern by default).
 
-		Note: If the pattern was registered with `voice_leading=True`,
+		Note: If the pattern was registered with ``voice_leading=True``,
 		this method automatically chooses the best inversion.
 
 		Parameters:
-			chord_obj: The chord to play (usually the `chord` parameter
+			chord_obj: The chord to play (usually the ``chord`` parameter
 				passed to your pattern function).
 			root: MIDI root note (e.g., 60 for Middle C).
 			velocity: MIDI velocity (default 90), or a ``(low, high)``

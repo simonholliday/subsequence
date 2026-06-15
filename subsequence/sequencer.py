@@ -290,7 +290,7 @@ class Sequencer:
 	"""
 	The engine that drives Subsequence timing and MIDI output.
 	
-	The `Sequencer` maintains a stable clock (internal or external), 
+	The ``Sequencer`` maintains a stable clock (internal or external), 
 	handles the scheduling of MIDI events, and triggers pattern rebuilds.
 	"""
 
@@ -606,7 +606,7 @@ class Sequencer:
 		"""
 		Instantly change the tempo.
 
-		Note: If `clock_follow` is enabled and the sequencer is running,
+		Note: If ``clock_follow`` is enabled and the sequencer is running,
 		this method will be ignored as the tempo is slaved to the external source.
 		When Ableton Link is active, the new BPM is proposed to the Link network
 		instead of being applied locally — the network-authoritative tempo is

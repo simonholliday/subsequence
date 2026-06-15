@@ -6,6 +6,7 @@ and sends state updates to a target host/port (default 127.0.0.1:9001).
 
 Built-in Receive Handlers
 ─────────────────────────
+
 - ``/bpm <int>``: Set tempo
 - ``/mute/<name>``: Mute a pattern
 - ``/unmute/<name>``: Unmute a pattern
@@ -13,6 +14,7 @@ Built-in Receive Handlers
 
 Built-in Send Events
 ────────────────────
+
 - ``/bar <int>``: On bar change
 - ``/chord <string>``: On chord change
 - ``/section <string>``: On section change

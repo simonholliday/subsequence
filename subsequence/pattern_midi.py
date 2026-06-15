@@ -685,7 +685,7 @@ class PatternMidiMixin:
 
 		Parameters:
 			address: OSC address path (e.g. ``"/mixer/fader/1"``).
-			*args: OSC arguments — float, int, str, or bytes.
+			``*args``: OSC arguments — float, int, str, or bytes.
 			beat: Beat position within the pattern (default 0.0).
 
 		Example:
