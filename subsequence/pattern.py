@@ -1,3 +1,12 @@
+"""Immutable note and pattern data types — the rendered output layer.
+
+Defines ``Note`` (a single scheduled MIDI event) alongside the control-event
+records (``CcEvent``, ``RawNoteEvent``, ``OscEvent``) and ``Pattern``, the
+ordered bag of events that ``PatternBuilder`` produces and the sequencer
+schedules.  These are plain data; the building verbs live in
+``pattern_builder``.
+"""
+
 import dataclasses
 import typing
 

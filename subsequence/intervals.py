@@ -1,3 +1,10 @@
+"""Interval and scale definitions, plus the helpers that resolve them.
+
+Holds ``INTERVAL_DEFINITIONS`` (named scales and chords as semitone lists) and
+the functions that work against it — ``scale_notes``, ``scale_pitch_classes``,
+``quantize_pitch``, ``register_scale`` and friends.
+"""
+
 import logging
 import typing
 

@@ -1,3 +1,10 @@
+"""Harmony helpers — diatonic chords without the chord-graph engine.
+
+Standalone convenience functions (``diatonic_chords``, ``diatonic_chord``,
+``diatonic_chord_sequence``) for building chords from a key and mode, plus the
+``ChordPattern`` view.  For generative progressions use ``progressions``.
+"""
+
 import logging
 import typing
 

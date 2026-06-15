@@ -1,3 +1,11 @@
+"""``PatternBuilder`` (the ``p`` inside a pattern) — the note-placement surface.
+
+This is the ``p`` handed to every ``@composition.pattern`` function: the verbs
+for placing notes, drums, chords, motifs and phrases, plus articulation, the
+transforms, and the algorithmic and MIDI mixins it inherits.  It renders into
+the plain data types in ``pattern``.
+"""
+
 import dataclasses
 import logging
 import random

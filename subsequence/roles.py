@@ -7,14 +7,16 @@ arguments shared by the placement surface — ``comp.phrase_part(...)`` and
 ``p.motif(...)`` / ``p.phrase(...)`` (``root`` register anchor, ``velocity``,
 and the chord-snapping ``fit`` dial):
 
-	import subsequence
+```python
+import subsequence
 
-	comp.phrase_part(channel=2, part="bass", **subsequence.roles.BASS)
-	comp.phrase_part(channel=4, part="lead", **subsequence.roles.LEAD, root=78)   # override root
+comp.phrase_part(channel=2, part="bass", **subsequence.roles.BASS)
+comp.phrase_part(channel=4, part="lead", **subsequence.roles.LEAD, root=78)   # override root
 
-	@comp.pattern(channel=3, bars=2)
-	def pad (p):
-		p.motif(chords, **subsequence.roles.PAD)
+@comp.pattern(channel=3, bars=2)
+def pad (p):
+	p.motif(chords, **subsequence.roles.PAD)
+```
 
 These are taste defaults, not rules — a bass usually sits low and locks to
 chord tones (high ``fit``), a pad sits mid and floats (lower ``fit``).  Change

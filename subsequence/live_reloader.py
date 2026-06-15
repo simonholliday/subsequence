@@ -68,7 +68,7 @@ the live file itself.
 Security note
 ─────────────
 
-This module ``exec()``s arbitrary Python by design.  Treat the watched
+This module calls ``exec()`` on arbitrary Python by design.  Treat the watched
 file like any other source file in your project; never point it at
 untrusted content.
 """

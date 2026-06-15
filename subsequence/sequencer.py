@@ -1,3 +1,10 @@
+"""The ``Sequencer`` — clock, scheduling, and MIDI delivery.
+
+Owns the pulse clock, the event heap, and the output ports, turning scheduled
+patterns and callbacks into timed MIDI messages.  ``Composition`` drives one
+internally; you rarely construct it directly.
+"""
+
 import asyncio
 import collections
 import dataclasses

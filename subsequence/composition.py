@@ -1,3 +1,12 @@
+"""The top-level ``Composition`` — the object a whole piece is built on.
+
+``Composition`` is the single entry point: it owns the clock, the patterns,
+the harmony and form state, and the MIDI output.  You create one, decorate
+pattern functions onto it with ``@composition.pattern``, and call ``play()``.
+``HarmonyView`` and ``ScheduleContext`` here are the read-only views handed to
+pattern and callback functions at run time.
+"""
+
 import asyncio
 import builtins
 import dataclasses
@@ -3611,7 +3620,7 @@ class Composition:
 
 		Parameters:
 			address: OSC address pattern to match (e.g. ``"/my/param"``).
-			handler: Callable invoked with ``(address, ``*args``)`` when a
+			handler: Callable invoked with ``(address, *args)`` when a
 				matching message arrives.
 
 		Example::

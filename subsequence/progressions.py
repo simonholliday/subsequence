@@ -365,7 +365,7 @@ def resolve_constraint (spec: typing.Any, key_pc: int, scale: str, what: str) ->
 
 	Specs follow the progression-element grammar: ints are diatonic degrees
 	(quality inferred from *scale*), strings are chord names or romans,
-	``Chord`` objects pass through.  ``PitchSet``s are rejected — generation
+	``Chord`` objects pass through.  ``PitchSet`` objects are rejected — generation
 	needs rooted chords.
 	"""
 
@@ -1638,8 +1638,8 @@ def progression (
 	"""Build a :class:`Progression` — the lowercase factory.
 
 	Dispatch by argument type: a **list** parses per element (ints where
-	diatonic, name/roman strings where nominal/chromatic, ``(element,
-	beats)`` tuples for per-chord durations); a bare **string** names a
+	diatonic, name/roman strings where nominal/chromatic,
+	``(element, beats)`` tuples for per-chord durations); a bare **string** names a
 	preset from the curated table; ``style=`` generates *bars* chords from a
 	chord-graph walk (requires ``key=``).
 
