@@ -346,6 +346,103 @@ def probability_gate (sequence: typing.List[int], probability: typing.Union[floa
 
 
 
+def _density_warp_scalar (p: float, d: float) -> float:
+
+	"""Warp a single probability ``p`` by knob ``d`` (the scalar core).
+
+	Returns ``(p*d) / (p*d + (1-p)*(1-d))`` with hard guards at the edges so the
+	warp reaches exact ``0.0`` / ``1.0`` and never divides by zero.
+	"""
+
+	if p <= 0.0:
+		return 0.0
+
+	if p >= 1.0:
+		return 1.0
+
+	if d <= 0.0:
+		return 0.0
+
+	if d >= 1.0:
+		return 1.0
+
+	pd = p * d
+	return pd / (pd + (1.0 - p) * (1.0 - d))
+
+
+@typing.overload
+def density_warp (value: float, amount: float) -> float: ...
+@typing.overload
+def density_warp (value: typing.List[float], amount: typing.Union[float, typing.List[float]]) -> typing.List[float]: ...
+@typing.overload
+def density_warp (value: float, amount: typing.List[float]) -> typing.List[float]: ...
+
+
+def density_warp (
+	value: typing.Union[float, typing.List[float]],
+	amount: typing.Union[float, typing.List[float]],
+) -> typing.Union[float, typing.List[float]]:
+
+	"""Warp a probability/density by a single denser/sparser knob.
+
+	Pushes a probability ``value`` in ``[0, 1]`` toward 1.0 (denser) or toward
+	0.0 (sparser) with one knob ``amount`` in ``[0, 1]``.  ``amount = 0.5`` is
+	the identity and returns ``value`` unchanged; above 0.5 thickens, below 0.5
+	thins.  The output is always in ``[0, 1]``.
+
+	The map is ``W = (value*amount) / (value*amount + (1-value)*(1-amount))`` —
+	the logistic of ``logit(value) + logit(amount)``.  Because the log-odds add,
+	warps **stack**: two warps equal one whose knobs combine by summing their
+	log-odds.  ``amount = 1`` forces a full ``1.0`` and ``amount = 0`` a full
+	``0.0`` for any ``value`` strictly between 0 and 1.
+
+	``value`` may be a single float or a list; the return matches that shape.
+	``amount`` may likewise be a single float (applied to every element) or a
+	per-step list (e.g. a Perlin density field).  The result is a list whenever
+	either argument is a list; when both are lists of unequal length the result
+	has the length of the longer, the shorter extended by repeating its last
+	value.  An empty list yields an empty list.
+
+	Parameters:
+		value: A probability/density in ``[0, 1]``, or a list of them.
+		amount: The warp knob in ``[0, 1]`` — ``0.5`` is identity, ``>0.5``
+			denser, ``<0.5`` sparser.  A float warps every element uniformly;
+			a list warps per step.
+
+	Returns:
+		A float when both arguments are floats, otherwise a list of floats.
+
+	Example:
+		```python
+		# A per-step kick profile, thickened by one density knob.
+		profile = [0.9, 0.1, 0.5, 0.1, 0.8, 0.1, 0.4, 0.1]
+		dense = subsequence.sequence_utils.density_warp(profile, 0.7)
+		# dense is a list in [0, 1] — use as per-step probabilities or velocities.
+		```
+	"""
+
+	if isinstance(value, list):
+
+		if isinstance(amount, list):
+
+			# Both lists: an empty operand yields []; otherwise pad the shorter
+			# by repeating its last element (the _expand_sequence_param rule).
+			if not value or not amount:
+				return []
+
+			n = max(len(value), len(amount))
+			vs = value if len(value) == n else value + [value[-1]] * (n - len(value))
+			amt = amount if len(amount) == n else amount + [amount[-1]] * (n - len(amount))
+			return [_density_warp_scalar(v, a) for v, a in zip(vs, amt)]
+
+		return [_density_warp_scalar(v, amount) for v in value]
+
+	if isinstance(amount, list):
+		return [_density_warp_scalar(value, a) for a in amount]
+
+	return _density_warp_scalar(value, amount)
+
+
 def scale_clamp (value: float, in_min: float, in_max: float, out_min: float = 0.0, out_max: float = 1.0) -> float:
 
 	"""Scale a value from an input range to an output range and clamp the result.

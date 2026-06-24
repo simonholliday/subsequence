@@ -101,8 +101,8 @@ The musician's 'palette' for creating musical content.
 | `chord(chord_obj, root, velocity, sustain, duration, inversion, count, legato, detached, beat) -> 'PatternBuilder'` | Place a chord at ``beat`` (the start of the pattern by default). |
 | `de_bruijn(pitches, window, spacing, velocity, duration, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a melody that exhaustively traverses all pitch subsequences. |
 | `detached(beats) -> 'PatternBuilder'` | Shorten note durations so a guaranteed silence precedes the next onset. |
-| `drone(pitch, beat, velocity) -> 'PatternBuilder'` | A musical alias for `note_on`. Places a raw Note On event without a duration, typically used for sustained notes that span multiple cycles. Must be silenced later using `drone_off()`. |
-| `drone_off(pitch) -> 'PatternBuilder'` | A musical alias for `note_off`. Places a raw Note Off event at beat 0.0. Used to stop a sequence started by `drone()`. |
+| `drone(pitch, beat, velocity) -> 'PatternBuilder'` | A musical alias for ``note_on``. Places a raw Note On event without a duration, typically used for sustained notes that span multiple cycles. Must be silenced later using ``drone_off()``. |
+| `drone_off(pitch) -> 'PatternBuilder'` | A musical alias for ``note_off``. Places a raw Note Off event at beat 0.0. Used to stop a sequence started by ``drone()``. |
 | `dropout(probability, seed, rng) -> 'PatternBuilder'` | Randomly remove notes from the pattern. |
 | `duck_map(steps, floor, grid) -> List[float]` | Build a per-step velocity multiplier list for sidechain-style ducking. |
 | `duration(beats) -> 'PatternBuilder'` | Set every note's duration to a fixed length in beats. |
@@ -125,7 +125,7 @@ The musician's 'palette' for creating musical content.
 | `motif(m, beat, span, root, velocity, fit, fit_weights, resolution) -> 'PatternBuilder'` | Place an immutable :class:`~subsequence.motifs.Motif` onto the pattern. |
 | `note(pitch, beat, velocity, duration) -> 'PatternBuilder'` | Place a single MIDI note at a specific beat position. |
 | `note_off(pitch, beat) -> 'PatternBuilder'` | Place an explicit Note Off event to silence a drone. |
-| `note_on(pitch, beat, velocity) -> 'PatternBuilder'` | Place an explicit Note On event without a duration. Useful for drones or infinite sustains. Must be paired with a `note_off()` later to silence the note. |
+| `note_on(pitch, beat, velocity) -> 'PatternBuilder'` | Place an explicit Note On event without a duration. Useful for drones or infinite sustains. Must be paired with a ``note_off()`` later to silence the note. |
 | `nrpn(parameter, value, beat, fine, null_reset) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a single NRPN parameter write at a beat position. |
 | `nrpn_ramp(parameter, start, end, beat_start, beat_end, resolution, shape, fine, null_reset) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate an NRPN value over a beat range. |
 | `osc(address, *args, beat) -> 'subsequence.pattern_builder.PatternBuilder'` | Send an OSC message at a beat position. |
@@ -141,7 +141,7 @@ The musician's 'palette' for creating musical content.
 | `ratchet(subdivisions, pitch, probability, velocity_start, velocity_end, shape, gate, steps, grid, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Subdivide existing notes into rapid repeated hits (rolls/ratchets). |
 | `reaction_diffusion(pitch, threshold, velocity, duration, feed_rate, kill_rate, steps, no_overlap, probability, seed, rng) -> 'subsequence.pattern_builder.PatternBuilder'` | Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation. |
 | `repeat(pitch, spacing, velocity, duration) -> 'PatternBuilder'` | Repeat a note at a fixed beat interval for the whole pattern. |
-| `reverse() -> 'PatternBuilder'` | Flip the pattern backwards in time. |
+| `reverse() -> 'PatternBuilder'` | Flip the pattern backwards in time (retrograde). |
 | `rotate(steps, grid) -> 'PatternBuilder'` | Rotate the pattern by a number of grid steps, wrapping around. |
 | `rpn(parameter, value, beat, fine, null_reset) -> 'subsequence.pattern_builder.PatternBuilder'` | Send a single RPN parameter write at a beat position. |
 | `rpn_ramp(parameter, start, end, beat_start, beat_end, resolution, shape, fine, null_reset) -> 'subsequence.pattern_builder.PatternBuilder'` | Interpolate an RPN value over a beat range. |
@@ -256,7 +256,7 @@ One chord with a duration and its decoration — the unit of harmonic time.
 |---|---|
 | `__init__(chord, beats, extensions, bass, inversion, spread, extension_intervals) -> None` |  |
 | `decorated_intervals() -> List[int]` | Semitone offsets of the decorated voicing (before inversion/spread/bass). |
-| `is_concrete *(property)*` | True when the chord needs no key context to sound. |
+| `is_concrete *(property)*` | True when the chord (and any pedal bass) needs no key context to sound. |
 | `is_decorated *(property)*` | True when the span carries any decoration beyond the bare chord. |
 | `label(key_pc, scale) -> str` | A printable chord label: roman text when relative, decorated name when concrete. |
 | `resolve(key_pc, scale) -> 'ChordSpan'` | Return a concrete span: romans resolved, bass resolved to a pitch class. |
@@ -409,6 +409,7 @@ Functions for generating and transforming sequences.
 | `cseg(pitches) -> List[int]` | Contour segment: each pitch's rank within the line (Morris's CSEG). |
 | `csim(a, b) -> float` | Contour similarity between two equal-length lines (Marvin/Laprade CSIM). |
 | `de_bruijn(k, n) -> List[int]` | Generate a de Bruijn sequence B(k, n). |
+| `density_warp(value, amount) -> Union[float, List[float]]` | Warp a probability/density by a single denser/sparser knob. |
 | `fibonacci_rhythm(steps, length) -> List[float]` | Generate beat positions spaced by the golden ratio (Fibonacci spiral). |
 | `generate_bresenham_sequence(steps, pulses) -> List[int]` | Generate a rhythm using Bresenham's line algorithm. |
 | `generate_bresenham_sequence_weighted(steps, weights) -> List[int]` | Generate a sequence that distributes weighted indices across steps. |
