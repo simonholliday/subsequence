@@ -443,6 +443,161 @@ def density_warp (
 	return _density_warp_scalar(value, amount)
 
 
+def _combine_geomean (values: typing.List[float]) -> float:
+
+	"""Geometric mean of ``values`` — the Nth root of their product."""
+
+	return math.prod(values) ** (1.0 / len(values))
+
+
+_combine_reducers: typing.Dict[str, typing.Callable[[typing.List[float]], float]] = {
+	"geomean": _combine_geomean,
+	"min":     min,
+	"mean":    lambda values: sum(values) / len(values),
+	"product": math.prod,
+}
+
+
+def combine_densities (
+	layers: typing.List[typing.Union[float, typing.List[float]]],
+	strategy: str = "geomean",
+) -> typing.Union[float, typing.List[float]]:
+
+	"""Blend several density layers into one consensus density.
+
+	Takes a list of density ``layers`` — each a single value in ``[0, 1]`` or a
+	per-step list in ``[0, 1]`` — and reduces them, step by step, to one density
+	value or list.  This is the "agree on how busy this bar should be" stage; its
+	output is meant to feed the ``amount`` of :func:`density_warp`.
+
+	The ``strategy`` picks the reducer (all preserve ``[0, 1]`` for valid inputs,
+	so no clamping is applied):
+
+		- ``"geomean"`` (default) — the geometric mean, ``prod(values) ** (1/N)``.
+			A gentle consensus where any near-zero layer pulls the result down.
+		- ``"min"`` — the most restrictive layer wins (a strict gate).
+		- ``"mean"`` — the plain arithmetic average (a balanced vote).
+		- ``"product"`` — multiply them all (stacks toward sparse fast).
+
+	Broadcasting generalises the rule in :func:`density_warp`: if every layer is
+	a single value the result is a single value; if any layer is a list the
+	result is a list as long as the longest layer, with scalar layers applied to
+	every step and shorter lists extended by repeating their last value.  An
+	empty list layer yields ``[]``.
+
+	Parameters:
+		layers: The density layers to blend.  Each entry is a value in
+			``[0, 1]`` or a per-step list of such values.  Must be non-empty.
+		strategy: Reducer name — ``"geomean"`` (default), ``"min"``, ``"mean"``,
+			or ``"product"``.
+
+	Returns:
+		A float when every layer is a float, otherwise a list of floats.
+
+	Raises:
+		ValueError: If ``layers`` is empty, or ``strategy`` is unknown.
+
+	Example:
+		```python
+		# Blend a metric accent curve, an intensity envelope, and a global knob
+		# into a consensus, then warp a base probability by it.
+		accent = subsequence.sequence_utils.build_metric_weights(16)
+		envelope = subsequence.easing.ramp(16, 0.2, 0.9, "ease_in_out")
+		consensus = subsequence.sequence_utils.combine_densities(
+			[accent, envelope, 0.6], strategy="geomean")
+		probs = subsequence.sequence_utils.density_warp(0.5, consensus)
+		```
+	"""
+
+	if not layers:
+		raise ValueError("Layers cannot be empty")
+
+	if strategy not in _combine_reducers:
+		available = ", ".join(f'"{k}"' for k in sorted(_combine_reducers))
+		raise ValueError(
+			f"Unknown combine strategy {strategy!r}. Available strategies: {available}"
+		)
+
+	reduce = _combine_reducers[strategy]
+
+	if all(not isinstance(layer, list) for layer in layers):
+		return reduce([layer for layer in layers if not isinstance(layer, list)])
+
+	lengths = [len(layer) for layer in layers if isinstance(layer, list)]
+
+	if 0 in lengths:
+		return []
+
+	n = max(lengths)
+	result: typing.List[float] = []
+
+	for i in range(n):
+
+		step: typing.List[float] = []
+
+		for layer in layers:
+			if isinstance(layer, list):
+				step.append(layer[i] if i < len(layer) else layer[-1])
+			else:
+				step.append(layer)
+
+		result.append(reduce(step))
+
+	return result
+
+
+@typing.overload
+def warp_stack (value: float, amounts: typing.List[typing.Union[float, typing.List[float]]]) -> float: ...
+@typing.overload
+def warp_stack (value: typing.List[float], amounts: typing.List[typing.Union[float, typing.List[float]]]) -> typing.List[float]: ...
+
+
+def warp_stack (
+	value: typing.Union[float, typing.List[float]],
+	amounts: typing.List[typing.Union[float, typing.List[float]]],
+) -> typing.Union[float, typing.List[float]]:
+
+	"""Apply several density knobs to ``value`` so they compound.
+
+	Folds :func:`density_warp` over ``amounts``: it starts from ``value`` and
+	warps by each knob in turn.  Because :func:`density_warp` adds log-odds,
+	stacking knobs equals one warp whose knobs sum in log-odds, so the order of
+	``amounts`` does not matter and the neutral knob ``0.5`` is a no-op.
+
+	Each knob may itself be a single value or a per-step list (it inherits
+	:func:`density_warp`'s broadcasting), so you can mix a global knob with
+	per-step envelopes.  An empty ``amounts`` list returns ``value`` unchanged.
+
+	Stacking saturates fast: every knob above ``0.5`` pushes harder toward
+	``1.0`` (and below toward ``0.0``), so a few strong knobs can pin a sequence
+	almost fully on or off.  Treat it like gain-staging — prefer a few gentle
+	knobs, or blend control layers first with :func:`combine_densities` and apply
+	the consensus as one knob.
+
+	Parameters:
+		value: A probability/density in ``[0, 1]``, or a list of them.
+		amounts: The knobs to compound, each a value in ``[0, 1]`` (``0.5``
+			neutral, ``>0.5`` denser, ``<0.5`` sparser) or a per-step list.
+
+	Returns:
+		A float when ``value`` and every knob are floats, otherwise a list.
+
+	Example:
+		```python
+		# Compound a global swell, a humanised drift, and a per-step accent.
+		accent = subsequence.easing.ramp(16, 0.4, 0.8, "ease_in")
+		probs = subsequence.sequence_utils.warp_stack(0.5, [0.7, 0.55, accent])
+		```
+	"""
+
+	result = value
+
+	for amount in amounts:
+		result = density_warp(result, amount)
+
+	return result
+
+
 def scale_clamp (value: float, in_min: float, in_max: float, out_min: float = 0.0, out_max: float = 1.0) -> float:
 
 	"""Scale a value from an input range to an output range and clamp the result.
