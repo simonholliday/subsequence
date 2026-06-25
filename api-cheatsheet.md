@@ -410,6 +410,7 @@ Functions for generating and transforming sequences.
 | `cseg(pitches) -> List[int]` | Contour segment: each pitch's rank within the line (Morris's CSEG). |
 | `csim(a, b) -> float` | Contour similarity between two equal-length lines (Marvin/Laprade CSIM). |
 | `de_bruijn(k, n) -> List[int]` | Generate a de Bruijn sequence B(k, n). |
+| `density_spread(value, amount, midpoint) -> Union[float, List[float]]` | Expand or contract a probability/density about a fixed anchor. |
 | `density_warp(value, amount) -> Union[float, List[float]]` | Warp a probability/density by a single denser/sparser knob. |
 | `fibonacci_rhythm(steps, length) -> List[float]` | Generate beat positions spaced by the golden ratio (Fibonacci spiral). |
 | `generate_bresenham_sequence(steps, pulses) -> List[int]` | Generate a rhythm using Bresenham's line algorithm. |

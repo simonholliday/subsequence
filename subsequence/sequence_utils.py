@@ -443,6 +443,150 @@ def density_warp (
 	return _density_warp_scalar(value, amount)
 
 
+def _sigmoid (x: float) -> float:
+
+	"""Logistic sigmoid, evaluated so ``exp`` only ever sees a non-positive argument.
+
+	Splitting on the sign of ``x`` keeps the exponent ``<= 0`` in both branches,
+	so the result saturates gracefully to ``1.0`` / ``0.0`` at large magnitude
+	instead of raising ``OverflowError`` or producing ``nan``.
+	"""
+
+	if x >= 0.0:
+		z = math.exp(-x)
+		return 1.0 / (1.0 + z)
+
+	z = math.exp(x)
+	return z / (1.0 + z)
+
+
+def _density_spread_scalar (p: float, amount: float, m: float) -> float:
+
+	"""Contrast a single probability ``p`` about anchor ``m`` by knob ``amount`` (the scalar core).
+
+	Maps ``out = sigmoid(logit(m) + k*(logit(p) - logit(m)))`` with
+	``k = amount/(1-amount)``, so ``odds(out) = odds(p)**k * odds(m)**(1-k)``.
+	Hard guards keep the result in ``[0, 1]`` and avoid log/exp blow-ups;
+	``amount = 0.5`` returns ``p`` exactly (the general path round-trips through
+	``log``/``exp`` and would otherwise drift by up to one ULP).
+	"""
+
+	if p <= 0.0:
+		return 0.0
+
+	if p >= 1.0:
+		return 1.0
+
+	if amount <= 0.0:                                           # k = 0 -> collapse onto the anchor
+		return m
+
+	if amount >= 1.0:                                          # k -> inf -> push to the nearest rail across m
+		if p < m:
+			return 0.0
+		if p > m:
+			return 1.0
+		return m
+
+	if amount == 0.5:                                          # k = 1 -> exact identity, no log/exp round-trip
+		return p
+
+	k = amount / (1.0 - amount)
+	lm = math.log(m / (1.0 - m))
+	lp = math.log(p / (1.0 - p))
+	return _sigmoid(lm + k * (lp - lm))
+
+
+@typing.overload
+def density_spread (value: float, amount: float, midpoint: float = 0.5) -> float: ...
+@typing.overload
+def density_spread (value: typing.List[float], amount: typing.Union[float, typing.List[float]], midpoint: float = 0.5) -> typing.List[float]: ...
+@typing.overload
+def density_spread (value: float, amount: typing.List[float], midpoint: float = 0.5) -> typing.List[float]: ...
+
+
+def density_spread (
+	value: typing.Union[float, typing.List[float]],
+	amount: typing.Union[float, typing.List[float]],
+	midpoint: float = 0.5,
+) -> typing.Union[float, typing.List[float]]:
+
+	"""Expand or contract a probability/density about a fixed anchor.
+
+	Where :func:`density_warp` *shifts* a value denser or sparser, this *scales*
+	the spread of values around an anchor ``midpoint`` — the contrast twin of the
+	warp.  ``amount = 0.5`` is the identity; above 0.5 **expands** the spread
+	(pushes values away from the anchor, toward 0 and 1); below 0.5 **contracts**
+	it (pulls values toward the anchor).  A ``value`` equal to ``midpoint`` never
+	moves, and the output is always in ``[0, 1]``.
+
+	The map scales each value's log-odds deviation from the anchor by a gain
+	``k = amount/(1-amount)``, so the odds compound as
+	``odds(out) = odds(value)**k * odds(midpoint)**(1-k)``.  Handy points:
+	``amount = 0.75`` triples the spread (``k = 3``), ``0.25`` thirds it
+	(``k = 1/3``); ``amount`` and ``1 - amount`` are exact inverses (contract
+	then expand-by-complement returns the input).
+
+	The spread is even in log-odds, not in linear distance: it stretches the
+	mid-range most and barely moves values already near 0 or 1, and a strong
+	expand pins near-rail values onto the rails (the same saturation
+	:func:`density_warp` has at ``amount`` near 0 or 1).
+
+	``value`` may be a single float or a list; the return matches that shape.
+	``amount`` may likewise be a single float (applied to every element) or a
+	per-step list.  The result is a list whenever either is a list; on unequal
+	lengths the shorter repeats its last value, and an empty list yields an empty
+	list.  ``midpoint`` is a single anchor in the open interval ``(0, 1)``.
+
+	Parameters:
+		value: A probability/density in ``[0, 1]``, or a list of them.
+		amount: The spread knob in ``[0, 1]`` — ``0.5`` is identity, ``>0.5``
+			expands, ``<0.5`` contracts.  A float spreads every element
+			uniformly; a list spreads per step.
+		midpoint: The fixed anchor in ``(0, 1)`` that the spread pivots around
+			(default ``0.5``).  Values stay on their own side of it.
+
+	Returns:
+		A float when ``value`` and ``amount`` are both floats, otherwise a list
+		of floats.
+
+	Raises:
+		ValueError: If ``midpoint`` is not strictly between 0 and 1 (an anchor on
+			a rail has no defined log-odds).
+
+	Example:
+		```python
+		# Sharpen the contrast of a per-step accent profile around 0.5.
+		accents = [0.55, 0.3, 0.7, 0.45, 0.8, 0.25, 0.6, 0.4]
+		sharp = subsequence.sequence_utils.density_spread(accents, 0.75)
+		# values above 0.5 pushed up, below pushed down — same centre, wider spread.
+		```
+	"""
+
+	if not 0.0 < midpoint < 1.0:
+		raise ValueError(f"midpoint must be strictly between 0 and 1, got {midpoint}")
+
+	if isinstance(value, list):
+
+		if isinstance(amount, list):
+
+			# Both lists: an empty operand yields []; otherwise pad the shorter
+			# by repeating its last element (the _expand_sequence_param rule).
+			if not value or not amount:
+				return []
+
+			n = max(len(value), len(amount))
+			vs = value if len(value) == n else value + [value[-1]] * (n - len(value))
+			amt = amount if len(amount) == n else amount + [amount[-1]] * (n - len(amount))
+			return [_density_spread_scalar(v, a, midpoint) for v, a in zip(vs, amt)]
+
+		return [_density_spread_scalar(v, amount, midpoint) for v in value]
+
+	if isinstance(amount, list):
+		return [_density_spread_scalar(value, a, midpoint) for a in amount]
+
+	return _density_spread_scalar(value, amount, midpoint)
+
+
 def _combine_geomean (values: typing.List[float]) -> float:
 
 	"""Geometric mean of ``values`` — the Nth root of their product."""
