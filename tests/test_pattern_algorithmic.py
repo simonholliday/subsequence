@@ -535,3 +535,59 @@ def test_ratchet_velocity_preserved_without_shaping () -> None:
 
 	notes = [n for pulse, step in pattern.steps.items() for n in step.notes]
 	assert all(n.velocity == 80 for n in notes)
+
+
+# ── Degenerate-input handling (empty pools raise; zero resolution no-ops) ──
+#
+# An empty PITCH POOL is a genuine usage error (nothing to choose from) and
+# raises, matching the other melodic-pool methods (de_bruijn / lorenz /
+# self_avoiding_walk / evolve / branch).  A zero RESOLUTION means "no steps to
+# place" and is a clean no-op, matching the rhythm family (euclidean / bresenham
+# / cellular_1d / fibonacci / reaction_diffusion).  These previously crashed with
+# opaque IndexError / ZeroDivisionError.
+
+def test_cellular_2d_empty_pitches_raises () -> None:
+
+	"""cellular_2d with an empty pitch pool raises, like its melodic-pool siblings."""
+
+	pattern, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="pitches list cannot be empty"):
+		builder.cellular_2d([])
+
+
+def test_cellular_2d_empty_velocity_list_raises () -> None:
+
+	"""cellular_2d with an empty velocity list raises a clear error (was ZeroDivisionError)."""
+
+	pattern, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="velocity list cannot be empty"):
+		builder.cellular_2d([60], velocity=[])
+
+
+def test_ghost_fill_zero_grid_is_noop () -> None:
+
+	"""ghost_fill with grid=0 places nothing instead of dividing by zero."""
+
+	pattern, builder = _make_builder()
+
+	assert builder.ghost_fill(60, grid=0) is builder
+	assert pattern.steps == {}
+
+
+def test_thue_morse_zero_resolution_is_noop () -> None:
+
+	"""thue_morse on a zero-resolution pattern no-ops in both single- and two-pitch modes."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern=pattern,
+		cycle=0,
+		default_grid=0,
+		data={},
+	)
+
+	assert builder.thue_morse(60) is builder                # single-pitch path (already no-op'd)
+	assert builder.thue_morse(60, pitch_b=62) is builder    # two-pitch path (the fixed crash)
+	assert pattern.steps == {}

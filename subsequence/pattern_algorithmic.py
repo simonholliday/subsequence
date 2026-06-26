@@ -535,6 +535,9 @@ class PatternAlgorithmicMixin:
 		if grid is None:
 			grid = self._default_grid
 
+		if grid <= 0:
+			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
+
 		if isinstance(bias, list):
 			weights = list(bias)
 			if len(weights) < grid:
@@ -683,6 +686,12 @@ class PatternAlgorithmicMixin:
 			p.cellular_2d(pitches, rule="B3/S23", initial_state="random", seed=7, density=0.3)
 			```
 		"""
+
+		if not pitches:
+			raise ValueError("pitches list cannot be empty")
+
+		if isinstance(velocity, list) and not velocity:
+			raise ValueError("velocity list cannot be empty")
 
 		if generation is None:
 			generation = self.cycle
@@ -1056,6 +1065,9 @@ class PatternAlgorithmicMixin:
 		rng = self._rng_from(seed, rng)
 
 		sequence = subsequence.sequence_utils.thue_morse(self._default_grid)
+
+		if not sequence:
+			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 		if pitch_b is None:
 			self._place_rhythm_sequence(sequence, pitch, velocity, duration, probability, rng, no_overlap)
