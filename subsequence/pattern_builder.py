@@ -1192,7 +1192,9 @@ class PatternBuilder(
 		Subsequence will step through it as it places each note.
 
 		Parameters:
-			steps: List of grid indices to trigger.
+			steps: List of grid indices to trigger. An empty list is a
+				no-op — no notes are placed and the builder is returned
+				unchanged (handy when probabilistic gating rejects every step).
 			pitches: Pitch or list of pitches.
 			velocities: Velocity (default 100), ``(low, high)`` tuple for
 				a fresh random draw per step, or a list of velocities
@@ -1204,7 +1206,7 @@ class PatternBuilder(
 		"""
 
 		if not steps:
-			raise ValueError("steps list cannot be empty")
+			return self
 
 		rng = self._rng_from(seed, rng)
 

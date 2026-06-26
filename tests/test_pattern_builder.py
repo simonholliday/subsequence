@@ -1753,14 +1753,14 @@ def test_sequence_list_shorter_repeats_last () -> None:
 	assert pattern.steps[ppq * 3].notes[0].pitch == 64
 
 
-def test_sequence_empty_steps_raises () -> None:
+def test_sequence_empty_steps_is_noop () -> None:
 
-	"""An empty steps list should raise ValueError."""
+	"""An empty steps list is a no-op: nothing is placed and the builder is returned."""
 
 	pattern, builder = _make_builder()
 
-	with pytest.raises(ValueError, match="steps list cannot be empty"):
-		builder.sequence([], pitches=60)
+	assert builder.sequence([], pitches=60) is builder
+	assert pattern.steps == {}
 
 
 def test_sequence_empty_pitches_list_raises () -> None:
