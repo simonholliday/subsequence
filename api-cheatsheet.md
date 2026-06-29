@@ -413,7 +413,9 @@ Functions for generating and transforming sequences.
 | `csim(a, b) -> float` | Contour similarity between two equal-length lines (Marvin/Laprade CSIM). |
 | `de_bruijn(k, n) -> List[int]` | Generate a de Bruijn sequence B(k, n). |
 | `density_spread(value, amount, midpoint) -> Union[float, List[float]]` | Expand or contract a probability/density about a fixed anchor. |
+| `density_to_steps(density, rng, length) -> List[int]` | Roll each step against its density and return the fired step indices. |
 | `density_warp(value, amount) -> Union[float, List[float]]` | Warp a probability/density by a single denser/sparser knob. |
+| `displace(sequence, amount) -> List[~T]` | Phase-shift a per-step pattern by a whole number of steps, wrapping. |
 | `fibonacci_rhythm(steps, length) -> List[float]` | Generate beat positions spaced by the golden ratio (Fibonacci spiral). |
 | `flip(value, low, high) -> Union[float, List[float]]` | Reflect a value within a range — its complement about the mid-point. |
 | `generate_bresenham_sequence(steps, pulses) -> List[int]` | Generate a rhythm using Bresenham's line algorithm. |

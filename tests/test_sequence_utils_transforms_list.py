@@ -6,6 +6,7 @@ import subsequence.sequence_utils
 TILE = subsequence.sequence_utils.tile
 MASK = subsequence.sequence_utils.mask
 CHOKE = subsequence.sequence_utils.choke
+DISPLACE = subsequence.sequence_utils.displace
 
 
 # --- tile ---
@@ -242,3 +243,76 @@ def test_mask_choke_partition () -> None:
 
 	for original, m, c in zip(seq, masked, choked):
 		assert (m == original) != (c == original)
+
+
+# --- displace (phase-shift a pattern, wrapping) ---
+
+def test_displace_positive_moves_later () -> None:
+
+	"""A positive amount pushes content later (right), wrapping the tail to the front."""
+
+	assert DISPLACE([1, 0, 0, 0], 1) == [0, 1, 0, 0]
+	assert DISPLACE([1, 2, 3, 4], 1) == [4, 1, 2, 3]
+
+
+def test_displace_negative_moves_earlier () -> None:
+
+	"""A negative amount pulls content earlier (left)."""
+
+	assert DISPLACE([0, 1, 0, 0], -1) == [1, 0, 0, 0]
+
+
+def test_displace_zero_is_unchanged_copy () -> None:
+
+	"""amount 0 returns an equal but fresh list (never the same object)."""
+
+	original = [1, 2, 3, 4]
+	result = DISPLACE(original, 0)
+
+	assert result == original
+	assert result is not original
+
+
+def test_displace_full_revolution () -> None:
+
+	"""A whole-length shift is a full revolution — unchanged."""
+
+	assert DISPLACE([1, 2, 3, 4], 4) == [1, 2, 3, 4]
+
+
+def test_displace_over_length_wraps () -> None:
+
+	"""An over-length amount wraps modulo the length."""
+
+	assert DISPLACE([1, 0, 0, 0], 5) == DISPLACE([1, 0, 0, 0], 1)
+
+
+def test_displace_empty () -> None:
+
+	"""An empty sequence is a no-op (and the divide-by-zero guard)."""
+
+	assert DISPLACE([], 3) == []
+
+
+def test_displace_single_element () -> None:
+
+	"""A single-element list is unchanged for any amount."""
+
+	assert DISPLACE([9], 7) == [9]
+
+
+def test_displace_type_agnostic () -> None:
+
+	"""displace reorders any element type."""
+
+	assert DISPLACE(["a", "b", "c"], 1) == ["c", "a", "b"]
+
+
+def test_displace_does_not_mutate_input () -> None:
+
+	"""The original sequence is left untouched."""
+
+	original = [1, 0, 1, 0]
+	DISPLACE(original, 2)
+
+	assert original == [1, 0, 1, 0]

@@ -146,6 +146,48 @@ def rotate (indices: typing.List[int], shift: int, length: int) -> typing.List[i
 	return [(i + shift) % length for i in indices]
 
 
+def displace (sequence: typing.List[T], amount: int) -> typing.List[T]:
+
+	"""Phase-shift a per-step pattern by a whole number of steps, wrapping.
+
+	Moves every element of ``sequence`` along by ``amount`` positions and wraps
+	the steps that fall off one end back round to the other — the classic rhythm
+	*necklace* rotation (metric displacement).  A **positive** ``amount`` pushes
+	the pattern **later** (to the right): the hit at step 0 in ``[1, 0, 0, 0]``
+	lands on step 1.  A negative ``amount`` pulls it earlier.  ``amount`` is taken
+	modulo the length, so a whole revolution (or zero) returns the pattern
+	unchanged and an over-length shift simply wraps.
+
+	Works on any per-step data — a 0/1 rhythm, a density profile, a velocity or
+	note list — since it only reorders the existing values.  This is a different
+	operation from :func:`rotate`, which adds ``shift`` to the integer *values*
+	of a step-index list; ``displace`` moves the *positions* within a value list.
+
+	Parameters:
+		sequence: The per-step pattern to phase-shift.
+		amount: Steps to move later (positive) or earlier (negative); reduced
+			modulo ``len(sequence)``.
+
+	Returns:
+		A new list the same length as ``sequence`` (the input is never mutated),
+		or ``[]`` when ``sequence`` is empty.
+
+	Example:
+		```python
+		# Push a Euclidean kick one step later in the bar.
+		kick = subsequence.sequence_utils.generate_euclidean_sequence(8, 3)
+		delayed = subsequence.sequence_utils.displace(kick, 1)
+		steps = subsequence.sequence_utils.sequence_to_indices(delayed)
+		```
+	"""
+
+	if not sequence:
+		return []
+
+	k = amount % len(sequence)
+	return sequence[-k:] + sequence[:-k]
+
+
 def generate_legato_durations (hits: typing.List[int]) -> typing.List[int]:
 
 	"""
@@ -511,6 +553,76 @@ def probability_gate (sequence: typing.List[int], probability: typing.Union[floa
 
 	return result
 
+
+@typing.overload
+def density_to_steps (density: float, rng: random.Random, length: int) -> typing.List[int]: ...
+@typing.overload
+def density_to_steps (density: typing.List[float], rng: random.Random, length: typing.Optional[int] = None) -> typing.List[int]: ...
+
+
+def density_to_steps (
+	density: typing.Union[float, typing.List[float]],
+	rng: random.Random,
+	length: typing.Optional[int] = None,
+) -> typing.List[int]:
+
+	"""Roll each step against its density and return the fired step indices.
+
+	Walks the grid and, for each step, draws a fresh random number and keeps
+	that step when the draw falls below the step's density — an independent
+	weighted coin per step.  Returns the **list of fired step indices**, ready
+	to feed ``p.sequence(steps=...)`` or ``hit_steps`` and per-step
+	comprehensions over those indices.  This is the named form of the
+	hand-written ``[i for i in range(n) if rng.random() < density[i]]``.
+
+	It is the *stochastic* member of the density-gate family: :func:`threshold`
+	is the deterministic gate, :func:`probability_gate` thins an already-binary
+	sequence and returns a parallel 0/1 list, and ``density_to_steps`` takes a
+	pure density profile (floats in ``[0, 1]``) and emits the sparse set of
+	survivors as indices — no ``[1] * n`` base and no :func:`sequence_to_indices`
+	bridge needed.
+
+	``density`` may be a per-step list (its length sets the grid) or a single
+	float applied uniformly, in which case ``length`` is **required** — a bare
+	probability has no grid of its own.  A density at or above ``1.0`` always
+	fires; at or below ``0.0`` never fires.  Pass a seeded ``random.Random`` (or
+	the pattern's ``p.rng``) for reproducible output.
+
+	Parameters:
+		density: A per-step density list (floats in ``[0, 1]``), or a single
+			float applied to every step (then ``length`` is required).
+		rng: The seeded random generator — pass the pattern's ``p.rng``.
+		length: The grid size when ``density`` is a scalar.  Ignored for a list
+			density (the list's own length is used).
+
+	Returns:
+		The fired step indices in ascending order — possibly empty.  An empty
+		result is normal: a sparse profile may fire nothing on a given cycle.
+
+	Raises:
+		ValueError: If ``density`` is a scalar and ``length`` is not given —
+			there is no grid to roll against.
+
+	Example:
+		```python
+		# A per-step kick profile rolled into concrete hits.
+		profile = [0.9, 0.1, 0.5, 0.1, 0.8, 0.1, 0.4, 0.1]
+		steps = subsequence.sequence_utils.density_to_steps(profile, p.rng)
+		velocities = [40 + int(profile[i] * 30) for i in steps]
+		p.sequence(steps=steps, pitches="kick", velocities=velocities)
+
+		# A uniform 30% across a 16-step bar needs an explicit length.
+		ghosts = subsequence.sequence_utils.density_to_steps(0.3, p.rng, length=16)
+		```
+	"""
+
+	if isinstance(density, list):
+		return [i for i in range(len(density)) if rng.random() < density[i]]
+
+	if length is None:
+		raise ValueError("density_to_steps needs a length when density is a scalar")
+
+	return [i for i in range(length) if rng.random() < density]
 
 
 def _density_warp_scalar (p: float, d: float) -> float:
