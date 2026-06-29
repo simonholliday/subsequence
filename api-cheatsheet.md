@@ -405,6 +405,8 @@ Functions for generating and transforming sequences.
 |---|---|
 | `branch_sequence(pitches, depth, path, mutation, rng) -> List[int]` | Navigate a fractal tree of pitch-sequence transforms and return one variation. |
 | `build_metric_weights(time_signature, grid) -> List[float]` | Per-step metric weights for one bar — how "strong" each grid position is. |
+| `choke(sequence, against, steps, floor) -> List[~T]` | Suppress the steps where a selector is active, keeping the rest. |
+| `clamp(value, low, high) -> Union[float, List[float]]` | Bound a value (or list) to the range ``[low, high]``. |
 | `combine_densities(layers, strategy) -> Union[float, List[float]]` | Blend several density layers into one consensus density. |
 | `constrained_walk(graph, start, length, rng, pins, end, avoid, weight_modifier, before_choice, after_choice) -> List[~T]` | Walk a weighted graph under constraints — the shared hybrid kernel. |
 | `cseg(pitches) -> List[int]` | Contour segment: each pitch's rank within the line (Morris's CSEG). |
@@ -413,6 +415,7 @@ Functions for generating and transforming sequences.
 | `density_spread(value, amount, midpoint) -> Union[float, List[float]]` | Expand or contract a probability/density about a fixed anchor. |
 | `density_warp(value, amount) -> Union[float, List[float]]` | Warp a probability/density by a single denser/sparser knob. |
 | `fibonacci_rhythm(steps, length) -> List[float]` | Generate beat positions spaced by the golden ratio (Fibonacci spiral). |
+| `flip(value, low, high) -> Union[float, List[float]]` | Reflect a value within a range — its complement about the mid-point. |
 | `generate_bresenham_sequence(steps, pulses) -> List[int]` | Generate a rhythm using Bresenham's line algorithm. |
 | `generate_bresenham_sequence_weighted(steps, weights) -> List[int]` | Generate a sequence that distributes weighted indices across steps. |
 | `generate_cellular_automaton_1d(steps, rule, generation, seed) -> List[int]` | Generate a binary sequence using an elementary cellular automaton. |
@@ -423,6 +426,7 @@ Functions for generating and transforming sequences.
 | `logistic_map(r, steps, x0) -> List[float]` | Generate a deterministic chaos sequence using the logistic map. |
 | `lorenz_attractor(steps, dt, sigma, rho, beta, x0, y0, z0) -> List[Tuple[float, float, float]]` | Integrate the Lorenz attractor and return normalised (x, y, z) tuples. |
 | `lsystem_expand(axiom, rules, generations, rng) -> str` | Expand an L-system string by applying production rules. |
+| `mask(sequence, against, steps, zero) -> List[~T]` | Keep the steps where a selector is active, zeroing the rest. |
 | `offbeatness(onsets, grid) -> int` | How many onsets fall on intrinsically off-beat pulses (Toussaint). |
 | `perlin_1d(x, seed) -> float` | Generate smooth 1D noise at position *x*. |
 | `perlin_1d_sequence(start, spacing, count, seed) -> List[float]` | Generate a sequence of smooth 1D noise values. |
@@ -441,7 +445,9 @@ Functions for generating and transforming sequences.
 | `shuffled_choices(pool, n, rng) -> List[~T]` | Choose N items from a pool with no immediate repetition. |
 | `sieve(classes, hi, lo) -> List[int]` | Xenakis sieve: the sorted integers in ``[lo, hi)`` in any of the classes. |
 | `syncopation(onsets, grid, time_signature, weights) -> float` | How much a rhythm pulls away from its metric strong points. |
+| `threshold(sequence, cutoff) -> List[int]` | Gate a per-step field into a deterministic 0/1 sequence. |
 | `thue_morse(n) -> List[int]` | Generate the Thue-Morse sequence. |
+| `tile(sequence, length) -> List[~T]` | Cycle a sequence to an exact length. |
 | `vl_distance(source, target, pitch_classes) -> int` | Voice-leading distance between two chords (Tymoczko's taxicab metric). |
 | `warp_stack(value, amounts) -> Union[float, List[float]]` | Apply several density knobs to ``value`` so they compound. |
 | `weighted_choice(options, rng) -> ~T` | Pick one item from a list of (value, weight) pairs. |

@@ -166,6 +166,173 @@ def generate_legato_durations (hits: typing.List[int]) -> typing.List[int]:
 	return durations
 
 
+def tile (sequence: typing.List[T], length: int) -> typing.List[T]:
+
+	"""Cycle a sequence to an exact length.
+
+	Repeats ``sequence`` end-to-end and truncates so the result is exactly
+	``length`` items long — ``tile([1, 0, 0], 8)`` gives ``[1, 0, 0, 1, 0, 0, 1,
+	0]``.  Reach for it when the target length is not a whole multiple of the
+	pattern; for an exact multiple, plain ``[1, 0, 0] * 3`` reads more clearly.
+
+	Works on any per-step data — a rhythm, a density profile, notes, velocities.
+
+	Parameters:
+		sequence: The pattern to repeat.  Must be non-empty when ``length > 0``.
+		length: The exact length of the result.
+
+	Returns:
+		A new list of exactly ``length`` items, or ``[]`` when ``length <= 0``.
+
+	Raises:
+		ValueError: If ``sequence`` is empty and ``length > 0`` — there is
+			nothing to cycle.
+
+	Example:
+		```python
+		# Stretch a three-step kick cell across a 16-step bar.
+		bar = subsequence.sequence_utils.tile([1, 0, 0], 16)
+		```
+	"""
+
+	if length <= 0:
+		return []
+
+	if not sequence:
+		raise ValueError("cannot tile an empty sequence")
+
+	return [sequence[i % len(sequence)] for i in range(length)]
+
+
+def _select_mask (
+	sequence: typing.List[T],
+	against: typing.Optional[typing.Sequence[typing.Any]],
+	steps: typing.Optional[typing.Iterable[int]],
+	off: typing.Any,
+	keep_active: bool,
+) -> typing.List[T]:
+
+	"""Gate ``sequence`` against an active selector (the shared mask/choke core).
+
+	Exactly one of ``against`` (a parallel part, active where ``against[i]`` is
+	truthy) or ``steps`` (a collection of step indices, active at those positions)
+	must be given.  With ``keep_active`` True each step is kept where the selector
+	is active and set to ``off`` elsewhere; with False the sense is inverted.  An
+	``against`` part shorter than ``sequence`` repeats its last value; an empty one
+	is inactive everywhere; indices in ``steps`` outside the sequence are ignored.
+	"""
+
+	if (against is None) == (steps is None):
+		raise ValueError("pass exactly one of against= or steps=")
+
+	if against is not None:
+		active = (
+			[bool(against[i]) if i < len(against) else bool(against[-1]) for i in range(len(sequence))]
+			if against else [False] * len(sequence)
+		)
+	else:
+		index_set = set(steps if steps is not None else [])
+		active = [i in index_set for i in range(len(sequence))]
+
+	return [value if (flag == keep_active) else off for value, flag in zip(sequence, active)]
+
+
+def mask (
+	sequence: typing.List[T],
+	against: typing.Optional[typing.Sequence[typing.Any]] = None,
+	steps: typing.Optional[typing.Iterable[int]] = None,
+	zero: typing.Any = 0,
+) -> typing.List[T]:
+
+	"""Keep the steps where a selector is active, zeroing the rest.
+
+	Gates ``sequence`` against a selector, keeping ``sequence[i]`` where the
+	selector is **active** and replacing every other step with ``zero``.  Give the
+	selector as **exactly one** of:
+
+		- ``against`` — a parallel part, active where ``against[i]`` is truthy
+			(non-zero).  Shorter than ``sequence`` it repeats its last value; an
+			empty one is inactive everywhere.
+		- ``steps`` — a collection of step indices, active at exactly those
+			positions.  Indices outside the sequence are ignored.
+
+	Works on any per-step data — densities, 0/1 gates, notes, velocities — since
+	the kept steps keep their value.  Off steps take ``zero`` (default ``0``); pass
+	``zero=0.0`` to keep a float density profile float.
+
+	Parameters:
+		sequence: The per-step data to gate.
+		against: A parallel part, active where truthy.  Mutually exclusive with
+			``steps``.
+		steps: Step indices at which the selector is active.  Mutually exclusive
+			with ``against``.
+		zero: The value written to inactive steps (default ``0``).
+
+	Returns:
+		A new list the length of ``sequence``.
+
+	Raises:
+		ValueError: If neither or both of ``against`` and ``steps`` are given.
+
+	Example:
+		```python
+		# Keep the open hat only on the backbeat accents.
+		accent = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+		open_hat = subsequence.sequence_utils.mask(open_hat_density, against=accent)
+
+		# Or keep only the downbeats, by step index.
+		downs = subsequence.sequence_utils.mask(open_hat_density, steps=[0, 4, 8, 12])
+		```
+	"""
+
+	return _select_mask(sequence, against, steps, zero, keep_active=True)
+
+
+def choke (
+	sequence: typing.List[T],
+	against: typing.Optional[typing.Sequence[typing.Any]] = None,
+	steps: typing.Optional[typing.Iterable[int]] = None,
+	floor: typing.Any = 0,
+) -> typing.List[T]:
+
+	"""Suppress the steps where a selector is active, keeping the rest.
+
+	The complement of :func:`mask`: replaces ``sequence[i]`` with ``floor`` where
+	the selector is **active**, and keeps it everywhere else.  This is the classic
+	drum *choke* — one voice silences another on the steps it sounds.  Give the
+	selector as **exactly one** of ``against`` (a parallel part, active where
+	truthy) or ``steps`` (a collection of active step indices), with the same
+	repeat-last / ignore-out-of-range / empty rules as :func:`mask`.
+
+	``choke(seq, against=other)`` is the same as masking by the complement of
+	``other``.
+
+	Parameters:
+		sequence: The per-step data to gate.
+		against: A parallel part; steps are suppressed where it is truthy.
+			Mutually exclusive with ``steps``.
+		steps: Step indices to suppress.  Mutually exclusive with ``against``.
+		floor: The value written to suppressed steps (default ``0``).
+
+	Returns:
+		A new list the length of ``sequence``.
+
+	Raises:
+		ValueError: If neither or both of ``against`` and ``steps`` are given.
+
+	Example:
+		```python
+		# Closed hat chokes the open hat wherever the closed hat sounds.
+		open_hat = subsequence.sequence_utils.choke(open_hat_density, against=closed_hat_density)
+
+		# Drum 2 ducks out on the steps drum 1 already fired.
+		drum_2 = subsequence.sequence_utils.choke(drum_2_density, steps=fired_steps)
+		```
+	"""
+
+	return _select_mask(sequence, against, steps, floor, keep_active=False)
+
+
 def weighted_choice (options: typing.List[typing.Tuple[T, float]], rng: random.Random) -> T:
 
 	"""Pick one item from a list of (value, weight) pairs.
@@ -779,6 +946,135 @@ def scale_clamp (value: float, in_min: float, in_max: float, out_min: float = 0.
 		return max(out_min, min(out_max, scaled))
 	else:
 		return max(out_max, min(out_min, scaled))
+
+
+@typing.overload
+def flip (value: float, low: float = 0.0, high: float = 1.0) -> float: ...
+@typing.overload
+def flip (value: typing.List[float], low: float = 0.0, high: float = 1.0) -> typing.List[float]: ...
+
+
+def flip (
+	value: typing.Union[float, typing.List[float]],
+	low: float = 0.0,
+	high: float = 1.0,
+) -> typing.Union[float, typing.List[float]]:
+
+	"""Reflect a value within a range — its complement about the mid-point.
+
+	Returns ``low + high - value``, mirroring ``value`` to the opposite side of the
+	range ``[low, high]``.  With the default ``[0, 1]`` this is ``1 - value`` — the
+	density/probability complement, and a logical NOT for a 0/1 list.  Being
+	range-aware it also flips other scales: ``flip(100, 0, 127)`` is ``27``,
+	mirroring a velocity within the MIDI range.
+
+	``flip`` is its own inverse and assumes ``value`` lies within ``[low, high]``;
+	it does **not** clamp (compose with :func:`clamp` if the input may stray).
+
+	``value`` may be a single float or a list; the return matches that shape.
+	``low`` and ``high`` are single scalars applied to every element.  An empty
+	list yields an empty list.
+
+	Parameters:
+		value: A number to reflect, or a list of them.
+		low: The lower bound of the range (default ``0.0``).
+		high: The upper bound of the range (default ``1.0``).
+
+	Returns:
+		A float when ``value`` is a float, otherwise a list of floats.
+
+	Example:
+		```python
+		# Turn a kick density into its "everywhere the kick isn't" field.
+		gaps = subsequence.sequence_utils.flip(kick_density)
+
+		# Mirror a velocity within the MIDI range.
+		soft = subsequence.sequence_utils.flip(100, 0, 127)
+		```
+	"""
+
+	if isinstance(value, list):
+		return [low + high - v for v in value]
+
+	return low + high - value
+
+
+@typing.overload
+def clamp (value: float, low: float = 0.0, high: float = 1.0) -> float: ...
+@typing.overload
+def clamp (value: typing.List[float], low: float = 0.0, high: float = 1.0) -> typing.List[float]: ...
+
+
+def clamp (
+	value: typing.Union[float, typing.List[float]],
+	low: float = 0.0,
+	high: float = 1.0,
+) -> typing.Union[float, typing.List[float]]:
+
+	"""Bound a value (or list) to the range ``[low, high]``.
+
+	Returns ``max(low, min(high, value))`` element-wise.  This is the plain,
+	list-aware clamp — distinct from :func:`scale_clamp`, which *rescales* from one
+	range to another before clamping.  Defaults to ``[0, 1]``, the usual
+	density range; pass ``low``/``high`` for any other scale.  Assumes
+	``low <= high``.
+
+	``value`` may be a single float or a list; the return matches that shape.
+	``low`` and ``high`` are single scalars.  An empty list yields an empty list.
+
+	Parameters:
+		value: A number to bound, or a list of them.
+		low: The lower bound (default ``0.0``).
+		high: The upper bound (default ``1.0``).
+
+	Returns:
+		A float when ``value`` is a float, otherwise a list of floats.
+
+	Example:
+		```python
+		# Keep a hand-scaled density field inside [0, 1] after arithmetic.
+		safe = subsequence.sequence_utils.clamp([d * 1.4 for d in kick_density])
+
+		# Bound a computed velocity to the MIDI range.
+		vel = subsequence.sequence_utils.clamp(raw_velocity, 0, 127)
+		```
+	"""
+
+	if isinstance(value, list):
+		return [max(low, min(high, v)) for v in value]
+
+	return max(low, min(high, value))
+
+
+def threshold (sequence: typing.List[float], cutoff: float = 0.5) -> typing.List[int]:
+
+	"""Gate a per-step field into a deterministic 0/1 sequence.
+
+	Returns ``1`` where ``sequence[i] > cutoff`` (strict) and ``0`` otherwise — the
+	deterministic counterpart to :func:`probability_gate`'s random roll, matching
+	the idiom ``cutoff < x``.  Pair with :func:`sequence_to_indices` to turn the
+	result into the firing step indices.
+
+	This is a sequence operation: it takes a list and returns a list of ints.  An
+	empty sequence yields an empty list.
+
+	Parameters:
+		sequence: A per-step field (e.g. a density profile in ``[0, 1]``).
+		cutoff: The exclusive threshold; steps strictly above it fire (default
+			``0.5``).
+
+	Returns:
+		A list of ``0`` / ``1`` ints the length of ``sequence``.
+
+	Example:
+		```python
+		# Place closed-hat hits wherever the density clears the half-way line.
+		gate = subsequence.sequence_utils.threshold(hh_closed_density, 0.5)
+		steps = subsequence.sequence_utils.sequence_to_indices(gate)
+		```
+	"""
+
+	return [1 if value > cutoff else 0 for value in sequence]
 
 
 def perlin_1d (x: float, seed: int = 0) -> float:
