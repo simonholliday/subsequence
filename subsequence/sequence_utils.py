@@ -1881,6 +1881,119 @@ def thue_morse (n: int) -> typing.List[int]:
 	return [bin(i).count("1") % 2 for i in range(n)]
 
 
+_MORSE_CODE = {
+	"a": ".-", "b": "-...", "c": "-.-.", "d": "-..", "e": ".", "f": "..-.",
+	"g": "--.", "h": "....", "i": "..", "j": ".---", "k": "-.-", "l": ".-..",
+	"m": "--", "n": "-.", "o": "---", "p": ".--.", "q": "--.-", "r": ".-.",
+	"s": "...", "t": "-", "u": "..-", "v": "...-", "w": ".--", "x": "-..-",
+	"y": "-.--", "z": "--..",
+	"0": "-----", "1": ".----", "2": "..---", "3": "...--", "4": "....-",
+	"5": ".....", "6": "-....", "7": "--...", "8": "---..", "9": "----.",
+	".": ".-.-.-", ",": "--..--", "?": "..--..", "'": ".----.", "!": "-.-.--",
+	"/": "-..-.", "(": "-.--.", ")": "-.--.-", "&": ".-...", ":": "---...",
+	";": "-.-.-.", "=": "-...-", "+": ".-.-.", "-": "-....-", "_": "..--.-",
+	'"': ".-..-.", "$": "...-..-", "@": ".--.-.",
+}
+
+
+def morse_code (
+	text: str,
+	dot: float = 0.25,
+	dash: float = 0.75,
+	symbol_gap: float = 0.25,
+	letter_gap: float = 0.75,
+	word_gap: float = 1.75,
+) -> typing.List[float]:
+
+	"""
+	Translate text into an International Morse Code rhythm.
+
+	Encodes ``text`` as Morse and lays it out as a per-step duration list — the
+	same shape as :func:`generate_legato_durations`, where ``0.0`` marks a rest.
+	Each dot becomes a note of length ``dot`` and each dash a note of length
+	``dash``; the gaps between elements, characters and words are spans of rests.
+
+	The ``dot`` is the base time unit: every element and gap occupies
+	``round(duration / dot)`` cells, so the genuine 1:3 dot/dash ratio and the
+	1/3/7-unit gaps fall straight out of the defaults.  Place the result on a
+	grid whose step equals ``dot`` for authentic timing — a dash then sustains
+	across its three cells.
+
+	Pair it with :func:`sequence_to_indices` to get the note positions, then read
+	the matching durations from the list.  (Not to be confused with
+	:func:`thue_morse`, the unrelated Thue-Morse mathematical sequence.)
+
+	The full International Morse alphabet is supported: A-Z, 0-9 and the standard
+	punctuation.  Input is normalised first — folded to one case (Morse is
+	caseless), runs of whitespace collapsed to a single word gap and trimmed from
+	the ends, and any unencodable character dropped — so arbitrary text is safe.
+
+	Parameters:
+		text: The message to encode.
+		dot: Note length of a dot, and the base time unit (default ``0.25``).
+		dash: Note length of a dash (default ``0.75`` — three units).
+		symbol_gap: Rest between elements within a character (default ``0.25``).
+		letter_gap: Rest between characters (default ``0.75`` — three units).
+		word_gap: Rest between words (default ``1.75`` — seven units).
+
+	Returns:
+		A per-step duration list with ``0.0`` for rests, or ``[]`` when the text
+		has no encodable characters.
+
+	Raises:
+		ValueError: If ``dot`` is not positive — it is the base time unit.
+
+	Example:
+		```python
+		# "sos" -> the canonical  ...---...  rhythm.
+		rhythm = subsequence.sequence_utils.morse_code("sos")
+		steps = subsequence.sequence_utils.sequence_to_indices(rhythm)
+		durations = [rhythm[s] for s in steps]
+		p.sequence(steps=steps, pitches=40, durations=durations, velocities=90)
+		```
+	"""
+
+	if dot <= 0:
+		raise ValueError("morse_code: dot must be positive (it is the base time unit)")
+
+	normalised = " ".join(text.lower().split())
+	if not normalised:
+		return []
+
+	words: typing.List[typing.List[str]] = []
+	for word in normalised.split(" "):
+		codes = [_MORSE_CODE[ch] for ch in word if ch in _MORSE_CODE]
+		if codes:
+			words.append(codes)
+
+	if not words:
+		return []
+
+	dash_cells = max(1, round(dash / dot))
+	symbol_cells = max(0, round(symbol_gap / dot))
+	letter_cells = max(0, round(letter_gap / dot))
+	word_cells = max(0, round(word_gap / dot))
+
+	result: typing.List[float] = []
+
+	for w, codes in enumerate(words):
+		if w > 0:
+			result.extend([0.0] * word_cells)
+		for c, code in enumerate(codes):
+			if c > 0:
+				result.extend([0.0] * letter_cells)
+			for e, element in enumerate(code):
+				if e > 0:
+					result.extend([0.0] * symbol_cells)
+				if element == "-":
+					result.append(dash)
+					result.extend([0.0] * (dash_cells - 1))
+				else:
+					result.append(dot)
+
+	return result
+
+
 def de_bruijn (k: int, n: int) -> typing.List[int]:
 
 	"""

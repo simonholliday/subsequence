@@ -429,6 +429,7 @@ Functions for generating and transforming sequences.
 | `lorenz_attractor(steps, dt, sigma, rho, beta, x0, y0, z0) -> List[Tuple[float, float, float]]` | Integrate the Lorenz attractor and return normalised (x, y, z) tuples. |
 | `lsystem_expand(axiom, rules, generations, rng) -> str` | Expand an L-system string by applying production rules. |
 | `mask(sequence, against, steps, zero) -> List[~T]` | Keep the steps where a selector is active, zeroing the rest. |
+| `morse_code(text, dot, dash, symbol_gap, letter_gap, word_gap) -> List[float]` | Translate text into an International Morse Code rhythm. |
 | `offbeatness(onsets, grid) -> int` | How many onsets fall on intrinsically off-beat pulses (Toussaint). |
 | `perlin_1d(x, seed) -> float` | Generate smooth 1D noise at position *x*. |
 | `perlin_1d_sequence(start, spacing, count, seed) -> List[float]` | Generate a sequence of smooth 1D noise values. |
