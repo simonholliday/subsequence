@@ -199,6 +199,12 @@ class Pattern:
 		if isinstance(velocity, int):
 			velocity = [velocity] * len(sequence)
 
+		# An explicit empty velocity list with hits to place has no velocity
+		# to give them — say so instead of a bare ZeroDivisionError at the
+		# modulo below (matches the builder-level _expand_sequence_param).
+		if not velocity and any(sequence):
+			raise ValueError("add_sequence(): velocity list cannot be empty")
+
 		for i, hit in enumerate(sequence):
 
 			if hit:

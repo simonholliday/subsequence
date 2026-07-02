@@ -1242,13 +1242,19 @@ class Motif:
 
 	def quantize (self, grid: float) -> "Motif":
 
-		"""Snap note onsets to the nearest multiple of *grid* beats (control gestures untouched)."""
+		"""Snap note onsets to the nearest multiple of *grid* beats (control gestures untouched).
+
+		An onset exactly midway between grid lines snaps LATER (round half
+		up) — every midpoint moves the same way, the predictable behaviour
+		for a musician.  (Python's own ``round()`` is half-to-even, which
+		made exact midpoints snap in alternating directions.)
+		"""
 
 		if grid <= 0:
 			raise ValueError(f"Quantize grid must be positive — got {grid}")
 
 		events = tuple(
-			dataclasses.replace(e, beat=round(e.beat / grid) * grid)
+			dataclasses.replace(e, beat=math.floor(e.beat / grid + 0.5) * grid)
 			for e in self.events
 		)
 

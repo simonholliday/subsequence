@@ -20,6 +20,7 @@ import typing
 import pytest
 
 import subsequence
+import subsequence.chords
 import subsequence.composition
 import subsequence.form_state
 import subsequence.melodic_state

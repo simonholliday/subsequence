@@ -15,6 +15,7 @@ import pytest
 
 import subsequence
 import subsequence.chords
+import subsequence.constants
 import subsequence.melodic_state
 import subsequence.pattern
 import subsequence.pattern_builder

@@ -9,6 +9,7 @@ import random
 import pytest
 
 import subsequence
+import subsequence.chords
 import subsequence.constants
 import subsequence.pattern
 import subsequence.pattern_builder

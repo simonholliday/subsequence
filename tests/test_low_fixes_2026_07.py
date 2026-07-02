@@ -2,14 +2,19 @@
 
 Covers the opaque-crash-to-musical-error fixes (Batch 1), the behaviour
 changes shipped with the doc corrections (chord_weight range, slide()
-honesty — Batch 3), the consolidation refactors (Batch 4), and the
-scale_velocities() last-half-step wrap fix.
+honesty — Batch 3), the consolidation refactors (Batch 4), the
+scale_velocities() last-half-step wrap fix, and the final misleading-item
+mop-up (quantize midpoints, add_sequence empty velocities, WING discovery
+on an offline machine).
 """
 
+import dataclasses
 import typing
 
 import pytest
 
+import subsequence
+import subsequence.helpers.wing
 import subsequence.melodic_state
 import subsequence.motifs
 import subsequence.pattern
@@ -333,3 +338,80 @@ def test_scale_velocities_on_grid_steps_unchanged () -> None:
 
 	assert pat.steps[0].notes[0].velocity == 100
 	assert pat.steps[24].notes[0].velocity == 25
+
+
+# --- final mop-up: misleading behaviours -----------------------------------
+
+def test_quantize_midpoints_all_snap_later () -> None:
+
+	"""Onsets exactly midway between grid lines all snap the same way (later).
+
+	Python's round() is half-to-even, which made exact midpoints snap in
+	ALTERNATING directions (0.125 -> 0.0 but 0.375 -> 0.5) — a zigzag no
+	musician expects from quantisation.
+	"""
+
+	m = subsequence.motif([1, 2])
+	events = tuple(
+		dataclasses.replace(e, beat=b)
+		for e, b in zip(m.events, (0.125, 0.375))
+	)
+	m = dataclasses.replace(m, events=events)
+
+	q = m.quantize(0.25)
+
+	assert [e.beat for e in q.events] == [0.25, 0.5]
+
+
+def test_add_sequence_empty_velocity_list_raises_musically () -> None:
+
+	"""An explicit empty velocity list with hits to place raises a clear error.
+
+	Previously a bare ZeroDivisionError from the velocity modulo.
+	"""
+
+	pat = subsequence.pattern.Pattern(channel=0)
+
+	with pytest.raises(ValueError) as exc:
+		pat.add_sequence([1, 0, 1], spacing_pulses=6, pitch=60, velocity=[])
+
+	assert "velocity list" in str(exc.value)
+
+	# All-rests with an empty list stays a quiet no-op (nothing to voice).
+	pat.add_sequence([0, 0, 0], spacing_pulses=6, pitch=60, velocity=[])
+	assert pat.steps == {}
+
+
+def test_wing_discover_returns_none_on_unreachable_network (monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""discover() keeps its no-raise promise on a machine with no broadcast route.
+
+	sendto() raising OSError (e.g. ENETUNREACH on an offline laptop) counts
+	as "nothing replied" — the documented None return, not a traceback.
+	"""
+
+	class _OfflineSocket:
+
+		def __init__ (self, *args: typing.Any, **kwargs: typing.Any) -> None:
+
+			pass
+
+		def setsockopt (self, *args: typing.Any) -> None:
+
+			pass
+
+		def settimeout (self, timeout: float) -> None:
+
+			pass
+
+		def sendto (self, data: bytes, address: typing.Tuple[str, int]) -> None:
+
+			raise OSError(101, "Network is unreachable")
+
+		def close (self) -> None:
+
+			pass
+
+	monkeypatch.setattr(subsequence.helpers.wing.socket, "socket", _OfflineSocket)
+
+	assert subsequence.helpers.wing.discover(timeout=0.05) is None

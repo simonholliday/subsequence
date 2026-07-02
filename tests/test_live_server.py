@@ -6,6 +6,7 @@ import pytest
 
 import subsequence
 import subsequence.composition
+import subsequence.constants
 import subsequence.live_server
 import subsequence.pattern
 

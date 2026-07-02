@@ -98,6 +98,10 @@ def format_signature (sig: inspect.Signature) -> str:
 	if ") -> " in s:
 		# Find the last ") -> " which separates params from return type
 		ret_part = s[s.rfind(") -> ") + 1:]
+		# Forward-reference annotations ("PatternBuilder") render with their
+		# quote characters — strip them so the sheet shows `-> Groove`, not
+		# the confusing `-> "'Groove'"`.
+		ret_part = ret_part.replace('"', '').replace("'", "")
 
 	params = []
 
@@ -143,6 +147,37 @@ def generate_markdown () -> str:
 
 	output = ["# Subsequence API Cheat Sheet\n"]
 	output.append("This document provides a quick overview of the public classes, methods, and functions available in the Subsequence API.\n")
+
+	# The package-level inventory first — everything importable directly from
+	# `subsequence`, read from the live package so this table cannot go stale.
+	# (The per-class sections below cover the big classes in detail; several
+	# smaller exports appear ONLY here.)
+	output.append("## Package-level exports\n")
+	output.append("Everything importable as `subsequence.X`:\n")
+	output.append("| Export | Kind | Description |")
+	output.append("|---|---|---|")
+
+	for name in sorted(dir(subsequence)):
+
+		if name.startswith('_'):
+			continue
+
+		member = getattr(subsequence, name)
+
+		if inspect.ismodule(member):
+			continue
+
+		if inspect.isclass(member):
+			kind = "class"
+		elif callable(member):
+			kind = "function"
+		else:
+			kind = "value"
+
+		desc = get_first_line(getattr(member, '__doc__', None))
+		output.append(f"| `{name}` | {kind} | {escape_md(desc)} |")
+
+	output.append("\n")
 
 	for cls in classes_to_document:
 

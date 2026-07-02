@@ -69,6 +69,7 @@ Useful leaf addresses per channel (e.g. ``/ch/1/…``)::
     col           Colour index (int)
 """
 
+import logging
 import socket
 import sys
 import typing
@@ -77,6 +78,9 @@ import pythonosc.osc_message
 import pythonosc.osc_message_builder
 
 import subsequence.helpers.network
+
+
+logger = logging.getLogger(__name__)
 
 
 WING_PORT: int = 2223
@@ -169,6 +173,12 @@ def discover (
 				data, addr = sock.recvfrom(4096)
 			except socket.timeout:
 				continue
+		except OSError as e:
+			# The docstring promises None when nothing replies — a machine
+			# with no route for this broadcast (offline laptop, ENETUNREACH)
+			# is "nothing replied", not a crash.  Try the next address.
+			logger.debug(f"WING discovery broadcast to {broadcast} failed: {e}")
+			continue
 		finally:
 			sock.close()
 
