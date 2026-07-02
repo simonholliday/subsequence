@@ -120,12 +120,13 @@ def main () -> None:
 
 	print(f"Connected to Subsequence on {args.host}:{args.port}")
 
-	# Fetch and display status header.
+	# Fetch and display status header.  A failure here is cosmetic (the REPL
+	# still works), but say so instead of hiding it.
 	try:
 		info_response = client.send("composition.live_info()")
 		print(info_response)
-	except Exception:
-		pass
+	except Exception as e:
+		print(f"(could not fetch the status header: {e})")
 
 	print()
 

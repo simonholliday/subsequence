@@ -291,8 +291,10 @@ class WebUI:
 			for name, signal in comp.conductor._signals.items():
 				try:
 					state["signals"][name] = float(signal.value_at(beat_time))
-				except Exception:
-					pass
+				except Exception as e:
+					# A raising signal should be diagnosable, not vanish from
+					# the dashboard (same treatment as _extract_val below).
+					logger.debug(f"WebUI failed to read conductor signal '{name}': {e}")
 					
 		# Extract from composition data dictionary
 		for name, val in comp.data.items():

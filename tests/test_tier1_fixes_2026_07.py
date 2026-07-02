@@ -186,3 +186,59 @@ def test_chord_pattern_class_removed () -> None:
 	assert not hasattr(subsequence.harmony, "ChordPattern")
 	assert callable(subsequence.harmony.diatonic_chords)
 	assert callable(subsequence.harmony.diatonic_chord_sequence)
+
+
+def test_section_info_at_bar_honours_loop_and_hold () -> None:
+
+	"""The layout lookup agrees with the playhead about the loop seam.
+
+	The last section of a looping form leads back to the first (so
+	``.ending`` is True there); a holding form's last section repeats
+	itself; a stopping form still reports None.
+	"""
+
+	sections = [subsequence.forms.Section("verse", 2), subsequence.forms.Section("chorus", 2)]
+
+	looping = subsequence.form_state.FormState(list(sections), loop=True)
+	info = looping.section_info_at_bar(4)		# last bar of chorus
+	assert info is not None
+	assert info.next_section == "verse"
+
+	holding = subsequence.form_state.FormState(list(sections), at_end="hold")
+	info = holding.section_info_at_bar(4)
+	assert info is not None
+	assert info.next_section == "chorus"
+
+	stopping = subsequence.form_state.FormState(list(sections))
+	info = stopping.section_info_at_bar(4)
+	assert info is not None
+	assert info.next_section is None
+
+
+def test_stop_completes_cleanup_after_cancelled_loop (patch_midi: None) -> None:
+
+	"""A cancelled run loop no longer aborts stop()'s cleanup.
+
+	CancelledError is a BaseException, so the old ``except Exception``
+	let it propagate out of stop(), skipping pending-send cancellation,
+	panic, port close, and recording save (the Ctrl-C path).
+	"""
+
+	import asyncio
+
+	async def drive () -> None:
+
+		seq = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=240)
+
+		await seq.start()
+		assert seq.task is not None
+
+		seq.task.cancel()
+
+		# Must not raise, and must run the full cleanup.
+		await seq.stop()
+
+		assert seq.running is False
+		assert len(seq._output_devices) == 0		# close_all() was reached
+
+	asyncio.run(drive())

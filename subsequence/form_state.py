@@ -572,7 +572,19 @@ class FormState:
 
 		for position, section in enumerate(self._sequence):
 			if cursor <= index0 < cursor + section.bars:
-				following = self._sequence[position + 1].name if position + 1 < len(self._sequence) else None
+				# Mirror the playhead path (_sequence_next_position/_pick_next)
+				# at the end of the timeline: a looping form's last section
+				# leads back to the first, a holding form's repeats itself —
+				# so .ending and next_section agree between the two sources.
+				if position + 1 < len(self._sequence):
+					following: typing.Optional[str] = self._sequence[position + 1].name
+				elif self._at_end == "loop":
+					following = self._sequence[0].name
+				elif self._at_end == "hold":
+					following = section.name
+				else:
+					following = None
+
 				return SectionInfo(
 					name = section.name,
 					bar = index0 - cursor,

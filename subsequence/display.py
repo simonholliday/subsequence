@@ -28,6 +28,7 @@ The grid (when enabled) updates every bar and looks like::
 import logging
 import shutil
 import sys
+import threading
 import typing
 
 import subsequence.constants
@@ -352,13 +353,18 @@ class DisplayLogHandler (logging.Handler):
 		"""Clear the status line, write the log message, then redraw."""
 
 		try:
-			self._display.clear_line()
+			# emit() runs on whatever thread logged; hold the display's render
+			# lock across the whole clear → write → redraw sequence so a
+			# concurrent event-loop draw() cannot interleave ANSI sequences.
+			with self._display._render_lock:
 
-			msg = self.format(record)
-			sys.stderr.write(msg + "\n")
-			sys.stderr.flush()
+				self._display.clear_line()
 
-			self._display.draw()
+				msg = self.format(record)
+				sys.stderr.write(msg + "\n")
+				sys.stderr.flush()
+
+				self._display.draw()
 
 		except Exception:
 			self.handleError(record)
@@ -403,6 +409,12 @@ class Display:
 		self._grid: typing.Optional[GridDisplay] = GridDisplay(composition, scale=grid_scale) if grid else None
 		self._last_grid_bar: typing.Optional[int] = None
 		self._drawn_line_count: int = 0
+		# Serialises terminal writes: update()/draw() run on the event loop,
+		# but DisplayLogHandler.emit() runs on whatever thread logged (e.g.
+		# the web UI's HTTP worker) — unsynchronised, an emit mid-draw would
+		# interleave ANSI sequences and garble the dashboard.  RLock because
+		# emit() holds it across its clear_line() → write → draw() sequence.
+		self._render_lock = threading.RLock()
 
 	def start (self) -> None:
 
@@ -489,33 +501,35 @@ class Display:
 		if not self._active or not self._last_line:
 			return
 
-		grid_lines = self._grid._lines if self._grid is not None else []
-		total = len(grid_lines) + 1  # grid lines + status line
+		with self._render_lock:
 
-		if grid_lines:
-			total += 1  # separator line
+			grid_lines = self._grid._lines if self._grid is not None else []
+			total = len(grid_lines) + 1  # grid lines + status line
 
-		# Move cursor up to overwrite the previously drawn region.
-		# Cursor sits on the last line (status) with no trailing newline,
-		# so we move up (total - 1) to reach the first line.
-		if self._drawn_line_count > 1:
-			sys.stderr.write(f"\033[{self._drawn_line_count - 1}A")
+			if grid_lines:
+				total += 1  # separator line
 
-		if grid_lines:
-			sep = "-" * len(grid_lines[0])
-			sys.stderr.write(f"\r\033[K{sep}\n")
-			for line in grid_lines:
-				sys.stderr.write(f"\r\033[K{line}\n")
+			# Move cursor up to overwrite the previously drawn region.
+			# Cursor sits on the last line (status) with no trailing newline,
+			# so we move up (total - 1) to reach the first line.
+			if self._drawn_line_count > 1:
+				sys.stderr.write(f"\033[{self._drawn_line_count - 1}A")
 
-		# Status line (no trailing newline — cursor stays on this line).
-		sys.stderr.write(f"\r\033[K{self._last_line}")
-		# Clear to end of screen in case the grid shrank since the last draw
-		# (e.g. a pattern disappeared), which would otherwise leave the old
-		# status line stranded one line below the new one.
-		sys.stderr.write("\033[J")
-		sys.stderr.flush()
+			if grid_lines:
+				sep = "-" * len(grid_lines[0])
+				sys.stderr.write(f"\r\033[K{sep}\n")
+				for line in grid_lines:
+					sys.stderr.write(f"\r\033[K{line}\n")
 
-		self._drawn_line_count = total
+			# Status line (no trailing newline — cursor stays on this line).
+			sys.stderr.write(f"\r\033[K{self._last_line}")
+			# Clear to end of screen in case the grid shrank since the last draw
+			# (e.g. a pattern disappeared), which would otherwise leave the old
+			# status line stranded one line below the new one.
+			sys.stderr.write("\033[J")
+			sys.stderr.flush()
+
+			self._drawn_line_count = total
 
 	def clear_line (self) -> None:
 
@@ -524,22 +538,24 @@ class Display:
 		if not self._active:
 			return
 
-		if self._drawn_line_count > 1:
-			# Cursor is on the last line (no trailing newline).
-			# Move up (total - 1) to reach the first line.
-			sys.stderr.write(f"\033[{self._drawn_line_count - 1}A")
+		with self._render_lock:
 
-			# Clear each line.
-			for _ in range(self._drawn_line_count):
-				sys.stderr.write("\r\033[K\n")
+			if self._drawn_line_count > 1:
+				# Cursor is on the last line (no trailing newline).
+				# Move up (total - 1) to reach the first line.
+				sys.stderr.write(f"\033[{self._drawn_line_count - 1}A")
 
-			# Move cursor back up to the starting position.
-			sys.stderr.write(f"\033[{self._drawn_line_count}A")
-		else:
-			sys.stderr.write("\r\033[K")
+				# Clear each line.
+				for _ in range(self._drawn_line_count):
+					sys.stderr.write("\r\033[K\n")
 
-		sys.stderr.flush()
-		self._drawn_line_count = 0
+				# Move cursor back up to the starting position.
+				sys.stderr.write(f"\033[{self._drawn_line_count}A")
+			else:
+				sys.stderr.write("\r\033[K")
+
+			sys.stderr.flush()
+			self._drawn_line_count = 0
 
 	def _format_status (self) -> str:
 

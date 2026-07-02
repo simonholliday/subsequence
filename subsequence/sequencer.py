@@ -1317,6 +1317,12 @@ class Sequencer:
 		if self.task:
 			try:
 				await self.task
+			except asyncio.CancelledError:
+				# The loop task was cancelled (the Ctrl-C path) — since
+				# Python 3.8 CancelledError is a BaseException, so a bare
+				# `except Exception` missed it and the whole cleanup below
+				# was skipped.
+				logger.info("Sequencer loop task cancelled - continuing shutdown")
 			except Exception:
 				# A crashed loop must not abort shutdown - the cleanup below
 				# (pending-send cancellation, panic, port close, recording

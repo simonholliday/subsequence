@@ -238,9 +238,10 @@ class KeystrokeListener:
 						self._queue.put(char)
 
 		except Exception:
-			# Swallow unexpected errors — a broken listener should not
-			# crash the composition.
-			pass
+			# A broken listener must not crash the composition — but dying
+			# silently left "why did my hotkeys stop working?" unanswerable
+			# (the finally below marks the listener inactive).
+			logger.warning("Keystroke listener stopped after an unexpected error — hotkeys are now inactive", exc_info=True)
 
 		finally:
 			# Always restore terminal, even after exceptions.
