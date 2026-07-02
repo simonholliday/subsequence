@@ -228,14 +228,17 @@ class PatternBuilder(
 
 		"""Read a conductor signal at the current bar.
 
-		Shorthand for ``p.c.get(name, p.bar * 4)``. Returns 0.0 if
-		no conductor is attached or the signal is not defined.
+		Shorthand for ``p.c.get(name, p.bar * beats_per_bar)``, where
+		``beats_per_bar`` comes from the composition's time signature —
+		so the signal is read at the beat this bar actually starts on,
+		in any metre.  Returns 0.0 if no conductor is attached or the
+		signal is not defined.
 		"""
 
 		if self.conductor is None:
 			return 0.0
 
-		return self.conductor.get(name, self.bar * 4)
+		return self.conductor.get(name, self.bar * float(self.time_signature[0]))
 
 	def held_notes (self) -> typing.List[int]:
 
@@ -575,7 +578,8 @@ class PatternBuilder(
 			message_type = 'note_on',
 			beat_position = beat,
 			pitch = midi_pitch,
-			velocity = resolved_velocity
+			velocity = resolved_velocity,
+			origin = pitch if isinstance(pitch, str) else None
 		)
 		return self
 
@@ -602,7 +606,8 @@ class PatternBuilder(
 			message_type = 'note_off',
 			beat_position = beat,
 			pitch = midi_pitch,
-			velocity = 0
+			velocity = 0,
+			origin = pitch if isinstance(pitch, str) else None
 		)
 		return self
 
@@ -705,6 +710,9 @@ class PatternBuilder(
 
 		if grid is None:
 			grid = self._default_grid
+
+		if grid <= 0:
+			return self
 
 		step_duration = self._pattern.length / grid
 
@@ -1198,7 +1206,8 @@ class PatternBuilder(
 			pitches: Pitch or list of pitches.
 			velocities: Velocity (default 100), ``(low, high)`` tuple for
 				a fresh random draw per step, or a list of velocities
-				cycled per step.
+				matched to the steps one-to-one (a short list repeats its
+				final value, a long list is truncated — both warn).
 			durations: Duration or list of durations (default 0.1).
 			grid: Grid resolution. Defaults to the pattern's
 				``default_grid`` (derived from the decorator's ``beats``/``steps``
@@ -1212,6 +1221,9 @@ class PatternBuilder(
 
 		if grid is None:
 			grid = self._default_grid
+
+		if grid <= 0:
+			return self
 
 		n = len(steps)
 		pitches_list = _expand_sequence_param("pitches", pitches, n)
@@ -2049,6 +2061,9 @@ class PatternBuilder(
 		if grid is None:
 			grid = self._default_grid
 
+		if grid <= 0:
+			return self
+
 		step_duration = self._pattern.length / grid
 		pulses_per_step = step_duration * subsequence.constants.MIDI_QUARTER_NOTE
 
@@ -2442,6 +2457,9 @@ class PatternBuilder(
 
 		if grid is None:
 			grid = self._default_grid
+
+		if grid <= 0:
+			return self
 
 		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
 		pulses_per_step = total_pulses / grid

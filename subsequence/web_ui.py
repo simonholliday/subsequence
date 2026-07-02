@@ -183,7 +183,9 @@ class WebUI:
 		"""
 
 		state: typing.Dict[str, typing.Any] = {
-			"bpm": comp.bpm,
+			# The LIVE tempo — comp.bpm is the declared value and freezes
+			# during target_bpm ramps, clock-follow, and Link tempo changes.
+			"bpm": comp.sequencer.current_bpm if comp.sequencer else comp.bpm,
 			"section": None,
 			"chord": None,
 			"patterns": [],

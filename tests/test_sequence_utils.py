@@ -1819,3 +1819,73 @@ def test_constrained_walk_length_one_returns_start () -> None:
 
 	with pytest.raises(ValueError, match="position 1"):
 		subsequence.sequence_utils.constrained_walk(graph, "a", 1, random.Random(0), end="b")
+
+
+# ── generate_euclidean_sequence: the rotation contract ──────────────────────
+
+
+def test_euclidean_starts_on_a_hit () -> None:
+
+	"""The Bjorklund result is rotated so index 0 is always a hit."""
+
+	assert subsequence.sequence_utils.generate_euclidean_sequence(8, 3)[0] == 1
+	assert subsequence.sequence_utils.generate_euclidean_sequence(16, 3)[0] == 1
+	assert subsequence.sequence_utils.generate_euclidean_sequence(12, 7)[0] == 1
+
+
+def test_euclidean_16_3_exact_pattern () -> None:
+
+	"""E(16,3) pins the documented spread: hits at 0, 5, 10."""
+
+	assert subsequence.sequence_utils.generate_euclidean_sequence(16, 3) == [
+		1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+	]
+
+
+def test_euclidean_12_7_exact_pattern () -> None:
+
+	"""E(12,7) pins the classic 7-in-12 necklace."""
+
+	assert subsequence.sequence_utils.generate_euclidean_sequence(12, 7) == [
+		1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0,
+	]
+
+
+def test_euclidean_8_3_exact_pattern () -> None:
+
+	"""E(8,3) is the tresillo, starting on its hit."""
+
+	assert subsequence.sequence_utils.generate_euclidean_sequence(8, 3) == [1, 0, 0, 1, 0, 0, 1, 0]
+
+
+# ── generate_legato_durations ───────────────────────────────────────────────
+
+
+def test_legato_durations_span_to_next_hit () -> None:
+
+	"""Each hit's duration reaches the next hit (or the end); rests stay 0."""
+
+	assert subsequence.sequence_utils.generate_legato_durations([1, 0, 0, 1, 0, 1, 0, 0]) == [
+		3, 0, 0, 2, 0, 3, 0, 0,
+	]
+
+
+def test_legato_durations_single_hit_spans_to_end () -> None:
+
+	"""A lone opening hit sustains across the whole list."""
+
+	assert subsequence.sequence_utils.generate_legato_durations([1, 0, 0, 0]) == [4, 0, 0, 0]
+
+
+def test_legato_durations_all_zeros_is_all_rests () -> None:
+
+	"""No hits in, no durations out — every step stays 0."""
+
+	assert subsequence.sequence_utils.generate_legato_durations([0, 0, 0, 0]) == [0, 0, 0, 0]
+
+
+def test_legato_durations_empty_input () -> None:
+
+	"""An empty hit list returns an empty list."""
+
+	assert subsequence.sequence_utils.generate_legato_durations([]) == []

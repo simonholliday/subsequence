@@ -622,8 +622,13 @@ def test_unknown_output_device_name_warns_and_defaults_to_zero (patch_midi: None
 	assert "typo_name" in caplog.text
 
 
-def test_unknown_input_device_name_warns_and_returns_none (patch_midi: None, caplog) -> None:
-	"""_resolve_input_device_id() logs a warning and returns None on unknown name."""
+def test_unknown_input_device_name_warns_and_never_matches (patch_midi: None, caplog) -> None:
+	"""_resolve_input_device_id() warns and returns -1 on an unknown name.
+
+	-1 is an index no real device carries, so the mapping matches NOTHING —
+	returning None would fail OPEN (None means match-any) while the warning
+	claims the mapping will be ignored.
+	"""
 	import logging
 	comp = subsequence.Composition(bpm=120)
 	comp._input_device_names["known"] = 1
@@ -631,12 +636,12 @@ def test_unknown_input_device_name_warns_and_returns_none (patch_midi: None, cap
 	with caplog.at_level(logging.WARNING, logger="subsequence.composition"):
 		result = comp._resolve_input_device_id("typo_name")
 
-	assert result is None
+	assert result == -1
 	assert "typo_name" in caplog.text
 
 
-def test_cc_map_unknown_input_device_none_means_any (patch_midi: None) -> None:
-	"""cc_map with an unresolvable input_device name falls back to None (matches any)."""
+def test_cc_map_input_device_none_means_any (patch_midi: None) -> None:
+	"""A cc_map whose input_device is explicitly None matches any input device."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
 	seq.cc_mappings = [{

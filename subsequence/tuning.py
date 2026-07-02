@@ -410,6 +410,10 @@ def apply_tuning_to_pattern (
 	pattern.cc_events = new_cc
 
 	# ── Step 4: inject onset tuning bend events ───────────────────────────────
+	# priority=-1 makes the bend dispatch BEFORE the note_on that shares its
+	# pulse — the scheduler pushes all notes before cc events, so list order
+	# alone cannot deliver the bend-first requirement; the priority field on
+	# MidiEvent outranks the push-order tie-breaker.
 	onset_events: typing.List["subsequence.pattern.CcEvent"] = []
 	for pulse, entries in sorted(tuning_map.items()):
 		for bend_raw, channel in entries:
@@ -419,10 +423,12 @@ def apply_tuning_to_pattern (
 					message_type="pitchwheel",
 					value=bend_raw,
 					channel=channel,
+					priority=-1,
 				)
 			)
 
-	# Prepend onset bends (they must fire before note_on at the same pulse)
+	# Prepend onset bends (kept first in the list for readability; the
+	# dispatch order guarantee comes from priority above)
 	pattern.cc_events = onset_events + pattern.cc_events
 
 

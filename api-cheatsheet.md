@@ -172,7 +172,7 @@ A timing/velocity template applied to quantized grid positions.
 | Method | Description |
 |---|---|
 | `__init__(offsets, grid, velocities) -> None` |  |
-| `from_agr(path) -> "'Groove'"` | Import timing and velocity data from an Ableton .agr groove file. |
+| `from_agr(path, grid) -> "'Groove'"` | Import timing and velocity data from an Ableton .agr groove file. |
 | `swing(percent, grid) -> "'Groove'"` | Create a swing groove from a percentage. |
 
 

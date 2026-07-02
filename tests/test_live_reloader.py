@@ -316,7 +316,13 @@ async def test_reload_preserves_state_on_runtime_error (patch_midi: None, tmp_pa
 @pytest.mark.asyncio
 async def test_reload_uses_fresh_namespace_each_call (patch_midi: None, tmp_path: pathlib.Path) -> None:
 
-	"""Module-level bindings in v1 don't leak into v2's namespace."""
+	"""Module-level bindings in v1 don't leak into v2's namespace.
+
+	The discriminating assertion: v2 reads ``_my_state`` BEFORE its pattern
+	decorator runs.  With a fresh namespace the exec dies with NameError on
+	that line, so drums' builder is never hot-swapped; if v1's namespace
+	leaked, v2 would exec cleanly and the decorator would swap the builder.
+	"""
 
 	live_file = tmp_path / "patterns.py"
 	live_file.write_text(
@@ -330,6 +336,8 @@ async def test_reload_uses_fresh_namespace_each_call (patch_midi: None, tmp_path
 	composition.watch(live_file)
 	await composition._activate_new_pending_patterns()
 
+	builder_before = composition._running_patterns["drums"]._builder_fn
+
 	# v2 references _my_state without defining it — should NameError.
 	live_file.write_text(
 		"# _my_state intentionally not declared\n"
@@ -337,12 +345,15 @@ async def test_reload_uses_fresh_namespace_each_call (patch_midi: None, tmp_path
 		"@composition.pattern(channel=1, beats=4)\n"
 		"def drums (p): pass\n"
 	)
-	# The reload exec should raise NameError, logged as a warning.
-	# We just verify the reload didn't crash the reloader.
+	# The reload exec raises NameError (logged as a warning); the reloader survives.
 	await composition._live_reloader._reload_async()
 
 	# drums still in running set (it was already there before this reload).
 	assert "drums" in composition._running_patterns
+
+	# And its builder was NOT swapped: the NameError fired before v2's
+	# decorator line, which is only possible with a fresh namespace.
+	assert composition._running_patterns["drums"]._builder_fn is builder_before
 
 	composition._live_reloader.stop()
 

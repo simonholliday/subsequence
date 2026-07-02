@@ -74,6 +74,12 @@ class PatternMidiMixin:
 			event_fn(pulse, interpolated)
 			pulse += resolution
 
+		# The loop lands on pulse_end only when resolution divides the span —
+		# otherwise emit the target explicitly, so a ramp always reaches the
+		# value it was asked to reach.
+		if span % resolution != 0:
+			event_fn(pulse_end, start + (end - start) * easing_fn(1.0))
+
 	# ── CC messages ─────────────────────────────────────────────────────────
 
 	def cc (self, control: typing.Union[int, str], value: int, beat: float = 0.0) -> "subsequence.pattern_builder.PatternBuilder":
@@ -662,6 +668,17 @@ class PatternMidiMixin:
 			```
 		"""
 
+		# Validate at build time: MIDI sysex payloads are 7-bit.  A byte over
+		# 127 would be rejected by mido at dispatch and the message silently
+		# dropped every cycle with a misleading "device disconnected" log.
+		invalid = [b for b in data if not 0 <= b <= 127]
+
+		if invalid:
+			raise ValueError(
+				f"sysex data bytes must be 0-127 (7-bit MIDI data) — got {invalid[:4]}. "
+				"Mask computed values (checksums, packed parameters) with & 0x7F first."
+			)
+
 		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
 
 		self._pattern.cc_events.append(
@@ -821,6 +838,20 @@ class PatternMidiMixin:
 			)
 			pulse += resolution
 
+		# Same endpoint rule as _ramp_pulses: when resolution doesn't divide
+		# the span, emit the final bend at pulse_end so the glide reaches its
+		# target pitch instead of stopping audibly short.
+		if span % resolution != 0:
+			interpolated = start_value + (end_value - start_value) * easing_fn(1.0)
+			midi_value = max(-8192, min(8191, int(round(interpolated * 8192))))
+			self._pattern.cc_events.append(
+				subsequence.pattern.CcEvent(
+					pulse = pulse_end,
+					message_type = 'pitchwheel',
+					value = midi_value,
+				)
+			)
+
 	def bend (
 		self,
 		note: int,
@@ -952,6 +983,12 @@ class PatternMidiMixin:
 			```
 		"""
 
+		if bend_range is not None and bend_range <= 0:
+			raise ValueError(
+				f"bend_range must be a positive number of semitones (your instrument's "
+				f"pitch-wheel range) — got {bend_range}. Pass None to disable range checking."
+			)
+
 		if not self._pattern.steps:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
@@ -1069,6 +1106,12 @@ class PatternMidiMixin:
 
 		if notes is None and steps is None:
 			raise ValueError("slide() requires either 'notes' or 'steps'")
+
+		if bend_range is not None and bend_range <= 0:
+			raise ValueError(
+				f"bend_range must be a positive number of semitones (your instrument's "
+				f"pitch-wheel range) — got {bend_range}. Pass None to disable range checking."
+			)
 
 		if not self._pattern.steps:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)

@@ -38,7 +38,7 @@ def _running_pattern_stub (
 # ── Flag and dict mutation ──────────────────────────────────────────────────
 
 
-def test_unregister_sets_removed_flag () -> None:
+def test_unregister_sets_removed_flag (patch_midi: None) -> None:
 
 	"""unregister() sets pattern._removed = True."""
 
@@ -51,7 +51,7 @@ def test_unregister_sets_removed_flag () -> None:
 	assert pattern._removed is True
 
 
-def test_unregister_removes_from_running_patterns () -> None:
+def test_unregister_removes_from_running_patterns (patch_midi: None) -> None:
 
 	"""After unregister(), the name is gone from _running_patterns."""
 
@@ -63,7 +63,7 @@ def test_unregister_removes_from_running_patterns () -> None:
 	assert "drums" not in composition._running_patterns
 
 
-def test_unregister_unknown_pattern_is_silent (caplog: pytest.LogCaptureFixture) -> None:
+def test_unregister_unknown_pattern_is_silent (patch_midi: None, caplog: pytest.LogCaptureFixture) -> None:
 
 	"""unregister() on a non-existent name is a debug-log no-op."""
 
@@ -75,7 +75,7 @@ def test_unregister_unknown_pattern_is_silent (caplog: pytest.LogCaptureFixture)
 	assert any("no-op" in r.message for r in caplog.records)
 
 
-def test_unregister_idempotent () -> None:
+def test_unregister_idempotent (patch_midi: None) -> None:
 
 	"""Calling unregister() twice on the same name doesn't crash."""
 
@@ -204,7 +204,7 @@ async def test_unregister_with_no_active_notes_does_not_crash (patch_midi: None)
 # ── live_info() excludes unregistered patterns ─────────────────────────────
 
 
-def test_live_info_excludes_unregistered_pattern () -> None:
+def test_live_info_excludes_unregistered_pattern (patch_midi: None) -> None:
 
 	"""composition.live_info() doesn't list patterns that have been unregistered."""
 

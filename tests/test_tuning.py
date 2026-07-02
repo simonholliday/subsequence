@@ -419,23 +419,52 @@ def test_empty_pattern_no_error () -> None:
 	subsequence.tuning.apply_tuning_to_pattern(pattern, t)  # should not raise
 
 
-def test_drums_not_affected_by_global_tuning () -> None:
-	"""The _tuning_exclude_drums flag is respected in auto-application."""
-	# This tests the composition integration logic (simulated here)
-	# by checking that a drum pattern's notes are not altered.
-	pattern, builder = _make_builder(channel=9)
-	builder.note(36, beat=0, velocity=100, duration=0.1)  # kick
-	original_pitch = 36
+def test_drums_not_affected_by_global_tuning (patch_midi: None) -> None:
 
-	t = subsequence.tuning.Tuning.equal(19)
-	# We apply the tuning directly here to confirm the pitch would change without the drum guard,
-	# then test via the flag in a separate scenario
-	import copy
-	pattern_copy = copy.deepcopy(pattern)
-	subsequence.tuning.apply_tuning_to_pattern(pattern_copy, t)
-	# 19-TET on note 36 relative to 60: note 36 in 19-TET does change pitch
-	# (we just verify the mechanism works; the guard is composition-level)
-	assert _pitches(pattern) == [36]  # original untouched
+	"""The _tuning_exclude_drums guard protects drum patterns in auto-application.
+
+	Exercises the REAL guard path: two decorator patterns built through
+	``Composition._build_pattern_from_pending`` under a global 19-TET tuning.
+	The drum-mapped pattern must come out untouched (no tuning bends, pitch
+	kept) while the melodic pattern is tuned; with ``exclude_drums=False``
+	the same drum pattern IS tuned — proving the guard, not the channel, is
+	what protects drums.
+	"""
+
+	import subsequence
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+	composition.tuning(equal=19, bend_range=2.0)
+
+	@composition.pattern(channel=10, beats=4, drum_note_map={"kick": 36})
+	def drums (p: typing.Any) -> None:
+		p.hit_steps("kick", [0])
+
+	@composition.pattern(channel=1, beats=4)
+	def bass (p: typing.Any) -> None:
+		p.note(50, beat=0)
+
+	drum_pattern = composition._build_pattern_from_pending(composition._pending_patterns[0])
+	bass_pattern = composition._build_pattern_from_pending(composition._pending_patterns[1])
+
+	# The drum pattern is untouched: no tuning bends, the GM pitch kept.
+	assert [e for e in drum_pattern.cc_events if e.message_type == "pitchwheel"] == []
+	assert _pitches(drum_pattern) == [36]
+
+	# The melodic pattern was tuned (bends prove the auto-apply ran).
+	assert [e for e in bass_pattern.cc_events if e.message_type == "pitchwheel"] != []
+
+	# Control: with the guard off, the SAME drum pattern is tuned.
+	unguarded = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+	unguarded.tuning(equal=19, bend_range=2.0, exclude_drums=False)
+
+	@unguarded.pattern(channel=10, beats=4, drum_note_map={"kick": 36})
+	def drums_unguarded (p: typing.Any) -> None:
+		p.hit_steps("kick", [0])
+
+	tuned_drums = unguarded._build_pattern_from_pending(unguarded._pending_patterns[0])
+
+	assert [e for e in tuned_drums.cc_events if e.message_type == "pitchwheel"] != []
 
 
 # ── PatternBuilder.apply_tuning() ─────────────────────────────────────────────

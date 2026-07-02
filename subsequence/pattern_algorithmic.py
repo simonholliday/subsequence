@@ -1168,9 +1168,10 @@ class PatternAlgorithmicMixin:
 
 		"""Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing).
 
-		Uses the golden angle method - ``position_i = (i × φ) mod bar_length`` -
-		to distribute ``count`` events across the bar.  The result is sorted
-		into ascending time order.  Unlike a Euclidean rhythm (maximally even
+		Uses the golden angle method - ``position_i = frac(i × φ) × bar_length``,
+		where ``frac`` keeps only the fractional part - to distribute ``count``
+		events across the bar as a low-discrepancy (sunflower-seed) spread.
+		The result is sorted into ascending time order.  Unlike a Euclidean rhythm (maximally even
 		spacing on a fixed grid), Fibonacci timing is irrational and places
 		events off-grid in a way that sounds organic and avoids metronomic
 		repetition.
@@ -1323,7 +1324,10 @@ class PatternAlgorithmicMixin:
 			pitch: MIDI note number or drum name.
 			threshold: V-concentration threshold for note placement (0.0–1.0).
 			    Lower values produce denser patterns.
-			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per step.
+			velocity: MIDI velocity.  An ``(low, high)`` tuple is NOT random:
+			    each step's local V-concentration is mapped into the range
+			    deterministically, so notes are louder where the pattern is
+			    denser.
 			duration: Note duration in beats.
 			feed_rate: Rate of U replenishment.  Default 0.055.
 			kill_rate: Rate of V removal.  Default 0.062.

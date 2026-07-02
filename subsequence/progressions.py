@@ -249,20 +249,22 @@ class RomanChord:
 
 		pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)
 
-		if self.degree > len(pcs):
-			raise ValueError(
-				f"scale degree {self.degree} is out of range for {mode!r} "
-				f"({len(pcs)} degrees)"
-			)
-
 		if self.accidental != 0 or self.major_relative:
 			# Accidental-prefixed degrees read against the major scale — the
 			# universal roman convention (bVII is the whole step below tonic
 			# in every key, major or minor).  Generated spans set
-			# major_relative so their spelling is scale-proof.
+			# major_relative so their spelling is scale-proof — which is why
+			# the current scale's degree count must NOT be enforced here
+			# (bVII is a valid degree even under a five-note scale).
 			major_pcs = subsequence.intervals.scale_pitch_classes(key_pc, "ionian")
 			root_pc = (major_pcs[(self.degree - 1) % len(major_pcs)] + self.accidental) % 12
 		else:
+			if self.degree > len(pcs):
+				raise ValueError(
+					f"scale degree {self.degree} is out of range for {mode!r} "
+					f"({len(pcs)} degrees)"
+				)
+
 			root_pc = pcs[self.degree - 1] % 12
 
 		if self.quality is not None:
@@ -275,6 +277,13 @@ class RomanChord:
 				f"Scale {mode!r} has no chord qualities defined, so degree "
 				f"{self.degree} cannot be inferred. Use register_scale(..., "
 				"qualities=[...]) or write the chord name explicitly."
+			)
+
+		if self.degree > len(qualities):
+			raise ValueError(
+				f"cannot infer a chord quality for degree {self.degree} under "
+				f"{mode!r} ({len(qualities)} degrees) — write the quality "
+				"explicitly (e.g. 'bVII' rather than a bare accidental degree)"
 			)
 
 		return subsequence.chords.Chord(root_pc=root_pc, quality=qualities[self.degree - 1])
@@ -291,6 +300,11 @@ class RomanChord:
 		Only meaningful for inferred-quality degrees (the bare-int path):
 		``extend(7)`` on V in C major yields F natural (a dominant seventh),
 		where the colour rule on a concrete G chord would yield F#.
+
+		A 9/11/13 implies every seventh-family tone below it — ``extend(9)``
+		stacks the diatonic seventh AND the ninth, so a degree yields the
+		same chord class as the concrete-chord path (a ninth chord, not an
+		``add9``).
 		"""
 
 		mode = "minor" if self.borrowed and scale != "minor" else ("ionian" if self.borrowed else scale)
@@ -305,14 +319,16 @@ class RomanChord:
 				continue	# sus/add forms are scale-independent — the colour path handles them
 
 			# 7 → six scale steps above the root; 9 → eight; 11 → ten; 13 → twelve.
-			steps = {7: 6, 9: 8, 11: 10, 13: 12}.get(extension)
+			top = {7: 6, 9: 8, 11: 10, 13: 12}.get(extension)
 
-			if steps is None:
+			if top is None:
 				continue
 
-			pc = pcs[(self.degree - 1 + steps) % len(pcs)]
-			octave = 0 if extension == 7 else 12	# 9ths/11ths/13ths live above the octave
-			intervals.append(((pc - root_pc) % 12) + octave)
+			# Stack every odd scale step from the seventh up to the extension.
+			for steps in range(6, top + 1, 2):
+				pc = pcs[(self.degree - 1 + steps) % len(pcs)]
+				octave = 0 if steps == 6 else 12	# 9ths/11ths/13ths live above the octave
+				intervals.append(((pc - root_pc) % 12) + octave)
 
 		return tuple(sorted(set(intervals)))
 
@@ -1414,7 +1430,7 @@ class Progression:
 		Example::
 
 			verse = subsequence.progression(["Am", "F", "C", "G"]).cadence("open")
-			# Am  F  F  E — the half close, hanging on the dominant
+			# Bound in A minor: Am F Dm E — the half close, hanging on the dominant
 
 		Raises:
 			ValueError: If the cadence name is unknown, or the progression
@@ -1689,6 +1705,35 @@ def progression (
 			nir_strength = nir_strength,
 			minor_turnaround_weight = minor_turnaround_weight,
 			root_diversity = root_diversity,
+		)
+
+	# Generation-only knobs are meaningless for a concrete source — reject
+	# them so a musician asking for cadence= or key= on a list gets a usable
+	# error instead of a silent no-op.
+	generation_only = {
+		"bars": bars != 8,
+		"key": key is not None,
+		"scale": scale is not None,
+		"seed": seed is not None,
+		"rng": rng is not None,
+		"pins": pins is not None,
+		"end": end is not None,
+		"avoid": avoid is not None,
+		"cadence": cadence is not None,
+		"dominant_7th": dominant_7th is not True,
+		"gravity": gravity != 1.0,
+		"nir_strength": nir_strength != 0.5,
+		"minor_turnaround_weight": minor_turnaround_weight != 0.0,
+		"root_diversity": root_diversity != subsequence.harmonic_state.DEFAULT_ROOT_DIVERSITY,
+	}
+	passed = [name for name, was_set in generation_only.items() if was_set]
+
+	if passed:
+		raise ValueError(
+			f"{', '.join(sorted(passed))} only apply when generating with style=. "
+			"A concrete progression takes these as methods instead — e.g. "
+			".cadence('strong') for the close, and the key binds at "
+			"composition.harmony() / resolve() time."
 		)
 
 	if isinstance(source, Progression):

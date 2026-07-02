@@ -82,7 +82,9 @@ _WORLD_RHYTHMS: typing.Dict[str, typing.Tuple[typing.Tuple[int, ...], int, str]]
 	# of the bembé necklace (intervals 2-1-2-2-1-2-2); it differs from this
 	# library's own generate_euclidean_sequence(12, 7) default rotation.
 	"bembe_euclidean":  ((0, 2, 3, 5, 7, 8, 10), 12, "cowbell"),
-	"fume_fume":        ((0, 2, 4, 6, 7, 9, 11), 12, "cowbell"),
+	# Fume-fume is the FIVE-onset Ghanaian bell — Toussaint catalogues it as
+	# a rotation of E(5,12), not the seven-onset standard pattern above.
+	"fume_fume":        ((0, 2, 4, 7, 9), 12, "cowbell"),
 }
 
 _CHORD_TONE_NAMES = {"root": 1, "third": 2, "fifth": 3, "seventh": 4}
@@ -798,7 +800,10 @@ class Motif:
 			events = self.events + tuple(dataclasses.replace(e, beat=e.beat + self.length) for e in other.events),
 			length = self.length + other.length,
 			controls = self.controls + tuple(dataclasses.replace(c, beat=c.beat + self.length) for c in other.controls),
-			fit = self.fit,
+			# fit is a dial, not content: keep ours, inherit the other's when
+			# we have none — join()/tiling folds from empty() (fit=None), and
+			# must not silently strip a generated motif's chord-snapping.
+			fit = self.fit if self.fit is not None else other.fit,
 		)
 
 	@classmethod
@@ -861,12 +866,17 @@ class Motif:
 			contour: Envelope shaping the line's height over its span —
 				``"arch"``, ``"valley"``, ``"ascending"``, ``"descending"``.
 			end_on: Degree the line must end on — sugar for ``pins={-1: ...}``.
+				Degree semantics: raises with an explicit MIDI pool (pin the
+				exact note instead).
 			cadence: A cadence name (``"strong"``/``"soft"``/``"open"``/
 				``"fakeout"``) — the line closes on that cadence's melodic
 				degree (1 for the full closes and the fakeout, 5 for the
-				open half).  Sugar for ``end_on=``; conflicts with it.
+				open half).  Sugar for ``end_on=``; conflicts with it, and
+				raises with an explicit MIDI pool like ``end_on=``.
 			pins: ``{position: degree}`` — 1-based note positions (``-1`` =
-				the last, the Python idiom); the engine fills between.
+				the last, the Python idiom); the engine fills between.  With
+				an explicit MIDI pool there are no degrees to read, so each
+				pin is the exact MIDI note to play (``Degree`` pins raise).
 			max_pitches: Cap on distinct pitches (a tight pool is a hook);
 				keeps the most central candidates.
 			velocities / durations: Scalar or per-note list (the parallel-
@@ -976,6 +986,16 @@ class Motif:
 		resolved_pins: typing.Dict[int, int] = {}
 		combined = dict(pins or {})
 
+		# cadence=/end_on= name scale DEGREES — meaningless against an explicit
+		# MIDI pool, where they would silently land as raw (sub-audio) note
+		# numbers.
+		if absolute_pool is not None and end_on is not None:
+			raise ValueError(
+				"cadence=/end_on= name scale degrees, but this motif uses an "
+				"explicit MIDI pool — pin the exact closing note instead: "
+				"pins={-1: <midi note>}"
+			)
+
 		if end_on is not None:
 			if -1 in combined or len(onsets) in combined:
 				raise ValueError("end_on conflicts with a pin on the last note — they name the same position")
@@ -988,7 +1008,15 @@ class Motif:
 			if not 0 <= index < len(onsets):
 				raise ValueError(f"pin position {pin_position} is outside the {len(onsets)}-note rhythm")
 			if absolute_pool is not None:
-				resolved_pins[index] = int(pin_spec if isinstance(pin_spec, int) else pin_spec.step)
+				# A raw int pins the exact MIDI note; a Degree has no meaning
+				# here (the pool defines no scale to read it against).
+				if not isinstance(pin_spec, int) or isinstance(pin_spec, bool):
+					raise ValueError(
+						f"pin {pin_spec!r} is a scale degree, but this motif uses an "
+						"explicit MIDI pool — pin the exact MIDI note instead "
+						"(e.g. pins={-1: 52})"
+					)
+				resolved_pins[index] = int(pin_spec)
 			else:
 				degree = pin_spec if isinstance(pin_spec, Degree) else Degree(int(pin_spec))
 				step_index = (degree.step - 1) % len(reference)
@@ -1215,9 +1243,11 @@ class Motif:
 		"""Add *amount* velocity to every note at the given beat position (0-based beats)."""
 
 		def boost (velocity: typing.Union[int, typing.Tuple[int, int]]) -> typing.Union[int, typing.Tuple[int, int]]:
+			# Clamp both ends: a negative amount (a de-accent) must not store
+			# a velocity below 1, which MIDI cannot play.
 			if isinstance(velocity, tuple):
-				return (min(127, velocity[0] + amount), min(127, velocity[1] + amount))
-			return min(127, velocity + amount)
+				return (max(1, min(127, velocity[0] + amount)), max(1, min(127, velocity[1] + amount)))
+			return max(1, min(127, velocity + amount))
 
 		events = tuple(
 			dataclasses.replace(e, velocity=boost(e.velocity)) if abs(e.beat - beat) < 1e-9 else e
@@ -1841,14 +1871,20 @@ class Phrase:
 
 		source = _tile_source(motif, bars, unit_count, beats_per_bar)
 
+		# An unseeded call draws a fresh salt so repeated calls genuinely
+		# differ, as the warning above promises — interpolating None gave the
+		# FIXED seed "None:..." and silently returned the same phrase every
+		# time.
+		salt = seed if seed is not None else random.randrange(2 ** 32)
+
 		if isinstance(plan, str):
-			units = _PHRASE_RECIPES[plan][1](source, seed)
+			units = _PHRASE_RECIPES[plan][1](source, salt)
 			stored_plan: typing.Union[typing.Tuple[str, ...], str] = plan
 		else:
 			generated: typing.Dict[str, Motif] = {labels[0]: source}
 			for label in labels:
 				if label not in generated:
-					generated[label] = _contrast_unit(source, random.Random(f"{seed}:unit:{label}"))
+					generated[label] = _contrast_unit(source, random.Random(f"{salt}:unit:{label}"))
 			units = [generated[label] for label in labels]
 			stored_plan = tuple(labels)
 
@@ -1916,8 +1952,12 @@ class Phrase:
 				stacklevel = 2,
 			)
 
+		# Unseeded rerolls draw a fresh salt — a fixed "None:..." seed would
+		# "re-roll" to the identical pitches every time.
+		salt = seed if seed is not None else random.randrange(2 ** 32)
+
 		windows = [
-			((number - 1) * beats_per_bar, number * beats_per_bar, random.Random(f"{seed}:reroll:{number}"))
+			((number - 1) * beats_per_bar, number * beats_per_bar, random.Random(f"{salt}:reroll:{number}"))
 			for number in sorted(set(region))
 		]
 
@@ -2219,8 +2259,12 @@ def sentence (
 
 	source = _tile_source(motif, bars, 4, beats_per_bar)
 
-	continuation = _contrast_unit(source, random.Random(f"{seed}:sentence:continuation"))
-	cadential = _contrast_unit(source, random.Random(f"{seed}:sentence:cadential")).answer(to = spec.close_degree)
+	# Unseeded calls draw a fresh salt (a fixed "None:..." seed would return
+	# the same sentence every time, belying the warning above).
+	salt = seed if seed is not None else random.randrange(2 ** 32)
+
+	continuation = _contrast_unit(source, random.Random(f"{salt}:sentence:continuation"))
+	cadential = _contrast_unit(source, random.Random(f"{salt}:sentence:cadential")).answer(to = spec.close_degree)
 
 	return Phrase([source, source, continuation, cadential], recipe = _PhraseRecipe(
 		source = motif,

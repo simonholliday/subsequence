@@ -635,7 +635,7 @@ def test_concrete_note_name_slash_bass_voices_without_manual_resolve () -> None:
 	whether the chord is iterated directly or laid out by ``realize()``.
 	"""
 
-	concrete = subsequence.progressions.progression(["C"], key="C").over("G")
+	concrete = subsequence.progressions.progression(["C"]).over("G")
 
 	iterated = list(concrete)[0].chord.tones(60)
 	assert 55 in iterated						# G3 is voiced below the triad
@@ -649,7 +649,7 @@ def test_tonic_pedal_voices_through_realize_with_a_key () -> None:
 
 	"""A ``"tonic"`` pedal follows the key and sounds when realised with one."""
 
-	value = subsequence.progressions.progression(["F"], key="C").over("tonic")
+	value = subsequence.progressions.progression(["F"]).over("tonic")
 
 	realized = subsequence.progressions.realize(value, 4.0, "C", 4.0, random.Random(0))
 	tones = list(realized)[0].chord.tones(60)

@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import logging
 import pathlib
 import threading
@@ -194,62 +193,63 @@ def test_initial_runs_before_first_pattern_build (tmp_path: pathlib.Path, patch_
 	assert first_build_saw_sentinel[0] is True
 
 
-@pytest.mark.asyncio
-async def test_initial_runs_async_fn_before_patterns () -> None:
+def test_initial_runs_async_fn_before_patterns (tmp_path: pathlib.Path, patch_midi: None) -> None:
 
-	"""wait_for_initial=True should block on an async function.
+	"""wait_for_initial=True blocks on an ASYNC function through the real _run() path.
 
-	Note: this simulates _run()'s gather to test the helper contract
-	(_PendingScheduled + awaiting the fn), not the real _run() wiring —
-	that is covered by test_initial_runs_before_first_pattern_build.
+	The coroutine branch of _run()'s wait-for-initial block: the async
+	populate must complete before the first pattern build reads the data.
 	"""
 
-	order: typing.List[str] = []
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=960)
+	first_build_saw_sentinel: typing.List[bool] = []
 
 	async def populate () -> None:
-		order.append("initial")
+		composition.data["sentinel"] = "ready"
 
-	async def _run_initial (fn: typing.Callable) -> None:
-		if inspect.iscoroutinefunction(fn):
-			await fn()
-		else:
-			await asyncio.get_running_loop().run_in_executor(None, fn)
+	composition.schedule(populate, cycle_beats=4, wait_for_initial=True)
 
-	pending = subsequence.composition._PendingScheduled(
-		fn=populate, cycle_beats=32, reschedule_lookahead=1, wait_for_initial=True
-	)
+	@composition.pattern(channel=1, beats=4)
+	def p (p: typing.Any) -> None:
+		if not first_build_saw_sentinel:
+			first_build_saw_sentinel.append(composition.data.get("sentinel") == "ready")
 
-	await asyncio.gather(*[_run_initial(t.fn) for t in [pending]])
+	composition.render(bars=1, filename=str(tmp_path / "initial_async.mid"))
 
-	order.append("patterns")
-
-	assert order == ["initial", "patterns"]
+	assert first_build_saw_sentinel, "the pattern never built"
+	assert first_build_saw_sentinel[0] is True
 
 
-@pytest.mark.asyncio
-async def test_initial_failure_does_not_raise () -> None:
+def test_initial_failure_does_not_raise (
+	tmp_path: pathlib.Path,
+	patch_midi: None,
+	caplog: pytest.LogCaptureFixture,
+) -> None:
 
-	"""An initial function that fails should log a warning, not crash.
+	"""A failing wait_for_initial function must not crash play — _run() logs a warning.
 
-	Note: this simulates _run()'s try/except to test the helper contract,
-	not the real _run() wiring.
+	Exercises the real try/except in _run()'s wait-for-initial block: the
+	run completes (the pattern still builds) and the failure is warned with
+	the function's name.
 	"""
+
+	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=960)
+	built: typing.List[bool] = []
 
 	def bad_fn () -> None:
 		raise RuntimeError("network error")
 
-	async def _run_initial (fn: typing.Callable) -> None:
-		try:
-			if inspect.iscoroutinefunction(fn):
-				await fn()
-			else:
-				await asyncio.get_running_loop().run_in_executor(None, fn)
-		except Exception:
-			pass  # Mirrors the logger.warning in _run()
+	composition.schedule(bad_fn, cycle_beats=4, wait_for_initial=True)
 
-	pending = subsequence.composition._PendingScheduled(
-		fn=bad_fn, cycle_beats=32, reschedule_lookahead=1, wait_for_initial=True
+	@composition.pattern(channel=1, beats=4)
+	def p (p: typing.Any) -> None:
+		built.append(True)
+
+	with caplog.at_level(logging.WARNING, logger="subsequence.composition"):
+		composition.render(bars=1, filename=str(tmp_path / "initial_fail.mid"))
+
+	assert built, "the failing initial fn must not stop patterns from building"
+	assert any(
+		"bad_fn" in record.getMessage() and "failed" in record.getMessage()
+		for record in caplog.records
 	)
-
-	# Should not raise.
-	await asyncio.gather(*[_run_initial(t.fn) for t in [pending]])

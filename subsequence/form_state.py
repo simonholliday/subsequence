@@ -225,6 +225,15 @@ class FormState:
 					self._terminal_sections.add(name)
 				else:
 					for target, weight in transitions:
+						# Validate targets against the whole dict now — a typo
+						# would otherwise crash with a bare KeyError at the
+						# first section boundary DURING playback, every bar.
+						if target not in sections:
+							known = ", ".join(sorted(sections))
+							raise ValueError(
+								f"Section '{name}' transitions to unknown section "
+								f"'{target}'. Known sections: {known}"
+							)
 						self._graph.add_transition(name, target, weight)
 
 			start_name = start if start is not None else next(iter(sections))
@@ -305,6 +314,10 @@ class FormState:
 
 		assert self._sequence is not None
 
+		# An empty form has no position to move to — even under "loop".
+		if not self._sequence:
+			return None
+
 		following = self._position + 1
 
 		if following < len(self._sequence):
@@ -365,6 +378,9 @@ class FormState:
 		section plays to completion first.  In sequence mode the form
 		continues from the queued occurrence onward.
 
+		Queuing after the form has finished revives it: the queued section
+		starts at the next bar and the form continues from there.
+
 		Available in graph and sequence (list/Form) modes; a generator form
 		cannot be navigated.
 
@@ -378,7 +394,6 @@ class FormState:
 		if self._sequence is not None:
 			self._queued_position = self._find_occurrence(section_name, "queue_next")
 			self._next_section_name = section_name
-			self._finished = False
 			logger.info(f"Form: next → {section_name}")
 			return
 
@@ -403,7 +418,29 @@ class FormState:
 		"""Advance one bar, transitioning to the next section when needed, returning True if section changed."""
 
 		if self._finished:
-			return False
+
+			# A queued section revives a finished form at the next bar —
+			# queue_next() after the end is a command to play again, not a
+			# call to be silently ignored (sequence mode used to trip the
+			# not-finished invariant; graph mode ignored it).
+			if self._sequence is not None and self._queued_position is not None:
+				self._position = self._queued_position
+				self._queued_position = None
+				self._current = self._sequence[self._position]
+			elif self._graph is not None and self._next_section_name is not None:
+				assert self._section_bars is not None
+				self._current = subsequence.forms.Section(
+					name = self._next_section_name,
+					bars = self._section_bars[self._next_section_name],
+				)
+			else:
+				return False
+
+			self._finished = False
+			self._section_index += 1
+			self._bar_in_section = 0
+			self._pick_next()
+			return True
 
 		self._bar_in_section += 1
 		self._total_bars += 1

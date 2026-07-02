@@ -271,13 +271,16 @@ class _InjectedChord:
 
 		"""Return the MIDI note number for the chord root nearest to *root_midi*."""
 
-		return self.tones(root_midi)[0]
+		# Delegate to root_midi(), NOT tones(): under voice leading, tones()
+		# returns the smoothest INVERSION (whose bass is often not the root)
+		# and advances the voicing state — a read must do neither.
+		return self.root_midi(root_midi)
 
 	def bass_note (self, root_midi: int, octave_offset: int = -1) -> int:
 
 		"""Return the chord root shifted by a number of octaves."""
 
-		return self.root_note(root_midi) + (12 * octave_offset)
+		return self.root_midi(root_midi) + (12 * octave_offset)
 
 	def intervals (self) -> typing.List[int]:
 
@@ -537,9 +540,10 @@ def _bare_chord (chord_like: typing.Any) -> typing.Any:
 async def schedule_harmonic_clock (
 	sequencer: subsequence.sequencer.Sequencer,
 	get_harmonic_state: typing.Callable[[], typing.Optional[subsequence.harmonic_state.HarmonicState]],
-	horizon: _HarmonyHorizon,
-	bar_beats: float,
+	horizon: typing.Optional[_HarmonyHorizon] = None,
+	bar_beats: float = 4.0,
 	cycle_beats: int = 4,
+	get_cycle_beats: typing.Optional[typing.Callable[[], int]] = None,
 	get_bound_progression: typing.Optional[typing.Callable[[], typing.Optional["Progression"]]] = None,
 	get_section_progression: typing.Optional[
 		typing.Callable[[], typing.Optional[typing.Tuple[str, int, int, typing.Optional["Progression"]]]]
@@ -586,7 +590,20 @@ async def schedule_harmonic_clock (
 	The clock fires ``reschedule_lookahead`` beats before each boundary —
 	raised by the caller to the maximum pattern lookahead, so the window
 	always covers a pattern's next cycle before it rebuilds.
+
+	``horizon`` may be omitted for direct use without a :class:`Composition`
+	(a private window is created — ``p.harmony`` inside a Composition needs
+	the composition's own horizon).  ``get_cycle_beats``, when given, is
+	re-read at every boundary so a mid-playback ``harmony(cycle_beats=…)``
+	re-call takes effect like the other getter-based parameters; the plain
+	``cycle_beats`` value is the fixed fallback.
 	"""
+
+	if horizon is None:
+		horizon = _HarmonyHorizon()
+
+	def _cycle_beats_now () -> float:
+		return float(get_cycle_beats() if get_cycle_beats is not None else cycle_beats)
 
 	pulses_per_beat = sequencer.pulses_per_beat
 
@@ -618,7 +635,7 @@ async def schedule_harmonic_clock (
 		if not cadence_requests or resolve_cadence is None:
 			return
 
-		cb = float(cycle_beats)
+		cb = _cycle_beats_now()
 		target_bar = min(cadence_requests)
 		target_beat = (target_bar - 1) * bar_beats
 
@@ -857,7 +874,7 @@ async def schedule_harmonic_clock (
 						chord_like = state["planned"]
 						state["planned"] = None
 
-				span_beats = float(cycle_beats)
+				span_beats = _cycle_beats_now()
 				from_live = True
 				horizon.set_future(None)
 
@@ -886,10 +903,10 @@ async def schedule_harmonic_clock (
 			# it without drawing (a fiat gap, queue head None, plans normally).
 			if from_live and hs is not None:
 				if state["cadence_queue"] and state["cadence_queue"][0] is not None:
-					horizon.set_planned(state["next_change"], state["next_change"] + float(cycle_beats), state["cadence_queue"][0])
+					horizon.set_planned(state["next_change"], state["next_change"] + _cycle_beats_now(), state["cadence_queue"][0])
 				else:
 					state["planned"] = hs.plan_next()
-					horizon.set_planned(state["next_change"], state["next_change"] + float(cycle_beats), state["planned"])
+					horizon.set_planned(state["next_change"], state["next_change"] + _cycle_beats_now(), state["planned"])
 
 		# Fire again at the earlier of the next chord change and the next bar
 		# line — bar fires keep section bookkeeping aligned under long spans.
@@ -1002,6 +1019,7 @@ async def schedule_form (
 	form_state: subsequence.form_state.FormState,
 	reschedule_lookahead: float = 1,
 	on_bar: typing.Optional[typing.Callable[[int, bool], None]] = None,
+	get_form_state: typing.Optional[typing.Callable[[], typing.Optional[subsequence.form_state.FormState]]] = None,
 ) -> None:
 
 	"""Schedule the form state to advance each bar.
@@ -1012,12 +1030,21 @@ async def schedule_form (
 	(``None`` when the form finishes).  ``on_bar`` is the boundary hook —
 	called once per bar with ``(boundary_pulse, section_changed)`` after the
 	form advances; the transition machinery rides it.
+
+	``get_form_state``, when given, is re-read every bar — so a mid-playback
+	``form()`` re-bind advances the NEW form state from the next bar instead
+	of silently driving the abandoned object forever.  ``form_state`` is the
+	fixed fallback for direct use.
 	"""
 
 	lookahead_pulses = int(reschedule_lookahead * sequencer.pulses_per_beat)
 
+	def _current_form_state () -> typing.Optional[subsequence.form_state.FormState]:
+		return get_form_state() if get_form_state is not None else form_state
+
 	# Log and announce the initial section.
-	initial_section = form_state.get_section_info()
+	initial_form = _current_form_state()
+	initial_section = initial_form.get_section_info() if initial_form is not None else None
 	if initial_section:
 		logger.info(f"Form: {initial_section.name}")
 	sequencer.events.emit_sync("section", initial_section)
@@ -1029,10 +1056,17 @@ async def schedule_form (
 
 		"""Advance the form by one bar, logging and announcing section changes."""
 
-		section_changed = form_state.advance()
+		fs = _current_form_state()
+
+		if fs is None:
+			if on_bar is not None:
+				on_bar(pulse + lookahead_pulses, False)
+			return
+
+		section_changed = fs.advance()
 
 		if section_changed:
-			section = form_state.get_section_info()
+			section = fs.get_section_info()
 			if section:
 				logger.info(f"Form: {section.name}")
 			else:
@@ -1347,6 +1381,9 @@ class Composition:
 		self._cadence_requests: typing.Dict[int, str] = {}
 		self._section_cadences: typing.Dict[str, str] = {}
 		self._harmony_horizon = _HarmonyHorizon()
+		# True once the span-walking clock is registered for this playback —
+		# lets a first mid-playback harmony() call start it exactly once.
+		self._harmonic_clock_started: bool = False
 		self._section_motifs: typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any] = {}
 		self._energy_map: typing.Dict[str, typing.Union[float, typing.Tuple[float, float]]] = {}
 		self._form_has_payload: bool = False
@@ -1361,8 +1398,13 @@ class Composition:
 		self._pending_patterns: typing.List[_PendingPattern] = []
 		# Names of patterns declared by the most recent live-reload exec (added by
 		# pattern()/layer() as they run); the deletion diff in _apply_source_async
-		# tears down any running pattern absent from this set.
+		# compares this against the same source's PREVIOUS exec.
 		self._declared_names: typing.Set[str] = set()
+		# Per-source declaration history: source label/path → the names it
+		# declared last time it was exec'd.  The deletion diff unregisters only
+		# names a source used to declare and no longer does — never patterns
+		# registered by the wrapper script or by another watched source.
+		self._source_declared: typing.Dict[str, typing.Set[str]] = {}
 		self._pending_scheduled: typing.List[_PendingScheduled] = []
 		self._form_state: typing.Optional[subsequence.form_state.FormState] = None
 		self._builder_bar: int = 0
@@ -1435,7 +1477,9 @@ class Composition:
 
 		``None`` → ``None`` (matches any input device — existing behaviour).
 		``int`` → returned as-is.  ``str`` → looked up in ``_input_device_names``;
-		logs a warning and returns ``None`` if the name is unknown.
+		logs a warning and returns ``-1`` if the name is unknown — an index no
+		real device carries, so the mapping matches NOTHING (returning None
+		here would silently fail OPEN and listen to every device).
 		Called after all input devices are opened in ``_run()``.
 		"""
 		if device is None:
@@ -1448,7 +1492,7 @@ class Composition:
 				f"Unknown input device name '{device}' — mapping will be ignored. "
 				f"Available names: {list(self._input_device_names.keys())}"
 			)
-			return None
+			return -1
 		return idx
 
 	def _resolve_pending_devices (self) -> None:
@@ -1821,7 +1865,9 @@ class Composition:
 				"diminished". See README for full descriptions.
 			cycle_beats: How many beats each live chord lasts (default 4).
 				Bound progressions carry their own harmonic rhythm in their
-				spans, so this applies to live stepping only.
+				spans, so this applies to live stepping only.  A re-call
+				during playback takes effect from the next chord boundary;
+				a FIRST harmony() call mid-playback starts the clock itself.
 			dominant_7th: Whether to include V7 chords (default True).
 			gravity: Key gravity (0.0 to 1.0). High values stay closer to the root chord.
 			nir_strength: Melodic inertia (0.0 to 1.0). Influences chord movement
@@ -1893,6 +1939,86 @@ class Composition:
 
 		# A re-call invalidates whatever the horizon had planned.
 		self._harmony_horizon.invalidate_future()
+
+		# A FIRST harmony() call mid-playback must start the clock itself —
+		# _run() only schedules clocks for sources it can see at play() time.
+		# (Re-calls need nothing here: the clock reads its sources through
+		# getters on every tick.)
+		loop = self._sequencer._event_loop
+
+		if loop is not None and loop.is_running() and not self._harmonic_clock_started:
+			try:
+				on_loop = asyncio.get_running_loop() is loop
+			except RuntimeError:
+				on_loop = False
+
+			if on_loop:
+				loop.create_task(self._start_harmonic_clock())
+			else:
+				asyncio.run_coroutine_threadsafe(self._start_harmonic_clock(), loop)
+
+	async def _start_harmonic_clock (self, bar_beats: typing.Optional[float] = None, clock_lookahead: typing.Optional[float] = None) -> None:
+
+		"""Register the span-walking harmonic clock (idempotent per playback).
+
+		Called from ``_run()`` when a harmony source exists at play time, and
+		from ``harmony()`` when the FIRST source arrives mid-playback.
+		``bar_beats``/``clock_lookahead`` default to a fresh computation for
+		the mid-playback path; ``_run()`` passes the values it validated.
+		"""
+
+		if self._harmonic_clock_started:
+			return
+
+		self._harmonic_clock_started = True
+
+		if bar_beats is None:
+			bar_beats = float(self.time_signature[0])
+
+		if clock_lookahead is None:
+			lookaheads = [pattern.reschedule_lookahead for pattern in self._running_patterns.values()]
+			clock_lookahead = min(bar_beats, max(1.0, float(self._harmony_reschedule_lookahead), float(max(lookaheads, default = 1))))
+
+		def _get_section_progression () -> typing.Optional[typing.Tuple[str, int, int, typing.Optional[Progression]]]:
+			"""Return (section_name, section_index, bars, Progression|None) for the current section, or None.
+
+			The progression is resolved against the section's effective
+			key/scale here (key-relative section harmony re-keys per
+			occurrence); concrete content passes through unchanged.
+			"""
+			if self._form_state is None:
+				return None
+			info = self._form_state.get_section_info()
+			if info is None:
+				return None
+			prog = self._resolve_section_progression(info)
+			return (info.name, info.index, info.bars, prog)
+
+		def _resolve_cadence_formula (name: str) -> typing.List[subsequence.chords.Chord]:
+			"""Resolve a cadence formula against the composition key and scale, at plan time."""
+			hs = self._harmonic_state
+			key_pc = subsequence.chords.key_name_to_pc(self.key) if self.key is not None else (hs.key_root_pc if hs is not None else 0)
+			spec = subsequence.cadences.cadence_formula(name)
+			return [
+				subsequence.progressions.resolve_constraint(element, key_pc, self._constraint_scale(), f"cadence {name!r}")
+				for element in spec.formula
+			]
+
+		await schedule_harmonic_clock(
+			sequencer = self._sequencer,
+			get_harmonic_state = lambda: self._harmonic_state,
+			horizon = self._harmony_horizon,
+			bar_beats = bar_beats,
+			cycle_beats = self._harmony_cycle_beats or 4,
+			get_cycle_beats = lambda: self._harmony_cycle_beats or 4,
+			get_bound_progression = lambda: self._bound_progression,
+			get_section_progression = _get_section_progression,
+			get_pinned = self._resolve_pin,
+			cadence_requests = self._cadence_requests,
+			resolve_cadence = _resolve_cadence_formula,
+			get_section_cadence = self._section_cadences.get,
+			reschedule_lookahead = clock_lookahead,
+		)
 
 	def _constraint_scale (self) -> str:
 
@@ -3472,7 +3598,7 @@ class Composition:
 			# future.result() blocks the caller until the coroutine finishes
 			# and re-raises any exception it threw.
 			future = asyncio.run_coroutine_threadsafe(
-				self._apply_source_async(compiled, namespace),
+				self._apply_source_async(compiled, namespace, source_key = source_label),
 				loop = loop,
 			)
 			future.result()
@@ -3480,20 +3606,28 @@ class Composition:
 		else:
 			# Pre-play: no event loop yet.  Decorators populate
 			# _pending_patterns; play() graduates them in the usual way.
-			# Diff-and-unregister is unnecessary here — nothing is running.
+			# Diff-and-unregister is unnecessary here — nothing is running,
+			# but RECORD what this source declares so a later post-play
+			# reload under the same label can tear down its deletions.
+			self._declared_names = set()
 			exec(compiled, namespace)
+			self._source_declared[source_label] = set(self._declared_names)
 
 	async def _apply_source_async (
 		self,
 		compiled:  types.CodeType,
 		namespace: typing.Dict[str, typing.Any],
+		source_key: str = "<live>",
 	) -> None:
 
 		"""Execute pre-compiled live source against the running composition.
 
 		Runs on the event loop thread.  Performs ``exec()``, graduates any
 		newly-decorated patterns into ``_running_patterns``, then unregisters
-		any patterns that were running but absent from the source.
+		any patterns that *this source* declared on its previous exec but no
+		longer declares (keyed by ``source_key`` — a watched file's path or a
+		``load_patterns`` label).  Patterns registered by the wrapper script
+		or by another source are never this source's to tear down.
 
 		Raises whatever ``exec()`` raises.  When that happens, the diff-and-
 		unregister phase is skipped — the namespace is incomplete, so any
@@ -3523,13 +3657,20 @@ class Composition:
 		# in _pending_patterns and don't need this step.
 		await self._activate_new_pending_patterns()
 
-		# Detect deletions: anything currently running but NOT declared by the
-		# just-exec'd source has been removed by the user and should be torn
-		# down.  Decorators/layer() do NOT remove from _running_patterns when a
+		# Detect deletions: a name THIS source declared last time but not this
+		# time has been removed by the user and should be torn down.  (An
+		# unknown source — first exec — tears down nothing: patterns running
+		# from the wrapper script or another source are not ours to remove.)
+		# Decorators/layer() do NOT remove from _running_patterns when a
 		# definition disappears from the source.
-		for name in list(self._running_patterns.keys()):
-			if name not in self._declared_names:
-				self.unregister(name)
+		previous = self._source_declared.get(source_key)
+
+		if previous is not None:
+			for name in previous - self._declared_names:
+				if name in self._running_patterns:
+					self.unregister(name)
+
+		self._source_declared[source_key] = set(self._declared_names)
 
 	def _build_live_namespace (self, source_label: str = "<live>") -> typing.Dict[str, typing.Any]:
 
@@ -4059,6 +4200,10 @@ class Composition:
 		Form-value and list forms are **navigable**: ``form_jump()`` and
 		``form_next()`` work on them (the jump lands on the next occurrence
 		of the name, wrapping).
+
+		Re-binding ``form()`` during playback takes effect at the next bar —
+		the clock reads the current form state on every bar, so the new form
+		advances from there (its first section plays from its first bar).
 
 		Parameters:
 			sections: The form definition (Form, List, Dict, or Generator).
@@ -5554,51 +5699,16 @@ class Composition:
 				form_state = self._form_state,
 				reschedule_lookahead = clock_lookahead,
 				on_bar = self._check_transitions,
+				# Re-read every bar so a mid-playback form() re-bind advances
+				# the NEW state instead of the abandoned object.
+				get_form_state = lambda: self._form_state,
 			)
 
 		self._harmony_horizon.reset()
+		self._harmonic_clock_started = False
 
 		if self._harmonic_state is not None or self._bound_progression is not None or self._section_progressions:
-
-			def _get_section_progression () -> typing.Optional[typing.Tuple[str, int, int, typing.Optional[Progression]]]:
-				"""Return (section_name, section_index, bars, Progression|None) for the current section, or None.
-
-				The progression is resolved against the section's effective
-				key/scale here (key-relative section harmony re-keys per
-				occurrence); concrete content passes through unchanged.
-				"""
-				if self._form_state is None:
-					return None
-				info = self._form_state.get_section_info()
-				if info is None:
-					return None
-				prog = self._resolve_section_progression(info)
-				return (info.name, info.index, info.bars, prog)
-
-			def _resolve_cadence_formula (name: str) -> typing.List[subsequence.chords.Chord]:
-				"""Resolve a cadence formula against the composition key and scale, at plan time."""
-				hs = self._harmonic_state
-				key_pc = subsequence.chords.key_name_to_pc(self.key) if self.key is not None else (hs.key_root_pc if hs is not None else 0)
-				spec = subsequence.cadences.cadence_formula(name)
-				return [
-					subsequence.progressions.resolve_constraint(element, key_pc, self._constraint_scale(), f"cadence {name!r}")
-					for element in spec.formula
-				]
-
-			await schedule_harmonic_clock(
-				sequencer = self._sequencer,
-				get_harmonic_state = lambda: self._harmonic_state,
-				horizon = self._harmony_horizon,
-				bar_beats = bar_beats,
-				cycle_beats = self._harmony_cycle_beats or 4,
-				get_bound_progression = lambda: self._bound_progression,
-				get_section_progression = _get_section_progression,
-				get_pinned = self._resolve_pin,
-				cadence_requests = self._cadence_requests,
-				resolve_cadence = _resolve_cadence_formula,
-				get_section_cadence = self._section_cadences.get,
-				reschedule_lookahead = clock_lookahead,
-			)
+			await self._start_harmonic_clock(bar_beats, clock_lookahead)
 
 		# Bar counter - always active so p.bar is available to all builders.
 		def _advance_builder_bar (pulse: int) -> None:

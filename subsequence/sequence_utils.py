@@ -22,6 +22,9 @@ def generate_euclidean_sequence (steps: int, pulses: int) -> typing.List[int]:
 	Generate a Euclidean rhythm using Bjorklund's algorithm.
 	"""
 
+	if pulses < 0:
+		raise ValueError(f"Pulses must be zero or positive — got {pulses}")
+
 	if pulses == 0:
 		return [0] * steps
 
@@ -67,6 +70,9 @@ def generate_bresenham_sequence (steps: int, pulses: int) -> typing.List[int]:
 	"""
 	Generate a rhythm using Bresenham's line algorithm.
 	"""
+
+	if pulses < 0:
+		raise ValueError(f"Pulses must be zero or positive — got {pulses}")
 
 	sequence = [0] * steps
 	error = 0
@@ -116,6 +122,10 @@ def generate_van_der_corput_sequence (n: int, base: int = 2) -> typing.List[floa
 	"""
 	Generate a sequence of n numbers using the van der Corput sequence.
 	"""
+
+	# base 1 never shrinks k (infinite loop) and base 0 divides by zero.
+	if base < 2:
+		raise ValueError(f"van der Corput base must be at least 2 — got {base}")
 
 	sequence = []
 	
@@ -924,7 +934,7 @@ def combine_densities (
 		```python
 		# Blend a metric accent curve, an intensity envelope, and a global knob
 		# into a consensus, then warp a base probability by it.
-		accent = subsequence.sequence_utils.build_metric_weights(16)
+		accent = subsequence.sequence_utils.build_metric_weights((4, 4), 16)
 		envelope = subsequence.easing.ramp(16, 0.2, 0.9, "ease_in_out")
 		consensus = subsequence.sequence_utils.combine_densities(
 			[accent, envelope, 0.6], strategy="geomean")
@@ -970,14 +980,16 @@ def combine_densities (
 
 
 @typing.overload
-def warp_stack (value: float, amounts: typing.List[typing.Union[float, typing.List[float]]]) -> float: ...
+def warp_stack (value: float, amounts: typing.List[float]) -> float: ...
+@typing.overload
+def warp_stack (value: float, amounts: typing.List[typing.Union[float, typing.List[float]]]) -> typing.Union[float, typing.List[float]]: ...
 @typing.overload
 def warp_stack (value: typing.List[float], amounts: typing.List[typing.Union[float, typing.List[float]]]) -> typing.List[float]: ...
 
 
 def warp_stack (
 	value: typing.Union[float, typing.List[float]],
-	amounts: typing.List[typing.Union[float, typing.List[float]]],
+	amounts: typing.Sequence[typing.Union[float, typing.List[float]]],
 ) -> typing.Union[float, typing.List[float]]:
 
 	"""Apply several density knobs to ``value`` so they compound.
@@ -1009,7 +1021,7 @@ def warp_stack (
 		```python
 		# Compound a global swell, a humanised drift, and a per-step accent.
 		accent = subsequence.easing.ramp(16, 0.4, 0.8, "ease_in")
-		probs = subsequence.sequence_utils.warp_stack(0.5, [0.7, 0.55, accent])
+		probs = subsequence.sequence_utils.warp_stack([0.5] * 16, [0.7, 0.55, accent])
 		```
 	"""
 
@@ -2884,15 +2896,18 @@ class Sieve:
 	"""A composable Xenakis sieve — residual classes under ``&`` ``|`` ``~``.
 
 	The full algebra layer over :func:`sieve`: build a :class:`Sieve` with
-	:func:`residual_class` (alias ``rc``) and combine with union (``|``),
-	intersection (``&``), and complement (``~``), then :meth:`evaluate` over
-	a range.  Membership is decided per integer, so complement is well-defined
+	:func:`residual_class` and combine with union (``|``), intersection
+	(``&``), and complement (``~``), then :meth:`evaluate` over a range.
+	Membership is decided per integer, so complement is well-defined
 	without a range until evaluation.
 
 	Example:
 		```python
-		from subsequence.sequence_utils import residual_class as rc
-		((rc(2, 0) | rc(3, 0)) & ~rc(4, 1)).evaluate(hi=24)
+		# Multiples of 2 or 3, excluding steps one past a multiple of 4.
+		evens = subsequence.sequence_utils.residual_class(2, 0)
+		thirds = subsequence.sequence_utils.residual_class(3, 0)
+		off_fours = subsequence.sequence_utils.residual_class(4, 1)
+		((evens | thirds) & ~off_fours).evaluate(hi=24)
 		```
 	"""
 

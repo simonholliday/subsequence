@@ -118,14 +118,16 @@ CHAIN_SEQ = False
 composition = subsequence.Composition(bpm=TEMPO, key=SCALE_ROOT)
 
 # SEQ1_CORRUPT / SEQ2_CORRUPT: Probability-based mutation amount (0.0–1.0).
-#   0.0       = frozen - no mutation; the sequence repeats exactly.
-#   0.0–0.5   = pitch and velocity mutation only; the rhythm (which steps fire)
-#               is preserved.  Mirrors Labyrinth CORRUPT below 12 o'clock.
-#   0.5–1.0   = rhythm also mutates - steps drop in and out with increasing
-#               probability.  Mirrors Labyrinth CORRUPT above 12 o'clock
-#               (BIT FLIP territory).
-# Labyrinth range: 0.0–1.0 (fully CCW = off; 12 o'clock = pitch-only threshold;
-#                            fully CW = maximum chaos).
+# Unlike the hardware (which holds a stored sequence and mutates it), the
+# patterns below draw fresh pitches and velocities from p.rng on EVERY
+# rebuild, at any CORRUPT setting - so the melody re-randomises each bar
+# even at 0.0.  What CORRUPT actually gates here is the rhythm:
+#   0.0–0.5   = the rhythm (which steps fire) is stable; pitch and velocity
+#               still vary from bar to bar.
+#   0.5–1.0   = the rhythm also mutates - steps drop in and out with
+#               increasing probability.  Mirrors Labyrinth CORRUPT above
+#               12 o'clock (BIT FLIP territory).
+# Labyrinth range: 0.0–1.0 (fully CCW to fully CW).
 composition.conductor.lfo("SEQ1_CORRUPT", shape="triangle", cycle_beats=48, min_val=0.0, max_val=0.55)
 composition.conductor.lfo("SEQ2_CORRUPT", shape="sine",     cycle_beats=32, min_val=0.0, max_val=0.45)
 
@@ -145,8 +147,8 @@ composition.conductor.lfo("EG_TRIG_MIX", shape="triangle", cycle_beats=64, min_v
 #
 # To enable: uncomment the block below, replace "My Controller" with the exact
 # name of your MIDI input device, and assign your CC numbers to match the knobs
-# you want to use.  Then comment out the three lfo() lines above, since the
-# hardware knobs will take over those signals.
+# you want to use.  Then comment out the corresponding lfo() lines above and
+# update the pattern reads as described in the note below.
 #
 # composition.midi_input("My Controller")
 #
@@ -157,9 +159,16 @@ composition.conductor.lfo("EG_TRIG_MIX", shape="triangle", cycle_beats=64, min_v
 # Any CC number (0–127) is valid.  Check your controller's documentation or
 # MIDI monitor software to find the CC number each knob transmits.
 #
-# Note: cc_map() and lfo() both write to the same named signal, so you can
-# mix the two - for example, keep EG_TRIG_MIX as an LFO while manually
-# controlling CORRUPT from a knob.
+# Note: cc_map() and lfo() write to DIFFERENT places.  lfo() registers a
+# Conductor signal, which the patterns below read with p.signal("NAME");
+# cc_map() writes incoming CC values to composition.data["NAME"], which
+# patterns read with p.data.  So handing a control to a hardware knob also
+# means updating the pattern code: replace p.signal("SEQ1_CORRUPT") with
+# p.data.get("SEQ1_CORRUPT", 0.0) - and likewise for the other controls
+# (a sensible default for EG_TRIG_MIX is 0.5).  You can mix the two - for
+# example, keep EG_TRIG_MIX as an LFO (read via p.signal) while a knob
+# drives CORRUPT (read via p.data) - as long as each pattern read matches
+# where that control is written.
 
 
 # ─── PITCH POOL BUILDER ───────────────────────────────────────────────────────

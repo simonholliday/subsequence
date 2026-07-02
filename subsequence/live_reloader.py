@@ -206,7 +206,13 @@ class LiveReloader:
 			compiled = compile(content, str(self._path), "exec")
 
 			namespace = self._composition._build_live_namespace(source_label = str(self._path))
+
+			# Mirror _apply_source_async's bookkeeping so the FIRST save can
+			# already diff against what this file declares now — recording
+			# only this file's names, not the wrapper script's.
+			self._composition._declared_names = set()
 			exec(compiled, namespace)
+			self._composition._source_declared[str(self._path)] = set(self._composition._declared_names)
 
 		try:
 			self._last_mtime = os.stat(self._path).st_mtime
@@ -282,7 +288,7 @@ class LiveReloader:
 		namespace = self._composition._build_live_namespace(source_label = str(self._path))
 
 		try:
-			await self._composition._apply_source_async(compiled, namespace)
+			await self._composition._apply_source_async(compiled, namespace, source_key = str(self._path))
 		except Exception:
 			# Apply re-raises on exec failure; suppress here so the watcher
 			# keeps running.  The diff-and-unregister phase inside

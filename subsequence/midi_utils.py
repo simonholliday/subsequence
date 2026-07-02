@@ -259,8 +259,15 @@ def select_output_device (device_name: typing.Optional[str] = None) -> typing.Tu
 				choice = int(input(f"Select a device (1-{len(outputs)}): "))
 				if 1 <= choice <= len(outputs):
 					break
-			except (ValueError, EOFError):
+			except ValueError:
 				pass
+			except EOFError:
+				# stdin is closed (headless/redirected run) — the prompt can
+				# never be answered, so retrying would spin forever.
+				raise RuntimeError(
+					"No interactive terminal to choose between multiple MIDI outputs — "
+					f"pass output_device= with one of: {outputs}"
+				) from None
 			print(f"Enter a number between 1 and {len(outputs)}.")
 
 		selected_name = outputs[choice - 1]

@@ -216,11 +216,13 @@ def test_apply_groove_preserves_note_data () -> None:
 
 def test_from_agr_parses_swing_16ths_57 () -> None:
 
-	"""The sample .agr file produces the expected groove."""
+	"""The sample .agr file produces the expected groove.
 
-	agr_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Swing 16ths 57.agr")
-	if not os.path.exists(agr_path):
-		return  # skip if file not present
+	The asset is tracked at examples/assets/ — a missing file is a real
+	failure, so there is deliberately no existence guard here.
+	"""
+
+	agr_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "examples", "assets", "Swing 16ths 57.agr")
 
 	g = subsequence.groove.Groove.from_agr(agr_path)
 
@@ -244,9 +246,7 @@ def test_from_agr_matches_swing_factory () -> None:
 
 	"""The .agr import and Groove.swing(57) produce equivalent offsets."""
 
-	agr_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Swing 16ths 57.agr")
-	if not os.path.exists(agr_path):
-		return
+	agr_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "examples", "assets", "Swing 16ths 57.agr")
 
 	agr_groove = subsequence.groove.Groove.from_agr(agr_path)
 	factory_groove = subsequence.groove.Groove.swing(percent=57.0)

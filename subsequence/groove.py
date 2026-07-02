@@ -82,7 +82,7 @@ class Groove:
 		return Groove(offsets=[0.0, offset], grid=grid)
 
 	@staticmethod
-	def from_agr (path: str) -> "Groove":
+	def from_agr (path: str, grid: typing.Optional[float] = None) -> "Groove":
 
 		"""
 		Import timing and velocity data from an Ableton .agr groove file.
@@ -91,6 +91,14 @@ class Groove:
 		note positions encode the groove's rhythmic feel. This method reads
 		those note start times and velocities and converts them into the
 		``Groove`` dataclass format (per-step offsets and velocity scales).
+
+		Without ``grid=``, the grid is inferred as ``clip length / note
+		count`` — which assumes the clip plays **exactly one note per grid
+		cell** (the standard shape for a groove clip). A clip with rests or
+		chords breaks that assumption: pass ``grid=`` explicitly (e.g.
+		``grid=0.25`` for a 16th-note groove) and empty cells keep a neutral
+		offset. A clip whose notes cannot be assigned one-per-cell raises
+		rather than importing a wrong feel.
 
 		**What is extracted:**
 
@@ -117,6 +125,8 @@ class Groove:
 
 		Parameters:
 			path: Path to the .agr file.
+			grid: Grid size in beats (0.25 = 16th notes). ``None`` (default)
+				infers it from the clip, assuming one note per cell.
 		"""
 
 		tree = xml.etree.ElementTree.parse(path)
@@ -167,29 +177,58 @@ class Groove:
 
 		note_count = len(times)
 
-		# Infer grid from clip length and note count
-		grid = clip_length / note_count
+		# Infer grid from clip length and note count — valid only for the
+		# one-note-per-cell clip shape (see docstring); grid= overrides.
+		if grid is None:
+			grid = clip_length / note_count
 
-		# Calculate offsets from ideal grid positions, scaled by TimingAmount
-		offsets: typing.List[float] = []
-		for i, time in enumerate(times):
-			ideal = i * grid
-			offsets.append((time - ideal) * timing_scale)
+		if grid <= 0:
+			raise ValueError(f"grid must be positive — got {grid}")
+
+		slot_count = max(1, int(round(clip_length / grid)))
+
+		# Bind each note to its NEAREST grid line (robust to rests under an
+		# explicit grid — empty cells keep a neutral offset), refusing
+		# ambiguous clips instead of importing a garbage feel.
+		slot_offsets = [0.0] * slot_count
+		slot_velocities: typing.List[typing.Optional[float]] = [None] * slot_count
+
+		for time, velocity in zip(times, velocities_raw):
+
+			slot = int(round(time / grid))
+
+			if not 0 <= slot < slot_count:
+				raise ValueError(
+					f"{path}: note at beat {time:g} falls outside the {slot_count}-cell "
+					f"grid (grid={grid:g}, clip length {clip_length:g}) — pass grid= "
+					"matching the clip's note spacing"
+				)
+
+			if slot_velocities[slot] is not None:
+				raise ValueError(
+					f"{path}: two notes share grid cell {slot} (a chord, or a grid "
+					"coarser than the clip's note spacing) — pass grid= matching the "
+					"clip (e.g. grid=0.25 for 16ths)"
+				)
+
+			slot_offsets[slot] = (time - slot * grid) * timing_scale
+			slot_velocities[slot] = velocity
 
 		# Calculate velocity scales (relative to max velocity in the file),
-		# blended toward 1.0 by VelocityAmount
-		max_vel = max(velocities_raw)
-		has_velocity_variation = any(v != max_vel for v in velocities_raw)
+		# blended toward 1.0 by VelocityAmount; empty cells stay neutral (1.0).
+		filled = [v for v in slot_velocities if v is not None]
+		max_vel = max(filled)
+		has_velocity_variation = any(v != max_vel for v in filled)
 		groove_velocities: typing.Optional[typing.List[float]] = None
 		if has_velocity_variation and max_vel > 0:
-			raw_scales = [v / max_vel for v in velocities_raw]
+			raw_scales = [(v / max_vel) if v is not None else 1.0 for v in slot_velocities]
 			# velocity_scale=1.0 → full groove velocity; 0.0 → all 1.0 (no change)
 			groove_velocities = [1.0 + (s - 1.0) * velocity_scale for s in raw_scales]
 			# If blending has removed all variation, set to None
 			if all(abs(v - 1.0) < 1e-9 for v in groove_velocities):
 				groove_velocities = None
 
-		return Groove(offsets=offsets, grid=grid, velocities=groove_velocities)
+		return Groove(offsets=slot_offsets, grid=grid, velocities=groove_velocities)
 
 
 def apply_groove (

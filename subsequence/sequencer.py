@@ -65,6 +65,11 @@ class MidiEvent:
 	The Sequencer assigns ``sequence`` via its monotonic ``_event_counter``
 	at push time (see ``Sequencer._push_event``); direct constructions in
 	tests can leave it at the default.
+
+	``priority`` outranks the FIFO tie-breaker at a shared pulse: events
+	with a lower priority dispatch first.  Notes are pushed before CC
+	events, so a tuning onset bend (which must reach the synth BEFORE its
+	note_on) carries priority ``-1``; everything else stays at ``0``.
 	"""
 
 	pulse: int
@@ -76,6 +81,7 @@ class MidiEvent:
 	value: int = dataclasses.field(compare=False, default=0)
 	data: typing.Any = dataclasses.field(compare=False, default=None)
 	device: int = dataclasses.field(compare=False, default=0)
+	priority: int = 0
 	sequence: int = 0
 
 
@@ -1058,6 +1064,7 @@ class Sequencer:
 						value = cc_event.value,
 						data = cc_event.data,
 						device = event_device,
+						priority = getattr(cc_event, 'priority', 0),
 					)
 					self._push_event(midi_event)
 
@@ -1066,13 +1073,26 @@ class Sequencer:
 
 				abs_pulse = start_pulse + note_ev.pulse
 
-				for target in destinations:
+				for i, target in enumerate(destinations):
+
+					# Same faithful-core rule as step notes: a named drone is
+					# re-resolved through each mirror's own drum_note_map, and
+					# a destination lacking the voice stays silent rather than
+					# sounding the primary device's note number.
+					note_value = _destination_pitch(note_ev, target, primary = (i == 0))
+					if note_value is None:
+						if i != 0 and note_ev.origin is not None and target.drum_note_map is not None:
+							logger.debug(
+								"Mirror device %d channel %d has no voice for drum '%s' — dropped for this destination",
+								target.device, target.channel, note_ev.origin,
+							)
+						continue
 
 					midi_event = MidiEvent(
 						pulse = abs_pulse,
 						message_type = note_ev.message_type,
 						channel = target.channel,
-						note = note_ev.pitch,
+						note = note_value,
 						velocity = note_ev.velocity,
 						device = target.device,
 					)
@@ -1632,6 +1652,10 @@ class Sequencer:
 			# Update local tempo from the Link session — propagates network BPM changes.
 			link_bpm = link_clock.tempo
 			if abs(link_bpm - self.current_bpm) > 0.01:
+				# Record the change so a recorded session's .mid plays back
+				# at the Link session tempo (mirrors the external-clock path).
+				if self.recording:
+					self._record_event(self.pulse_count, mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(link_bpm)))
 				self.current_bpm = link_bpm
 				self.seconds_per_beat = 60.0 / self.current_bpm
 				self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
@@ -1893,12 +1917,23 @@ class Sequencer:
 			stranded = [t for t in self.active_notes if (t[0], t[1]) in targets]
 
 			for dev, channel, note in stranded:
-				port = self._output_devices.get(dev)
-				if port is not None:
-					try:
-						self._locked_send(port, mido.Message('note_off', channel=channel, note=note, velocity=0))
-					except Exception:
-						logger.exception(f"Failed to send note_off during unregister (dev={dev}, ch={channel}, note={note})")
+				# Route through latency compensation, NOT straight to the
+				# port: a note_on for this device may still be deferred in
+				# _pending_sends, and an immediate note_off would overtake it,
+				# leaving the note stuck ringing (drones have no later
+				# note_off to rescue them).  The shared per-device offset
+				# preserves on→off order.
+				try:
+					self._dispatch_with_compensation(MidiEvent(
+						pulse = self.pulse_count,
+						message_type = 'note_off',
+						channel = channel,
+						note = note,
+						velocity = 0,
+						device = dev,
+					))
+				except Exception:
+					logger.exception(f"Failed to send note_off during unregister (dev={dev}, ch={channel}, note={note})")
 				self.active_notes.discard((dev, channel, note))
 
 

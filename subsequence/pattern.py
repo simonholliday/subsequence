@@ -55,6 +55,7 @@ class CcEvent:
 	data: typing.Optional[bytes] = None	# Raw bytes payload for SysEx messages
 	channel: typing.Optional[int] = None	# If set, overrides pattern.channel for this event
 	device: typing.Optional[int] = None	# If set, overrides pattern.device for this event
+	priority: int = 0					# Same-pulse dispatch order vs notes: negative fires BEFORE note_on (tuning onset bends), 0 keeps FIFO order
 
 
 @dataclasses.dataclass
@@ -69,6 +70,8 @@ class RawNoteEvent:
 	message_type: str					# 'note_on' or 'note_off'
 	pitch: int
 	velocity: int = 0
+	origin: typing.Optional[str] = None	# Original drum-name string, kept so mirror destinations re-resolve it through their own drum_note_map (same contract as Note.origin)
+	primary_unmapped: bool = False		# Kept for _destination_pitch compatibility; always False for drones (an unvoiceable name is dropped at build time)
 
 
 @dataclasses.dataclass
@@ -229,10 +232,11 @@ class Pattern:
 			raise ValueError("Pulses per beat must be positive")
 
 		position = int(beat_position * pulses_per_beat)
-		duration = int(duration_beats * pulses_per_beat)
 
-		if duration <= 0:
-			raise ValueError("Beat duration must be at least one pulse")
+		# A positive duration shorter than one pulse clamps to one pulse —
+		# the shortest sound the clock can represent — matching the duration
+		# transforms (legato/detached/stretch), which clamp the same way.
+		duration = max(1, int(duration_beats * pulses_per_beat))
 
 		self.add_note(
 			position = position,
@@ -313,10 +317,13 @@ class Pattern:
 			pitch_index += 1
 
 
-	def add_raw_note_beats (self, message_type: str, beat_position: float, pitch: int, velocity: int = 0, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE) -> None:
+	def add_raw_note_beats (self, message_type: str, beat_position: float, pitch: int, velocity: int = 0, pulses_per_beat: int = subsequence.constants.MIDI_QUARTER_NOTE, origin: typing.Optional[str] = None) -> None:
 
 		"""
 		Add a raw Note On or Note Off event at a beat position (ignores duration).
+
+		``origin`` carries the drum-name string (if the pitch was named) so
+		mirror destinations can re-resolve it through their own maps.
 		"""
 
 		if message_type not in ('note_on', 'note_off'):
@@ -335,7 +342,8 @@ class Pattern:
 				pulse = position,
 				message_type = message_type,
 				pitch = pitch,
-				velocity = velocity
+				velocity = velocity,
+				origin = origin
 			)
 		)
 

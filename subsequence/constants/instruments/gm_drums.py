@@ -12,7 +12,7 @@ Two ways to use this module:
 
        import subsequence.constants.instruments.gm_drums
 
-       @composition.pattern(channel=9, length=4, drum_note_map=subsequence.constants.instruments.gm_drums.GM_DRUM_MAP)
+       @composition.pattern(channel=10, beats=4, drum_note_map=subsequence.constants.instruments.gm_drums.GM_DRUM_MAP)
        def drums (p):
            p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
 
@@ -20,7 +20,7 @@ Two ways to use this module:
 
        import subsequence.constants.instruments.gm_drums
 
-       @composition.pattern(channel=9, length=4)
+       @composition.pattern(channel=10, beats=4)
        def drums (p):
            p.hit_steps(subsequence.constants.instruments.gm_drums.KICK, [0, 4, 8, 12], velocity=127)
 

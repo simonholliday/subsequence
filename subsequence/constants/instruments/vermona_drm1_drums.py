@@ -11,7 +11,7 @@ Two ways to use this module:
 
        import subsequence.constants.instruments.vermona_drm1_drums as drm1
 
-       @composition.pattern(channel=9, length=4, drum_note_map=drm1.VERMONA_DRM1_DRUM_MAP)
+       @composition.pattern(channel=10, beats=4, drum_note_map=drm1.VERMONA_DRM1_DRUM_MAP)
        def drums (p):
            p.hit_steps("kick", [0, 4, 8, 12], velocity=127)
 
@@ -19,7 +19,7 @@ Two ways to use this module:
 
        import subsequence.constants.instruments.vermona_drm1_drums as drm1
 
-       @composition.pattern(channel=9, length=4)
+       @composition.pattern(channel=10, beats=4)
        def drums (p):
            p.hit_steps(drm1.KICK, [0, 4, 8, 12], velocity=127)
 
