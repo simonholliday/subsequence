@@ -2,48 +2,10 @@
 import collections
 import random
 
-import pytest
 import typing
 
 import subsequence.chords
 import subsequence.harmonic_state
-
-
-class MockGraph:
-
-	def __init__ (self, key_name: str) -> None:
-
-		self.tonic = subsequence.chords.Chord(root_pc=0, quality="major") # C Major
-
-
-	def build (self, key_name: str) -> typing.Tuple["MockGraph", subsequence.chords.Chord]:
-
-		return self, self.tonic
-
-
-	def gravity_sets (self, key_name: str) -> typing.Tuple[typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]]:
-
-		return set(), set()
-
-
-	def choose_next (self, source: subsequence.chords.Chord, rng: typing.Any, weight_modifier: typing.Callable) -> typing.Tuple[float, float]:
-
-		# We only care about ensuring weight_modifier is called correctly
-		# and returns modified weights based on history
-
-		# Test Case 1: Reversal (Gap Fill)
-		# Previous: C (0) -> A (9, up 9 semitones)
-		# Target A: F (5, down 4 semitones from A) -> Should be BOOSTED
-		# Target B: C (12/0, up 3 semitones from A) -> Should be NORMAL/LOWER
-
-		target_down = subsequence.chords.Chord(root_pc=5, quality="major") # F
-		target_up = subsequence.chords.Chord(root_pc=0, quality="major")   # C (next octave conceptually)
-
-		# Base weight is 10 for both
-		w_down = weight_modifier(source, target_down, 10)
-		w_up = weight_modifier(source, target_up, 10)
-
-		return (w_down, w_up)
 
 
 def test_nir_history_tracking () -> None:

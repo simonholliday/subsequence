@@ -1,11 +1,8 @@
 
 import pytest
-import typing
 
 import subsequence.pattern
 import subsequence.pattern_builder
-import subsequence.constants
-import subsequence.constants.pulses
 
 
 def test_detached_uniform_gap () -> None:

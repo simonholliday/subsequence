@@ -10,7 +10,6 @@ WEIGHT_STRONG = subsequence.chord_graphs.WEIGHT_STRONG
 WEIGHT_MEDIUM = subsequence.chord_graphs.WEIGHT_MEDIUM
 WEIGHT_COMMON = subsequence.chord_graphs.WEIGHT_COMMON
 WEIGHT_DECEPTIVE = subsequence.chord_graphs.WEIGHT_DECEPTIVE
-WEIGHT_WEAK = subsequence.chord_graphs.WEIGHT_WEAK
 
 
 def _build_major_key_chords (key_pc: int) -> typing.Dict[str, subsequence.chords.Chord]:

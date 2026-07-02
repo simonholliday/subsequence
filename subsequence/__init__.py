@@ -79,8 +79,10 @@ Composition tools:
 - **Form and structure.** Musical form as a weighted graph, ordered list,
   or generator. Patterns read ``p.section`` to adapt. Conductor signals
   (LFOs, ramps) shape intensity over time.
-- **Mini-notation.** ``p.seq("x x [x x] x", pitch="kick")`` - concise
-  string syntax for rhythms, subdivisions, and per-step probability.
+- **Sequences as lists.** ``p.hit_steps("kick", [0, 4, 8, 12])`` and
+  ``p.sequence(steps=..., pitches=..., velocities=...)`` place rhythms
+  and lines from plain Python lists - the vocabulary the generator and
+  density helpers in ``sequence_utils`` all speak.
 - **Scales.** ``p.snap_to_scale()`` snaps notes to any
   scale. ``scale_notes()`` generates a list of MIDI note numbers from
   a key, mode, and range or note count - useful for arpeggios, Markov

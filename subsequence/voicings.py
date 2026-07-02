@@ -8,8 +8,7 @@ rather than jumping around the keyboard.
 Example:
 	```python
 	# Manual inversion
-	from subsequence.voicings import invert_chord
-	first_inv = invert_chord([0, 4, 7], inversion=1)  # [4, 7, 12]
+	first_inv = subsequence.voicings.invert_chord([0, 4, 7], inversion=1)  # [4, 7, 12]
 
 	# Automatic voice leading across a pattern
 	@composition.pattern(channel=0, length=4, voice_leading=True)

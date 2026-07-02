@@ -36,10 +36,10 @@ class PatternMidiMixin:
 
 	# ── Shared ramp helper ──────────────────────────────────────────────────
 
-	def _ramp_pulses (
+	def _ramp_pulse_span (
 		self,
-		beat_start: float,
-		beat_end: float,
+		pulse_start: int,
+		pulse_end: int,
 		start: float,
 		end: float,
 		shape: typing.Union[str, subsequence.easing.EasingFn],
@@ -47,15 +47,15 @@ class PatternMidiMixin:
 		event_fn: typing.Callable[[int, float], None],
 	) -> None:
 
-		"""Walk from beat_start to beat_end, calling event_fn(pulse, value) at each step.
+		"""Walk from pulse_start to pulse_end, calling event_fn(pulse, value) at each step.
 
-		Shared inner loop for ``cc_ramp()``, ``pitch_bend_ramp()``, and ``osc_ramp()``.
-		``event_fn`` receives the pulse position and the linearly-interpolated (then
-		eased) value, and is responsible for creating and appending the event.
+		The pulse-domain kernel shared by every ramp on this mixin — the
+		beat-based ramps via :meth:`_ramp_pulses` and the note-correlated pitch
+		bends via :meth:`_generate_bend_events`.  ``event_fn`` receives the pulse
+		position and the linearly-interpolated (then eased) value, and is
+		responsible for creating and appending the event.
 		"""
 
-		pulse_start = int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE)
-		pulse_end = int(beat_end * subsequence.constants.MIDI_QUARTER_NOTE)
 		span = pulse_end - pulse_start
 
 		if span <= 0:
@@ -79,6 +79,29 @@ class PatternMidiMixin:
 		# value it was asked to reach.
 		if span % resolution != 0:
 			event_fn(pulse_end, start + (end - start) * easing_fn(1.0))
+
+	def _ramp_pulses (
+		self,
+		beat_start: float,
+		beat_end: float,
+		start: float,
+		end: float,
+		shape: typing.Union[str, subsequence.easing.EasingFn],
+		resolution: int,
+		event_fn: typing.Callable[[int, float], None],
+	) -> None:
+
+		"""Walk from beat_start to beat_end, calling event_fn(pulse, value) at each step.
+
+		The beat-based entry to :meth:`_ramp_pulse_span`, shared by
+		``cc_ramp()``, ``pitch_bend_ramp()``, ``nrpn_ramp()``/``rpn_ramp()``,
+		and ``osc_ramp()``.
+		"""
+
+		pulse_start = int(beat_start * subsequence.constants.MIDI_QUARTER_NOTE)
+		pulse_end = int(beat_end * subsequence.constants.MIDI_QUARTER_NOTE)
+
+		self._ramp_pulse_span(pulse_start, pulse_end, start, end, shape, resolution, event_fn)
 
 	# ── CC messages ─────────────────────────────────────────────────────────
 
@@ -171,6 +194,7 @@ class PatternMidiMixin:
 			beat: Beat position within the pattern.
 		"""
 
+		# The asymmetric clamp is correct: MIDI's 14-bit bend range is -8192..+8191.
 		midi_value = max(-8192, min(8191, int(round(value * 8192))))
 		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
 
@@ -801,8 +825,11 @@ class PatternMidiMixin:
 
 		"""Generate a series of pitchwheel CcEvents between two pulse positions.
 
-		This is the shared inner loop used by ``bend()``, ``portamento()``, and
-		``slide()``.  Appends events directly to ``self._pattern.cc_events``.
+		Used by ``bend()``, ``portamento()``, and ``slide()``.  Delegates the
+		span/resolution walk (including the emit-the-endpoint rule) to
+		:meth:`_ramp_pulse_span` and contributes only the pitchwheel
+		conversion — normalised value scaled to 14-bit and clamped — appending
+		events directly to ``self._pattern.cc_events``.
 
 		Parameters:
 			start_value: Normalised bend at the start of the ramp (-1.0 to 1.0).
@@ -813,22 +840,8 @@ class PatternMidiMixin:
 			shape: Easing curve name or callable.
 		"""
 
-		span = pulse_end - pulse_start
-
-		if span <= 0:
-			return
-
-		if resolution < 1:
-			raise ValueError("resolution must be at least 1 pulse")
-
-		easing_fn = subsequence.easing.get_easing(shape)
-		pulse = pulse_start
-
-		while pulse <= pulse_end:
-			t = (pulse - pulse_start) / span
-			eased_t = easing_fn(t)
-			interpolated = start_value + (end_value - start_value) * eased_t
-			midi_value = max(-8192, min(8191, int(round(interpolated * 8192))))
+		def _event (pulse: int, val: float) -> None:
+			midi_value = max(-8192, min(8191, int(round(val * 8192))))
 			self._pattern.cc_events.append(
 				subsequence.pattern.CcEvent(
 					pulse = pulse,
@@ -836,21 +849,8 @@ class PatternMidiMixin:
 					value = midi_value,
 				)
 			)
-			pulse += resolution
 
-		# Same endpoint rule as _ramp_pulses: when resolution doesn't divide
-		# the span, emit the final bend at pulse_end so the glide reaches its
-		# target pitch instead of stopping audibly short.
-		if span % resolution != 0:
-			interpolated = start_value + (end_value - start_value) * easing_fn(1.0)
-			midi_value = max(-8192, min(8191, int(round(interpolated * 8192))))
-			self._pattern.cc_events.append(
-				subsequence.pattern.CcEvent(
-					pulse = pulse_end,
-					message_type = 'pitchwheel',
-					value = midi_value,
-				)
-			)
+		self._ramp_pulse_span(pulse_start, pulse_end, start_value, end_value, shape, resolution, _event)
 
 	def bend (
 		self,
@@ -1086,7 +1086,8 @@ class PatternMidiMixin:
 				the glide.
 
 		Raises:
-			ValueError: If neither *notes* nor *steps* is provided.
+			ValueError: If neither or both of *notes* and *steps* are provided,
+				or a note index falls outside the pattern's notes.
 
 		Example:
 			```python
@@ -1107,6 +1108,9 @@ class PatternMidiMixin:
 		if notes is None and steps is None:
 			raise ValueError("slide() requires either 'notes' or 'steps'")
 
+		if notes is not None and steps is not None:
+			raise ValueError("slide() takes notes= or steps=, not both — they name the same slide targets two different ways")
+
 		if bend_range is not None and bend_range <= 0:
 			raise ValueError(
 				f"bend_range must be a positive number of semitones (your instrument's "
@@ -1124,6 +1128,9 @@ class PatternMidiMixin:
 		if notes is not None:
 			flagged: typing.Set[int] = set()
 			for idx in notes:
+				if not -n <= idx < n:
+					raise ValueError(f"slide() note index {idx} is outside this pattern's {n} notes")
+
 				flagged.add(sorted_positions[idx])
 		else:
 			# steps is not None.  Resolve each grid step to the SAME pulse the

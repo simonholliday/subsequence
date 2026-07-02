@@ -225,7 +225,13 @@ def test_live_added_pattern_gets_seeded_stream (patch_midi: None) -> None:
 	pattern = composition._build_pattern_from_pending(_pending(late))
 
 	assert pattern._rng is not None
-	assert random.Random(zlib.crc32(b"42:late")).random() == random.Random(composition.seed_for("late")).random()
+
+	# The pattern's dealt stream draws the name-keyed sequence for "late" —
+	# and NOT the stream a different name would have been dealt.
+	draw = pattern._rng.random()
+
+	assert draw == random.Random(zlib.crc32(b"42:late")).random()
+	assert draw != random.Random(zlib.crc32(b"42:other")).random()
 
 
 def test_unseeded_pattern_stream_is_none (patch_midi: None) -> None:

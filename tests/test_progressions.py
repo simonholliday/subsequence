@@ -418,6 +418,27 @@ def test_parallel_merge_is_a_type_error () -> None:
 # Spice operators — decoration on spans, never on chords (§8.11)
 # ---------------------------------------------------------------------------
 
+def test_is_decorated_false_for_bare_span () -> None:
+
+	"""A span holding just a chord and a duration carries no decoration."""
+
+	span = subsequence.progressions.ChordSpan(chord=chord("Am"), beats=4.0)
+
+	assert span.is_decorated is False
+
+
+def test_is_decorated_true_for_each_decoration_kind () -> None:
+
+	"""Extensions, a bass, an inversion, or a spread each mark the span decorated."""
+
+	bare = dict(chord=chord("Am"), beats=4.0)
+
+	assert subsequence.progressions.ChordSpan(**bare, extensions=(7,)).is_decorated is True
+	assert subsequence.progressions.ChordSpan(**bare, bass=4).is_decorated is True
+	assert subsequence.progressions.ChordSpan(**bare, inversion=1).is_decorated is True
+	assert subsequence.progressions.ChordSpan(**bare, spread="open").is_decorated is True
+
+
 def test_extend_decorates_without_touching_the_chord () -> None:
 
 	"""extend(9) keeps the bare triad as the chord and decorates the span."""

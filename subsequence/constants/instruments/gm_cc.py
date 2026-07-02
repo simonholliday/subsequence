@@ -30,6 +30,8 @@ Canonical source: `pymididefs <https://github.com/simonholliday/PyMidiDefs>`_.
 import typing
 
 # Re-export everything from pymididefs.cc — all CC constants and the lookup dict.
+# These constants modules are deliberate re-export shims, exempt from the
+# project's import-x-only rule (which the rest of the codebase satisfies).
 from pymididefs.cc import *  # noqa: F401,F403
 from pymididefs.cc import CC_MAP  # noqa: F401 — explicit re-export for type checkers
 

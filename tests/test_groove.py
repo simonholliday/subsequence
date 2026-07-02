@@ -1,5 +1,7 @@
 import os
 
+import pytest
+
 import subsequence.groove
 import subsequence.pattern
 
@@ -62,17 +64,11 @@ def test_swing_invalid_percent () -> None:
 
 	"""Percent outside 50-99 range raises ValueError."""
 
-	try:
+	with pytest.raises(ValueError):
 		subsequence.groove.Groove.swing(percent=40.0)
-		assert False, "should have raised"
-	except ValueError:
-		pass
 
-	try:
+	with pytest.raises(ValueError):
 		subsequence.groove.Groove.swing(percent=100.0)
-		assert False, "should have raised"
-	except ValueError:
-		pass
 
 
 # ── apply_groove() ───────────────────────────────────────────────────
@@ -407,33 +403,24 @@ def test_groove_empty_offsets_raises () -> None:
 
 	"""Empty offsets list raises ValueError."""
 
-	try:
+	with pytest.raises(ValueError):
 		subsequence.groove.Groove(offsets=[])
-		assert False, "should have raised"
-	except ValueError:
-		pass
 
 
 def test_groove_zero_grid_raises () -> None:
 
 	"""Zero grid raises ValueError."""
 
-	try:
+	with pytest.raises(ValueError):
 		subsequence.groove.Groove(offsets=[0.0], grid=0.0)
-		assert False, "should have raised"
-	except ValueError:
-		pass
 
 
 def test_groove_empty_velocities_raises () -> None:
 
 	"""Empty velocities list raises ValueError (use None instead)."""
 
-	try:
+	with pytest.raises(ValueError):
 		subsequence.groove.Groove(offsets=[0.0], velocities=[])
-		assert False, "should have raised"
-	except ValueError:
-		pass
 
 
 # ── strength parameter ────────────────────────────────────────────────
@@ -514,14 +501,8 @@ def test_apply_groove_strength_out_of_range_raises () -> None:
 
 	g = subsequence.groove.Groove.swing(percent=57.0)
 
-	try:
+	with pytest.raises(ValueError):
 		subsequence.groove.apply_groove({}, g, strength=-0.1)
-		assert False, "should have raised"
-	except ValueError:
-		pass
 
-	try:
+	with pytest.raises(ValueError):
 		subsequence.groove.apply_groove({}, g, strength=1.1)
-		assert False, "should have raised"
-	except ValueError:
-		pass

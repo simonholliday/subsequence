@@ -154,7 +154,7 @@ def patch_midi_multi (monkeypatch: pytest.MonkeyPatch) -> typing.Dict[str, Named
 	"""Patch mido for multi-device tests.
 
 	Returns a dict mapping device names to their NamedSpyMidiOut instances.
-	Registers two outputs: 'Primary MIDI' and 'Secondary MIDI'.
+	Registers three outputs: 'Primary MIDI', 'Secondary MIDI', and 'Third MIDI'.
 	"""
 
 	device_names = ["Primary MIDI", "Secondary MIDI", "Third MIDI"]

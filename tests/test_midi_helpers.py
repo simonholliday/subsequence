@@ -17,9 +17,10 @@ def test_cc_custom_channel () -> None:
 	assert msg.channel == 3
 
 
-def test_cc_value_clamped_by_mido () -> None:
-	# mido raises on out-of-range values — verify our factory passes through
-	with pytest.raises(Exception):
+def test_out_of_range_cc_value_raises () -> None:
+	# Values are NOT clamped: mido rejects out-of-range data bytes, and the
+	# factory lets that ValueError propagate.
+	with pytest.raises(ValueError):
 		midi.cc(74, 200)
 
 

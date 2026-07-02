@@ -11,7 +11,6 @@ pattern updates, or multiple independent sequencers.
 import asyncio
 
 import subsequence.composition
-import subsequence.constants
 import subsequence.constants.instruments.gm_drums as gm_drums
 import subsequence.harmonic_state
 import subsequence.pattern

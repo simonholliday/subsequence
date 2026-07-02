@@ -1,4 +1,3 @@
-import asyncio
 import random
 import typing
 import unittest.mock

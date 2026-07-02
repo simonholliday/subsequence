@@ -694,7 +694,9 @@ class PatternBuilder(
 				decorator's ``steps``/``step_duration``, or sixteenth-note
 				resolution when ``unit`` is omitted).
 			probability: Chance (0.0 to 1.0) that each hit will play.
-			rng: Optional random generator (overrides the pattern's seed).
+			seed: Fix the probability gating for this call (an int); omit to
+				use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -1212,6 +1214,10 @@ class PatternBuilder(
 			grid: Grid resolution. Defaults to the pattern's
 				``default_grid`` (derived from the decorator's ``beats``/``steps``
 				and ``unit``).
+			probability: Chance (0.0 to 1.0) that each step will play.
+			seed: Fix the probability gating for this call (an int); omit to
+				use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 		"""
 
 		if not steps:
@@ -1268,6 +1274,9 @@ class PatternBuilder(
 				pitches (e.g., "60" or "kick").
 			velocity: MIDI velocity (default 100), or a ``(low, high)``
 				tuple for a fresh random draw per event.
+			seed: Fix the ``?`` probability gating for this call (an int);
+				omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -1416,8 +1425,9 @@ class PatternBuilder(
 				- ``"up_down"`` — ascend then descend (ping-pong), cycling.
 				- ``"random"`` — shuffled once per call using *rng*.
 
-			rng: Random number generator used when ``direction="random"``.
-				Defaults to ``self.rng`` (the pattern's seeded RNG).
+			seed: Fix the ``direction="random"`` shuffle for this call (an
+				int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -1726,6 +1736,7 @@ class PatternBuilder(
 				so it is identical on every cycle (a fixed phrase).  When omitted, the
 				pattern's own RNG is used, so it can vary per cycle (still reproducible
 				under a composition seed).
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Returns:
 			A ``Progression`` you can iterate as ``(chord, start, length)`` tuples
@@ -1888,6 +1899,9 @@ class PatternBuilder(
 			probability: The chance (0.0 to 1.0) of each pulse POSITION being
 				removed — all notes sharing that position (a chord's voices,
 				layered drums) live or die together.
+			seed: Fix the dropout for this call (an int); omit to use the
+				pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 		"""
 
 		rng = self._rng_from(seed, rng)
@@ -2068,7 +2082,12 @@ class PatternBuilder(
 		pulses_per_step = step_duration * subsequence.constants.MIDI_QUARTER_NOTE
 
 		for pulse, step in self._pattern.steps.items():
-			idx = int(round(pulse / pulses_per_step))
+			# A note in the last half-step rounds up to idx == grid, which is
+			# really the wrap back to step 0 of the next cycle (patterns are
+			# cyclic) — wrap it so a note pushed late by swing/randomize scales
+			# by factors[0] rather than silently keeping its velocity.
+			idx = int(round(pulse / pulses_per_step)) % grid
+
 			if 0 <= idx < len(factors):
 				for note in step.notes:
 					note.velocity = max(0, min(127, int(note.velocity * factors[idx])))
@@ -2118,8 +2137,9 @@ class PatternBuilder(
 			velocity: Maximum velocity scale factor (0.0 to 1.0). Each
 				note's velocity is multiplied by a random value in
 				``[1 - velocity, 1 + velocity]``, clamped to 1–127.
-			rng: Random instance to use. Defaults to ``self.rng``
-				(seeded when the composition has a seed).
+			seed: Fix the variations for this call (an int); omit to use the
+				pattern's RNG (seeded when the composition has a seed).
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 		"""
 
 		rng = self._rng_from(seed, rng)
@@ -2284,6 +2304,9 @@ class PatternBuilder(
 			      Values in between create melodies that are mostly in key
 			      with occasional chromatic passing tones.  Uses the
 			      pattern's seeded RNG for reproducibility.
+			seed: Fix the partial-strength snapping for this call (an int);
+			      omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -2523,6 +2546,9 @@ class PatternBuilder(
 			```
 		"""
 
+		if n < 1:
+			raise ValueError(f"every() cycle length must be at least 1 bar — got {n} (every(1, ...) applies the change every bar)")
+
 		if self.cycle % n == 0:
 			fn(self)
 		return self
@@ -2556,5 +2582,8 @@ class PatternBuilder(
 			p.velocity_shape(low=int(40 + 40 * intensity), high=100)
 			```
 		"""
+
+		if length < 1:
+			raise ValueError(f"bar_cycle() cycle length must be at least 1 bar — got {length}")
 
 		return BarCycle(bar=self.bar % length, length=length)

@@ -516,7 +516,8 @@ class Motif:
 		"""A melody written as absolute MIDI note numbers (60 = middle C); ``None`` = rest."""
 
 		for element in notes:
-			if not (isinstance(element, int) or element is None):
+			# bool is a subclass of int, but True/False are never MIDI notes.
+			if isinstance(element, bool) or not (isinstance(element, int) or element is None):
 				raise TypeError(f"Motif.notes takes MIDI ints or None — got {type(element).__name__}")
 
 		return cls._from_sequence(list(notes), beats, velocities, durations, probabilities, length)
@@ -577,8 +578,19 @@ class Motif:
 
 		"""A euclidean rhythm as a value: *pulses* spread evenly across *steps* over *length* beats."""
 
+		# bool is a subclass of int, but True/False are never MIDI notes.
+		if isinstance(pitch, bool):
+			raise TypeError(f"Motif.euclidean takes a MIDI int or drum name for pitch — got {pitch!r}")
+
 		# The kernel returns one 0/1 flag per grid step; onsets are the 1s.
+		# It validates pulses first, so pulses > steps still raises clearly.
 		flags = subsequence.sequence_utils.generate_euclidean_sequence(steps=steps, pulses=pulses)
+
+		if steps <= 0:
+			# A grid of zero steps holds no onsets — an empty motif of the given
+			# length, matching pulses=0 on a real grid (the empty-input policy).
+			return cls._from_sequence([], [], velocities, durations, probabilities, length)
+
 		step_duration = length / steps
 		onsets = [i * step_duration for i, flag in enumerate(flags) if flag]
 
@@ -884,9 +896,13 @@ class Motif:
 			seed: Seed for the walk (required or warned — module-level
 				nondeterminism breaks live reload).
 			rng: Explicit stream (overrides ``seed``).
-			state: A ``MelodicState`` whose settings and history seed the
-				walk.  It is **copied** — building a value never mutates a
-				module-level live object.
+			state: A ``MelodicState`` whose dials, scoring factors, and
+				melodic history seed the walk.  It is **copied** — building
+				a value never mutates a module-level live object.  The
+				candidate pool is not carried over: it is always rebuilt
+				from ``scale=`` (pass an explicit pool there instead),
+				though the state's key still sets the tonic that the NIR
+				closure rule lands on.
 			nir_strength / pitch_diversity / tessitura_strength: The walk's
 				dials when no ``state`` is given.
 
@@ -1906,10 +1922,11 @@ class Phrase:
 		"""Regenerate only the named bars — rhythm and boundary pitches kept.
 
 		Within each named bar, the first and last pitched notes stay (the
-		boundary pins) and the interior pitches re-roll from the recipe's
-		stream; onsets, durations, velocities, rests, drums, and control
-		gestures are untouched.  Segmentation and the recipe survive, so
-		rerolls compose.
+		boundary pins) and the interior pitches re-roll from a fresh per-bar
+		stream salted by ``seed=`` (an unseeded call draws a fresh salt, so
+		each call genuinely differs); onsets, durations, velocities, rests,
+		drums, and control gestures are untouched.  Segmentation and the
+		recipe survive, so rerolls compose.
 
 		Only a phrase that carries a recipe can reroll — a hand-written or
 		transformed phrase raises loudly (its notes no longer come from a

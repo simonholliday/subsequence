@@ -535,7 +535,8 @@ def probability_gate (sequence: typing.List[int], probability: typing.Union[floa
 	Parameters:
 		sequence: Binary sequence (0s and 1s)
 		probability: Chance of keeping each hit (0.0–1.0). A single float applies
-			uniformly; a list assigns per-step probability.
+			uniformly; a list assigns per-step probability.  Steps beyond the
+			end of a short list are always kept (probability 1.0).
 		rng: Random number generator instance
 
 	Example:
@@ -1489,6 +1490,9 @@ def pink_noise (steps: int, sources: int = 16, seed: int = 0) -> typing.List[flo
 	if steps <= 0:
 		return []
 
+	if sources <= 0:
+		raise ValueError(f"pink_noise() needs at least one random source to sum — got sources={sources}")
+
 	rng = random.Random(seed)
 
 	source_values = [rng.random() for _ in range(sources)]
@@ -1835,6 +1839,11 @@ def generate_cellular_automaton_2d (
 		```
 	"""
 
+	# A grid with no rows or no columns has no cells to evolve — return the
+	# degenerate empty grid, matching the 1D kernel's steps<=0 no-op.
+	if rows <= 0 or cols <= 0:
+		return [[] for _ in range(max(0, rows))]
+
 	birth_set, survival_set = _parse_life_rule(rule)
 
 	# Memoise int-seeded evolutions incrementally, like the 1D version, so a
@@ -1999,6 +2008,8 @@ def morse_code (
 					result.extend([0.0] * symbol_cells)
 				if element == "-":
 					result.append(dash)
+					# These 0.0 cells are occupied by the dash's sustain, not rests —
+					# the duration-at-onset convention, as in generate_legato_durations.
 					result.extend([0.0] * (dash_cells - 1))
 				else:
 					result.append(dot)
@@ -2229,7 +2240,7 @@ def reaction_diffusion_1d (
 	u = [1.0] * width
 	v = [0.0] * width
 
-	# Seed the centre quarter with a small V concentration.
+	# Seed the centre half (width//4 to 3*width//4) with a small V concentration.
 	seed_start = width // 4
 	seed_end = 3 * width // 4
 	for i in range(seed_start, seed_end):
@@ -2432,7 +2443,9 @@ def branch_sequence (
 		raise ValueError("pitches list cannot be empty")
 
 	# Tree RNG derived from the pitch content (never the caller's rng) so the
-	# tree structure is always the same for the same trunk.
+	# tree structure is always the same for the same trunk.  hash() here is
+	# deterministic across runs: PYTHONHASHSEED randomises only str/bytes
+	# hashes, never ints or tuples of ints.
 	branch_rng = random.Random(hash(tuple(pitches)))
 
 	path_index = path % (2 ** depth)

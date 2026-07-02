@@ -14,7 +14,6 @@ import inspect
 import logging
 import os
 import pathlib
-import queue
 import random
 import re
 import signal
@@ -1313,6 +1312,10 @@ class Composition:
 				If ``None``, Subsequence auto-discovers — uses the only
 				available device, or prompts to choose if several exist.
 			bpm: Initial tempo in beats per minute (default 120).
+			time_signature: The metre as ``(beats, unit)``, default ``(4, 4)``.
+				Sets the bar length everywhere bars matter: ``bars=`` pattern
+				lengths, ``p.bar``/``p.signal()``, form advancement and
+				transitions, and pinned-chord bar numbers.
 			key: The root key of the piece (e.g., "C", "F#", "Bb").
 				Required if you plan to use ``harmony()``.
 			scale: The scale/mode of the piece (e.g. "minor", "dorian",
@@ -1374,6 +1377,9 @@ class Composition:
 		self._harmonic_state: typing.Optional[subsequence.harmonic_state.HarmonicState] = None
 		self._harmony_cycle_beats: typing.Optional[int] = None
 		self._harmony_style: typing.Optional[str] = None
+		# The style (name or ChordGraph) from the most recent style-configuring
+		# harmony() call — reused by parameter-only re-calls.
+		self._last_harmony_style: typing.Optional[typing.Union[str, subsequence.chord_graphs.ChordGraph]] = None
 		self._harmony_reschedule_lookahead: float = 1
 		self._section_progressions: typing.Dict[str, Progression] = {}
 		self._bound_progression: typing.Optional[Progression] = None
@@ -1893,7 +1899,10 @@ class Composition:
 		"""
 
 		if style is None and progression is None:
-			style = "functional_major"
+			# A parameter-only re-call (gravity=, cycle_beats=, ...) keeps the
+			# configured style — defaulting unconditionally here would silently
+			# replace e.g. aeolian_minor with functional_major.
+			style = self._last_harmony_style if self._last_harmony_style is not None else "functional_major"
 
 		if style is not None:
 
@@ -1930,6 +1939,7 @@ class Composition:
 				self._harmonic_state.current_chord = preserved_current
 
 			self._harmony_style = style if isinstance(style, str) else None
+			self._last_harmony_style = style
 
 		if progression is not None:
 			self._bound_progression = self._coerce_progression(progression, "harmony(progression=)")
@@ -3345,6 +3355,11 @@ class Composition:
 				``None`` matches any channel (default).
 			output_channel: Override the output channel. ``None`` uses the
 				incoming channel. Uses the same numbering convention as ``pattern()``.
+			input_device: Only respond to CC from this input device — an index,
+				a registered name, or ``None`` for any input (default), the
+				same convention as ``cc_map()``.
+			output_device: Send to this output device — an index, a registered
+				name, or ``None`` for the primary output (default).
 			mode: Dispatch mode:
 
 				- ``"instant"`` *(default)* — send immediately on the MIDI input
@@ -3887,6 +3902,11 @@ class Composition:
 		if name not in self._running_patterns:
 			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
 
+		# The performer takes ownership: if a transition's approach window had
+		# muted this pattern, drop it from that set so the section boundary
+		# does not silently unmute it ("performer mutes win").
+		self._transition_muted.discard(name)
+
 		self._running_patterns[name]._muted = True
 		logger.info(f"Muted pattern: {name}")
 
@@ -3898,6 +3918,10 @@ class Composition:
 
 		if name not in self._running_patterns:
 			raise ValueError(f"Pattern '{name}' not found. Available: {list(self._running_patterns.keys())}")
+
+		# Symmetric ownership claim: an explicit unmute means the transition
+		# machinery should no longer manage this pattern at the boundary.
+		self._transition_muted.discard(name)
 
 		self._running_patterns[name]._muted = False
 		logger.info(f"Unmuted pattern: {name}")
@@ -5045,8 +5069,6 @@ class Composition:
 			primary = (device if device is not None else 0, resolved_channel)
 		resolved_mirrors = self._resolve_mirrors(mirrors, primary=primary)
 
-		self._declared_names.add(chords_builder.__name__)
-
 		if self._is_live and chords_builder.__name__ in self._running_patterns:
 			running = self._running_patterns[chords_builder.__name__]
 			running._builder_fn = chords_builder
@@ -5720,7 +5742,10 @@ class Composition:
 			callback = _advance_builder_bar,
 			interval_beats = self.time_signature[0],
 			start_pulse = first_bar_pulse,
-			reschedule_lookahead = 1
+			# Same raised lookahead as the form/harmony clocks: a pattern
+			# rebuilding lookahead-early for its next cycle must read the bar
+			# that cycle starts in, not the previous one.
+			reschedule_lookahead = clock_lookahead
 		)
 
 		# Run wait_for_initial=True scheduled functions and block until all complete.
@@ -6040,6 +6065,12 @@ class Composition:
 						self._builder_fn(builder)
 
 				except Exception:
+					# Discard whatever the builder placed before it raised —
+					# otherwise a half-built pattern plays and the log lies.
+					self.steps = {}
+					self.cc_events = []
+					self.osc_events = []
+					self.raw_note_events = []
 					logger.exception("Error in pattern builder '%s' (cycle %d) - pattern will be silent this cycle", self._builder_fn.__name__, current_cycle)
 
 				# Auto-apply global tuning if set and not already applied by the builder.

@@ -38,16 +38,22 @@ def test_schedule_context_dataclass () -> None:
 
 def test_make_safe_callback_no_context_zero_args () -> None:
 
-	"""A zero-arg callback should still be wrapped without error."""
+	"""A zero-arg callback is wrapped and actually runs when the wrapper fires."""
 
 	called: list = []
 
 	def my_task () -> None:
 		called.append(True)
 
-	# Creating the wrapper should not raise
 	wrapped = subsequence.composition._make_safe_callback(my_task, accepts_context=False)
-	assert callable(wrapped)
+
+	async def run () -> None:
+		wrapped(0)
+		await _wait_for(lambda: len(called) == 1)
+
+	asyncio.run(run())
+
+	assert called == [True]
 
 
 def test_make_safe_callback_context_increments () -> None:

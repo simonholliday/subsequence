@@ -43,7 +43,16 @@ Listening guide: what you can determine by ear
 """
 
 import logging
-import requests
+
+# requests is not a subsequence dependency — this example fetches live ISS
+# telemetry over HTTP and needs it installed separately.
+try:
+	import requests
+except ImportError:
+	raise SystemExit(
+		"This example fetches live ISS position data and needs the 'requests' "
+		"package — install it with: pip install requests"
+	)
 
 import subsequence
 import subsequence.constants.instruments.gm_drums as gm_drums
@@ -153,8 +162,9 @@ def fetch_iss (p) -> None:
 		# (low gravity). Near the poles they prefer strong resolution (high gravity).
 		gravity = 0.3 + (0.5 * pole_proximity)     # 0.3 equator : 0.8 poles
 
-		# The harmony engine picks a new chord every 4 beats, completely independent
-		# of the fetch cycle. ISS data only steers the *style* and *character*.
+		# The harmony engine picks a new chord every 32 beats (8 bars), completely
+		# independent of the fetch cycle. ISS data only steers the *style* and
+		# *character*.
 		if vis == "daylight":
 			composition.harmony(style=CHORD_GRAPH_DAYLIGHT, cycle_beats=32, gravity=gravity)
 		else:

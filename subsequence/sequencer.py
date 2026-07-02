@@ -626,6 +626,11 @@ class Sequencer:
 		then picked up on the next pulse.
 		"""
 
+		# Validate BEFORE the Link branch — a zero/negative tempo must never
+		# be proposed to the whole Link session.
+		if bpm <= 0:
+			raise ValueError("BPM must be positive")
+
 		if self.clock_follow and self.running:
 			logger.info("BPM is controlled by external clock - set_bpm() ignored")
 			return
@@ -634,9 +639,6 @@ class Sequencer:
 			self._link_clock.request_tempo(bpm)
 			logger.info(f"BPM {bpm:.2f} proposed to Ableton Link session")
 			return
-
-		if bpm <= 0:
-			raise ValueError("BPM must be positive")
 
 		self._bpm_transition = None
 		self.current_bpm = bpm

@@ -365,7 +365,7 @@ class FormState:
 
 		known = ", ".join(sorted({section.name for section in self._sequence}))
 		raise ValueError(
-			f"Section '{section_name}' not found in form. "
+			f"{what}: section '{section_name}' not found in form. "
 			f"Known sections: {known}"
 		)
 

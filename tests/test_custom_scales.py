@@ -1,7 +1,26 @@
+import contextlib
+import typing
+
 import pytest
 
 import subsequence.harmony
 import subsequence.intervals
+
+
+@contextlib.contextmanager
+def _scratch_scale (name: str) -> typing.Iterator[None]:
+
+	"""Unregister a test-registered scale on exit, even when an assertion fails.
+
+	Keeps the module-global INTERVAL_DEFINITIONS / SCALE_MODE_MAP registries
+	clean so one failing test cannot leak state into its neighbours.
+	"""
+
+	try:
+		yield
+	finally:
+		subsequence.intervals.INTERVAL_DEFINITIONS.pop(name, None)
+		subsequence.intervals.SCALE_MODE_MAP.pop(name, None)
 
 
 # ── Built-in non-western scales ─────────────────────────────────────
@@ -83,8 +102,7 @@ def test_quantize_hirajoshi_snaps_correctly () -> None:
 	# C# (61) is not in scale → snaps to D (62, +1 preferred)
 	assert subsequence.intervals.quantize_pitch(61, pcs) == 62
 
-	# G (67) is between F(65) and A(69) → snaps to F (65) at distance 2
-	# Actually: pc 7 (G). Scale pcs: 2,4,5,9,10. Nearest up: 9 (A, +2). Nearest down: 5 (F, -2). Up preferred.
+	# G (67, pc 7) is equidistant between F (pc 5, -2) and A (pc 9, +2); ties snap up → A (69)
 	assert subsequence.intervals.quantize_pitch(67, pcs) == 69
 
 
@@ -107,48 +125,39 @@ def test_register_scale_basic () -> None:
 
 	"""A registered custom scale works with scale_pitch_classes."""
 
-	subsequence.intervals.register_scale("test_custom", [0, 3, 6, 9])
+	with _scratch_scale("test_custom"):
+		subsequence.intervals.register_scale("test_custom", [0, 3, 6, 9])
 
-	pcs = subsequence.intervals.scale_pitch_classes(0, "test_custom")
-	assert pcs == [0, 3, 6, 9]
-
-	# Clean up
-	del subsequence.intervals.INTERVAL_DEFINITIONS["test_custom"]
-	del subsequence.intervals.SCALE_MODE_MAP["test_custom"]
+		pcs = subsequence.intervals.scale_pitch_classes(0, "test_custom")
+		assert pcs == [0, 3, 6, 9]
 
 
 def test_register_scale_with_qualities () -> None:
 
 	"""A registered scale with qualities works with diatonic_chords."""
 
-	subsequence.intervals.register_scale(
-		"test_with_quals",
-		[0, 2, 4, 7, 9],
-		qualities=["major", "minor", "minor", "major", "minor"]
-	)
+	with _scratch_scale("test_with_quals"):
+		subsequence.intervals.register_scale(
+			"test_with_quals",
+			[0, 2, 4, 7, 9],
+			qualities=["major", "minor", "minor", "major", "minor"]
+		)
 
-	chords = subsequence.harmony.diatonic_chords("C", mode="test_with_quals")
-	assert len(chords) == 5
-
-	# Clean up
-	del subsequence.intervals.INTERVAL_DEFINITIONS["test_with_quals"]
-	del subsequence.intervals.SCALE_MODE_MAP["test_with_quals"]
+		chords = subsequence.harmony.diatonic_chords("C", mode="test_with_quals")
+		assert len(chords) == 5
 
 
 def test_register_scale_quantize () -> None:
 
 	"""A registered custom scale works with quantize_pitch."""
 
-	subsequence.intervals.register_scale("test_quant", [0, 4, 7])
+	with _scratch_scale("test_quant"):
+		subsequence.intervals.register_scale("test_quant", [0, 4, 7])
 
-	pcs = subsequence.intervals.scale_pitch_classes(0, "test_quant")
-	# C (0), E (4), G (7) — a major triad
-	assert subsequence.intervals.quantize_pitch(61, pcs) == 60  # C# → C
-	assert subsequence.intervals.quantize_pitch(62, pcs) == 64  # D → E (up preferred at distance 2)
-
-	# Clean up
-	del subsequence.intervals.INTERVAL_DEFINITIONS["test_quant"]
-	del subsequence.intervals.SCALE_MODE_MAP["test_quant"]
+		pcs = subsequence.intervals.scale_pitch_classes(0, "test_quant")
+		# C (0), E (4), G (7) — a major triad
+		assert subsequence.intervals.quantize_pitch(61, pcs) == 60  # C# → C
+		assert subsequence.intervals.quantize_pitch(62, pcs) == 64  # D → E (up preferred at distance 2)
 
 
 def test_register_scale_via_package () -> None:
@@ -157,13 +166,10 @@ def test_register_scale_via_package () -> None:
 
 	import subsequence
 
-	subsequence.register_scale("test_pkg", [0, 5, 7])
-	pcs = subsequence.intervals.scale_pitch_classes(0, "test_pkg")
-	assert pcs == [0, 5, 7]
-
-	# Clean up
-	del subsequence.intervals.INTERVAL_DEFINITIONS["test_pkg"]
-	del subsequence.intervals.SCALE_MODE_MAP["test_pkg"]
+	with _scratch_scale("test_pkg"):
+		subsequence.register_scale("test_pkg", [0, 5, 7])
+		pcs = subsequence.intervals.scale_pitch_classes(0, "test_pkg")
+		assert pcs == [0, 5, 7]
 
 
 # ── register_scale validation ───────────────────────────────────────
@@ -210,15 +216,12 @@ def test_register_scale_custom_name_reregisters () -> None:
 
 	"""Re-registering a custom name works — live reload re-runs registration on every save."""
 
-	subsequence.intervals.register_scale("test_rereg", [0, 3, 7])
-	subsequence.intervals.register_scale("test_rereg", [0, 4, 7])
+	with _scratch_scale("test_rereg"):
+		subsequence.intervals.register_scale("test_rereg", [0, 3, 7])
+		subsequence.intervals.register_scale("test_rereg", [0, 4, 7])
 
-	# The second registration wins.
-	assert subsequence.intervals.scale_pitch_classes(0, "test_rereg") == [0, 4, 7]
-
-	# Clean up
-	del subsequence.intervals.INTERVAL_DEFINITIONS["test_rereg"]
-	del subsequence.intervals.SCALE_MODE_MAP["test_rereg"]
+		# The second registration wins.
+		assert subsequence.intervals.scale_pitch_classes(0, "test_rereg") == [0, 4, 7]
 
 
 def test_register_scale_empty_intervals () -> None:
@@ -264,22 +267,19 @@ def test_diatonic_chord_sequence_5_note () -> None:
 
 	"""diatonic_chord_sequence works with a 5-note scale that has qualities."""
 
-	subsequence.intervals.register_scale(
-		"test_seq_5",
-		[0, 2, 4, 7, 9],
-		qualities=["major", "minor", "minor", "major", "minor"]
-	)
+	with _scratch_scale("test_seq_5"):
+		subsequence.intervals.register_scale(
+			"test_seq_5",
+			[0, 2, 4, 7, 9],
+			qualities=["major", "minor", "minor", "major", "minor"]
+		)
 
-	seq = subsequence.harmony.diatonic_chord_sequence("C", root_midi=60, count=10, mode="test_seq_5")
+		seq = subsequence.harmony.diatonic_chord_sequence("C", root_midi=60, count=10, mode="test_seq_5")
 
-	# Should wrap after 5 degrees into the next octave
-	assert len(seq) == 10
-	assert seq[0][1] == 60   # C4
-	assert seq[5][1] == 72   # C5 (one octave up)
-
-	# Clean up
-	del subsequence.intervals.INTERVAL_DEFINITIONS["test_seq_5"]
-	del subsequence.intervals.SCALE_MODE_MAP["test_seq_5"]
+		# Should wrap after 5 degrees into the next octave
+		assert len(seq) == 10
+		assert seq[0][1] == 60   # C4
+		assert seq[5][1] == 72   # C5 (one octave up)
 
 
 # ── Backwards compatibility ─────────────────────────────────────────

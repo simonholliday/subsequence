@@ -309,6 +309,13 @@ class RomanChord:
 
 		mode = "minor" if self.borrowed and scale != "minor" else ("ionian" if self.borrowed else scale)
 		pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)
+
+		if self.degree > len(pcs):
+			raise ValueError(
+				f"scale degree {self.degree} is out of range for {mode!r} "
+				f"({len(pcs)} degrees)"
+			)
+
 		root_pc = (pcs[self.degree - 1] + self.accidental) % 12
 
 		intervals: typing.List[int] = []

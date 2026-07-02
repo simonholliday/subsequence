@@ -5,7 +5,6 @@ import subsequence.chords
 import subsequence.weighted_graph
 
 
-WEIGHT_STRONG = subsequence.chord_graphs.WEIGHT_STRONG
 WEIGHT_MEDIUM = subsequence.chord_graphs.WEIGHT_MEDIUM
 WEIGHT_COMMON = subsequence.chord_graphs.WEIGHT_COMMON
 WEIGHT_WEAK = subsequence.chord_graphs.WEIGHT_WEAK
@@ -21,8 +20,9 @@ class ChromaticMediant (subsequence.chord_graphs.ChordGraph):
 	Many transitions connect chords whose roots are a major or minor third
 	apart (the characteristic motion); others are chromatic, fourth-, or
 	fifth-related, creating dramatic, colorful shifts that sound both surprising
-	and connected through shared common tones. No dominant-tonic or
-	subdominant-tonic functional motion is used.
+	and connected through shared common tones. No dominant-tonic functional
+	motion is used; the one subdominant-tonic edge is the minor-plagal
+	iv → I close from the subdominant-minor connector.
 
 	Good for cinematic, ambient, soundtrack, and experimental music.
 	"""

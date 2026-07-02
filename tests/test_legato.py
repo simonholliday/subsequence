@@ -1,10 +1,6 @@
 
-import pytest
-import typing
-
 import subsequence.pattern
 import subsequence.pattern_builder
-import subsequence.constants.pulses
 
 
 def test_legato_uniform_gap () -> None:

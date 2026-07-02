@@ -1052,14 +1052,20 @@ def test_grid_scale_below_one (patch_midi: None, monkeypatch: pytest.MonkeyPatch
 
 def test_grid_scale_uniform_spacing (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
 
-	"""All adjacent on-grid markers should be exactly cols_per_step apart."""
+	"""The rendered row marks on-grid cells exactly cols_per_step apart, and notes land on them."""
 
 	import os
 	monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=(80, 24): os.terminal_size((200, 24)))
 
 	comp = _make_composition(patch_midi)
 
-	pat = _make_pitched_pattern()
+	# Notes at steps 0, 8, 12 with 1-pulse durations, so no ">" sustain
+	# markers can appear in the between-grid cells.
+	pat = subsequence.pattern.Pattern(channel=5, length=4)
+	pat.add_note(position=0,  pitch=28, velocity=100, duration=1)
+	pat.add_note(position=48, pitch=28, velocity=80,  duration=1)
+	pat.add_note(position=72, pitch=28, velocity=60,  duration=1)
+
 	pat._drum_note_map = None  # type: ignore[attr-defined]
 	pat._default_grid = 16  # type: ignore[attr-defined]
 	pat._muted = False  # type: ignore[attr-defined]
@@ -1073,14 +1079,20 @@ def test_grid_scale_uniform_spacing (patch_midi: None, monkeypatch: pytest.Monke
 		parts = grid._lines[0].split("|")[1]
 		individual_cells = list(parts[::2])
 
-		# Identify on-grid positions: they are at multiples of expected_step.
-		on_grid_positions = [i for i in range(len(individual_cells)) if i % expected_step == 0]
+		# Non-blank cells in the RENDERED output ("·" or a velocity glyph)
+		# must sit exactly at multiples of cols_per_step; between-grid
+		# cells must render as spaces.
+		rendered_markers = [i for i, cell in enumerate(individual_cells) if cell != " "]
+		expected_markers = [i for i in range(len(individual_cells)) if i % expected_step == 0]
 
-		# All gaps between adjacent on-grid positions should be identical.
-		gaps = [on_grid_positions[j + 1] - on_grid_positions[j] for j in range(len(on_grid_positions) - 1)]
-		assert all(g == expected_step for g in gaps), (
-			f"scale={scale}: expected uniform gap of {expected_step}, got {gaps}"
+		assert rendered_markers == expected_markers, (
+			f"scale={scale}: expected markers every {expected_step} cells, got {rendered_markers}"
 		)
+
+		# The three notes scale onto steps 0, 8, and 12 of the zoomed grid.
+		assert individual_cells[0] == "█", f"scale={scale}"                   # velocity 100
+		assert individual_cells[8 * expected_step] == "▓", f"scale={scale}"   # velocity 80
+		assert individual_cells[12 * expected_step] == "▒", f"scale={scale}"  # velocity 60
 
 
 def test_composition_display_grid_scale (patch_midi: None) -> None:

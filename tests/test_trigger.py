@@ -1,5 +1,7 @@
 """Tests for composition.trigger() one-shot pattern triggering."""
 
+import asyncio
+
 import pytest
 
 import subsequence
@@ -246,6 +248,3 @@ async def test_trigger_uses_builder_chaining (patch_midi: None) -> None:
 	assert note_on_count >= 2, f"Expected at least 2 note_on events, got {note_on_count}"
 
 	await composition._sequencer.stop()
-
-
-import asyncio

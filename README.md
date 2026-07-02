@@ -116,6 +116,7 @@ The `examples/` directory holds self-documenting compositions. Because Subsequen
 | `emergence.py` | A six-section drum piece that breathes, builds, and breaks — Perlin fields, rare "fracture" eruptions, the full rhythm toolkit. |
 | `frozen.py` | `freeze()` + `section_chords()` — a frozen verse and chorus alongside a live-generated bridge. |
 | `iss.py` | Live International Space Station telemetry mapped to tempo, harmony, and arpeggio direction via `EasedValue`. |
+| `link_sync.py` | Ableton Link synchronisation — join a LAN tempo/phase session, or start one for other apps to lock onto. |
 | `live_init.py` + `live_patterns.py` | The file-watching live-coding workflow — edit and save to hear changes on the next bar. |
 | `live_single_file.py` | The compact single-file variant that watches itself. |
 | `load_patterns.py` | Registering patterns from a Python string (network or one-shot loads). |

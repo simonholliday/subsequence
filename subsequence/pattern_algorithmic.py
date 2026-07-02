@@ -115,6 +115,48 @@ class PatternAlgorithmicMixin:
 			return int(velocity)
 		raise TypeError(f"velocity must be int or (low, high) tuple, got {type(velocity).__name__}: {velocity!r}")
 
+	def _place_gated_sequence (
+		self,
+		sequence: typing.Sequence[typing.Any],
+		event_for: typing.Callable[[int, typing.Any], typing.Optional[typing.Tuple[typing.Union[int, str], typing.Union[int, typing.Tuple[int, int]], float]]],
+		probability: float,
+		rng: random.Random,
+		no_overlap: bool = False,
+	) -> None:
+
+		"""Place per-step events from a sequence, gated by probability and overlap.
+
+		The shared placement kernel: steps are evenly spaced across the pattern
+		length; for each step, ``event_for(index, value)`` returns either
+		``None`` (a silent step — no probability draw is consumed) or a
+		``(pitch, velocity, duration)`` event.  Surviving events pass the
+		probability gate and, when ``no_overlap`` is set, the same-pitch check,
+		then land via ``self.note()`` (which resolves ``(low, high)`` velocity
+		tuples per hit).
+		"""
+
+		if not sequence:
+			return	# nothing to place (e.g. a pattern shorter than one step)
+
+		step_duration = self._pattern.length / len(sequence)
+
+		for i, value in enumerate(sequence):
+
+			event = event_for(i, value)
+
+			if event is None:
+				continue
+
+			if probability < 1.0 and rng.random() < (1.0 - probability):
+				continue
+
+			pitch, velocity, duration = event
+
+			if no_overlap and self._has_pitch_at_beat(pitch, i * step_duration):
+				continue
+
+			self.note(pitch=pitch, beat=i * step_duration, velocity=velocity, duration=duration)
+
 	def _place_rhythm_sequence (
 		self,
 		sequence: typing.List[int],
@@ -128,30 +170,17 @@ class PatternAlgorithmicMixin:
 
 		"""Place hits from a binary sequence into the pattern.
 
-		Shared implementation for ``euclidean()`` and ``bresenham()``.
-		Each active step (1) is placed as a note; steps are evenly spaced
-		across the pattern length. Zeros and probability-gated steps are skipped.
-		A ``(low, high)`` ``velocity`` tuple is resolved per hit by
-		``self.note()``, giving each placed note a fresh random velocity.
+		Shared implementation for ``euclidean()``, ``bresenham()``, and the
+		other single-voice binary-rhythm verbs.  Each active step (1) becomes
+		a note; zeros are rests.
 		"""
 
-		if not sequence:
-			return	# nothing to place (e.g. a pattern shorter than one step)
-
-		step_duration = self._pattern.length / len(sequence)
-
-		for i, hit_value in enumerate(sequence):
-
+		def _event (i: int, hit_value: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], typing.Union[int, typing.Tuple[int, int]], float]]:
 			if hit_value == 0:
-				continue
+				return None
+			return (pitch, velocity, duration)
 
-			if probability < 1.0 and rng.random() < (1.0 - probability):
-				continue
-
-			if no_overlap and self._has_pitch_at_beat(pitch, i * step_duration):
-				continue
-
-			self.note(pitch=pitch, beat=i * step_duration, velocity=velocity, duration=duration)
+		self._place_gated_sequence(sequence, _event, probability, rng, no_overlap=no_overlap)
 
 	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: float = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
@@ -169,7 +198,8 @@ class PatternAlgorithmicMixin:
 				fresh random draw per hit.
 			duration: Note duration.
 			probability: Chance (0.0–1.0) that each pulse plays — 1.0 places them all, lower thins the rhythm.
-			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.  ``rng=`` is the advanced form.
+			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 			no_overlap: If True, skip steps where a note of the same pitch
 				already exists. Useful for layering ghost notes around
 				hand-placed anchors.
@@ -202,7 +232,8 @@ class PatternAlgorithmicMixin:
 				fresh random draw per hit.
 			duration: Note duration.
 			probability: Chance (0.0–1.0) that each pulse plays — 1.0 places them all, lower thins the rhythm.
-			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.  ``rng=`` is the advanced form.
+			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 			no_overlap: If True, skip steps where a note of the same pitch
 				already exists. Useful for layering ghost notes around
 				hand-placed anchors.
@@ -322,27 +353,20 @@ class PatternAlgorithmicMixin:
 			steps=grid, weights=weights
 		)
 
-		step_duration = self._pattern.length / grid
-
-		for step_idx, voice_idx in enumerate(sequence):
-
+		def _event (step_idx: int, voice_idx: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], typing.Union[int, typing.Tuple[int, int]], float]]:
 			if voice_idx == rest_index:
-				continue
-
-			if probability < 1.0 and rng.random() < (1.0 - probability):
-				continue
+				return None
 
 			pitch = voice_names[voice_idx]
-
-			if no_overlap and self._has_pitch_at_beat(pitch, step_idx * step_duration):
-				continue
 
 			if isinstance(velocity, dict):
 				vel = velocity.get(pitch, subsequence.constants.velocity.DEFAULT_VELOCITY)
 			else:
 				vel = velocity
 
-			self.note(pitch=pitch, beat=step_idx * step_duration, velocity=vel, duration=duration)
+			return (pitch, vel, duration)
+
+		self._place_gated_sequence(sequence, _event, probability, rng, no_overlap=no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	@staticmethod
@@ -502,21 +526,18 @@ class PatternAlgorithmicMixin:
 				Essential for layering ghosts around hand-placed anchors.
 			grid: Grid resolution.  Defaults to the pattern's default grid.
 			duration: Note duration in beats (default 0.1).
-			rng: Random generator.  Defaults to ``self.rng``.
+			seed: Fix the ghost layer for this call (an int); omit to use the
+				pattern's RNG.
 
-				**Tip — freeze placement each cycle:**  Pass
-				``rng=random.Random(seed)`` to create a *fresh* RNG instance on
-				every rebuild.  Because the seed resets, the same steps are
-				chosen on every cycle — ghost positions are locked in place while
-				velocity variation (from a ``(low, high)`` tuple) can still vary
-				each cycle, because it consumes separate RNG draws.  Using the
-				default ``self.rng`` advances state across rebuilds so placement
-				differs every cycle.
+				**Tip — freeze the layer each cycle:**  ``seed=`` starts a fresh
+				random stream on every rebuild, so the same steps — and the same
+				``(low, high)`` velocity draws — are chosen on every cycle: the
+				ghost layer is locked in place.  The default ``self.rng``
+				advances state across rebuilds, so placement differs every cycle.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
-			import random
-
 			p.hit_steps("kick_1", [0, 4, 8, 12], velocity=100)
 			p.hit_steps("snare_1", [4, 12], velocity=95)
 
@@ -524,9 +545,9 @@ class PatternAlgorithmicMixin:
 			p.ghost_fill("kick_1", density=0.2, velocity=(30, 45),
 			             bias="sixteenths", no_overlap=True)
 
-			# Same ghost steps every cycle — placement frozen, velocity still varies
+			# The same ghost layer every cycle — placement frozen
 			p.ghost_fill("snare_1", density=0.15, velocity=(25, 40),
-			             bias="before", rng=random.Random(42))
+			             bias="before", seed=42)
 			```
 		"""
 
@@ -788,6 +809,8 @@ class PatternAlgorithmicMixin:
 			spacing: Time between note onsets in beats (default 0.25 = 16th note).
 			start: Name of the starting state.  Defaults to the first key
 				in ``transitions`` when not provided.
+			seed: Fix the walk for this call (an int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Raises:
 			ValueError: If ``transitions`` or ``pitch_map`` is empty.
@@ -824,6 +847,9 @@ class PatternAlgorithmicMixin:
 
 		if start is None:
 			start = next(iter(transitions))
+
+		if spacing <= 0:
+			raise ValueError(f"markov() spacing is the time between notes in beats — it must be positive, got {spacing}")
 
 		n_steps = int(self._pattern.length / spacing)
 
@@ -874,6 +900,8 @@ class PatternAlgorithmicMixin:
 			chord_tones: Optional list of MIDI note numbers that are chord
 			    tones this bar (e.g. from ``chord.tones(root)``).  Chord-tone
 			    pitch classes receive a ``chord_weight`` bonus inside ``state``.
+			seed: Fix the walk for this call (an int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -896,6 +924,9 @@ class PatternAlgorithmicMixin:
 		# A state built without key/mode adopts the composition's here
 		# (idempotent — explicit constructor arguments always win).
 		state.configure_defaults(self.key, self.scale)
+
+		if spacing <= 0:
+			raise ValueError(f"melody() spacing is the time between notes in beats — it must be positive, got {spacing}")
 
 		n_steps = int(self._pattern.length / spacing)
 		beat = 0.0
@@ -955,6 +986,9 @@ class PatternAlgorithmicMixin:
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises
 				per note.
 			duration: Note duration in beats.
+			seed: Fix the stochastic-rule choices and velocity draws for this
+				call (an int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -995,6 +1029,9 @@ class PatternAlgorithmicMixin:
 			auto_step = self._pattern.length / len(expanded)
 			symbols = expanded
 		else:
+			if spacing <= 0:
+				raise ValueError(f"lsystem() spacing is the time between symbols in beats — it must be positive, got {spacing}")
+
 			auto_step = spacing
 			n_steps = int(self._pattern.length / spacing)
 			symbols = expanded[:n_steps]
@@ -1035,12 +1072,13 @@ class PatternAlgorithmicMixin:
 
 		In **single-pitch mode** (default), notes are placed at positions where
 		the sequence is 1.  In **two-pitch mode** (``pitch_b`` given), ``pitch``
-		is placed at 0-positions and ``pitch_b`` at 1-positions - useful for
-		alternating two drums or two chord tones.
+		flips to the 0-positions and ``pitch_b`` takes the 1-positions - useful
+		for alternating two drums or two chord tones.
 
 		Parameters:
-			pitch: Pitch (MIDI note number or drum name) placed at the
-			    sequence's 0 positions (the hits in single-pitch mode).
+			pitch: Pitch (MIDI note number or drum name).  Placed at the
+			    sequence's 1-positions in single-pitch mode; at the
+			    0-positions when ``pitch_b`` takes over the 1s.
 			velocity: MIDI velocity for ``pitch``, or a ``(low, high)``
 			    tuple for a fresh random draw per hit.
 			duration: Note duration in beats.
@@ -1074,20 +1112,18 @@ class PatternAlgorithmicMixin:
 		else:
 			if velocity_b is None:
 				velocity_b = velocity
-			step_dur = self._pattern.length / len(sequence)
-			for i, val in enumerate(sequence):
-				if probability < 1.0 and rng.random() < (1.0 - probability):
-					continue
 
-				# Honour no_overlap against whichever voice this step would place.
-				active_pitch = pitch if val == 0 else pitch_b
-				if no_overlap and self._has_pitch_at_beat(active_pitch, i * step_dur):
-					continue
+			# Every step sounds one of the two voices (no rests), and no_overlap
+			# is honoured against whichever voice the step would place.
+			second_pitch = pitch_b
+			second_velocity = velocity_b
 
+			def _event (i: int, val: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], typing.Union[int, typing.Tuple[int, int]], float]]:
 				if val == 0:
-					self.note(pitch=pitch, beat=i * step_dur, velocity=velocity, duration=duration)
-				else:
-					self.note(pitch=pitch_b, beat=i * step_dur, velocity=velocity_b, duration=duration)
+					return (pitch, velocity, duration)
+				return (second_pitch, second_velocity, duration)
+
+			self._place_gated_sequence(sequence, _event, probability, rng, no_overlap=no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	def de_bruijn (
@@ -1122,6 +1158,9 @@ class PatternAlgorithmicMixin:
 			    into the bar; a float uses fixed spacing and truncates.
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
 			duration: Note duration in beats.
+			seed: Fix the velocity draws for this call (an int) — the note order
+			    itself is deterministic; omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -1145,6 +1184,9 @@ class PatternAlgorithmicMixin:
 			auto_step = self._pattern.length / len(sequence)
 			symbols = sequence
 		else:
+			if spacing <= 0:
+				raise ValueError(f"de_bruijn() spacing is the time between notes in beats — it must be positive, got {spacing}")
+
 			auto_step = spacing
 			n_steps = int(self._pattern.length / spacing)
 			symbols = sequence[:n_steps]
@@ -1181,6 +1223,9 @@ class PatternAlgorithmicMixin:
 			count: Number of notes to place.
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
 			duration: Note duration in beats.
+			seed: Fix the velocity draws for this call (an int) — the timing
+				itself is deterministic; omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -1258,6 +1303,9 @@ class PatternAlgorithmicMixin:
 
 		if not pitches:
 			raise ValueError("pitches list cannot be empty")
+
+		if spacing <= 0:
+			raise ValueError(f"lorenz() spacing is the time between notes in beats — it must be positive, got {spacing}")
 
 		n_steps = int(self._pattern.length / spacing)
 		points = subsequence.sequence_utils.lorenz_attractor(
@@ -1356,18 +1404,18 @@ class PatternAlgorithmicMixin:
 		sequence = [1 if c > threshold else 0 for c in concentrations]
 
 		if isinstance(velocity, tuple):
-			# Map concentration to velocity range for active steps.
-			step_dur = self._pattern.length / len(sequence)
+			# Map concentration to velocity range for active steps: louder
+			# where the pattern is denser (deterministic, not random).
 			midi_vel_lo, midi_vel_hi = velocity
-			for i, (hit, conc) in enumerate(zip(sequence, concentrations)):
+
+			def _event (i: int, hit: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], typing.Union[int, typing.Tuple[int, int]], float]]:
 				if hit == 0:
-					continue
-				if probability < 1.0 and rng.random() < (1.0 - probability):
-					continue
-				if no_overlap and self._has_pitch_at_beat(pitch, i * step_dur):
-					continue
-				vel = int(midi_vel_lo + conc * (midi_vel_hi - midi_vel_lo))
-				self.note(pitch=pitch, beat=i * step_dur, velocity=vel, duration=duration)
+					return None
+
+				vel = int(midi_vel_lo + concentrations[i] * (midi_vel_hi - midi_vel_lo))
+				return (pitch, vel, duration)
+
+			self._place_gated_sequence(sequence, _event, probability, rng, no_overlap=no_overlap)
 		else:
 			self._place_rhythm_sequence(sequence, pitch, int(velocity), duration, probability, rng, no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
@@ -1401,7 +1449,8 @@ class PatternAlgorithmicMixin:
 			spacing: Time between notes in beats.  Default 0.25 (16th note).
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
 			duration: Note duration in beats.
-			rng: Random number generator.  Defaults to ``self.rng``.
+			seed: Fix the walk for this call (an int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -1414,6 +1463,9 @@ class PatternAlgorithmicMixin:
 
 		if not pitches:
 			raise ValueError("pitches list cannot be empty")
+
+		if spacing <= 0:
+			raise ValueError(f"self_avoiding_walk() spacing is the time between notes in beats — it must be positive, got {spacing}")
 
 		n_steps = int(self._pattern.length / spacing)
 		indices = subsequence.sequence_utils.self_avoiding_walk(
@@ -1482,7 +1534,8 @@ class PatternAlgorithmicMixin:
 				Drive this with a Perlin field or section progress for smooth,
 				organic thinning over time.
 			grid: Step grid size. Defaults to the pattern's ``default_grid``.
-			rng: Random number generator. Defaults to ``self.rng``.
+			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example::
 
@@ -1646,12 +1699,14 @@ class PatternAlgorithmicMixin:
 				applies ratchet to all eligible notes.
 			grid: Grid resolution used for ``steps`` zone classification.
 				Defaults to the pattern's ``default_grid``.
-			rng: Random number generator.  Defaults to ``self.rng``.
+			seed: Fix the probability gating for this call (an int); omit to
+				use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Examples:
 			```python
 			# Subdivide every hi-hat into a triplet roll
-			p.euclidean("hh_closed", 8).ratchet(3, pitch="hh_closed")
+			p.euclidean("hi_hat_closed", 8).ratchet(3, pitch="hi_hat_closed")
 
 			# Crescendo roll into a snare
 			p.hit_steps("snare", [12]).ratchet(4, velocity_start=0.3,
@@ -1659,8 +1714,8 @@ class PatternAlgorithmicMixin:
 			                                      shape="ease_in")
 
 			# Probabilistic 2× ratchet on hi-hats only
-			p.euclidean("hh_closed", 12).ratchet(2, pitch="hh_closed",
-			                                        probability=0.4, gate=0.3)
+			p.euclidean("hi_hat_closed", 12).ratchet(2, pitch="hi_hat_closed",
+			                                            probability=0.4, gate=0.3)
 
 			# Ratchet only steps 0 and 8 (downbeats)
 			p.euclidean("kick_1", 6).ratchet(2, pitch="kick_1", steps=[0, 8])
@@ -1805,6 +1860,9 @@ class PatternAlgorithmicMixin:
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per step.
 			duration: Note duration in beats.
 			spacing: Beat interval between steps.
+			seed: Fix the drift mutations and velocity draws for this call (an
+			    int); omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python
@@ -1907,6 +1965,10 @@ class PatternAlgorithmicMixin:
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per step.
 			duration: Note duration in beats.
 			spacing: Beat interval between steps.
+			seed: Fix the mutation substitutions and velocity draws for this
+			    call (an int) — the variation tree itself is deterministic;
+			    omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
 		Example:
 			```python

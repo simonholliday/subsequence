@@ -212,53 +212,29 @@ def test_invalid_key_name () -> None:
 def test_key_gravity_blend_changes_weights () -> None:
 
 	"""
-	Key gravity blend should alter transition probabilities between chord sets.
+	HarmonicState's key_gravity_blend setting alters real transition weights.
 	"""
 
-	graph, tonic = subsequence.chord_graphs.functional_major.build_graph("E", include_dominant_7th=True)
 	diatonic, function_chords = subsequence.chord_graphs.functional_major.DiatonicMajor().gravity_sets("E")
 
-	diatonic_only = 1.0
-	function_only = 0.0
+	functional_state = subsequence.harmonic_state.HarmonicState(key_name="E", key_gravity_blend=0.0)
+	diatonic_state = subsequence.harmonic_state.HarmonicState(key_name="E", key_gravity_blend=1.0)
 
-	def modifier_diatonic (
-		source: subsequence.chords.Chord,
-		target: subsequence.chords.Chord,
-		weight: int
-	) -> float:
+	source = functional_state.current_chord
+	target_function = next(iter(chord for chord in function_chords if chord in diatonic))
+	target_diatonic = next(iter(chord for chord in diatonic if chord not in function_chords))
 
-		is_function = 1.0 if target in function_chords else 0.0
-		is_diatonic = 1.0 if target in diatonic else 0.0
+	# A diatonic-but-not-function chord is boosted only under full diatonic
+	# gravity (blend=1.0); functional-only gravity (blend=0.0) leaves it flat.
+	weight_functional = functional_state._transition_weight(source, target_diatonic, 10)
+	weight_diatonic = diatonic_state._transition_weight(source, target_diatonic, 10)
 
-		boost = (1.0 - diatonic_only) * is_function + diatonic_only * is_diatonic
+	assert weight_diatonic > weight_functional
+	assert weight_diatonic == pytest.approx(2.0 * weight_functional)
 
-		return 1.0 + boost
-
-	def modifier_function (
-		source: subsequence.chords.Chord,
-		target: subsequence.chords.Chord,
-		weight: int
-	) -> float:
-
-		is_function = 1.0 if target in function_chords else 0.0
-		is_diatonic = 1.0 if target in diatonic else 0.0
-
-		boost = (1.0 - function_only) * is_function + function_only * is_diatonic
-
-		return 1.0 + boost
-
-	source = tonic
-	options = graph.get_transitions(source)
-	assert options
-
-	target_function = next(chord for chord, _ in options if chord in function_chords)
-	target_diatonic = next(chord for chord, _ in options if chord in diatonic and chord not in function_chords)
-
-	function_weight = next(weight for chord, weight in options if chord == target_function)
-	diatonic_weight = next(weight for chord, weight in options if chord == target_diatonic)
-
-	diatonic_adjusted = diatonic_weight * modifier_diatonic(source, target_diatonic, diatonic_weight)
-	function_adjusted = function_weight * modifier_function(source, target_function, function_weight)
-
-	assert diatonic_adjusted > diatonic_weight
-	assert function_adjusted > function_weight
+	# A function chord is also diatonic, so it earns the boost at BOTH blend
+	# extremes — the blend only redistributes gravity over non-function chords.
+	assert (
+		functional_state._transition_weight(source, target_function, 10)
+		== pytest.approx(diatonic_state._transition_weight(source, target_function, 10))
+	)

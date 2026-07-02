@@ -1,6 +1,7 @@
 """Tests for subsequence.tuning — Tuning class, .scl parser, and subsequence.tuning.apply_tuning_to_pattern()."""
 
 import math
+import pathlib
 import typing
 
 import pytest
@@ -155,6 +156,21 @@ def test_parse_comment_lines_ignored () -> None:
 	assert t.size == 12  # not 13 (the ! lines aren't counted)
 
 
+def test_from_scl_reads_file (tmp_path: pathlib.Path) -> None:
+	"""from_scl() opens a real .scl file from disk, via a PathLike or a str path."""
+	scl_path = tmp_path / "twelve.scl"
+	scl_path.write_text(SCL_12TET, encoding="utf-8")
+
+	t = subsequence.tuning.Tuning.from_scl(scl_path)
+	assert t.size == 12
+	assert t.description == "12-tone equal temperament"
+	assert abs(t.cents[0] - 100.0) < 1e-6
+
+	# A plain string path parses identically.
+	t_str = subsequence.tuning.Tuning.from_scl(str(scl_path))
+	assert t_str.cents == t.cents
+
+
 # ── Factory methods ───────────────────────────────────────────────────────────
 
 def test_from_cents_roundtrip () -> None:
@@ -234,12 +250,24 @@ def test_just_perfect_fifth () -> None:
 
 
 def test_bend_clamp () -> None:
-	"""A tuning with very large deviations (e.g., 1 semitone) clamps to ±1.0 at narrow range."""
-	# Simulate a tuning where a note is 0.9 semitones flat of 12-TET
-	# bend = -0.9 / 0.5 = -1.8 → clamps to -1.0
-	t = subsequence.tuning.Tuning.from_cents([50.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1100.0, 1200.0])
-	_, bend = t.pitch_bend_for_note(61, reference_note=60, bend_range=0.5)
-	assert bend >= -1.0  # should be clamped
+	"""Offsets wider than the wheel range clamp to the ±1.0 normalised limit.
+
+	Degree 1 sits at 50 cents, so MIDI 61 lands exactly between 12-TET notes:
+	nearest = 60 (banker's rounding), offset = +0.5 semitones.  With
+	bend_range=0.25 the raw bend is 0.5 / 0.25 = +2.0 → clamped to +1.0.
+	Degree 2 at 150 cents mirrors this on the flat side: nearest = 62,
+	offset = -0.5, raw bend -2.0 → clamped to -1.0.
+	"""
+
+	t = subsequence.tuning.Tuning.from_cents([50.0, 150.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1100.0, 1200.0])
+
+	nearest_sharp, bend_sharp = t.pitch_bend_for_note(61, reference_note=60, bend_range=0.25)
+	assert nearest_sharp == 60
+	assert bend_sharp == 1.0
+
+	nearest_flat, bend_flat = t.pitch_bend_for_note(62, reference_note=60, bend_range=0.25)
+	assert nearest_flat == 62
+	assert bend_flat == -1.0
 
 
 def test_reference_note_shifts_root () -> None:

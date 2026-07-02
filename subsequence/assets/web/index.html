@@ -285,7 +285,13 @@
                 let ws;
 
                 function connect() {
-                    ws = new WebSocket('ws://' + window.location.hostname + ':8765');
+                    // __WS_PORT__ is substituted by web_ui.py at serve time so
+                    // WebUI(ws_port=...) actually reaches the dashboard; the
+                    // regex guard keeps the raw file working (default 8765)
+                    // when opened without the server.
+                    const wsPortToken = '__WS_PORT__';
+                    const wsPort = /^\d+$/.test(wsPortToken) ? wsPortToken : '8765';
+                    ws = new WebSocket('ws://' + window.location.hostname + ':' + wsPort);
 
                     ws.onopen = () => setConnected(true);
 

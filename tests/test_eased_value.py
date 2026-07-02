@@ -10,7 +10,6 @@ Covers:
 - thread safety is not tested here (EasedValue is not designed for concurrent update+get)
 """
 
-import math
 import pytest
 
 import subsequence.easing

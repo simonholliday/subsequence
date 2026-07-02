@@ -3585,6 +3585,29 @@ def test_ghost_fill_unknown_bias_raises () -> None:
 		builder.ghost_fill("snare", density=0.5, bias="nonexistent")
 
 
+@pytest.mark.parametrize("bias, beat_weights", [
+	("uniform",    [1.0, 1.0, 1.0, 1.0]),
+	("offbeat",    [0.05, 0.3, 1.0, 0.3]),
+	("sixteenths", [0.05, 1.0, 0.3, 1.0]),
+	("before",     [0.05, 0.25, 0.25, 1.0]),
+	("after",      [0.05, 1.0, 0.25, 0.25]),
+	("downbeat",   [1.0, 0.05, 0.15, 0.05]),
+	("upbeat",     [0.05, 0.05, 1.0, 0.05]),
+	("e_and_a",    [0.05, 1.0, 1.0, 1.0]),
+])
+def test_build_ghost_bias_curves (bias: str, beat_weights: typing.List[float]) -> None:
+
+	"""Each named bias curve repeats its documented weight shape every beat.
+
+	At grid=16 a beat spans 4 steps (downbeat, "e", "&", "a"); the weight at
+	each position pins where the curve concentrates its probability.
+	"""
+
+	weights = subsequence.pattern_builder.PatternBuilder.build_ghost_bias(16, bias)
+
+	assert weights == beat_weights * 4
+
+
 def test_ghost_fill_deterministic () -> None:
 
 	"""Same seed should produce the same ghost pattern."""
@@ -4138,7 +4161,7 @@ def test_melody_step_size_controls_density () -> None:
 	assert _count(0.5) == 8
 
 
-def test_melody_pitches_in_scale (self=None) -> None:
+def test_melody_pitches_in_scale () -> None:
 
 	"""All placed pitches should belong to the scale defined in MelodicState."""
 
@@ -4155,7 +4178,7 @@ def test_melody_pitches_in_scale (self=None) -> None:
 			assert note.pitch in allowed
 
 
-def test_melody_velocity_fixed (self=None) -> None:
+def test_melody_velocity_fixed () -> None:
 
 	"""A fixed integer velocity should be applied to all placed notes."""
 
@@ -4170,7 +4193,7 @@ def test_melody_velocity_fixed (self=None) -> None:
 			assert note.velocity == 77
 
 
-def test_melody_velocity_tuple (self=None) -> None:
+def test_melody_velocity_tuple () -> None:
 
 	"""A velocity tuple should produce values within the specified range."""
 

@@ -82,11 +82,32 @@ class WebUI:
 		if not os.path.exists(web_dir):
 			os.makedirs(web_dir, exist_ok=True)
 
+		ws_port = self.ws_port
+
 		class Handler(http.server.SimpleHTTPRequestHandler):
 			def __init__ (self, *args: typing.Any, **kwargs: typing.Any) -> None:
 				super().__init__(*args, directory=web_dir, **kwargs)
 			def log_message (self, format: str, *args: typing.Any) -> None:
 				pass # Suppress HTTP access logging to keep the console clean
+			def do_GET (self) -> None:
+				# Serve the dashboard with the real websocket port substituted —
+				# the page hardcoding 8765 made WebUI(ws_port=...) a dashboard
+				# that could never connect.
+				if self.path in ("/", "/index.html"):
+					try:
+						with open(os.path.join(web_dir, "index.html"), "r", encoding="utf-8") as fh:
+							page = fh.read().replace("__WS_PORT__", str(ws_port))
+					except OSError:
+						self.send_error(404)
+						return
+					body = page.encode("utf-8")
+					self.send_response(200)
+					self.send_header("Content-Type", "text/html; charset=utf-8")
+					self.send_header("Content-Length", str(len(body)))
+					self.end_headers()
+					self.wfile.write(body)
+					return
+				super().do_GET()
 
 		# Bind on the main thread so stop() has a reference to shut the server
 		# down cleanly (serve_forever runs on the worker thread below).  Localhost

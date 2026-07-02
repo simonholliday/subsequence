@@ -11,6 +11,7 @@ import mido
 import pytest
 
 import subsequence
+import subsequence.composition
 import subsequence.sequencer
 import subsequence.midi_utils
 import conftest
@@ -79,16 +80,28 @@ def test_single_device_send (patch_midi: None) -> None:
 
 
 def test_single_device_active_notes_track (patch_midi: None) -> None:
-	"""active_notes tracks (device, channel, note) tuples."""
+	"""Dispatching note_on/note_off through _process_pulse tracks (device, channel, note)."""
 	spy = conftest.SpyMidiOut()
 	seq = _make_sequencer(spy)
-	on_event = subsequence.sequencer.MidiEvent(
-		pulse=0, message_type='note_on', channel=0, note=60, velocity=100,
-	)
-	seq._process_pulse = None  # skip full process
-	# manually add
-	seq.active_notes.add((0, 0, 60))
-	assert (0, 0, 60) in seq.active_notes
+
+	async def drive () -> None:
+		seq._push_event(subsequence.sequencer.MidiEvent(
+			pulse=0, message_type='note_on', channel=0, note=60, velocity=100,
+		))
+		await seq._process_pulse(0)
+
+		assert (0, 0, 60) in seq.active_notes
+
+		seq._push_event(subsequence.sequencer.MidiEvent(
+			pulse=1, message_type='note_off', channel=0, note=60,
+		))
+		await seq._process_pulse(1)
+
+	asyncio.run(drive())
+
+	# The note_off cleared the tracking entry, and both events really went out.
+	assert (0, 0, 60) not in seq.active_notes
+	assert [m.type for m in spy.sent] == ['note_on', 'note_off']
 
 
 def test_pattern_device_default (patch_midi: None) -> None:
@@ -191,7 +204,7 @@ def test_registry_close_all () -> None:
 def test_pattern_device_by_index (patch_midi: None) -> None:
 	"""@comp.pattern(device=1) stores device=1 on the pending pattern."""
 	comp = subsequence.Composition(bpm=120)
-	comp._additional_outputs.append(("Secondary MIDI", None))
+	comp._additional_outputs.append(subsequence.composition._AdditionalOutput(device="Secondary MIDI"))
 
 	@comp.pattern(channel=1, beats=4, device=1)
 	def strings (p: "subsequence.pattern_builder.PatternBuilder") -> None:

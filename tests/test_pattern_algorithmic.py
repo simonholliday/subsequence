@@ -128,7 +128,6 @@ def test_evolve_drift_zero_locks_loop () -> None:
 	for cycle in range(5):
 		pattern, builder = _make_builder(cycle=cycle, data=shared_data)
 		builder.evolve(seed, drift=0.0, spacing=0.25)
-		notes = sorted(pattern.steps.values(), key=lambda s: list(pattern.steps.keys())[list(pattern.steps.values()).index(s)])
 		pitches = [n.pitch for step in pattern.steps.values() for n in step.notes]
 		pitches_by_cycle.append(pitches)
 

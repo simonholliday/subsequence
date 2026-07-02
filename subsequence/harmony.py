@@ -1,22 +1,14 @@
 """Harmony helpers — diatonic chords without the chord-graph engine.
 
 Standalone convenience functions (``diatonic_chords``, ``diatonic_chord``,
-``diatonic_chord_sequence``) for building chords from a key and mode, plus the
-``ChordPattern`` view.  For generative progressions use ``progressions``.
+``diatonic_chord_sequence``) for building chords from a key and mode.  For
+generative progressions use ``progressions``.
 """
 
-import logging
 import typing
 
 import subsequence.chords
-import subsequence.constants.velocity
-import subsequence.harmonic_state
 import subsequence.intervals
-import subsequence.pattern
-import subsequence.voicings
-
-
-logger = logging.getLogger(__name__)
 
 
 def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.chords.Chord]:
@@ -39,16 +31,14 @@ def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.
 
 	Example:
 		```python
-		from subsequence.harmony import diatonic_chords
-
 		# All 7 chords in Eb Major
-		chords = diatonic_chords("Eb")
+		chords = subsequence.harmony.diatonic_chords("Eb")
 
 		# Natural minor chords in A
-		chords = diatonic_chords("A", mode="minor")
+		chords = subsequence.harmony.diatonic_chords("A", mode="minor")
 
 		# Dorian chords in D
-		chords = diatonic_chords("D", mode="dorian")
+		chords = subsequence.harmony.diatonic_chords("D", mode="dorian")
 		```
 	"""
 
@@ -149,17 +139,15 @@ def diatonic_chord_sequence (
 
 	Example:
 		```python
-		from subsequence.harmony import diatonic_chord_sequence
-
 		# 7-step D Major ladder starting at D3 (MIDI 50)
-		sequence = diatonic_chord_sequence("D", root_midi=50, count=7)
+		sequence = subsequence.harmony.diatonic_chord_sequence("D", root_midi=50, count=7)
 
 		# Map a 0-1 value to a chord (e.g. from ISS altitude)
 		chord, root = sequence[int(ratio * (len(sequence) - 1))]
 		p.chord(chord, root=root, sustain=True)
 
 		# Falling sequence
-		for chord, root in reversed(diatonic_chord_sequence("A", 57, 7, "minor")):
+		for chord, root in reversed(subsequence.harmony.diatonic_chord_sequence("A", 57, 7, "minor")):
 		    ...
 		```
 	"""
@@ -207,102 +195,3 @@ def diatonic_chord_sequence (
 		result.append((all_chords[degree], midi_root))
 
 	return result
-
-
-
-class ChordPattern (subsequence.pattern.Pattern):
-
-	"""
-	A repeating chord pattern that follows the shared harmonic state.
-	"""
-
-	def __init__ (
-		self,
-		harmonic_state: subsequence.harmonic_state.HarmonicState,
-		length: int = 4,
-		root_midi: int = 52,
-		velocity: int = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
-		reschedule_lookahead: int = 1,
-		channel: typing.Optional[int] = None,
-		voice_leading: bool = False
-	) -> None:
-
-		"""Initialize a chord pattern driven by composition-level harmony.
-
-		Parameters:
-			harmonic_state: Shared harmonic state that provides chord changes
-			length: Pattern length in beats (default 4)
-			root_midi: Base MIDI note number for the chord root (default 52)
-			velocity: MIDI velocity 0-127 (default 90)
-			reschedule_lookahead: Reschedule lookahead in beats (default 1)
-			channel: MIDI channel (0-15, required)
-			voice_leading: When True, each chord automatically picks the
-				inversion closest to the previous chord for smooth movement
-		"""
-
-		if channel is None:
-			# Decision path: channel is required so composition choices stay in demo.py.
-			logger.error("ChordPattern requires an explicit MIDI channel")
-			raise ValueError("ChordPattern requires an explicit MIDI channel")
-
-		super().__init__(
-			channel = channel,
-			length = length,
-			reschedule_lookahead = reschedule_lookahead
-		)
-
-		self.harmonic_state = harmonic_state
-		self.key_root_midi = root_midi
-		self.velocity = velocity
-		self.current_chord = self.harmonic_state.get_current_chord()
-		self._voice_leading_state: typing.Optional[subsequence.voicings.VoiceLeadingState] = (
-			subsequence.voicings.VoiceLeadingState() if voice_leading else None
-		)
-
-		self._build_current_chord()
-
-
-	def _get_chord_root_midi (self, chord: subsequence.chords.Chord) -> int:
-
-		"""
-		Calculate the MIDI root for a chord relative to the key root.
-		"""
-
-		return self.harmonic_state.get_chord_root_midi(self.key_root_midi, chord)
-
-
-	def _build_current_chord (self) -> None:
-
-		"""
-		Build the current chord as a sustained voicing.
-		"""
-
-		self.steps = {}
-
-		chord_root_midi = self._get_chord_root_midi(self.current_chord)
-		chord_intervals = self.current_chord.intervals()
-
-		if self._voice_leading_state is not None:
-			pitches = self._voice_leading_state.next(chord_intervals, chord_root_midi)
-		else:
-			pitches = [chord_root_midi + interval for interval in chord_intervals]
-
-		for pitch in pitches:
-			self.add_note_beats(
-				beat_position = 0.0,
-				pitch = pitch,
-				velocity = self.velocity,
-				duration_beats = float(self.length)
-			)
-
-
-	def on_reschedule (self) -> None:
-
-		"""
-		Rebuild the chord pattern from the shared harmonic state.
-		"""
-
-		# Decision path: chord changes come from harmonic_state.step in the sequencer callback.
-		self.current_chord = self.harmonic_state.get_current_chord()
-
-		self._build_current_chord()

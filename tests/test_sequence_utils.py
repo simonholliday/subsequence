@@ -1628,6 +1628,7 @@ def test_vl_distance_absolute_pitch_mode () -> None:
 	"""pitch_classes=False scores literal MIDI movement (no circle wrap)."""
 
 	assert subsequence.sequence_utils.vl_distance([60], [72], pitch_classes=False) == 12
+	# The default pitch-class mode folds 60 and 72 to the same pc, so 0 is correct.
 	assert subsequence.sequence_utils.vl_distance([60], [72]) == 0
 
 

@@ -4,7 +4,6 @@ import subsequence
 
 import subsequence.constants.durations as dur
 import subsequence.constants.instruments.gm_drums as gm_drums
-import subsequence.sequence_utils
 
 logging.basicConfig(level=logging.INFO)
 

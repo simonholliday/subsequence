@@ -257,8 +257,8 @@ class MelodicState:
 		if pitch_diversity < 0 or pitch_diversity > 1:
 			raise ValueError("Pitch diversity must be between 0 and 1")
 
-		if chord_weight < 0:
-			raise ValueError("Chord weight must be non-negative")
+		if chord_weight < 0 or chord_weight > 1:
+			raise ValueError("Chord weight must be between 0 and 1")
 
 		if tessitura_strength < 0 or tessitura_strength > 1:
 			raise ValueError("Tessitura strength must be between 0 and 1")
@@ -270,7 +270,6 @@ class MelodicState:
 		# keep a bare MelodicState() working standalone.
 		self._explicit_key = key is not None
 		self._explicit_mode = mode is not None
-		self._configured = False
 		self._explicit_pool = False
 
 		self.key = key if key is not None else "C"
@@ -318,7 +317,6 @@ class MelodicState:
 		if self._explicit_pool:
 			return
 
-		self._configured = True
 		changed = False
 
 		# Re-track on every call (not just the first): a persistent state used
@@ -379,7 +377,6 @@ class MelodicState:
 
 		duplicate.key = self.key
 		duplicate.mode = self.mode
-		duplicate._configured = self._configured
 		duplicate._rebuild_pool()
 
 		if self._explicit_pool:

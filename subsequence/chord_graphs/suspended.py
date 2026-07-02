@@ -5,7 +5,6 @@ import subsequence.chords
 import subsequence.weighted_graph
 
 
-WEIGHT_STRONG = subsequence.chord_graphs.WEIGHT_STRONG
 WEIGHT_MEDIUM = subsequence.chord_graphs.WEIGHT_MEDIUM
 WEIGHT_COMMON = subsequence.chord_graphs.WEIGHT_COMMON
 WEIGHT_WEAK = subsequence.chord_graphs.WEIGHT_WEAK

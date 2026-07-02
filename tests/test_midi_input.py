@@ -210,7 +210,7 @@ async def test_transport_stop_halts_sequencer (patch_midi: None) -> None:
 @pytest.mark.asyncio
 async def test_transport_continue_resumes (patch_midi: None) -> None:
 
-	"""MIDI continue should resume counting from the current position."""
+	"""MIDI continue should resume from the current position, not restart at zero."""
 
 	seq = subsequence.sequencer.Sequencer(
 		output_device_name="Dummy MIDI",
@@ -221,8 +221,18 @@ async def test_transport_continue_resumes (patch_midi: None) -> None:
 
 	await seq.start()
 
-	# The sequencer starts waiting for a start/continue.
-	# Send continue instead of start - should resume from pulse 0 (initial position).
+	# Clocks before any start/continue are ignored (position stays 0).
+	for _ in range(8):
+		seq._midi_input_queue.put_nowait((0, mido.Message("clock")))
+
+	# Drive the sequencer to a non-zero position.
+	seq._midi_input_queue.put_nowait((0, mido.Message("start")))
+
+	for _ in range(24):
+		seq._midi_input_queue.put_nowait((0, mido.Message("clock")))
+
+	# Continue must preserve the position (start resets it — see
+	# test_transport_start_resets_position above).
 	seq._midi_input_queue.put_nowait((0, mido.Message("continue")))
 
 	for _ in range(12):
@@ -232,7 +242,8 @@ async def test_transport_continue_resumes (patch_midi: None) -> None:
 
 	await seq.task
 
-	assert seq.pulse_count == 12
+	# 24 ticks before continue + 12 after: resumed from pulse 24, not 0.
+	assert seq.pulse_count == 36
 
 	await seq.stop()
 

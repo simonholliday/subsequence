@@ -15,10 +15,8 @@ use the section key, and a persistent MelodicState follows the section key.
 """
 
 import pathlib
-import types
 import typing
 
-import mido
 import pytest
 
 import subsequence

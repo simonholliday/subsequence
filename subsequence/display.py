@@ -16,13 +16,13 @@ composition.play()
 
 The status line updates every beat and looks like::
 
-	125 BPM  Key: E  Bar: 17  [chorus 1/8]  Chord: Em7
+	125.00 BPM  Key: E  Bar: 17.1  [chorus 1/8]  Chord: Em7
 
 The grid (when enabled) updates every bar and looks like::
 
-	kick_2          |X . . . X . . . X . . . X . . .|
-	snare_1         |. . . . X . . . . . . . X . . .|
-	bass            |X . . X . . X . X . . . X . . .|
+	kick_2          |█ · · · █ · · · █ · · · █ · · ·|
+	snare_1         |· · · · ▓ · · · · · · · ▓ · · ·|
+	bass            |▓ · · ▓ · · ▓ · ▓ · · · ▓ · · ·|
 """
 
 import logging
@@ -129,7 +129,7 @@ class GridDisplay:
 
 		"""Convert a MIDI note number to a human-readable name.
 
-		Examples: 60 → ``"C4"``, 42 → ``"F#2"``, 36 → ``"C1"``.
+		Examples: 60 → ``"C4"``, 42 → ``"F#2"``, 36 → ``"C2"``.
 		"""
 
 		octave = (pitch // 12) - 1
