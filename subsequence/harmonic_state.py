@@ -20,333 +20,323 @@ import subsequence.weighted_graph
 DEFAULT_ROOT_DIVERSITY: float = 0.4
 
 
-
 # ---------------------------------------------------------------------------
 # Graph style registry — see _resolve_graph_style() below.
 # To register a new chord graph, add it to _D7_STYLES or _SIMPLE_STYLES there.
 # ---------------------------------------------------------------------------
 
 
-def _resolve_graph_style (
-	style: str,
-	include_dominant_7th: bool,
-	minor_turnaround_weight: float
+def _resolve_graph_style(
+    style: str, include_dominant_7th: bool, minor_turnaround_weight: float
 ) -> subsequence.chord_graphs.ChordGraph:
+    """Create a ChordGraph instance from a string style name and legacy parameters."""
 
-	"""Create a ChordGraph instance from a string style name and legacy parameters."""
+    if style in ("diatonic_major", "functional_major"):
+        return subsequence.chord_graphs.functional_major.DiatonicMajor(
+            include_dominant_7th=include_dominant_7th
+        )
 
-	if style in ("diatonic_major", "functional_major"):
-		return subsequence.chord_graphs.functional_major.DiatonicMajor(
-			include_dominant_7th = include_dominant_7th
-		)
+    if style in ("turnaround", "turnaround_global"):
+        return subsequence.chord_graphs.turnaround_global.TurnaroundModulation(
+            include_dominant_7th=include_dominant_7th,
+            minor_turnaround_weight=minor_turnaround_weight,
+        )
 
-	if style in ("turnaround", "turnaround_global"):
-		return subsequence.chord_graphs.turnaround_global.TurnaroundModulation(
-			include_dominant_7th = include_dominant_7th,
-			minor_turnaround_weight = minor_turnaround_weight
-		)
+    # Styles with only an include_dominant_7th parameter.
+    _D7_STYLES: typing.Dict[
+        str, typing.Callable[[bool], subsequence.chord_graphs.ChordGraph]
+    ] = {
+        "aeolian_minor": subsequence.chord_graphs.aeolian_minor.AeolianMinor,
+        "lydian_major": subsequence.chord_graphs.lydian_major.LydianMajor,
+        "dorian_minor": subsequence.chord_graphs.dorian_minor.DorianMinor,
+        "hooktheory_major": subsequence.chord_graphs.hooktheory_major.HooktheoryMajor,
+        "pop_major": subsequence.chord_graphs.hooktheory_major.HooktheoryMajor,
+    }
+    if style in _D7_STYLES:
+        return _D7_STYLES[style](include_dominant_7th)
 
-	# Styles with only an include_dominant_7th parameter.
-	_D7_STYLES: typing.Dict[
-		str,
-		typing.Callable[[bool], subsequence.chord_graphs.ChordGraph]
-	] = {
-		"aeolian_minor": subsequence.chord_graphs.aeolian_minor.AeolianMinor,
-		"lydian_major":  subsequence.chord_graphs.lydian_major.LydianMajor,
-		"dorian_minor":  subsequence.chord_graphs.dorian_minor.DorianMinor,
-		"hooktheory_major": subsequence.chord_graphs.hooktheory_major.HooktheoryMajor,
-		"pop_major": subsequence.chord_graphs.hooktheory_major.HooktheoryMajor,
-	}
-	if style in _D7_STYLES:
-		return _D7_STYLES[style](include_dominant_7th)
+    # Styles that take no extra parameters.
+    _SIMPLE_STYLES: typing.Dict[
+        str, typing.Callable[[], subsequence.chord_graphs.ChordGraph]
+    ] = {
+        "phrygian_minor": subsequence.chord_graphs.phrygian_minor.PhrygianMinor,
+        "chromatic_mediant": subsequence.chord_graphs.chromatic_mediant.ChromaticMediant,
+        "suspended": subsequence.chord_graphs.suspended.Suspended,
+        "mixolydian": subsequence.chord_graphs.mixolydian.Mixolydian,
+        "whole_tone": subsequence.chord_graphs.whole_tone.WholeTone,
+        "diminished": subsequence.chord_graphs.diminished.Diminished,
+    }
+    if style in _SIMPLE_STYLES:
+        return _SIMPLE_STYLES[style]()
 
-	# Styles that take no extra parameters.
-	_SIMPLE_STYLES: typing.Dict[
-		str,
-		typing.Callable[[], subsequence.chord_graphs.ChordGraph]
-	] = {
-		"phrygian_minor":    subsequence.chord_graphs.phrygian_minor.PhrygianMinor,
-		"chromatic_mediant": subsequence.chord_graphs.chromatic_mediant.ChromaticMediant,
-		"suspended":         subsequence.chord_graphs.suspended.Suspended,
-		"mixolydian":        subsequence.chord_graphs.mixolydian.Mixolydian,
-		"whole_tone":        subsequence.chord_graphs.whole_tone.WholeTone,
-		"diminished":        subsequence.chord_graphs.diminished.Diminished,
-	}
-	if style in _SIMPLE_STYLES:
-		return _SIMPLE_STYLES[style]()
-
-	raise ValueError(f"Unknown graph style: {style!r}")
-
+    raise ValueError(f"Unknown graph style: {style!r}")
 
 
 class HarmonicState:
+    """Holds the current chord and key context for the composition."""
+
+    def __init__(
+        self,
+        key_name: str,
+        graph_style: typing.Union[
+            str, subsequence.chord_graphs.ChordGraph
+        ] = "functional_major",
+        include_dominant_7th: bool = True,
+        key_gravity_blend: float = 1.0,
+        nir_strength: float = 0.5,
+        minor_turnaround_weight: float = 0.0,
+        root_diversity: float = DEFAULT_ROOT_DIVERSITY,
+        rng: typing.Optional[random.Random] = None,
+    ) -> None:
+        """
+        Initialize the harmonic state using a chord transition graph.
+
+        Parameters:
+                key_name: Note name for the key (e.g., ``"C"``, ``"F#"``).
+                graph_style: Built-in style name or a custom ``ChordGraph`` instance.
+                include_dominant_7th: Include V7 chords in the graph (default True).
+                key_gravity_blend: Balance between functional and diatonic gravity
+                        (0.0 = functional only, 1.0 = full diatonic). Default 1.0.
+                nir_strength: Melodic inertia from Narmour's Implication-Realization
+                        model (0.0 = off, 1.0 = full). Default 0.5.
+                minor_turnaround_weight: For turnaround style, weight toward minor
+                        turnarounds (0.0 to 1.0). Default 0.0.
+                root_diversity: Root-repetition damping factor (0.0 to 1.0). Each
+                        recent chord sharing a candidate's root pitch class multiplies
+                        the transition weight by this factor. At the default (0.4), one
+                        recent same-root chord reduces the weight to 40%; two reduce it
+                        to 16%. Set to 1.0 to disable the penalty entirely. Default 0.4.
+                rng: Optional seeded ``random.Random`` for deterministic playback.
+        """
+
+        if key_gravity_blend < 0 or key_gravity_blend > 1:
+            raise ValueError("Key gravity blend must be between 0 and 1")
+
+        if nir_strength < 0 or nir_strength > 1:
+            raise ValueError("NIR strength must be between 0 and 1")
+
+        if minor_turnaround_weight < 0 or minor_turnaround_weight > 1:
+            raise ValueError("Minor turnaround weight must be between 0 and 1")
+
+        if root_diversity < 0 or root_diversity > 1:
+            raise ValueError("Root diversity must be between 0 and 1")
+
+        self.key_name = key_name
+        self.key_root_pc = subsequence.chords.key_name_to_pc(key_name)
+        self.key_gravity_blend = key_gravity_blend
+        self.nir_strength = nir_strength
+        self.root_diversity = root_diversity
+        self.minor_turnaround_weight = minor_turnaround_weight
+
+        if isinstance(graph_style, str):
+            chord_graph = _resolve_graph_style(
+                graph_style, include_dominant_7th, minor_turnaround_weight
+            )
+
+        else:
+            chord_graph = graph_style
+
+        self.graph, tonic = chord_graph.build(key_name)
+        self._diatonic_chords, self._function_chords = chord_graph.gravity_sets(
+            key_name
+        )
+
+        self.rng = rng or random.Random()
+        self.current_chord = tonic
+        self.history: typing.List[subsequence.chords.Chord] = []
+
+    def _calculate_nir_score(
+        self, source: subsequence.chords.Chord, target: subsequence.chords.Chord
+    ) -> float:
+        """
+        Calculate a Narmour Implication-Realization (NIR) score for a transition.
+        Returns a multiplier (default 1.0, >1.0 for boost).
+        """
+
+        # step() appends the current chord to history BEFORE choosing, so
+        # history[-1] is always the source itself; the implication interval
+        # needs the chord we arrived FROM, which is history[-2].  (Using
+        # history[-1] here was the pre-2026-06 bug that left the reversal
+        # and continuation rules permanently inert.)
+        if len(self.history) < 2:
+            return 1.0
+
+        prev = self.history[-2]
+
+        # Calculate interval from Prev -> Source (The "Implication" generator)
+        # Using shortest-path distance in Pitch Class space (-6 to +6)
+        prev_diff = (source.root_pc - prev.root_pc) % 12
+        if prev_diff > 6:
+            prev_diff -= 12
+
+        prev_interval = abs(prev_diff)
+        prev_direction = 1 if prev_diff > 0 else -1 if prev_diff < 0 else 0
+
+        # Calculate interval from Source -> Target (The "Realization")
+        target_diff = (target.root_pc - source.root_pc) % 12
+        if target_diff > 6:
+            target_diff -= 12
+
+        target_interval = abs(target_diff)
+        target_direction = 1 if target_diff > 0 else -1 if target_diff < 0 else 0
+
+        score = 1.0
+
+        # --- Rule A: Reversal (Gap Fill) ---
+        # If the previous step was a large leap (> 4 on the 0–6 pitch-class
+        # shortest-path scale, where a tritone is 6), expect a direction change.
+        if prev_interval > 4:
+            # Expect change in direction
+            if target_direction != prev_direction and target_direction != 0:
+                score += 0.5
+
+            # Expect smaller interval (Gap Fill)
+            if target_interval < 4:
+                score += 0.3
+
+        # --- Rule B: Process (Continuation/Inertia) ---
+        # If previous was Small Step (< 3 semitones), expect similarity.
+        elif prev_interval > 0 and prev_interval < 3:
+            # Expect same direction
+            if target_direction == prev_direction:
+                score += 0.4
+
+            # Expect similar size
+            if abs(target_interval - prev_interval) <= 1:
+                score += 0.2
+
+        # --- Rule C: Closure ---
+        # Return to Tonic (Closure) is often implied after tension
+        if target.root_pc == self.key_root_pc:
+            score += 0.2
+
+        # --- Rule D: Proximity ---
+        # General preference for small intervals (≤ 3 semitones).
+        if target_interval > 0 and target_interval <= 3:
+            score += 0.3
+
+        # Scale the boost portion by nir_strength (score starts at 1.0, boost is the excess)
+        return 1.0 + (score - 1.0) * self.nir_strength
+
+    def _transition_weight(
+        self,
+        source: subsequence.chords.Chord,
+        target: subsequence.chords.Chord,
+        weight: int,
+    ) -> float:
+        """
+        Combine three forces that shape chord transition probabilities:
+
+        1. **Key gravity** — blends functional pull (tonic, dominant) with
+           full diatonic pull, controlled by ``key_gravity_blend``.
+        2. **Melodic inertia (NIR)** — Narmour's cognitive expectation
+           model favoring continuation after small steps and reversal
+           after large leaps, controlled by ``nir_strength``.
+        3. **Root diversity** — exponential damping that discourages
+           revisiting a root pitch class heard recently, controlled by
+           ``root_diversity``. Each recent chord sharing the target's
+           root multiplies the weight by ``root_diversity`` (default
+           0.4), so the penalty grows stronger with each consecutive
+           same-root step.
+
+        The final modifier is:
 
-	"""Holds the current chord and key context for the composition."""
-
-	def __init__ (
-		self,
-		key_name: str,
-		graph_style: typing.Union[str, subsequence.chord_graphs.ChordGraph] = "functional_major",
-		include_dominant_7th: bool = True,
-		key_gravity_blend: float = 1.0,
-		nir_strength: float = 0.5,
-		minor_turnaround_weight: float = 0.0,
-		root_diversity: float = DEFAULT_ROOT_DIVERSITY,
-		rng: typing.Optional[random.Random] = None
-	) -> None:
-
-		"""
-		Initialize the harmonic state using a chord transition graph.
-
-		Parameters:
-			key_name: Note name for the key (e.g., ``"C"``, ``"F#"``).
-			graph_style: Built-in style name or a custom ``ChordGraph`` instance.
-			include_dominant_7th: Include V7 chords in the graph (default True).
-			key_gravity_blend: Balance between functional and diatonic gravity
-				(0.0 = functional only, 1.0 = full diatonic). Default 1.0.
-			nir_strength: Melodic inertia from Narmour's Implication-Realization
-				model (0.0 = off, 1.0 = full). Default 0.5.
-			minor_turnaround_weight: For turnaround style, weight toward minor
-				turnarounds (0.0 to 1.0). Default 0.0.
-			root_diversity: Root-repetition damping factor (0.0 to 1.0). Each
-				recent chord sharing a candidate's root pitch class multiplies
-				the transition weight by this factor. At the default (0.4), one
-				recent same-root chord reduces the weight to 40%; two reduce it
-				to 16%. Set to 1.0 to disable the penalty entirely. Default 0.4.
-			rng: Optional seeded ``random.Random`` for deterministic playback.
-		"""
-
-		if key_gravity_blend < 0 or key_gravity_blend > 1:
-			raise ValueError("Key gravity blend must be between 0 and 1")
-
-		if nir_strength < 0 or nir_strength > 1:
-			raise ValueError("NIR strength must be between 0 and 1")
-
-		if minor_turnaround_weight < 0 or minor_turnaround_weight > 1:
-			raise ValueError("Minor turnaround weight must be between 0 and 1")
-
-		if root_diversity < 0 or root_diversity > 1:
-			raise ValueError("Root diversity must be between 0 and 1")
-
-		self.key_name = key_name
-		self.key_root_pc = subsequence.chords.key_name_to_pc(key_name)
-		self.key_gravity_blend = key_gravity_blend
-		self.nir_strength = nir_strength
-		self.root_diversity = root_diversity
-		self.minor_turnaround_weight = minor_turnaround_weight
-
-
-		if isinstance(graph_style, str):
-			chord_graph = _resolve_graph_style(graph_style, include_dominant_7th, minor_turnaround_weight)
-
-		else:
-			chord_graph = graph_style
-
-		self.graph, tonic = chord_graph.build(key_name)
-		self._diatonic_chords, self._function_chords = chord_graph.gravity_sets(key_name)
-
-		self.rng = rng or random.Random()
-		self.current_chord = tonic
-		self.history: typing.List[subsequence.chords.Chord] = []
-
-
-	def _calculate_nir_score (self, source: subsequence.chords.Chord, target: subsequence.chords.Chord) -> float:
-
-		"""
-		Calculate a Narmour Implication-Realization (NIR) score for a transition.
-		Returns a multiplier (default 1.0, >1.0 for boost).
-		"""
-
-		# step() appends the current chord to history BEFORE choosing, so
-		# history[-1] is always the source itself; the implication interval
-		# needs the chord we arrived FROM, which is history[-2].  (Using
-		# history[-1] here was the pre-2026-06 bug that left the reversal
-		# and continuation rules permanently inert.)
-		if len(self.history) < 2:
-			return 1.0
-
-		prev = self.history[-2]
-
-		# Calculate interval from Prev -> Source (The "Implication" generator)
-		# Using shortest-path distance in Pitch Class space (-6 to +6)
-		prev_diff = (source.root_pc - prev.root_pc) % 12
-		if prev_diff > 6:
-			prev_diff -= 12
-
-		prev_interval = abs(prev_diff)
-		prev_direction = 1 if prev_diff > 0 else -1 if prev_diff < 0 else 0
-
-		# Calculate interval from Source -> Target (The "Realization")
-		target_diff = (target.root_pc - source.root_pc) % 12
-		if target_diff > 6:
-			target_diff -= 12
-
-		target_interval = abs(target_diff)
-		target_direction = 1 if target_diff > 0 else -1 if target_diff < 0 else 0
-
-		score = 1.0
-
-		# --- Rule A: Reversal (Gap Fill) ---
-		# If the previous step was a large leap (> 4 on the 0–6 pitch-class
-		# shortest-path scale, where a tritone is 6), expect a direction change.
-		if prev_interval > 4:
-			# Expect change in direction
-			if target_direction != prev_direction and target_direction != 0:
-				score += 0.5
+                ``(1 + gravity_boost) × nir_score × diversity``
+        """
 
-			# Expect smaller interval (Gap Fill)
-			if target_interval < 4:
-				score += 0.3
+        is_function = 1.0 if target in self._function_chords else 0.0
+        is_diatonic = 1.0 if target in self._diatonic_chords else 0.0
 
-		# --- Rule B: Process (Continuation/Inertia) ---
-		# If previous was Small Step (< 3 semitones), expect similarity.
-		elif prev_interval > 0 and prev_interval < 3:
-			# Expect same direction
-			if target_direction == prev_direction:
-				score += 0.4
+        # Decision path: blend controls whether key gravity favors functional or full diatonic chords.
+        boost = (
+            1.0 - self.key_gravity_blend
+        ) * is_function + self.key_gravity_blend * is_diatonic
 
-			# Expect similar size
-			if abs(target_interval - prev_interval) <= 1:
-				score += 0.2
+        # Apply NIR gravity
+        nir_score = self._calculate_nir_score(source, target)
 
-		# --- Rule C: Closure ---
-		# Return to Tonic (Closure) is often implied after tension
-		if target.root_pc == self.key_root_pc:
-			score += 0.2
+        # Root diversity: penalise transitions to a root heard recently.
+        recent_same_root = sum(1 for h in self.history if h.root_pc == target.root_pc)
+        diversity = self.root_diversity**recent_same_root
 
-		# --- Rule D: Proximity ---
-		# General preference for small intervals (≤ 3 semitones).
-		if target_interval > 0 and target_interval <= 3:
-			score += 0.3
+        return (1.0 + boost) * nir_score * diversity
 
-		# Scale the boost portion by nir_strength (score starts at 1.0, boost is the excess)
-		return 1.0 + (score - 1.0) * self.nir_strength
+    def _record_transition_source(self, chord: subsequence.chords.Chord) -> None:
+        """History bookkeeping for one transition: the outgoing chord enters history.
 
-	def _transition_weight (
-		self,
-		source: subsequence.chords.Chord,
-		target: subsequence.chords.Chord,
-		weight: int
-	) -> float:
+        The first half of :meth:`step` — exposed so a constrained walk can
+        interleave it with its own draws (``before_choice``) and the NIR
+        weighting sees exactly the context it would live.
+        """
 
-		"""
-		Combine three forces that shape chord transition probabilities:
+        self.history.append(chord)
+        if len(self.history) > 4:
+            self.history.pop(0)
 
-		1. **Key gravity** — blends functional pull (tonic, dominant) with
-		   full diatonic pull, controlled by ``key_gravity_blend``.
-		2. **Melodic inertia (NIR)** — Narmour's cognitive expectation
-		   model favoring continuation after small steps and reversal
-		   after large leaps, controlled by ``nir_strength``.
-		3. **Root diversity** — exponential damping that discourages
-		   revisiting a root pitch class heard recently, controlled by
-		   ``root_diversity``. Each recent chord sharing the target's
-		   root multiplies the weight by ``root_diversity`` (default
-		   0.4), so the penalty grows stronger with each consecutive
-		   same-root step.
+    def step(self) -> subsequence.chords.Chord:
+        """Advance to the next chord based on the transition graph."""
 
-		The final modifier is:
+        # Update history before choosing next (so structure tracks the path)
+        self._record_transition_source(self.current_chord)
 
-			``(1 + gravity_boost) × nir_score × diversity``
-		"""
+        # Decision path: chord changes occur here; key changes are not automatic.
+        self.current_chord = self.graph.choose_next(
+            self.current_chord, self.rng, weight_modifier=self._transition_weight
+        )
 
-		is_function = 1.0 if target in self._function_chords else 0.0
-		is_diatonic = 1.0 if target in self._diatonic_chords else 0.0
+        return self.current_chord
 
-		# Decision path: blend controls whether key gravity favors functional or full diatonic chords.
-		boost = (1.0 - self.key_gravity_blend) * is_function + self.key_gravity_blend * is_diatonic
+    def plan_next(self) -> subsequence.chords.Chord:
+        """Choose the next chord without committing it — the horizon's pre-step.
 
-		# Apply NIR gravity
-		nir_score = self._calculate_nir_score(source, target)
+        Draws from the RNG exactly as :meth:`step` would (the draw IS the
+        pre-commitment), but leaves ``current_chord`` and ``history``
+        untouched.  Pair with :meth:`commit_chord` when the planned chord
+        becomes the sounding one; ``commit_chord(plan_next())`` is draw-for-
+        draw equivalent to ``step()``.
+        """
 
-		# Root diversity: penalise transitions to a root heard recently.
-		recent_same_root = sum(
-			1 for h in self.history
-			if h.root_pc == target.root_pc
-		)
-		diversity = self.root_diversity ** recent_same_root
+        saved_history = list(self.history)
 
-		return (1.0 + boost) * nir_score * diversity
+        self._record_transition_source(self.current_chord)
 
-	def _record_transition_source (self, chord: subsequence.chords.Chord) -> None:
+        try:
+            return self.graph.choose_next(
+                self.current_chord, self.rng, weight_modifier=self._transition_weight
+            )
+        finally:
+            self.history = saved_history
 
-		"""History bookkeeping for one transition: the outgoing chord enters history.
+    def commit_chord(self, chord: subsequence.chords.Chord) -> subsequence.chords.Chord:
+        """Make *chord* current with step()'s history bookkeeping, no RNG draw.
 
-		The first half of :meth:`step` — exposed so a constrained walk can
-		interleave it with its own draws (``before_choice``) and the NIR
-		weighting sees exactly the context it would live.
-		"""
+        Used by the harmonic clock to commit a planned chord or replay a
+        frozen progression span while keeping NIR context coherent (the
+        outgoing chord enters history as the transition source, exactly as
+        ``step()`` records it).
+        """
 
-		self.history.append(chord)
-		if len(self.history) > 4:
-			self.history.pop(0)
+        self._record_transition_source(self.current_chord)
 
-	def step (self) -> subsequence.chords.Chord:
+        self.current_chord = chord
 
-		"""Advance to the next chord based on the transition graph."""
+        return self.current_chord
 
-		# Update history before choosing next (so structure tracks the path)
-		self._record_transition_source(self.current_chord)
+    def get_current_chord(self) -> subsequence.chords.Chord:
+        """Return the current chord."""
 
-		# Decision path: chord changes occur here; key changes are not automatic.
-		self.current_chord = self.graph.choose_next(self.current_chord, self.rng, weight_modifier=self._transition_weight)
+        return self.current_chord
 
-		return self.current_chord
+    def get_key_name(self) -> str:
+        """Return the current key name."""
 
-	def plan_next (self) -> subsequence.chords.Chord:
+        return self.key_name
 
-		"""Choose the next chord without committing it — the horizon's pre-step.
+    def get_chord_root_midi(
+        self, base_midi: int, chord: subsequence.chords.Chord
+    ) -> int:
+        """Calculate the MIDI root for a chord relative to the key root."""
 
-		Draws from the RNG exactly as :meth:`step` would (the draw IS the
-		pre-commitment), but leaves ``current_chord`` and ``history``
-		untouched.  Pair with :meth:`commit_chord` when the planned chord
-		becomes the sounding one; ``commit_chord(plan_next())`` is draw-for-
-		draw equivalent to ``step()``.
-		"""
+        offset = (chord.root_pc - self.key_root_pc) % 12
 
-		saved_history = list(self.history)
-
-		self._record_transition_source(self.current_chord)
-
-		try:
-			return self.graph.choose_next(self.current_chord, self.rng, weight_modifier=self._transition_weight)
-		finally:
-			self.history = saved_history
-
-	def commit_chord (self, chord: subsequence.chords.Chord) -> subsequence.chords.Chord:
-
-		"""Make *chord* current with step()'s history bookkeeping, no RNG draw.
-
-		Used by the harmonic clock to commit a planned chord or replay a
-		frozen progression span while keeping NIR context coherent (the
-		outgoing chord enters history as the transition source, exactly as
-		``step()`` records it).
-		"""
-
-		self._record_transition_source(self.current_chord)
-
-		self.current_chord = chord
-
-		return self.current_chord
-
-
-	def get_current_chord (self) -> subsequence.chords.Chord:
-
-		"""Return the current chord."""
-
-		return self.current_chord
-
-
-	def get_key_name (self) -> str:
-
-		"""Return the current key name."""
-
-		return self.key_name
-
-
-	def get_chord_root_midi (self, base_midi: int, chord: subsequence.chords.Chord) -> int:
-
-		"""Calculate the MIDI root for a chord relative to the key root."""
-
-		offset = (chord.root_pc - self.key_root_pc) % 12
-
-		return base_midi + offset
+        return base_midi + offset

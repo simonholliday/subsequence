@@ -29,2058 +29,2177 @@ logger = logging.getLogger(__name__)
 
 
 @typing.runtime_checkable
-class PatternLike (typing.Protocol):
+class PatternLike(typing.Protocol):
+    """
+    Protocol for pattern objects that can be scheduled.
+    """
 
-	"""
-	Protocol for pattern objects that can be scheduled.
-	"""
+    channel: int
+    device: int
+    length: float
+    reschedule_lookahead: float
+    steps: typing.Dict[int, typing.Any]
+    _cycle_start_pulse: int
 
-	channel: int
-	device: int
-	length: float
-	reschedule_lookahead: float
-	steps: typing.Dict[int, typing.Any]
-	_cycle_start_pulse: int
+    def on_reschedule(self) -> None:
+        """
+        Hook called immediately before the pattern is rescheduled.
+        """
 
-
-	def on_reschedule (self) -> None:
-
-		"""
-		Hook called immediately before the pattern is rescheduled.
-		"""
-
-		...
+        ...
 
 
-@dataclasses.dataclass (order=True)
+@dataclasses.dataclass(order=True)
 class MidiEvent:
+    """
+    Represents a MIDI event scheduled at a specific pulse.
 
-	"""
-	Represents a MIDI event scheduled at a specific pulse.
+    ``sequence`` is a FIFO tie-breaker: when two events share a pulse, the
+    one pushed first dispatches first.  Without it, ``heapq`` ordering of
+    same-pulse events is undefined, which would break NRPN/RPN sequences
+    (CC 99 → 98 → 6 → 38) and risk reordering bank-select-before-program-change.
+    The Sequencer assigns ``sequence`` via its monotonic ``_event_counter``
+    at push time (see ``Sequencer._push_event``); direct constructions in
+    tests can leave it at the default.
 
-	``sequence`` is a FIFO tie-breaker: when two events share a pulse, the
-	one pushed first dispatches first.  Without it, ``heapq`` ordering of
-	same-pulse events is undefined, which would break NRPN/RPN sequences
-	(CC 99 → 98 → 6 → 38) and risk reordering bank-select-before-program-change.
-	The Sequencer assigns ``sequence`` via its monotonic ``_event_counter``
-	at push time (see ``Sequencer._push_event``); direct constructions in
-	tests can leave it at the default.
+    ``priority`` outranks the FIFO tie-breaker at a shared pulse: events
+    with a lower priority dispatch first.  Notes are pushed before CC
+    events, so a tuning onset bend (which must reach the synth BEFORE its
+    note_on) carries priority ``-1``; everything else stays at ``0``.
+    """
 
-	``priority`` outranks the FIFO tie-breaker at a shared pulse: events
-	with a lower priority dispatch first.  Notes are pushed before CC
-	events, so a tuning onset bend (which must reach the synth BEFORE its
-	note_on) carries priority ``-1``; everything else stays at ``0``.
-	"""
+    pulse: int
+    message_type: str = dataclasses.field(compare=False)
+    channel: int = dataclasses.field(compare=False)
+    note: int = dataclasses.field(compare=False, default=0)
+    velocity: int = dataclasses.field(compare=False, default=0)
+    control: int = dataclasses.field(compare=False, default=0)
+    value: int = dataclasses.field(compare=False, default=0)
+    data: typing.Any = dataclasses.field(compare=False, default=None)
+    device: int = dataclasses.field(compare=False, default=0)
+    priority: int = 0
+    sequence: int = 0
 
-	pulse: int
-	message_type: str = dataclasses.field(compare=False)
-	channel: int = dataclasses.field(compare=False)
-	note: int = dataclasses.field(compare=False, default=0)
-	velocity: int = dataclasses.field(compare=False, default=0)
-	control: int = dataclasses.field(compare=False, default=0)
-	value: int = dataclasses.field(compare=False, default=0)
-	data: typing.Any = dataclasses.field(compare=False, default=None)
-	device: int = dataclasses.field(compare=False, default=0)
-	priority: int = 0
-	sequence: int = 0
+    def to_mido(self) -> typing.Optional[typing.Union[mido.Message, mido.MetaMessage]]:
+        """Convert this event to a mido.Message, or None if it's an internal type (like OSC)."""
 
+        if self.message_type in ("note_on", "note_off"):
+            return mido.Message(
+                self.message_type,
+                channel=self.channel,
+                note=self.note,
+                velocity=self.velocity,
+            )
 
-	def to_mido (self) -> typing.Optional[typing.Union[mido.Message, mido.MetaMessage]]:
+        if self.message_type == "control_change":
+            return mido.Message(
+                "control_change",
+                channel=self.channel,
+                control=self.control,
+                value=self.value,
+            )
 
-		"""Convert this event to a mido.Message, or None if it's an internal type (like OSC)."""
+        if self.message_type == "pitchwheel":
+            return mido.Message("pitchwheel", channel=self.channel, pitch=self.value)
 
-		if self.message_type in ('note_on', 'note_off'):
-			return mido.Message(
-				self.message_type,
-				channel = self.channel,
-				note = self.note,
-				velocity = self.velocity
-			)
+        if self.message_type == "program_change":
+            return mido.Message(
+                "program_change", channel=self.channel, program=self.value
+            )
 
-		if self.message_type == 'control_change':
-			return mido.Message(
-				'control_change',
-				channel = self.channel,
-				control = self.control,
-				value = self.value
-			)
+        if self.message_type == "sysex":
+            return mido.Message(
+                "sysex", data=self.data if self.data is not None else b""
+            )
 
-		if self.message_type == 'pitchwheel':
-			return mido.Message(
-				'pitchwheel',
-				channel = self.channel,
-				pitch = self.value
-			)
+        return None
 
-		if self.message_type == 'program_change':
-			return mido.Message(
-				'program_change',
-				channel = self.channel,
-				program = self.value
-			)
+    @classmethod
+    def from_mido(
+        cls,
+        pulse: int,
+        msg: typing.Union[mido.Message, mido.MetaMessage],
+        device: int = 0,
+    ) -> "MidiEvent":
+        """Convert a mido.Message to a MidiEvent."""
 
-		if self.message_type == 'sysex':
-			return mido.Message(
-				'sysex',
-				data = self.data if self.data is not None else b''
-			)
+        if msg.type == "pitchwheel":
+            return cls(
+                pulse=pulse,
+                message_type="pitchwheel",
+                channel=msg.channel,
+                value=msg.pitch,
+                device=device,
+            )
 
-		return None
+        if msg.type == "control_change":
+            return cls(
+                pulse=pulse,
+                message_type="control_change",
+                channel=msg.channel,
+                control=msg.control,
+                value=msg.value,
+                device=device,
+            )
 
-
-	@classmethod
-	def from_mido (cls, pulse: int, msg: typing.Union[mido.Message, mido.MetaMessage], device: int = 0) -> "MidiEvent":
-
-		"""Convert a mido.Message to a MidiEvent."""
-
-		if msg.type == 'pitchwheel':
-			return cls(
-				pulse = pulse,
-				message_type = 'pitchwheel',
-				channel = msg.channel,
-				value = msg.pitch,
-				device = device,
-			)
-
-		if msg.type == 'control_change':
-			return cls(
-				pulse = pulse,
-				message_type = 'control_change',
-				channel = msg.channel,
-				control = msg.control,
-				value = msg.value,
-				device = device,
-			)
-
-		return cls(
-			pulse = pulse,
-			message_type = msg.type,
-			channel = getattr(msg, 'channel', 0),
-			value = getattr(msg, 'value', 0),
-			note = getattr(msg, 'note', 0),
-			velocity = getattr(msg, 'velocity', 0),
-			data = getattr(msg, 'data', None),
-			control = getattr(msg, 'control', 0),
-			device = device,
-		)
+        return cls(
+            pulse=pulse,
+            message_type=msg.type,
+            channel=getattr(msg, "channel", 0),
+            value=getattr(msg, "value", 0),
+            note=getattr(msg, "note", 0),
+            velocity=getattr(msg, "velocity", 0),
+            data=getattr(msg, "data", None),
+            control=getattr(msg, "control", 0),
+            device=device,
+        )
 
 
 @dataclasses.dataclass
 class _MirrorTarget:
+    """A resolved fan-out destination — a ``(device, channel)`` plus an optional
+    per-device ``drum_note_map`` used to re-resolve mirrored drum names.
 
-	"""A resolved fan-out destination — a ``(device, channel)`` plus an optional
-	per-device ``drum_note_map`` used to re-resolve mirrored drum names.
+    Constructed transiently inside ``schedule_pattern`` (never stored on the
+    Pattern, never public) purely for ergonomic attribute access in the
+    fan-out loops.  Stored mirror entries remain plain tuples — a dict-bearing
+    entry would be unhashable and could not live in the ``set`` used by
+    ``_stop_pattern_notes``.
+    """
 
-	Constructed transiently inside ``schedule_pattern`` (never stored on the
-	Pattern, never public) purely for ergonomic attribute access in the
-	fan-out loops.  Stored mirror entries remain plain tuples — a dict-bearing
-	entry would be unhashable and could not live in the ``set`` used by
-	``_stop_pattern_notes``.
-	"""
-
-	device: int
-	channel: int
-	drum_note_map: typing.Optional[typing.Dict[str, int]] = None
-
-
-def _to_target (entry: typing.Sequence[typing.Any]) -> _MirrorTarget:
-
-	"""Coerce a stored mirror entry to a ``_MirrorTarget``.
-
-	*entry* is ``(device, channel)`` or ``(device, channel, drum_note_map)`` —
-	a tuple or list.  Branching on length here keeps the 2-vs-3 split in one
-	place (and off the typed ``MirrorSpec`` union).
-	"""
-
-	drum_map = entry[2] if len(entry) == 3 else None
-	return _MirrorTarget(entry[0], entry[1], drum_map)
+    device: int
+    channel: int
+    drum_note_map: typing.Optional[typing.Dict[str, int]] = None
 
 
-def _destination_pitch (note: typing.Any, target: _MirrorTarget, primary: bool) -> typing.Optional[int]:
+def _to_target(entry: typing.Sequence[typing.Any]) -> _MirrorTarget:
+    """Coerce a stored mirror entry to a ``_MirrorTarget``.
 
-	"""Return the MIDI note to emit for *note* at *target*, or None to drop it.
+    *entry* is ``(device, channel)`` or ``(device, channel, drum_note_map)`` —
+    a tuple or list.  Branching on length here keeps the 2-vs-3 split in one
+    place (and off the typed ``MirrorSpec`` union).
+    """
 
-	Drum names are resolved per destination: a destination that has no voice for
-	the name stays silent (returns None) rather than sounding a wrong number.
+    drum_map = entry[2] if len(entry) == 3 else None
+    return _MirrorTarget(entry[0], entry[1], drum_map)
 
-	- A ``primary_unmapped`` note (its ``origin`` was absent from the pattern's
-	  own map) has no real primary pitch — only a mirror whose map contains the
-	  name voices it; the primary and raw (map-less) mirrors return None.
-	- Otherwise the primary and raw 2-tuple mirrors copy ``note.pitch``; a
-	  symbolic (map-bearing) mirror re-resolves ``note.origin`` through its own
-	  map, dropping a named voice it lacks and copying an origin-less literal
-	  pitch.
-	"""
 
-	if note.primary_unmapped:
-		# No real primary note exists; only a mapping mirror can sound it.
-		if primary or target.drum_note_map is None:
-			return None
-		if note.origin is not None and note.origin in target.drum_note_map:
-			return target.drum_note_map[note.origin]
-		return None
+def _destination_pitch(
+    note: typing.Any, target: _MirrorTarget, primary: bool
+) -> typing.Optional[int]:
+    """Return the MIDI note to emit for *note* at *target*, or None to drop it.
 
-	if primary or target.drum_note_map is None:
-		return typing.cast(int, note.pitch)
+    Drum names are resolved per destination: a destination that has no voice for
+    the name stays silent (returns None) rather than sounding a wrong number.
 
-	if note.origin is not None:
-		if note.origin in target.drum_note_map:
-			return target.drum_note_map[note.origin]
-		return None   # a named voice this device lacks → silent (not a wrong note)
+    - A ``primary_unmapped`` note (its ``origin`` was absent from the pattern's
+      own map) has no real primary pitch — only a mirror whose map contains the
+      name voices it; the primary and raw (map-less) mirrors return None.
+    - Otherwise the primary and raw 2-tuple mirrors copy ``note.pitch``; a
+      symbolic (map-bearing) mirror re-resolves ``note.origin`` through its own
+      map, dropping a named voice it lacks and copying an origin-less literal
+      pitch.
+    """
 
-	return typing.cast(int, note.pitch)
+    if note.primary_unmapped:
+        # No real primary note exists; only a mapping mirror can sound it.
+        if primary or target.drum_note_map is None:
+            return None
+        if note.origin is not None and note.origin in target.drum_note_map:
+            return target.drum_note_map[note.origin]
+        return None
+
+    if primary or target.drum_note_map is None:
+        return typing.cast(int, note.pitch)
+
+    if note.origin is not None:
+        if note.origin in target.drum_note_map:
+            return target.drum_note_map[note.origin]
+        return None  # a named voice this device lacks → silent (not a wrong note)
+
+    return typing.cast(int, note.pitch)
 
 
 @dataclasses.dataclass
 class ScheduledPattern:
+    """
+    Tracks a repeating pattern and its scheduling metadata.
+    """
 
-	"""
-	Tracks a repeating pattern and its scheduling metadata.
-	"""
-
-	pattern: PatternLike
-	cycle_start_pulse: int
-	length_pulses: int
-	lookahead_pulses: int
-	next_reschedule_pulse: int
+    pattern: PatternLike
+    cycle_start_pulse: int
+    length_pulses: int
+    lookahead_pulses: int
+    next_reschedule_pulse: int
 
 
 @dataclasses.dataclass
 class ScheduledCallback:
+    """
+    Tracks a repeating callback and its scheduling metadata.
+    """
 
-	"""
-	Tracks a repeating callback and its scheduling metadata.
-	"""
-
-	callback: typing.Callable[[int], typing.Any]
-	cycle_start_pulse: int
-	interval_pulses: int
-	lookahead_pulses: int
-	next_fire_pulse: int
+    callback: typing.Callable[[int], typing.Any]
+    cycle_start_pulse: int
+    interval_pulses: int
+    lookahead_pulses: int
+    next_fire_pulse: int
 
 
 @dataclasses.dataclass
 class ScheduledCallbackSequence:
+    """Tracks a self-rescheduling callback whose firing interval varies per hop.
 
-	"""Tracks a self-rescheduling callback whose firing interval varies per hop.
+    The variable-interval counterpart to :class:`ScheduledCallback` — built
+    for clocks that walk irregular spans (the harmonic clock under a bound
+    progression).  Each fire targets a *boundary* pulse; the callback's
+    return value sets the distance to the next boundary.
 
-	The variable-interval counterpart to :class:`ScheduledCallback` — built
-	for clocks that walk irregular spans (the harmonic clock under a bound
-	progression).  Each fire targets a *boundary* pulse; the callback's
-	return value sets the distance to the next boundary.
+    Attributes:
+            callback: Called with the boundary pulse it is preparing.  Returns
+                    the number of **beats** to the next boundary, or ``None`` to
+                    stop firing (the sequence is dropped from the queue).  May be
+                    sync or async.
+            boundary_pulse: The pulse this fire prepares (the musical boundary,
+                    not the fire time).
+            lookahead_pulses: How far before each boundary the callback fires.
+            next_fire_pulse: When the next fire is due.
+    """
 
-	Attributes:
-		callback: Called with the boundary pulse it is preparing.  Returns
-			the number of **beats** to the next boundary, or ``None`` to
-			stop firing (the sequence is dropped from the queue).  May be
-			sync or async.
-		boundary_pulse: The pulse this fire prepares (the musical boundary,
-			not the fire time).
-		lookahead_pulses: How far before each boundary the callback fires.
-		next_fire_pulse: When the next fire is due.
-	"""
-
-	callback: typing.Callable[[int], typing.Union[typing.Optional[float], typing.Coroutine[typing.Any, typing.Any, typing.Optional[float]]]]
-	boundary_pulse: int
-	lookahead_pulses: int
-	next_fire_pulse: int
+    callback: typing.Callable[
+        [int],
+        typing.Union[
+            typing.Optional[float],
+            typing.Coroutine[typing.Any, typing.Any, typing.Optional[float]],
+        ],
+    ]
+    boundary_pulse: int
+    lookahead_pulses: int
+    next_fire_pulse: int
 
 
 @dataclasses.dataclass
 class BpmTransition:
+    """State for a gradual BPM transition."""
 
-	"""State for a gradual BPM transition."""
-
-	start_bpm: float
-	target_bpm: float
-	total_pulses: int
-	elapsed_pulses: int = 0
-	easing_fn: typing.Callable[[float], float] = dataclasses.field(default=subsequence.easing.linear)
+    start_bpm: float
+    target_bpm: float
+    total_pulses: int
+    elapsed_pulses: int = 0
+    easing_fn: typing.Callable[[float], float] = dataclasses.field(
+        default=subsequence.easing.linear
+    )
 
 
 class Sequencer:
-
-	"""
-	The engine that drives Subsequence timing and MIDI output.
-	
-	The ``Sequencer`` maintains a stable clock (internal or external), 
-	handles the scheduling of MIDI events, and triggers pattern rebuilds.
-	"""
-
-	def __init__ (
-		self,
-		output_device_name: typing.Optional[str] = None,
-		initial_bpm: float = 125,
-		time_signature: typing.Tuple[int, int] = (4, 4),
-		input_device_name: typing.Optional[str] = None,
-		clock_follow: bool = False,
-		clock_output: bool = False,
-		record: bool = False,
-		record_filename: typing.Optional[str] = None,
-		spin_wait: bool = True,
-		_jitter_log: typing.Optional[typing.List[float]] = None
-	) -> None:
-
-		"""Initialize the sequencer with MIDI devices and initial BPM.
-
-		Parameters:
-			output_device_name: MIDI output device name. When omitted, auto-discovers
-				available devices - uses the only device if one is found, or prompts
-				the user to choose if multiple are available.
-			initial_bpm: Tempo in BPM (ignored when clock_follow is True)
-			input_device_name: Optional MIDI input device name for clock/transport
-			clock_follow: When True, follow external MIDI clock instead of internal clock
-			clock_output: When True, send MIDI timing clock (0xF8), start (0xFA), and
-				stop (0xFC) messages so connected hardware can sync to Subsequence's
-				tempo.  Mutually exclusive with ``clock_follow`` (ignored when both
-				are set, to prevent feedback loops).
-			record: When True, record all MIDI events to a file.
-			record_filename: Optional filename for the recording (defaults to timestamp).
-			spin_wait: When True (default), use a hybrid sleep+spin strategy for the
-				final sub-millisecond of each pulse interval.  This significantly
-				reduces clock jitter at the cost of ~1–5% extra CPU.  Set to False
-				to use pure ``asyncio.sleep()`` (lower CPU, higher jitter).
-			_jitter_log: Optional list to append per-pulse jitter values (seconds)
-				to during playback.  Intended for the clock jitter benchmark — not
-				for general use.
-		"""
-
-		if clock_follow and input_device_name is None:
-			raise ValueError("clock_follow=True requires an input_device_name")
-
-		self.output_device_name = output_device_name
-		self.input_device_name = input_device_name
-		self.time_signature = time_signature
-		self.clock_follow = clock_follow
-		self.clock_device_idx: int = 0
-		self.clock_output = clock_output and not clock_follow
-		self.pulses_per_beat = subsequence.constants.MIDI_QUARTER_NOTE
-
-		# Recording state
-		self.recording = record
-		self.record_filename = record_filename
-		self.recorded_events: typing.List[typing.Tuple[float, typing.Union[mido.Message, mido.MetaMessage]]] = []
-
-		# Render mode: run as fast as possible and stop after render_bars or render_max_seconds.
-		# Both limits are optional — at least one must be set (enforced in Composition.render).
-		self.render_mode: bool = False
-		self.render_bars: int = 0                          # 0 = no bar limit
-		self.render_max_seconds: typing.Optional[float] = None  # None = no time limit
-		self._render_elapsed_seconds: float = 0.0
-
-
-		# CC input mapping — populated from Composition.cc_map()
-		self.cc_mappings: typing.List[typing.Dict[str, typing.Any]] = []
-		# CC forwarding — populated from Composition.cc_forward()
-		self.cc_forwards: typing.List[typing.Dict[str, typing.Any]] = []
-		# Buffer for queued CC forwards: deque of (pulse, mido.Message) tuples.
-		# Appended on the mido callback thread; drained on the event loop thread.
-		self._forward_buffer: collections.deque = collections.deque()
-		# Shared reference to composition.data so CC mappings can update it
-		self._composition_data: typing.Dict[str, typing.Any] = {}
-
-		# Held-note input — populated from Composition.note_input().
-		# The tracker (created in _run when note_input was declared) and a buffer
-		# of raw (is_on, pitch, velocity, perf_counter) note events.  The buffer is
-		# appended on the mido callback thread and drained on the loop thread in
-		# _advance_pulse, so all tracker state stays single-threaded — no lock.
-		self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None
-		self._note_input_buffer: collections.deque = collections.deque()
-		self._note_input_channel: typing.Optional[int] = None  # None = any channel
-		self._note_input_device: typing.Optional[int] = None   # None = any input device
-
-		# Ableton Link clock — set by Composition._run() when comp.link() was called.
-		# Must be initialized before set_bpm() is called below.
-		self._link_clock: typing.Optional[typing.Any] = None
-
-		# Multi-device MIDI port registries.
-		# Output device 0 is always the primary/default device.
-		self._output_devices: subsequence.midi_utils.MidiDeviceRegistry = subsequence.midi_utils.MidiDeviceRegistry()
-		self._input_devices: subsequence.midi_utils.MidiDeviceRegistry = subsequence.midi_utils.MidiDeviceRegistry()
-
-		# Internal state initialization (needed before set_bpm)
-		self._midi_input_queue: typing.Optional[asyncio.Queue] = None
-		self._input_loop: typing.Optional[asyncio.AbstractEventLoop] = None
-		self._event_loop: typing.Optional[asyncio.AbstractEventLoop] = None
-		self._clock_tick_times: typing.List[float] = []
-		self._waiting_for_start: bool = False
-
-		self.event_queue: typing.List[MidiEvent] = []
-		self.task: typing.Optional[asyncio.Task] = None
-		self.start_time = 0.0
-		self.pulse_count = 0
-		self.current_bar: int = -1
-		self.current_beat: int = -1
-		self.active_notes: typing.Set[typing.Tuple[int, int, int]] = set()  # (device, channel, note)
-
-		# Device latency compensation: cached max across all output devices, and
-		# the set of in-flight deferred sends (call_later handles) awaiting their
-		# per-device offset.  See _dispatch_with_compensation() and stop().
-		self._max_device_latency_ms: float = 0.0
-		self._pending_sends: typing.Set[asyncio.TimerHandle] = set()
-
-		# Strong references to fire-and-forget bar/beat/event tasks.  Without
-		# retaining them asyncio holds only a weak reference and the task can be
-		# garbage-collected mid-flight; the done-callback also surfaces exceptions
-		# that a bare create_task would otherwise swallow until GC.
-		self._background_tasks: typing.Set[asyncio.Task] = set()
-
-		self.queue_lock = asyncio.Lock()
-		self.pattern_lock = asyncio.Lock()
-		self.reschedule_queue: typing.List[typing.Tuple[int, int, ScheduledPattern]] = []
-		self._reschedule_counter = itertools.count()
-		self.events = subsequence.event_emitter.EventEmitter()
-		self.callback_lock = asyncio.Lock()
-		self.callback_queue: typing.List[typing.Tuple[int, int, ScheduledCallback]] = []
-		self._callback_counter = itertools.count()
-
-		# Variable-interval callback sequences share callback_lock; they fire
-		# after the fixed callbacks at the same pulse (see
-		# _maybe_reschedule_patterns), preserving form-before-harmony ordering.
-		self.callback_sequence_queue: typing.List[typing.Tuple[int, int, ScheduledCallbackSequence]] = []
-
-		# FIFO tie-breaker for same-pulse MidiEvents in event_queue.  Without
-		# it, ``heapq`` ordering of equal-pulse events is undefined, which
-		# breaks NRPN/RPN bursts (CC 99 → 98 → 6 → 38 must stay in order).
-		self._event_counter = itertools.count()
-
-		# Serialises actual port writes.  Every send runs on the event-loop
-		# thread EXCEPT instant-mode cc_forward, which fires on the mido input
-		# callback thread — without this lock the two threads could interleave
-		# bytes on the same port and corrupt a multi-byte message.
-		self._port_send_lock = threading.Lock()
-
-		self.data: typing.Dict[str, typing.Any] = {}
-
-		# Timing variables
-		self.current_bpm: float = 0
-		self.seconds_per_beat = 0.0
-		self.seconds_per_pulse = 0.0
-		self.running = False
-		self._bpm_transition: typing.Optional[BpmTransition] = None
-		self._spin_wait: bool = spin_wait
-		# Spin threshold: sleep all the way to this many seconds before the target,
-		# then busy-wait for the remainder.  1ms is enough to absorb OS wakeup latency
-		# while keeping spin time short enough not to starve the event loop.
-		self._spin_threshold: float = 0.001
-		self._jitter_log: typing.Optional[typing.List[float]] = _jitter_log
-
-		self.set_bpm(initial_bpm)
-
-		self._init_midi_output()
-
-		# OSC server reference — set by Composition after osc_server.start()
-		self.osc_server: typing.Optional[typing.Any] = None
-
-	# ------------------------------------------------------------------
-	# Backward-compatible properties: midi_out / midi_in
-	# External code and tests may reference these directly.  They always
-	# resolve to device 0 of the respective registry.
-	# ------------------------------------------------------------------
-
-	@property
-	def midi_out (self) -> typing.Optional[typing.Any]:
-		"""Return the primary output port (device 0), or None."""
-		return self._output_devices.get(0)
-
-	@midi_out.setter
-	def midi_out (self, value: typing.Optional[typing.Any]) -> None:
-		"""Allow test code to inject a fake output port as device 0."""
-		if value is None:
-			return
-		if len(self._output_devices) == 0:
-			self._output_devices.add("default", value)
-		else:
-			self._output_devices.replace(0, value)
-
-	@property
-	def midi_in (self) -> typing.Optional[typing.Any]:
-		"""Return the primary input port (device 0), or None."""
-		return self._input_devices.get(0)
-
-	@midi_in.setter
-	def midi_in (self, value: typing.Optional[typing.Any]) -> None:
-		"""Allow test code to inject a fake input port as device 0."""
-		if value is None:
-			return
-		if len(self._input_devices) == 0:
-			self._input_devices.add("default", value)
-		else:
-			self._input_devices.replace(0, value)
-
-	def add_output_device (self, name: str, port: typing.Any, latency_ms: float = 0.0) -> int:
-		"""Register an additional output device.  Returns the device index.
-
-		*latency_ms* is the device's physical output latency for compensation
-		(see :meth:`set_device_latency`).
-		"""
-		idx = self._output_devices.add(name, port, latency_ms)
-		self._max_device_latency_ms = self._output_devices.max_latency()
-		return idx
-
-	def add_input_device (self, name: str, port: typing.Any) -> int:
-		"""Register an additional input device.  Returns the device index."""
-		return self._input_devices.add(name, port)
-
-	def set_device_latency (self, device: subsequence.midi_utils.DeviceId, latency_ms: float) -> None:
-
-		"""Set an output device's physical latency (ms) for delay compensation.
-
-		Latency is normalised engine-wide: the slowest device plays at its
-		logical time and every faster device's output is deferred by
-		``max_latency − its_latency`` so all devices sound together.  See
-		:meth:`_dispatch_with_compensation`.
-
-		Parameters:
-			device: Output device id (int index, name str, or None for device 0).
-			latency_ms: Non-negative physical output latency in milliseconds.
-				Raises ``ValueError`` if negative or the device is unknown.
-		"""
-
-		self._output_devices.set_latency(device, latency_ms)
-		self._max_device_latency_ms = self._output_devices.max_latency()
-
-	def _record_event (self, pulse: int, message: typing.Union[mido.Message, mido.MetaMessage]) -> None:
-
-		"""Record a MIDI message with an absolute pulse timestamp for later export."""
-
-		if not self.recording:
-			return
-
-		self.recorded_events.append((float(pulse), message))
-
-	def save_recording (self) -> None:
-
-		"""Save the recorded session to a MIDI file."""
-
-		if not self.recording or not self.recorded_events:
-			return
-
-		if self.record_filename:
-			filename = self.record_filename
-		else:
-			now = datetime.datetime.now()
-			filename = now.strftime("session_%Y%m%d_%H%M%S.mid")
-
-		logger.info(f"Saving MIDI recording ({len(self.recorded_events)} events) to {filename}...")
-
-		mid = mido.MidiFile(type=1) # Type 1 = multiple tracks (though we might just use one)
-		track = mido.MidiTrack()
-		mid.tracks.append(track)
-
-		# Resolution (ticks per beat). Standard is 480.
-		# Subsequence uses 24 PPQN internal.
-		# To get 480 PPQN output without losing precision, we scale up by 20.
-		ticks_per_pulse = 20
-		mid.ticks_per_beat = 480
-
-		# Sort events by pulse just in case
-		self.recorded_events.sort(key=lambda x: x[0])
-
-		last_pulse = 0.0
-
-		for pulse, message in self.recorded_events:
-			
-			delta_pulses = pulse - last_pulse
-			delta_ticks = int(delta_pulses * ticks_per_pulse)
-			
-			# Ensure delta is non-negative (floating point jitter?)
-			if delta_ticks < 0:
-				delta_ticks = 0
-			
-			message.time = delta_ticks
-			track.append(message)
-
-			last_pulse = pulse
-
-		try:
-			mid.save(filename)
-			logger.info(f"Saved {filename}")
-		except Exception as e:
-			logger.error(f"Failed to save MIDI recording: {e}")
-
-	def disable_spin_wait (self) -> None:
-
-		"""Disable the hybrid sleep+spin timing strategy.
-
-		By default the sequencer busy-waits for the final sub-millisecond of each
-		pulse interval to minimise clock jitter.  Call this to revert to pure
-		``asyncio.sleep()`` — lower CPU usage at the cost of higher jitter (typically
-		±0.5–2 ms on Linux vs ~3–4 μs with spin-wait enabled (see the README clock-accuracy benchmark)).
-
-		Can also be set at construction time: ``Sequencer(spin_wait=False)``.
-		"""
-
-		self._spin_wait = False
-
-
-	def set_bpm (self, bpm: float) -> None:
-
-		"""
-		Instantly change the tempo.
-
-		Note: If ``clock_follow`` is enabled and the sequencer is running,
-		this method will be ignored as the tempo is slaved to the external source.
-		When Ableton Link is active, the new BPM is proposed to the Link network
-		instead of being applied locally — the network-authoritative tempo is
-		then picked up on the next pulse.
-		"""
-
-		# Validate BEFORE the Link branch — a zero/negative tempo must never
-		# be proposed to the whole Link session.
-		if bpm <= 0:
-			raise ValueError("BPM must be positive")
-
-		if self.clock_follow and self.running:
-			logger.info("BPM is controlled by external clock - set_bpm() ignored")
-			return
-
-		if self._link_clock is not None and self.running:
-			self._link_clock.request_tempo(bpm)
-			logger.info(f"BPM {bpm:.2f} proposed to Ableton Link session")
-			return
-
-		self._bpm_transition = None
-		self.current_bpm = bpm
-		self.seconds_per_beat = 60.0 / self.current_bpm
-		self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
-
-		logger.info(f"BPM set to {self.current_bpm:.2f}")
-
-		if self.recording:
-			tempo = mido.bpm2tempo(self.current_bpm)
-			self._record_event(self.pulse_count, mido.MetaMessage('set_tempo', tempo=tempo))
-
-
-	def set_target_bpm (self, target_bpm: float, bars: int, shape: typing.Union[str, subsequence.easing.EasingFn] = "linear") -> None:
-
-		"""
-		Smoothly transition to a new tempo over a fixed number of bars.
-
-		Parameters:
-			target_bpm: The BPM to ramp toward.
-			bars: Duration of the transition in bars.
-			shape: Easing curve — a name string (e.g. ``"ease_in_out"``) or any
-			       callable that maps [0, 1] → [0, 1].  Defaults to ``"linear"``.
-			       ``"ease_in_out"`` or ``"s_curve"`` are recommended for natural-
-			       sounding tempo changes.  See :mod:`subsequence.easing`.
-
-		Note:
-			When Ableton Link is active the shared network tempo is authoritative,
-			so a local ramp cannot be honoured — this call is ignored.  Use
-			``set_bpm()`` to propose a new tempo to the Link session instead.
-		"""
-
-		if self.clock_follow and self.running:
-			logger.info("BPM is controlled by external clock - set_target_bpm() ignored")
-			return
-
-		if self._link_clock is not None and self.running:
-			logger.info("Tempo is controlled by the Ableton Link session - set_target_bpm() ramp ignored; use set_bpm() to propose a new Link tempo")
-			return
-
-		if target_bpm <= 0:
-			raise ValueError("Target BPM must be positive")
-
-		if bars <= 0:
-			raise ValueError("Transition bars must be positive")
-
-		total_pulses = bars * self.pulses_per_beat * self.time_signature[0]
-
-		self._bpm_transition = BpmTransition(
-			start_bpm=self.current_bpm,
-			target_bpm=target_bpm,
-			total_pulses=total_pulses,
-			easing_fn=subsequence.easing.get_easing(shape)
-		)
-
-		logger.info(f"BPM transition: {self.current_bpm:.2f} → {target_bpm:.2f} over {bars} bars ({shape!r})")
-
-
-	def on_event (self, event_name: str, callback: typing.Callable[..., typing.Any]) -> None:
-
-		"""
-		Register a callback for a named event.
-		"""
-
-		self.events.on(event_name, callback)
-
-
-	def _init_midi_output (self) -> None:
-
-		"""Initialize the primary MIDI output port (device 0).
-
-		When ``output_device_name`` was provided, opens that device directly.
-		When omitted, auto-discovers available devices: uses the only one if
-		exactly one is found, or prompts the user to choose if several exist.
-		"""
-
-		device_name, midi_out = subsequence.midi_utils.select_output_device(self.output_device_name)
-
-		if device_name and midi_out is not None:
-			self.output_device_name = device_name
-			self._output_devices.add(device_name, midi_out)
-
-
-	def _open_midi_inputs (self) -> None:
-
-		"""
-		Set up the internal event loops and MIDI input ports.
-
-		This is called automatically by start(), but may be called manually
-		by Composition._run() earlier in the startup sequence to ensure
-		MIDI CC configuration is shared before ports begin background draining.
-		"""
-
-		if self.input_device_name is not None and self._midi_input_queue is None:
-			self._input_loop = asyncio.get_running_loop()
-			self._midi_input_queue = asyncio.Queue()
-			self._init_midi_input()
-
-
-	def _init_midi_input (self) -> None:
-
-		"""Initialize the primary MIDI input port (device 0) with a callback."""
-
-		if self.input_device_name is None:
-			return
-
-		callback = self._make_input_callback(0)
-		device_name, midi_in = subsequence.midi_utils.select_input_device(self.input_device_name, callback)
-
-		if device_name and midi_in is not None:
-			self.input_device_name = device_name
-			self._input_devices.add(device_name, midi_in)
-
-	def _make_input_callback (self, device_idx: int) -> typing.Callable:
-		"""Return a mido callback closure that tags messages with *device_idx*."""
-
-		def _callback (message: typing.Any) -> None:
-			self._on_midi_input(message, device_idx)
-
-		return _callback
-
-
-	def _on_midi_input (self, message: typing.Any, device_idx: int = 0) -> None:
-
-		"""Handle incoming MIDI messages from the input port callback thread.
-
-		This runs in mido's callback thread. Clock/transport messages are
-		forwarded to the asyncio event loop via call_soon_threadsafe.
-
-		CC input mappings are applied immediately here.  Single dict writes
-		are safe from a non-asyncio thread under CPython's GIL.
-
-		Parameters:
-			message: The incoming mido.Message.
-			device_idx: Index of the input device this message arrived on (0 = primary).
-		"""
-
-		if self._midi_input_queue is None or self._input_loop is None:
-			return
-
-		# The queue feeds only the external-clock loop, so enqueue only when
-		# following: with the internal clock nothing ever drains it, and a
-		# synced device's 24-ticks-per-beat clock would grow it forever.
-		if self.clock_follow:
-			self._input_loop.call_soon_threadsafe(
-				self._midi_input_queue.put_nowait, (device_idx, message)
-			)
-
-		# Apply CC input mappings: map incoming CC values to composition.data.
-		if message.type == 'control_change' and self.cc_mappings:
-			for mapping in self.cc_mappings:
-				if message.control != mapping['cc']:
-					continue
-				ch = mapping.get('channel')
-				if ch is not None and message.channel != ch:
-					continue
-				# Filter by input device if specified (None = any device).
-				in_dev = mapping.get('input_device')
-				if in_dev is not None and device_idx != in_dev:
-					continue
-				scaled = mapping['min_val'] + (message.value / 127.0) * (mapping['max_val'] - mapping['min_val'])
-				self._composition_data[mapping['data_key']] = scaled
-
-		# Apply CC forwards: route incoming CC to MIDI output in real-time.
-		if message.type == 'control_change' and self.cc_forwards:
-			for fwd in self.cc_forwards:
-				if message.control != fwd['cc']:
-					continue
-				ch = fwd.get('channel')
-				if ch is not None and message.channel != ch:
-					continue
-				# Filter by input device if specified (None = any device).
-				in_dev = fwd.get('input_device')
-				if in_dev is not None and device_idx != in_dev:
-					continue
-				try:
-					out_msg = fwd['transform'](message.value, message.channel)
-				except Exception:
-					logger.exception("CC forward transform failed")
-					continue
-				if out_msg is None:
-					continue
-				if fwd['mode'] == 'instant':
-					# Route to the specified output device (default: device 0).
-					out_dev = fwd.get('output_device', 0)
-					port = self._output_devices.get(out_dev)
-					if port is not None:
-						try:
-							# Instant mode fires on the mido callback thread, so the
-							# send must take the lock the loop thread also holds.
-							self._locked_send(port, out_msg)
-						except Exception:
-							logger.exception("CC forward send failed")
-				else:
-					# Queued: buffer for drain in _process_pulse on the event loop
-					# thread.  The output device travels with the message so the
-					# drain can route it (dropping it sent everything to device 0).
-					out_dev = fwd.get('output_device')
-					self._forward_buffer.append((self.pulse_count, out_msg, 0 if out_dev is None else out_dev))
-
-		# Buffer incoming note on/off for the held-note tracker.  Only the
-		# GIL-atomic deque.append happens here; the tracker is updated when the
-		# loop thread drains the buffer in _advance_pulse.
-		if self._held_notes is not None and message.type in ('note_on', 'note_off'):
-			if self._note_input_channel is not None and message.channel != self._note_input_channel:
-				return
-			if self._note_input_device is not None and device_idx != self._note_input_device:
-				return
-			# A note_on with velocity 0 is the running-status form of note-off.
-			if message.type == 'note_on' and message.velocity > 0:
-				self._note_input_buffer.append((True, message.note, message.velocity, time.perf_counter()))
-			else:
-				self._note_input_buffer.append((False, message.note, 0, time.perf_counter()))
-
-
-
-	def _estimate_bpm (self, tick_time: float) -> None:
-
-		"""Estimate BPM from recent MIDI clock tick timestamps for display and recording."""
-
-		self._clock_tick_times.append(tick_time)
-
-		# Keep last 48 ticks (2 beats) for averaging.
-		if len(self._clock_tick_times) > 48:
-			self._clock_tick_times = self._clock_tick_times[-48:]
-
-		if len(self._clock_tick_times) >= 24:
-			# Average interval over last 24 ticks (1 beat).
-			recent = self._clock_tick_times[-24:]
-			interval = (recent[-1] - recent[0]) / (len(recent) - 1)
-
-			if interval > 0:
-				new_bpm = int(round(60.0 / (interval * self.pulses_per_beat)))
-
-				# Record tempo changes so a clock-following session's .mid
-				# plays back at the external tempo, not the constructor BPM.
-				# Integer rounding above already filters tick jitter.
-				if self.recording and new_bpm != self.current_bpm and new_bpm > 0:
-					self._record_event(self.pulse_count, mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(new_bpm)))
-
-				self.current_bpm = new_bpm
-
-
-	def _get_schedule_timing (self, length_beats: float, lookahead_beats: float) -> typing.Tuple[int, int]:
-
-		"""
-		Convert schedule length and reschedule lookahead from beats to pulses.
-		"""
-
-		if length_beats <= 0:
-			raise ValueError("Schedule length must be positive")
-
-		if lookahead_beats < 0:
-			raise ValueError("Reschedule lookahead cannot be negative")
-
-		if lookahead_beats > length_beats:
-			raise ValueError("Reschedule lookahead cannot exceed schedule length")
-
-		length_pulses = int(length_beats * self.pulses_per_beat)
-		lookahead_pulses = int(lookahead_beats * self.pulses_per_beat)
-
-		if length_pulses <= 0:
-			raise ValueError("Schedule length must be at least one pulse")
-
-		return length_pulses, lookahead_pulses
-
-
-	def _get_pattern_timing (self, pattern: PatternLike) -> typing.Tuple[int, int]:
-
-		"""
-		Convert pattern length and reschedule lookahead from beats to pulses.
-		"""
-
-		return self._get_schedule_timing(pattern.length, pattern.reschedule_lookahead)
-
-
-	def _push_event (self, event: MidiEvent) -> None:
-
-		"""Push a MidiEvent onto the queue, stamping a FIFO tie-breaker.
-
-		The ``sequence`` field guarantees that events sharing a ``pulse``
-		dispatch in insertion order — required for NRPN/RPN bursts and any
-		future protocol that emits multiple co-scheduled CCs (e.g. Bank
-		Select before Program Change).
-		"""
-
-		event.sequence = next(self._event_counter)
-		heapq.heappush(self.event_queue, event)
-
-
-	def _spawn (self, coro: typing.Coroutine) -> None:
-
-		"""Fire-and-forget *coro* on the event loop, tracked and exception-safe.
-
-		Retains a strong reference until the task completes (so it cannot be
-		collected mid-flight) and surfaces any exception via the done-callback —
-		a bare ``asyncio.create_task`` drops both, silently losing a raising bar
-		or beat callback.
-		"""
-
-		task = asyncio.create_task(coro)
-		self._background_tasks.add(task)
-		task.add_done_callback(self._reap_background_task)
-
-
-	def _reap_background_task (self, task: "asyncio.Task") -> None:
-
-		"""Done-callback: drop the reference and log any exception."""
-
-		self._background_tasks.discard(task)
-
-		if not task.cancelled() and task.exception() is not None:
-			logger.error("Background task failed", exc_info=task.exception())
-
-
-	async def schedule_pattern (self, pattern: PatternLike, start_pulse: int) -> None:
-
-		"""
-		Schedules a pattern's notes and CC events into the sequencer's event queue.
-
-		If ``pattern.mirrors`` is non-empty, every note, CC, pitch bend, program
-		change, SysEx, NRPN/RPN burst, and drone event is duplicated onto each
-		mirror destination — see the "MIDI mirroring" section of the README.
-
-		**Bandwidth note**: each mirror destination multiplies the per-pattern
-		event count.  A dense pattern with two mirrors emits 3× the original.
-		For DIN-MIDI hardware on a saturated bus this can matter; over USB or
-		IAC it is rarely a concern.
-
-		**Tuning + mirrors**: ``CcEvent.channel`` and ``CcEvent.device`` overrides
-		(used by polyphonic microtonal tuning to rotate notes onto separate
-		channels) apply to the *primary* destination only.  Mirror destinations
-		always use their own pinned ``(device, channel)`` — i.e. a polyphonic-
-		tuning pattern mirrored to another synth will collapse all channel
-		rotations onto the mirror's single channel, losing per-note bend
-		isolation on that destination.  Apply tuning per-pattern if both ends
-		need it.
-		"""
-
-		# Primary destination first; mirrors follow.  Iteration order matters
-		# only for human readability when inspecting the queue — FIFO ordering
-		# at equal pulses is enforced by ``_push_event`` (the ``sequence``
-		# tie-breaker on ``MidiEvent``).
-		mirrors = getattr(pattern, 'mirrors', [])
-		destinations: typing.List[_MirrorTarget] = [_MirrorTarget(pattern.device, pattern.channel, None)] + [_to_target(entry) for entry in mirrors]
-
-		async with self.queue_lock:
-
-			for position, step in pattern.steps.items():
-
-				abs_pulse = start_pulse + position
-
-				for note in step.notes:
-
-					for i, target in enumerate(destinations):
-
-						# Resolve the drum name for this destination; None means the
-						# destination has no voice for it, so it stays silent (no
-						# note_on AND no note_off — nothing can hang).
-						note_value = _destination_pitch(note, target, primary = (i == 0))
-						if note_value is None:
-							# A mirror carrying its own map that lacks this named
-							# voice drops it here by design (faithful-core: silence,
-							# never a wrong note).  Surface it at debug level so
-							# "why is the clap missing on the sampler?" is answerable
-							# without guessing — the build-time warning only covers a
-							# name absent from *every* destination.
-							if i != 0 and note.origin is not None and target.drum_note_map is not None:
-								logger.debug(
-									"Mirror device %d channel %d has no voice for drum '%s' — dropped for this destination",
-									target.device, target.channel, note.origin,
-								)
-							continue
-
-						# Primary preserves the Note's own channel (so polyphonic
-						# tuning's per-voice channel rotation lands correctly).
-						# Mirrors collapse onto the mirror's pinned channel and
-						# re-resolve the drum name through their own map.
-						note_channel = note.channel if i == 0 else target.channel
-						note_device = pattern.device if i == 0 else target.device
-
-						on_event = MidiEvent(
-							pulse = abs_pulse,
-							message_type = 'note_on',
-							channel = note_channel,
-							note = note_value,
-							velocity = note.velocity,
-							device = note_device,
-						)
-						self._push_event(on_event)
-
-						off_event = MidiEvent(
-							pulse = abs_pulse + note.duration,
-							message_type = 'note_off',
-							channel = note_channel,
-							note = note_value,
-							velocity = 0,
-							device = note_device,
-						)
-						self._push_event(off_event)
-
-			# CC / pitch bend / program change / SysEx events
-			for cc_event in getattr(pattern, 'cc_events', []):
-
-				abs_pulse = start_pulse + cc_event.pulse
-
-				for i, target in enumerate(destinations):
-
-					if i == 0:
-						# Primary: respect per-event channel/device override if set
-						# (e.g. tuning pitch bends targeting specific channels).
-						event_channel = cc_event.channel if cc_event.channel is not None else target.channel
-						event_device = cc_event.device if cc_event.device is not None else target.device
-					else:
-						# Mirror: always use the mirror's pinned (device, channel).
-						# See class docstring for the tuning interaction note.
-						event_channel = target.channel
-						event_device = target.device
-
-					midi_event = MidiEvent(
-						pulse = abs_pulse,
-						message_type = cc_event.message_type,
-						channel = event_channel,
-						control = cc_event.control,
-						value = cc_event.value,
-						data = cc_event.data,
-						device = event_device,
-						priority = getattr(cc_event, 'priority', 0),
-					)
-					self._push_event(midi_event)
-
-			# Raw Note On/Off events (drones)
-			for note_ev in getattr(pattern, 'raw_note_events', []):
-
-				abs_pulse = start_pulse + note_ev.pulse
-
-				for i, target in enumerate(destinations):
-
-					# Same faithful-core rule as step notes: a named drone is
-					# re-resolved through each mirror's own drum_note_map, and
-					# a destination lacking the voice stays silent rather than
-					# sounding the primary device's note number.
-					note_value = _destination_pitch(note_ev, target, primary = (i == 0))
-					if note_value is None:
-						if i != 0 and note_ev.origin is not None and target.drum_note_map is not None:
-							logger.debug(
-								"Mirror device %d channel %d has no voice for drum '%s' — dropped for this destination",
-								target.device, target.channel, note_ev.origin,
-							)
-						continue
-
-					midi_event = MidiEvent(
-						pulse = abs_pulse,
-						message_type = note_ev.message_type,
-						channel = target.channel,
-						note = note_value,
-						velocity = note_ev.velocity,
-						device = target.device,
-					)
-					self._push_event(midi_event)
-
-			# OSC events — never mirrored.  OSC isn't bound to a MIDI port and
-			# mirroring it would require a different abstraction (multiple OSC
-			# servers / addresses).  If users want to broadcast OSC to several
-			# endpoints, that belongs in the OSC server config, not here.
-			for osc_event in getattr(pattern, 'osc_events', []):
-
-				abs_pulse = start_pulse + osc_event.pulse
-
-				osc_midi_event = MidiEvent(
-					pulse = abs_pulse,
-					message_type = 'osc',
-					channel = 0,
-					data = (osc_event.address, osc_event.args)
-				)
-
-				self._push_event(osc_midi_event)
-
-		logger.debug(f"Scheduled pattern at {start_pulse}, queue size: {len(self.event_queue)}")
-
-
-	async def schedule_pattern_repeating (self, pattern: PatternLike, start_pulse: int) -> None:
-
-		"""
-		Schedule a pattern and register it for rescheduling each cycle.
-		"""
-
-		length_pulses, lookahead_pulses = self._get_pattern_timing(pattern)
-
-		# Anchor the first cycle for window-reading rebuilds (kept current on
-		# every reschedule in _maybe_reschedule_patterns).
-		pattern._cycle_start_pulse = start_pulse
-
-		await self.schedule_pattern(pattern, start_pulse)
-
-		next_reschedule_pulse = start_pulse + length_pulses - lookahead_pulses
-
-		scheduled_pattern = ScheduledPattern(
-			pattern = pattern,
-			cycle_start_pulse = start_pulse,
-			length_pulses = length_pulses,
-			lookahead_pulses = lookahead_pulses,
-			next_reschedule_pulse = next_reschedule_pulse
-		)
-
-		async with self.pattern_lock:
-			counter = next(self._reschedule_counter)
-			heapq.heappush(self.reschedule_queue, (scheduled_pattern.next_reschedule_pulse, counter, scheduled_pattern))
-
-
-	async def schedule_callback_repeating (self, callback: typing.Callable[[int], typing.Any], interval_beats: float, start_pulse: int = 0, reschedule_lookahead: float = 1) -> None:
-
-		"""
-		Schedule a repeating callback on a beat interval.
-		"""
-
-		interval_pulses, lookahead_pulses = self._get_schedule_timing(interval_beats, reschedule_lookahead)
-
-		# "Backshift" initialization: treat start_pulse as the *target* of the first fire,
-		# not the start of the first cycle. This ensures callbacks fire `lookahead` before
-		# start_pulse (often ≤ 0, so they fire immediately when playback begins).
-		#
-		# Formula: cycle_start = start_pulse - interval
-		#          first_fire  = start_pulse - lookahead
-		#
-		# After the first fire the loop advances normally:
-		#   next_start = cycle_start + interval = start_pulse
-		#   next_fire  = start_pulse + interval - lookahead
-		#
-		# Note: if start_pulse = 0, first_fire is negative, so the callback fires
-		# at pulse 0 (the very start of playback). Pass start_pulse = interval_pulses
-		# to skip the initial fire and have the first fire at (interval - lookahead).
-		# The harmonic clock does this because HarmonicState already holds the tonic.
-
-		initial_cycle_start = start_pulse - interval_pulses
-		initial_fire_pulse = start_pulse - lookahead_pulses
-
-		scheduled_callback = ScheduledCallback(
-			callback = callback,
-			cycle_start_pulse = initial_cycle_start,
-			interval_pulses = interval_pulses,
-			lookahead_pulses = lookahead_pulses,
-			next_fire_pulse = initial_fire_pulse
-		)
-
-		async with self.callback_lock:
-			counter = next(self._callback_counter)
-			heapq.heappush(self.callback_queue, (scheduled_callback.next_fire_pulse, counter, scheduled_callback))
-
-
-	async def schedule_callback_sequence (
-		self,
-		callback: typing.Callable[[int], typing.Union[typing.Optional[float], typing.Coroutine[typing.Any, typing.Any, typing.Optional[float]]]],
-		start_pulse: int = 0,
-		reschedule_lookahead: float = 1,
-	) -> None:
-
-		"""Schedule a self-rescheduling callback with a variable firing interval.
-
-		Where :meth:`schedule_callback_repeating` fires on a fixed beat
-		interval, this primitive lets the callback decide each hop: it is
-		called ``lookahead`` before every *boundary* pulse, receives that
-		boundary pulse, and returns the number of beats to the **next**
-		boundary — or ``None`` to stop.  Built for clocks that walk irregular
-		spans, e.g. the harmonic clock under a bound progression's
-		harmonic rhythm.
-
-		The first fire targets *start_pulse* as its boundary and is due
-		``lookahead`` before it (immediately, when that is already past —
-		the same backshift idiom as the repeating scheduler).
-
-		Parameters:
-			callback: ``fn(boundary_pulse) -> beats_to_next_boundary | None``.
-				May be sync or async.
-			start_pulse: The first boundary pulse.
-			reschedule_lookahead: How many beats before each boundary the
-				callback fires.
-		"""
-
-		lookahead_pulses = int(reschedule_lookahead * self.pulses_per_beat)
-
-		if lookahead_pulses < 0:
-			raise ValueError("Reschedule lookahead cannot be negative")
-
-		scheduled = ScheduledCallbackSequence(
-			callback = callback,
-			boundary_pulse = start_pulse,
-			lookahead_pulses = lookahead_pulses,
-			next_fire_pulse = start_pulse - lookahead_pulses,
-		)
-
-		async with self.callback_lock:
-			counter = next(self._callback_counter)
-			heapq.heappush(self.callback_sequence_queue, (scheduled.next_fire_pulse, counter, scheduled))
-
-
-	async def play (self) -> None:
-
-		"""
-		Convenience method to start playback and wait for completion.
-		"""
-
-		await self.start()
-
-		try:
-			if self.task:
-				await self.task
-		except asyncio.CancelledError:
-			pass
-		finally:
-			await self.stop()
-
-
-	def _send_clock_message (self, message_type: str) -> None:
-
-		"""Send a bare MIDI system-realtime message (clock, start, stop, continue).
-
-		These messages carry no channel or data bytes — they are sent directly to
-		the output port.  Used for MIDI clock output when ``clock_output`` is True.
-
-		Parameters:
-			message_type: One of ``"clock"``, ``"start"``, ``"stop"``, ``"continue"``.
-		"""
-
-		for port in self._output_devices:
-			try:
-				self._locked_send(port, mido.Message(message_type))
-			except Exception:
-				logger.exception(f"Failed to send MIDI {message_type} message")
-
-
-	async def start (self) -> None:
-
-		"""Start the sequencer playback in a separate asyncio task.
-
-		When an input device is configured, the MIDI input port is opened here
-		(after the event loop is running) so that call_soon_threadsafe works.
-		When ``clock_output`` is True, a MIDI Start (0xFA) message is sent before
-		the first clock tick so connected hardware begins from the top.
-		"""
-
-		if self.running:
-			return
-
-		# Set up MIDI input queue before opening the port.
-		self._open_midi_inputs()
-
-		# Store the event loop for thread-safe scheduling (e.g., trigger() from user threads)
-		self._event_loop = asyncio.get_running_loop()
-
-		self._waiting_for_start = self.clock_follow
-		self.running = True
-		self.task = asyncio.create_task(self._run_loop())
-
-		if self.clock_output:
-			self._send_clock_message("start")
-
-		logger.info("Sequencer started")
-
-		await self.events.emit_async("start")
-
-
-	async def stop (self) -> None:
-
-		"""
-		Stop the sequencer playback and cleanup resources.
-		"""
-
-		if not self.running and not self._output_devices:
-			return
-
-		logger.info("Stopping sequencer...")
-
-		self.running = False
-
-		if self.task:
-			try:
-				await self.task
-			except asyncio.CancelledError:
-				# The loop task was cancelled (the Ctrl-C path) — since
-				# Python 3.8 CancelledError is a BaseException, so a bare
-				# `except Exception` missed it and the whole cleanup below
-				# was skipped.
-				logger.info("Sequencer loop task cancelled - continuing shutdown")
-			except Exception:
-				# A crashed loop must not abort shutdown - the cleanup below
-				# (pending-send cancellation, panic, port close, recording
-				# save) is exactly what a dying session needs most.
-				logger.exception("Sequencer loop task ended with an exception - continuing shutdown")
-
-		# Cancel any latency-compensation deferrals still in flight.  Must happen
-		# after the loop has stopped producing (await self.task) and before
-		# close_all() so a pending call_later can't fire on a closed port.
-		# panic() below is the silence authority for any note stranded by this.
-		self._cancel_pending_sends()
-
-		if self.clock_output:
-			self._send_clock_message("stop")
-
-		await self.panic()
-
-		self._output_devices.close_all()
-		self._input_devices.close_all()
-
-		# Leave the Ableton Link session cleanly if one was active, rather than
-		# letting the socket linger in the session until process exit.
-		if self._link_clock is not None:
-			try:
-				self._link_clock.disable()
-			except Exception:
-				logger.exception("Failed to disable Ableton Link clock")
-
-		self._midi_input_queue = None
-		self._input_loop = None
-
-		self.save_recording()
-
-		logger.info("Sequencer stopped")
-
-		async with self.pattern_lock:
-			self.reschedule_queue = []
-			self._reschedule_counter = itertools.count()
-
-		async with self.callback_lock:
-			self.callback_queue = []
-			self.callback_sequence_queue = []
-			self._callback_counter = itertools.count()
-
-		# Note: ``_event_counter`` is intentionally NOT reset here.  The two
-		# counters above pair with queues that we do clear, so resetting them
-		# is symmetric.  ``self.event_queue`` is left to drain naturally and
-		# may carry stale items into a restart; resetting ``_event_counter``
-		# alongside an un-cleared queue would let a fresh push (sequence=0)
-		# sort ahead of a stale push (sequence=N) at the same pulse.  Since
-		# pulse is the primary heap key and the counter never overflows, we
-		# just let it keep counting forever.
-
-		self.active_notes = set()
-
-		await self.events.emit_async("stop")
-
-
-	async def _run_loop (self) -> None:
-
-		"""Main playback loop - delegates to internal, external, or Link clock mode."""
-
-		self.start_time = time.perf_counter()
-		self.pulse_count = 0
-		self.current_bar = -1
-
-		pulses_per_bar = self.time_signature[0] * self.pulses_per_beat
-
-		if self.clock_follow and self._midi_input_queue is not None:
-			await self._run_loop_external_clock(pulses_per_bar)
-		elif self._link_clock is not None:
-			await self._run_loop_link_clock(self._link_clock, pulses_per_bar)
-		else:
-			await self._run_loop_internal_clock(pulses_per_bar)
-
-
-	def _check_bar_change (self, pulse: int, pulses_per_bar: int) -> None:
-
-		"""Detect bar boundaries and fire bar callbacks + events."""
-
-		new_bar = pulse // pulses_per_bar
-
-		if new_bar > self.current_bar:
-			self.current_bar = new_bar
-
-			# In render mode, stop after the requested number of bars.
-			if self.render_mode and self.render_bars > 0 and self.current_bar >= self.render_bars:
-				self.running = False
-				return
-
-			self._spawn(self.events.emit_async("bar", self.current_bar))
-
-
-	def _check_beat_change (self, pulse: int, pulses_per_beat: int) -> None:
-
-		"""Detect beat boundaries within the bar and fire beat events."""
-
-		beat_in_bar = (pulse % (self.time_signature[0] * pulses_per_beat)) // pulses_per_beat
-
-		if beat_in_bar != self.current_beat:
-			self.current_beat = beat_in_bar
-			self._spawn(self.events.emit_async("beat", self.current_beat))
-
-
-	async def _advance_pulse (self) -> None:
-
-		"""Reschedule patterns, process events, and increment the pulse counter."""
-
-		if self._bpm_transition is not None:
-			self._bpm_transition.elapsed_pulses += 1
-
-			if self._bpm_transition.elapsed_pulses >= self._bpm_transition.total_pulses:
-				target = self._bpm_transition.target_bpm
-				self._bpm_transition = None
-				self.set_bpm(target)
-			else:
-				progress = self._bpm_transition.elapsed_pulses / self._bpm_transition.total_pulses
-				eased = self._bpm_transition.easing_fn(progress)
-				interpolated = (
-					self._bpm_transition.start_bpm +
-					(self._bpm_transition.target_bpm - self._bpm_transition.start_bpm) * eased
-				)
-				self.current_bpm = interpolated
-				self.seconds_per_beat = 60.0 / self.current_bpm
-				self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
-
-				# Keep the recording's tempo map honest: without these events
-				# a recorded ramp plays back at the pre-ramp tempo and jumps.
-				if self.recording:
-					self._record_event(self.pulse_count, mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(interpolated)))
-
-		# Accumulate simulated time and enforce the render time cap.
-		if self.render_mode:
-			self._render_elapsed_seconds += self.seconds_per_pulse
-			if (
-				self.render_max_seconds is not None
-				and self._render_elapsed_seconds >= self.render_max_seconds
-			):
-				max_min = self.render_max_seconds / 60.0
-				logger.warning(
-					f"Render stopped at {max_min:.1f}-minute safety limit. "
-					f"Pass max_minutes=None with an explicit bars= count to remove this limit."
-				)
-				self.running = False
-				return
-
-		# Drain buffered note input into the held-note tracker BEFORE patterns
-		# rebuild, so a pattern's held_notes() snapshot reflects this pulse rather
-		# than the previous one.  deque.popleft() is GIL-atomic; the tracker is
-		# only ever touched on this loop thread (here and during rebuild).
-		if self._held_notes is not None:
-			while self._note_input_buffer:
-				is_on, pitch, velocity, when = self._note_input_buffer.popleft()
-				if is_on:
-					self._held_notes.note_on(pitch, velocity, when)
-				else:
-					self._held_notes.note_off(pitch, when)
-
-		await self._maybe_reschedule_patterns(self.pulse_count)
-		await self._process_pulse(self.pulse_count)
-		self.pulse_count += 1
-
-
-	async def _run_loop_internal_clock (self, pulses_per_bar: int) -> None:
-
-		"""Playback loop driven by the internal wall clock.
-
-		In normal mode the loop sleeps between pulses to maintain tempo.
-		In render mode it runs as fast as possible (simulates time rather than
-		waiting for the wall clock), stopping after *render_bars* bars.
-		"""
-
-		next_pulse_time = self.start_time
-
-		while self.running:
-
-			# In render mode, simulate time advancing one pulse at a time so
-			# the inner loop always fires exactly once without spin-waiting.
-			current_time = next_pulse_time if self.render_mode else time.perf_counter()
-
-			while current_time >= next_pulse_time:
-				# Ordering within each pulse:
-				#   1. _check_bar/beat_change() — update counters and queue "bar"/"beat"
-				#      event tasks (asyncio.create_task; not run yet).
-				#   2. Send MIDI clock tick (if clock_output) so hardware receives it at
-				#      the same time as note events for tight sync.
-				#   3. _advance_pulse() — fire callbacks, then send MIDI via _process_pulse().
-				#   4. After the await returns, the event loop runs the queued event tasks,
-				#      which update the terminal display.
-				#
-				# Consequence: MIDI notes are sent *before* the display updates. The display
-				# always trails the audio by roughly one pulse-processing cycle plus any
-				# terminal rendering latency (~10-50 ms). This is expected and acceptable for
-				# a visual status line — it cannot be tightened without restructuring the loop.
-				self._check_bar_change(self.pulse_count, pulses_per_bar)
-
-				if not self.running:
-					# A render bar-limit trips inside _check_bar_change; stop before
-					# dispatching this pulse so the first beat of the next (unrendered)
-					# bar never leaks into the recording.
-					break  # type: ignore[unreachable]
-
-				self._check_beat_change(self.pulse_count, self.pulses_per_beat)
-				if self.clock_output:
-					self._send_clock_message("clock")
-				await self._advance_pulse()
-				next_pulse_time += self.seconds_per_pulse
-
-				if not self.running:
-					break  # type: ignore[unreachable]
-
-			if not self.running:
-				break  # type: ignore[unreachable]
-
-			if not self.render_mode:
-				# Check if queue is empty and we are past the last event.
-				# Skipped in benchmark mode (_jitter_log set) so the clock
-				# runs until explicitly cancelled via asyncio.
-				if self._jitter_log is None:
-					async with self.queue_lock:
-						if (not self.event_queue and not self.active_notes
-								and not self.reschedule_queue and not self.callback_queue
-								and not self.callback_sequence_queue):
-							logger.info("Sequence complete (no more events or active notes).")
-							self.running = False
-							break
-
-				sleep_time = next_pulse_time - time.perf_counter()
-
-				if sleep_time > 0:
-					if self._spin_wait and sleep_time > self._spin_threshold:
-						# Sleep to within _spin_threshold of the target, then busy-wait
-						# for the remaining sub-millisecond.  Trades ~1ms of CPU spin per
-						# pulse for significantly tighter timing than asyncio.sleep alone.
-						await asyncio.sleep(sleep_time - self._spin_threshold)
-						while time.perf_counter() < next_pulse_time:
-							pass
-					else:
-						await asyncio.sleep(sleep_time)
-
-				if self._jitter_log is not None:
-					self._jitter_log.append(time.perf_counter() - next_pulse_time)
-			else:
-				# Yield to the event loop so queued tasks (pattern rescheduling,
-				# asyncio.create_task callbacks) can run between pulses.
-				await asyncio.sleep(0)
-
-
-	async def _run_loop_external_clock (self, pulses_per_bar: int) -> None:
-
-		"""Playback loop driven by incoming MIDI clock messages.
-
-		Each MIDI ``clock`` tick advances exactly one pulse (24 ppqn = internal ppqn).
-		Transport messages (``start``, ``stop``, ``continue``) control sequencer state.
-		The loop waits for a ``start`` or ``continue`` before advancing pulses,
-		but still uses incoming ticks to estimate BPM for display.
-		"""
-
-		assert self._midi_input_queue is not None, "MIDI input queue must be initialized for external clock"
-
-		while self.running:
-
-			try:
-				device_idx, message = await asyncio.wait_for(
-					self._midi_input_queue.get(), timeout=2.0
-				)
-			except asyncio.TimeoutError:
-				continue
-
-			if device_idx != self.clock_device_idx:
-				continue
-
-			if message.type == "clock":
-
-				# Prime BPM estimation while waiting for start/continue,
-				# but do not advance pulses or schedule events yet.
-				if self._waiting_for_start:
-					self._estimate_bpm(time.perf_counter())
-					continue
-
-				self._estimate_bpm(time.perf_counter())
-				self._check_bar_change(self.pulse_count, pulses_per_bar)
-				self._check_beat_change(self.pulse_count, self.pulses_per_beat)
-				await self._advance_pulse()
-
-			elif message.type == "start":
-				logger.info("MIDI start received")
-				self.pulse_count = 0
-				self.current_bar = -1
-				self.current_beat = -1
-				self._waiting_for_start = False
-
-			elif message.type == "stop":
-				logger.info("MIDI stop received")
-				self.running = False
-
-			elif message.type == "continue":
-				logger.info("MIDI continue received")
-				self._waiting_for_start = False
-
-
-	async def _run_loop_link_clock (self, link_clock: typing.Any, pulses_per_bar: int) -> None:
-
-		"""Playback loop driven by Ableton Link beat clock.
-
-		Uses ``link_clock.sync(beat)`` as the timing primitive: for each pulse N
-		we wait until the Link session beat reaches ``beat_origin + N / PPQN``.
-		This gives accurate, phase-locked timing at 24 PPQN with typical jitter
-		of ~0.3–0.5 ms (dominated by asyncio/OS scheduling overhead).
-
-		Starts on the next quantum boundary so that bar 0 aligns with all other
-		Link participants in the session.
-		"""
-
-		logger.info("Ableton Link clock mode: waiting for bar boundary…")
-
-		# Wait for the next quantum boundary (bar start) for a clean, phase-locked start.
-		beat_origin = await link_clock.wait_for_bar()
-
-		logger.info(f"Ableton Link: started at beat {beat_origin:.3f} (tempo={link_clock.tempo:.1f} BPM, peers={link_clock.num_peers})")
-
-		# Reset pulse counter here so bar/beat tracking starts from 0 at beat_origin.
-		self.pulse_count = 0
-		self.current_bar = -1
-		self.current_beat = -1
-
-		while self.running:
-
-			# Compute the Link beat corresponding to the current pulse.
-			target_beat = beat_origin + self.pulse_count / self.pulses_per_beat
-
-			# Wait for Link to reach that beat (this is the timing gate).
-			await link_clock.sync(target_beat)
-
-			# Update local tempo from the Link session — propagates network BPM changes.
-			link_bpm = link_clock.tempo
-			if abs(link_bpm - self.current_bpm) > 0.01:
-				# Record the change so a recorded session's .mid plays back
-				# at the Link session tempo (mirrors the external-clock path).
-				if self.recording:
-					self._record_event(self.pulse_count, mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(link_bpm)))
-				self.current_bpm = link_bpm
-				self.seconds_per_beat = 60.0 / self.current_bpm
-				self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
-				logger.debug(f"Link tempo update: {link_bpm:.2f} BPM")
-
-			self._check_bar_change(self.pulse_count, pulses_per_bar)
-			self._check_beat_change(self.pulse_count, self.pulses_per_beat)
-
-			if self.clock_output:
-				self._send_clock_message("clock")
-
-			await self._advance_pulse()
-
-			# Stop when all events are exhausted (same check as internal clock).
-			async with self.queue_lock:
-				if (not self.event_queue and not self.active_notes
-						and not self.reschedule_queue and not self.callback_queue
-						and not self.callback_sequence_queue):
-					logger.info("Sequence complete (no more events or active notes).")
-					self.running = False
-					break
-
-
-	async def _maybe_reschedule_patterns (self, pulse: int) -> None:
-
-		"""
-		Reschedule repeating callbacks and patterns when they reach their lookahead threshold.
-		"""
-
-		to_fire: typing.List[ScheduledCallback] = []
-		to_reschedule: typing.List[ScheduledPattern] = []
-
-		async with self.callback_lock:
-
-			while self.callback_queue and self.callback_queue[0][0] <= pulse:
-
-				_, _, scheduled_callback = heapq.heappop(self.callback_queue)
-
-				next_start_pulse = scheduled_callback.cycle_start_pulse + scheduled_callback.interval_pulses
-				scheduled_callback.cycle_start_pulse = next_start_pulse
-				scheduled_callback.next_fire_pulse = next_start_pulse + scheduled_callback.interval_pulses - scheduled_callback.lookahead_pulses
-
-				to_fire.append(scheduled_callback)
-
-		if to_fire:
-			# Decision path: composition-level callbacks fire before pattern rebuilds.
-			for scheduled_callback in to_fire:
-				try:
-					result = scheduled_callback.callback(pulse)
-
-					if asyncio.iscoroutine(result):
-						await result
-
-				except Exception:
-					# Isolate a misbehaving callback so the rest still fire and
-					# get rescheduled below — one bad callback must not stall the clock.
-					logger.exception("Scheduled callback failed during reschedule (pulse %d) - continuing", pulse)
-
-		async with self.callback_lock:
-			for scheduled_callback in to_fire:
-				counter = next(self._callback_counter)
-				heapq.heappush(self.callback_queue, (scheduled_callback.next_fire_pulse, counter, scheduled_callback))
-
-		# Variable-interval sequences fire after the fixed callbacks at the
-		# same pulse (the form clock is fixed; the harmonic span clock is a
-		# sequence — form-before-harmony ordering is preserved) and before
-		# pattern rebuilds below.
-		sequences_to_fire: typing.List[ScheduledCallbackSequence] = []
-
-		async with self.callback_lock:
-
-			while self.callback_sequence_queue and self.callback_sequence_queue[0][0] <= pulse:
-				_, _, scheduled_sequence = heapq.heappop(self.callback_sequence_queue)
-				sequences_to_fire.append(scheduled_sequence)
-
-		requeue: typing.List[ScheduledCallbackSequence] = []
-
-		for scheduled_sequence in sequences_to_fire:
-
-			try:
-				result = scheduled_sequence.callback(scheduled_sequence.boundary_pulse)
-
-				if asyncio.iscoroutine(result):
-					result = await result
-
-			except Exception:
-				# Isolate a misbehaving callback so the clock survives; the
-				# sequence is dropped — with no interval there is no next hop.
-				logger.exception("Callback sequence failed (pulse %d) - sequence stopped", pulse)
-				continue
-
-			if result is None:
-				continue	# the sequence chose to stop
-
-			interval_pulses = max(1, int(float(result) * self.pulses_per_beat))
-			scheduled_sequence.boundary_pulse += interval_pulses
-			scheduled_sequence.next_fire_pulse = max(
-				pulse + 1,
-				scheduled_sequence.boundary_pulse - scheduled_sequence.lookahead_pulses,
-			)
-			requeue.append(scheduled_sequence)
-
-		if requeue:
-			async with self.callback_lock:
-				for scheduled_sequence in requeue:
-					counter = next(self._callback_counter)
-					heapq.heappush(self.callback_sequence_queue, (scheduled_sequence.next_fire_pulse, counter, scheduled_sequence))
-
-		async with self.pattern_lock:
-
-			while self.reschedule_queue and self.reschedule_queue[0][0] <= pulse:
-
-				_, _, scheduled_pattern = heapq.heappop(self.reschedule_queue)
-
-				# Lazy pattern removal: if Composition.unregister() set the
-				# ``_removed`` flag on this pattern, skip both the rebuild and
-				# the re-push so it disappears from rotation.  Already-queued
-				# events in event_queue play out; sustaining notes were stopped
-				# by unregister() via _stop_pattern_notes().
-				if getattr(scheduled_pattern.pattern, '_removed', False):
-					continue
-
-				next_start_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses
-				scheduled_pattern.cycle_start_pulse = next_start_pulse
-
-				# Anchor the upcoming cycle on the pattern itself, BEFORE
-				# on_reschedule() below — rebuilds read it to place the cycle
-				# on the absolute beat axis (the harmony window's axis).
-				scheduled_pattern.pattern._cycle_start_pulse = next_start_pulse
-
-				to_reschedule.append(scheduled_pattern)
-
-		if to_reschedule:
-			# Decision path: update shared composition state before pattern rebuilds.
-			patterns = [scheduled_pattern.pattern for scheduled_pattern in to_reschedule]
-
-			try:
-				await self.events.emit_async("reschedule_pulse", pulse, patterns)
-			except Exception:
-				logger.exception("reschedule_pulse listener failed (pulse %d) - continuing", pulse)
-
-		for scheduled_pattern in to_reschedule:
-
-			# Containment: a failing rebuild — or an invalid set_length() that
-			# makes _get_pattern_timing raise — must cost this pattern its
-			# cycle, never the clock.  On failure the pattern keeps its
-			# previous timing and is re-queued below for another try.
-			try:
-				scheduled_pattern.pattern.on_reschedule()
-
-				# Re-read length in case on_reschedule() changed it (e.g. via set_length).
-				new_length_pulses, new_lookahead_pulses = self._get_pattern_timing(scheduled_pattern.pattern)
-				scheduled_pattern.length_pulses = new_length_pulses
-				scheduled_pattern.lookahead_pulses = new_lookahead_pulses
-				scheduled_pattern.next_reschedule_pulse = scheduled_pattern.cycle_start_pulse + new_length_pulses - new_lookahead_pulses
-
-				await self.schedule_pattern(scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse)
-
-			except Exception:
-				logger.exception("Pattern reschedule failed - pattern is silent this cycle and keeps its previous timing")
-				scheduled_pattern.next_reschedule_pulse = scheduled_pattern.cycle_start_pulse + scheduled_pattern.length_pulses - scheduled_pattern.lookahead_pulses
-
-			self._spawn(self.events.emit_async("pattern_reschedule", scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse))
-
-		async with self.pattern_lock:
-			for scheduled_pattern in to_reschedule:
-				counter = next(self._reschedule_counter)
-				heapq.heappush(self.reschedule_queue, (scheduled_pattern.next_reschedule_pulse, counter, scheduled_pattern))
-
-
-	async def _process_pulse (self, pulse: int) -> None:
-
-		"""
-		Process and execute all events for a specific pulse.
-		"""
-
-		async with self.queue_lock:
-
-			# Drain queued CC forwards into the event heap.
-			# deque.popleft() is GIL-atomic; safe to call from the event loop thread
-			# while the callback thread calls append().
-			while self._forward_buffer:
-				fwd_pulse, fwd_msg, fwd_device = self._forward_buffer.popleft()
-				self._push_event(MidiEvent.from_mido(fwd_pulse, fwd_msg, device=fwd_device))
-
-			while self.event_queue and self.event_queue[0].pulse <= pulse:
-
-				event = heapq.heappop(self.event_queue)
-
-				# Defensive: dispatching a single malformed event must not
-				# crash the sequencer loop and stop the whole composition.
-				# A bad event (e.g. a tuple stored on Note.velocity by a
-				# misuse of a builder method) is logged with full context
-				# and skipped; subsequent events continue normally.
-				try:
-
-					# Track active notes (keyed by device, channel, note)
-					if event.message_type == 'note_on' and event.velocity > 0:
-						self.active_notes.add((event.device, event.channel, event.note))
-					elif event.message_type == 'note_off' or (event.message_type == 'note_on' and event.velocity == 0):
-						if (event.device, event.channel, event.note) in self.active_notes:
-							self.active_notes.remove((event.device, event.channel, event.note))
-
-					# Send events at or before the current pulse (late events are sent
-					# immediately).  Latency compensation may defer the actual send by
-					# the device's offset, but recording below always uses the LOGICAL
-					# pulse — the .mid is the uncompensated score.
-					self._dispatch_with_compensation(event)
-
-					if self.recording and event.message_type != 'osc':
-
-						mido_msg = event.to_mido()
-						if mido_msg is not None:
-							self._record_event(event.pulse, mido_msg)
-
-				except Exception:
-
-					logger.exception(
-						"Failed to dispatch %s event at pulse %d (device=%s, channel=%s) — skipping",
-						event.message_type, event.pulse, event.device, event.channel
-					)
-
-
-	async def _stop_all_active_notes (self) -> None:
-
-		"""
-		Send note_off for all currently tracked active notes.
-		"""
-
-		async with self.queue_lock:
-			for dev, channel, note in list(self.active_notes):
-				port = self._output_devices.get(dev)
-				if port is not None:
-					try:
-						self._locked_send(port, mido.Message('note_off', channel=channel, note=note, velocity=0))
-					except Exception:
-						logger.exception("Failed to send note_off during stop")
-			self.active_notes.clear()
-
-
-	async def _stop_pattern_notes (self, pattern: PatternLike) -> None:
-
-		"""Send note_off for active notes belonging to a single pattern.
-
-		Targets the pattern's primary ``(device, channel)`` plus every entry
-		in ``pattern.mirrors``, so patterns with mirrors have their notes
-		stopped on every output port they fan out to.  Used by
-		``Composition.unregister()`` to flush drones and any sustaining
-		notes when a pattern is being torn down.
-		"""
-
-		mirrors = getattr(pattern, 'mirrors', [])
-		# Build the target set from each entry's (device, channel) prefix — a
-		# 3-tuple mirror carries a dict (drum_note_map) and would be unhashable.
-		targets: typing.Set[typing.Tuple[int, int]] = {(pattern.device, pattern.channel)} | {(e[0], e[1]) for e in mirrors}
-
-		async with self.queue_lock:
-
-			stranded = [t for t in self.active_notes if (t[0], t[1]) in targets]
-
-			for dev, channel, note in stranded:
-				# Route through latency compensation, NOT straight to the
-				# port: a note_on for this device may still be deferred in
-				# _pending_sends, and an immediate note_off would overtake it,
-				# leaving the note stuck ringing (drones have no later
-				# note_off to rescue them).  The shared per-device offset
-				# preserves on→off order.
-				try:
-					self._dispatch_with_compensation(MidiEvent(
-						pulse = self.pulse_count,
-						message_type = 'note_off',
-						channel = channel,
-						note = note,
-						velocity = 0,
-						device = dev,
-					))
-				except Exception:
-					logger.exception(f"Failed to send note_off during unregister (dev={dev}, ch={channel}, note={note})")
-				self.active_notes.discard((dev, channel, note))
-
-
-	def _send_offset_seconds (self, device: int) -> float:
-
-		"""Return the latency-compensation send offset (seconds) for *device*.
-
-		``(max_latency − device_latency) / 1000``, clamped ≥ 0.  The slowest
-		device returns 0 (sent at logical time); faster devices return a
-		positive delay so they sound together.
-
-		Invariant: the offset is **per-device**, so every event for one device
-		shares it.  That is what preserves same-pulse FIFO order through
-		deferral — an NRPN burst (CC 99 → 98 → 6 → 38) on one device stays in
-		order because all four are deferred by the same amount.  A future
-		per-channel/per-message latency would break that and must not be added
-		without re-thinking burst ordering.
-		"""
-
-		offset_ms = self._max_device_latency_ms - self._output_devices.latency_of(device)
-		if offset_ms <= 0.0:
-			return 0.0
-		return offset_ms / 1000.0
-
-	def _dispatch_with_compensation (self, event: MidiEvent) -> None:
-
-		"""Send *event* now, or defer it by its device's latency offset.
-
-		Deferral is a wall-clock ``call_later`` so it is correct regardless of
-		tempo or clock source.  Skipped entirely in render mode (no real clock
-		— deferring would drop events from the rendered file) and when no event
-		loop is running (the synchronous test path).
-		"""
-
-		if self.render_mode or self._event_loop is None:
-			self._send_midi(event)
-			return
-
-		offset_s = self._send_offset_seconds(event.device)
-		if offset_s <= 0.0:
-			self._send_midi(event)
-			return
-
-		# Defer the physical send.  The one-element ``cell`` lets the callback
-		# discard exactly its own handle from _pending_sends (the handle isn't
-		# known until call_later returns, but _fire only runs after we append).
-		cell: typing.List[asyncio.TimerHandle] = []
-
-		def _fire () -> None:
-			self._pending_sends.discard(cell[0])
-			self._send_midi(event)
-
-		handle = self._event_loop.call_later(offset_s, _fire)
-		cell.append(handle)
-		self._pending_sends.add(handle)
-
-	def _cancel_pending_sends (self) -> None:
-
-		"""Cancel and forget all in-flight deferred sends.  Idempotent.
-
-		Called during ``stop()`` before ports close so a pending ``call_later``
-		can never fire ``port.send()`` on a closed port.  Stranded notes are not
-		a concern here: ``panic()`` runs after this and is the silence
-		authority (``active_notes`` reflects logical time and can diverge from
-		what physically fired, so it is not relied upon).
-		"""
-
-		for handle in self._pending_sends:
-			handle.cancel()
-		self._pending_sends.clear()
-
-	def _locked_send (self, port: typing.Any, message: typing.Any) -> None:
-
-		"""Write one message to a port under the send lock.
-
-		The lock keeps the loop thread and the instant cc_forward callback
-		thread from interleaving bytes on the same port.
-		"""
-
-		with self._port_send_lock:
-			port.send(message)
-
-	def _send_midi (self, event: MidiEvent) -> None:
-
-		"""
-		Send a MIDI message to the appropriate output device.
-		"""
-
-		port = self._output_devices.get(event.device)
-		if port is not None:
-
-			try:
-
-				if event.message_type == 'osc':
-					if self.osc_server is not None:
-						address, args = event.data
-						self.osc_server.send(address, *args)
-					return
-
-				msg = event.to_mido()
-				if msg is None:
-					return
-
-				self._locked_send(port, msg)
-
-			except Exception:
-				logger.exception("MIDI send failed (device may be disconnected)")
-
-
-	async def panic (self) -> None:
-
-		"""
-		Send a MIDI panic message to all channels.
-		"""
-
-		logger.info("Panic: sending all notes off.")
-		
-		# 1. Stop all tracked active notes manually
-		await self._stop_all_active_notes()
-
-		for port in self._output_devices:
-
-			try:
-
-				# Hold the send lock so an instant cc_forward on the callback
-				# thread cannot interleave with the panic sweep.
-				with self._port_send_lock:
-
-					# 2. Send "All Notes Off" (CC 123) and "All Sound Off" (CC 120) to all 16 channels
-					for channel in range(16):
-						port.send(mido.Message('control_change', channel=channel, control=123, value=0))
-						port.send(mido.Message('control_change', channel=channel, control=120, value=0))
-
-					# 3. Use built-in panic and reset
-					port.panic()
-
-					# Note: reset() might close/reopen ports or clear internal buffers depending on backend,
-					# but mido docs say it sends "All Notes Off" and "Reset All Controllers".
-					port.reset()
-
-			except Exception:
-				logger.exception("MIDI panic failed (device may be disconnected)")
+    """
+    The engine that drives Subsequence timing and MIDI output.
+
+    The ``Sequencer`` maintains a stable clock (internal or external),
+    handles the scheduling of MIDI events, and triggers pattern rebuilds.
+    """
+
+    def __init__(
+        self,
+        output_device_name: typing.Optional[str] = None,
+        initial_bpm: float = 125,
+        time_signature: typing.Tuple[int, int] = (4, 4),
+        input_device_name: typing.Optional[str] = None,
+        clock_follow: bool = False,
+        clock_output: bool = False,
+        record: bool = False,
+        record_filename: typing.Optional[str] = None,
+        spin_wait: bool = True,
+        _jitter_log: typing.Optional[typing.List[float]] = None,
+    ) -> None:
+        """Initialize the sequencer with MIDI devices and initial BPM.
+
+        Parameters:
+                output_device_name: MIDI output device name. When omitted, auto-discovers
+                        available devices - uses the only device if one is found, or prompts
+                        the user to choose if multiple are available.
+                initial_bpm: Tempo in BPM (ignored when clock_follow is True)
+                input_device_name: Optional MIDI input device name for clock/transport
+                clock_follow: When True, follow external MIDI clock instead of internal clock
+                clock_output: When True, send MIDI timing clock (0xF8), start (0xFA), and
+                        stop (0xFC) messages so connected hardware can sync to Subsequence's
+                        tempo.  Mutually exclusive with ``clock_follow`` (ignored when both
+                        are set, to prevent feedback loops).
+                record: When True, record all MIDI events to a file.
+                record_filename: Optional filename for the recording (defaults to timestamp).
+                spin_wait: When True (default), use a hybrid sleep+spin strategy for the
+                        final sub-millisecond of each pulse interval.  This significantly
+                        reduces clock jitter at the cost of ~1–5% extra CPU.  Set to False
+                        to use pure ``asyncio.sleep()`` (lower CPU, higher jitter).
+                _jitter_log: Optional list to append per-pulse jitter values (seconds)
+                        to during playback.  Intended for the clock jitter benchmark — not
+                        for general use.
+        """
+
+        if clock_follow and input_device_name is None:
+            raise ValueError("clock_follow=True requires an input_device_name")
+
+        self.output_device_name = output_device_name
+        self.input_device_name = input_device_name
+        self.time_signature = time_signature
+        self.clock_follow = clock_follow
+        self.clock_device_idx: int = 0
+        self.clock_output = clock_output and not clock_follow
+        self.pulses_per_beat = subsequence.constants.MIDI_QUARTER_NOTE
+
+        # Recording state
+        self.recording = record
+        self.record_filename = record_filename
+        self.recorded_events: typing.List[
+            typing.Tuple[float, typing.Union[mido.Message, mido.MetaMessage]]
+        ] = []
+
+        # Render mode: run as fast as possible and stop after render_bars or render_max_seconds.
+        # Both limits are optional — at least one must be set (enforced in Composition.render).
+        self.render_mode: bool = False
+        self.render_bars: int = 0  # 0 = no bar limit
+        self.render_max_seconds: typing.Optional[float] = None  # None = no time limit
+        self._render_elapsed_seconds: float = 0.0
+
+        # CC input mapping — populated from Composition.cc_map()
+        self.cc_mappings: typing.List[typing.Dict[str, typing.Any]] = []
+        # CC forwarding — populated from Composition.cc_forward()
+        self.cc_forwards: typing.List[typing.Dict[str, typing.Any]] = []
+        # Buffer for queued CC forwards: deque of (pulse, mido.Message) tuples.
+        # Appended on the mido callback thread; drained on the event loop thread.
+        self._forward_buffer: collections.deque = collections.deque()
+        # Shared reference to composition.data so CC mappings can update it
+        self._composition_data: typing.Dict[str, typing.Any] = {}
+
+        # Held-note input — populated from Composition.note_input().
+        # The tracker (created in _run when note_input was declared) and a buffer
+        # of raw (is_on, pitch, velocity, perf_counter) note events.  The buffer is
+        # appended on the mido callback thread and drained on the loop thread in
+        # _advance_pulse, so all tracker state stays single-threaded — no lock.
+        self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None
+        self._note_input_buffer: collections.deque = collections.deque()
+        self._note_input_channel: typing.Optional[int] = None  # None = any channel
+        self._note_input_device: typing.Optional[int] = None  # None = any input device
+
+        # Ableton Link clock — set by Composition._run() when comp.link() was called.
+        # Must be initialized before set_bpm() is called below.
+        self._link_clock: typing.Optional[typing.Any] = None
+
+        # Multi-device MIDI port registries.
+        # Output device 0 is always the primary/default device.
+        self._output_devices: subsequence.midi_utils.MidiDeviceRegistry = (
+            subsequence.midi_utils.MidiDeviceRegistry()
+        )
+        self._input_devices: subsequence.midi_utils.MidiDeviceRegistry = (
+            subsequence.midi_utils.MidiDeviceRegistry()
+        )
+
+        # Internal state initialization (needed before set_bpm)
+        self._midi_input_queue: typing.Optional[asyncio.Queue] = None
+        self._input_loop: typing.Optional[asyncio.AbstractEventLoop] = None
+        self._event_loop: typing.Optional[asyncio.AbstractEventLoop] = None
+        self._clock_tick_times: typing.List[float] = []
+        self._waiting_for_start: bool = False
+
+        self.event_queue: typing.List[MidiEvent] = []
+        self.task: typing.Optional[asyncio.Task] = None
+        self.start_time = 0.0
+        self.pulse_count = 0
+        self.current_bar: int = -1
+        self.current_beat: int = -1
+        self.active_notes: typing.Set[typing.Tuple[int, int, int]] = (
+            set()
+        )  # (device, channel, note)
+
+        # Device latency compensation: cached max across all output devices, and
+        # the set of in-flight deferred sends (call_later handles) awaiting their
+        # per-device offset.  See _dispatch_with_compensation() and stop().
+        self._max_device_latency_ms: float = 0.0
+        self._pending_sends: typing.Set[asyncio.TimerHandle] = set()
+
+        # Strong references to fire-and-forget bar/beat/event tasks.  Without
+        # retaining them asyncio holds only a weak reference and the task can be
+        # garbage-collected mid-flight; the done-callback also surfaces exceptions
+        # that a bare create_task would otherwise swallow until GC.
+        self._background_tasks: typing.Set[asyncio.Task] = set()
+
+        self.queue_lock = asyncio.Lock()
+        self.pattern_lock = asyncio.Lock()
+        self.reschedule_queue: typing.List[
+            typing.Tuple[int, int, ScheduledPattern]
+        ] = []
+        self._reschedule_counter = itertools.count()
+        self.events = subsequence.event_emitter.EventEmitter()
+        self.callback_lock = asyncio.Lock()
+        self.callback_queue: typing.List[typing.Tuple[int, int, ScheduledCallback]] = []
+        self._callback_counter = itertools.count()
+
+        # Variable-interval callback sequences share callback_lock; they fire
+        # after the fixed callbacks at the same pulse (see
+        # _maybe_reschedule_patterns), preserving form-before-harmony ordering.
+        self.callback_sequence_queue: typing.List[
+            typing.Tuple[int, int, ScheduledCallbackSequence]
+        ] = []
+
+        # FIFO tie-breaker for same-pulse MidiEvents in event_queue.  Without
+        # it, ``heapq`` ordering of equal-pulse events is undefined, which
+        # breaks NRPN/RPN bursts (CC 99 → 98 → 6 → 38 must stay in order).
+        self._event_counter = itertools.count()
+
+        # Serialises actual port writes.  Every send runs on the event-loop
+        # thread EXCEPT instant-mode cc_forward, which fires on the mido input
+        # callback thread — without this lock the two threads could interleave
+        # bytes on the same port and corrupt a multi-byte message.
+        self._port_send_lock = threading.Lock()
+
+        self.data: typing.Dict[str, typing.Any] = {}
+
+        # Timing variables
+        self.current_bpm: float = 0
+        self.seconds_per_beat = 0.0
+        self.seconds_per_pulse = 0.0
+        self.running = False
+        self._bpm_transition: typing.Optional[BpmTransition] = None
+        self._spin_wait: bool = spin_wait
+        # Spin threshold: sleep all the way to this many seconds before the target,
+        # then busy-wait for the remainder.  1ms is enough to absorb OS wakeup latency
+        # while keeping spin time short enough not to starve the event loop.
+        self._spin_threshold: float = 0.001
+        self._jitter_log: typing.Optional[typing.List[float]] = _jitter_log
+
+        self.set_bpm(initial_bpm)
+
+        self._init_midi_output()
+
+        # OSC server reference — set by Composition after osc_server.start()
+        self.osc_server: typing.Optional[typing.Any] = None
+
+    # ------------------------------------------------------------------
+    # Backward-compatible properties: midi_out / midi_in
+    # External code and tests may reference these directly.  They always
+    # resolve to device 0 of the respective registry.
+    # ------------------------------------------------------------------
+
+    @property
+    def midi_out(self) -> typing.Optional[typing.Any]:
+        """Return the primary output port (device 0), or None."""
+        return self._output_devices.get(0)
+
+    @midi_out.setter
+    def midi_out(self, value: typing.Optional[typing.Any]) -> None:
+        """Allow test code to inject a fake output port as device 0."""
+        if value is None:
+            return
+        if len(self._output_devices) == 0:
+            self._output_devices.add("default", value)
+        else:
+            self._output_devices.replace(0, value)
+
+    @property
+    def midi_in(self) -> typing.Optional[typing.Any]:
+        """Return the primary input port (device 0), or None."""
+        return self._input_devices.get(0)
+
+    @midi_in.setter
+    def midi_in(self, value: typing.Optional[typing.Any]) -> None:
+        """Allow test code to inject a fake input port as device 0."""
+        if value is None:
+            return
+        if len(self._input_devices) == 0:
+            self._input_devices.add("default", value)
+        else:
+            self._input_devices.replace(0, value)
+
+    def add_output_device(
+        self, name: str, port: typing.Any, latency_ms: float = 0.0
+    ) -> int:
+        """Register an additional output device.  Returns the device index.
+
+        *latency_ms* is the device's physical output latency for compensation
+        (see :meth:`set_device_latency`).
+        """
+        idx = self._output_devices.add(name, port, latency_ms)
+        self._max_device_latency_ms = self._output_devices.max_latency()
+        return idx
+
+    def add_input_device(self, name: str, port: typing.Any) -> int:
+        """Register an additional input device.  Returns the device index."""
+        return self._input_devices.add(name, port)
+
+    def set_device_latency(
+        self, device: subsequence.midi_utils.DeviceId, latency_ms: float
+    ) -> None:
+        """Set an output device's physical latency (ms) for delay compensation.
+
+        Latency is normalised engine-wide: the slowest device plays at its
+        logical time and every faster device's output is deferred by
+        ``max_latency − its_latency`` so all devices sound together.  See
+        :meth:`_dispatch_with_compensation`.
+
+        Parameters:
+                device: Output device id (int index, name str, or None for device 0).
+                latency_ms: Non-negative physical output latency in milliseconds.
+                        Raises ``ValueError`` if negative or the device is unknown.
+        """
+
+        self._output_devices.set_latency(device, latency_ms)
+        self._max_device_latency_ms = self._output_devices.max_latency()
+
+    def _record_event(
+        self, pulse: int, message: typing.Union[mido.Message, mido.MetaMessage]
+    ) -> None:
+        """Record a MIDI message with an absolute pulse timestamp for later export."""
+
+        if not self.recording:
+            return
+
+        self.recorded_events.append((float(pulse), message))
+
+    def save_recording(self) -> None:
+        """Save the recorded session to a MIDI file."""
+
+        if not self.recording or not self.recorded_events:
+            return
+
+        if self.record_filename:
+            filename = self.record_filename
+        else:
+            now = datetime.datetime.now()
+            filename = now.strftime("session_%Y%m%d_%H%M%S.mid")
+
+        logger.info(
+            f"Saving MIDI recording ({len(self.recorded_events)} events) to {filename}..."
+        )
+
+        mid = mido.MidiFile(
+            type=1
+        )  # Type 1 = multiple tracks (though we might just use one)
+        track = mido.MidiTrack()
+        mid.tracks.append(track)
+
+        # Resolution (ticks per beat). Standard is 480.
+        # Subsequence uses 24 PPQN internal.
+        # To get 480 PPQN output without losing precision, we scale up by 20.
+        ticks_per_pulse = 20
+        mid.ticks_per_beat = 480
+
+        # Sort events by pulse just in case
+        self.recorded_events.sort(key=lambda x: x[0])
+
+        last_pulse = 0.0
+
+        for pulse, message in self.recorded_events:
+            delta_pulses = pulse - last_pulse
+            delta_ticks = int(delta_pulses * ticks_per_pulse)
+
+            # Ensure delta is non-negative (floating point jitter?)
+            if delta_ticks < 0:
+                delta_ticks = 0
+
+            message.time = delta_ticks
+            track.append(message)
+
+            last_pulse = pulse
+
+        try:
+            mid.save(filename)
+            logger.info(f"Saved {filename}")
+        except Exception as e:
+            logger.error(f"Failed to save MIDI recording: {e}")
+
+    def disable_spin_wait(self) -> None:
+        """Disable the hybrid sleep+spin timing strategy.
+
+        By default the sequencer busy-waits for the final sub-millisecond of each
+        pulse interval to minimise clock jitter.  Call this to revert to pure
+        ``asyncio.sleep()`` — lower CPU usage at the cost of higher jitter (typically
+        ±0.5–2 ms on Linux vs ~3–4 μs with spin-wait enabled (see the README clock-accuracy benchmark)).
+
+        Can also be set at construction time: ``Sequencer(spin_wait=False)``.
+        """
+
+        self._spin_wait = False
+
+    def set_bpm(self, bpm: float) -> None:
+        """
+        Instantly change the tempo.
+
+        Note: If ``clock_follow`` is enabled and the sequencer is running,
+        this method will be ignored as the tempo is slaved to the external source.
+        When Ableton Link is active, the new BPM is proposed to the Link network
+        instead of being applied locally — the network-authoritative tempo is
+        then picked up on the next pulse.
+        """
+
+        # Validate BEFORE the Link branch — a zero/negative tempo must never
+        # be proposed to the whole Link session.
+        if bpm <= 0:
+            raise ValueError("BPM must be positive")
+
+        if self.clock_follow and self.running:
+            logger.info("BPM is controlled by external clock - set_bpm() ignored")
+            return
+
+        if self._link_clock is not None and self.running:
+            self._link_clock.request_tempo(bpm)
+            logger.info(f"BPM {bpm:.2f} proposed to Ableton Link session")
+            return
+
+        self._bpm_transition = None
+        self.current_bpm = bpm
+        self.seconds_per_beat = 60.0 / self.current_bpm
+        self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
+
+        logger.info(f"BPM set to {self.current_bpm:.2f}")
+
+        if self.recording:
+            tempo = mido.bpm2tempo(self.current_bpm)
+            self._record_event(
+                self.pulse_count, mido.MetaMessage("set_tempo", tempo=tempo)
+            )
+
+    def set_target_bpm(
+        self,
+        target_bpm: float,
+        bars: int,
+        shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
+    ) -> None:
+        """
+        Smoothly transition to a new tempo over a fixed number of bars.
+
+        Parameters:
+                target_bpm: The BPM to ramp toward.
+                bars: Duration of the transition in bars.
+                shape: Easing curve — a name string (e.g. ``"ease_in_out"``) or any
+                       callable that maps [0, 1] → [0, 1].  Defaults to ``"linear"``.
+                       ``"ease_in_out"`` or ``"s_curve"`` are recommended for natural-
+                       sounding tempo changes.  See :mod:`subsequence.easing`.
+
+        Note:
+                When Ableton Link is active the shared network tempo is authoritative,
+                so a local ramp cannot be honoured — this call is ignored.  Use
+                ``set_bpm()`` to propose a new tempo to the Link session instead.
+        """
+
+        if self.clock_follow and self.running:
+            logger.info(
+                "BPM is controlled by external clock - set_target_bpm() ignored"
+            )
+            return
+
+        if self._link_clock is not None and self.running:
+            logger.info(
+                "Tempo is controlled by the Ableton Link session - set_target_bpm() ramp ignored; use set_bpm() to propose a new Link tempo"
+            )
+            return
+
+        if target_bpm <= 0:
+            raise ValueError("Target BPM must be positive")
+
+        if bars <= 0:
+            raise ValueError("Transition bars must be positive")
+
+        total_pulses = bars * self.pulses_per_beat * self.time_signature[0]
+
+        self._bpm_transition = BpmTransition(
+            start_bpm=self.current_bpm,
+            target_bpm=target_bpm,
+            total_pulses=total_pulses,
+            easing_fn=subsequence.easing.get_easing(shape),
+        )
+
+        logger.info(
+            f"BPM transition: {self.current_bpm:.2f} → {target_bpm:.2f} over {bars} bars ({shape!r})"
+        )
+
+    def on_event(
+        self, event_name: str, callback: typing.Callable[..., typing.Any]
+    ) -> None:
+        """
+        Register a callback for a named event.
+        """
+
+        self.events.on(event_name, callback)
+
+    def _init_midi_output(self) -> None:
+        """Initialize the primary MIDI output port (device 0).
+
+        When ``output_device_name`` was provided, opens that device directly.
+        When omitted, auto-discovers available devices: uses the only one if
+        exactly one is found, or prompts the user to choose if several exist.
+        """
+
+        device_name, midi_out = subsequence.midi_utils.select_output_device(
+            self.output_device_name
+        )
+
+        if device_name and midi_out is not None:
+            self.output_device_name = device_name
+            self._output_devices.add(device_name, midi_out)
+
+    def _open_midi_inputs(self) -> None:
+        """
+        Set up the internal event loops and MIDI input ports.
+
+        This is called automatically by start(), but may be called manually
+        by Composition._run() earlier in the startup sequence to ensure
+        MIDI CC configuration is shared before ports begin background draining.
+        """
+
+        if self.input_device_name is not None and self._midi_input_queue is None:
+            self._input_loop = asyncio.get_running_loop()
+            self._midi_input_queue = asyncio.Queue()
+            self._init_midi_input()
+
+    def _init_midi_input(self) -> None:
+        """Initialize the primary MIDI input port (device 0) with a callback."""
+
+        if self.input_device_name is None:
+            return
+
+        callback = self._make_input_callback(0)
+        device_name, midi_in = subsequence.midi_utils.select_input_device(
+            self.input_device_name, callback
+        )
+
+        if device_name and midi_in is not None:
+            self.input_device_name = device_name
+            self._input_devices.add(device_name, midi_in)
+
+    def _make_input_callback(self, device_idx: int) -> typing.Callable:
+        """Return a mido callback closure that tags messages with *device_idx*."""
+
+        def _callback(message: typing.Any) -> None:
+            self._on_midi_input(message, device_idx)
+
+        return _callback
+
+    def _on_midi_input(self, message: typing.Any, device_idx: int = 0) -> None:
+        """Handle incoming MIDI messages from the input port callback thread.
+
+        This runs in mido's callback thread. Clock/transport messages are
+        forwarded to the asyncio event loop via call_soon_threadsafe.
+
+        CC input mappings are applied immediately here.  Single dict writes
+        are safe from a non-asyncio thread under CPython's GIL.
+
+        Parameters:
+                message: The incoming mido.Message.
+                device_idx: Index of the input device this message arrived on (0 = primary).
+        """
+
+        if self._midi_input_queue is None or self._input_loop is None:
+            return
+
+        # The queue feeds only the external-clock loop, so enqueue only when
+        # following: with the internal clock nothing ever drains it, and a
+        # synced device's 24-ticks-per-beat clock would grow it forever.
+        if self.clock_follow:
+            self._input_loop.call_soon_threadsafe(
+                self._midi_input_queue.put_nowait, (device_idx, message)
+            )
+
+        # Apply CC input mappings: map incoming CC values to composition.data.
+        if message.type == "control_change" and self.cc_mappings:
+            for mapping in self.cc_mappings:
+                if message.control != mapping["cc"]:
+                    continue
+                ch = mapping.get("channel")
+                if ch is not None and message.channel != ch:
+                    continue
+                # Filter by input device if specified (None = any device).
+                in_dev = mapping.get("input_device")
+                if in_dev is not None and device_idx != in_dev:
+                    continue
+                scaled = mapping["min_val"] + (message.value / 127.0) * (
+                    mapping["max_val"] - mapping["min_val"]
+                )
+                self._composition_data[mapping["data_key"]] = scaled
+
+        # Apply CC forwards: route incoming CC to MIDI output in real-time.
+        if message.type == "control_change" and self.cc_forwards:
+            for fwd in self.cc_forwards:
+                if message.control != fwd["cc"]:
+                    continue
+                ch = fwd.get("channel")
+                if ch is not None and message.channel != ch:
+                    continue
+                # Filter by input device if specified (None = any device).
+                in_dev = fwd.get("input_device")
+                if in_dev is not None and device_idx != in_dev:
+                    continue
+                try:
+                    out_msg = fwd["transform"](message.value, message.channel)
+                except Exception:
+                    logger.exception("CC forward transform failed")
+                    continue
+                if out_msg is None:
+                    continue
+                if fwd["mode"] == "instant":
+                    # Route to the specified output device (default: device 0).
+                    out_dev = fwd.get("output_device", 0)
+                    port = self._output_devices.get(out_dev)
+                    if port is not None:
+                        try:
+                            # Instant mode fires on the mido callback thread, so the
+                            # send must take the lock the loop thread also holds.
+                            self._locked_send(port, out_msg)
+                        except Exception:
+                            logger.exception("CC forward send failed")
+                else:
+                    # Queued: buffer for drain in _process_pulse on the event loop
+                    # thread.  The output device travels with the message so the
+                    # drain can route it (dropping it sent everything to device 0).
+                    out_dev = fwd.get("output_device")
+                    self._forward_buffer.append(
+                        (self.pulse_count, out_msg, 0 if out_dev is None else out_dev)
+                    )
+
+        # Buffer incoming note on/off for the held-note tracker.  Only the
+        # GIL-atomic deque.append happens here; the tracker is updated when the
+        # loop thread drains the buffer in _advance_pulse.
+        if self._held_notes is not None and message.type in ("note_on", "note_off"):
+            if (
+                self._note_input_channel is not None
+                and message.channel != self._note_input_channel
+            ):
+                return
+            if (
+                self._note_input_device is not None
+                and device_idx != self._note_input_device
+            ):
+                return
+            # A note_on with velocity 0 is the running-status form of note-off.
+            if message.type == "note_on" and message.velocity > 0:
+                self._note_input_buffer.append(
+                    (True, message.note, message.velocity, time.perf_counter())
+                )
+            else:
+                self._note_input_buffer.append(
+                    (False, message.note, 0, time.perf_counter())
+                )
+
+    def _estimate_bpm(self, tick_time: float) -> None:
+        """Estimate BPM from recent MIDI clock tick timestamps for display and recording."""
+
+        self._clock_tick_times.append(tick_time)
+
+        # Keep last 48 ticks (2 beats) for averaging.
+        if len(self._clock_tick_times) > 48:
+            self._clock_tick_times = self._clock_tick_times[-48:]
+
+        if len(self._clock_tick_times) >= 24:
+            # Average interval over last 24 ticks (1 beat).
+            recent = self._clock_tick_times[-24:]
+            interval = (recent[-1] - recent[0]) / (len(recent) - 1)
+
+            if interval > 0:
+                new_bpm = int(round(60.0 / (interval * self.pulses_per_beat)))
+
+                # Record tempo changes so a clock-following session's .mid
+                # plays back at the external tempo, not the constructor BPM.
+                # Integer rounding above already filters tick jitter.
+                if self.recording and new_bpm != self.current_bpm and new_bpm > 0:
+                    self._record_event(
+                        self.pulse_count,
+                        mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(new_bpm)),
+                    )
+
+                self.current_bpm = new_bpm
+
+    def _get_schedule_timing(
+        self, length_beats: float, lookahead_beats: float
+    ) -> typing.Tuple[int, int]:
+        """
+        Convert schedule length and reschedule lookahead from beats to pulses.
+        """
+
+        if length_beats <= 0:
+            raise ValueError("Schedule length must be positive")
+
+        if lookahead_beats < 0:
+            raise ValueError("Reschedule lookahead cannot be negative")
+
+        if lookahead_beats > length_beats:
+            raise ValueError("Reschedule lookahead cannot exceed schedule length")
+
+        length_pulses = int(length_beats * self.pulses_per_beat)
+        lookahead_pulses = int(lookahead_beats * self.pulses_per_beat)
+
+        if length_pulses <= 0:
+            raise ValueError("Schedule length must be at least one pulse")
+
+        return length_pulses, lookahead_pulses
+
+    def _get_pattern_timing(self, pattern: PatternLike) -> typing.Tuple[int, int]:
+        """
+        Convert pattern length and reschedule lookahead from beats to pulses.
+        """
+
+        return self._get_schedule_timing(pattern.length, pattern.reschedule_lookahead)
+
+    def _push_event(self, event: MidiEvent) -> None:
+        """Push a MidiEvent onto the queue, stamping a FIFO tie-breaker.
+
+        The ``sequence`` field guarantees that events sharing a ``pulse``
+        dispatch in insertion order — required for NRPN/RPN bursts and any
+        future protocol that emits multiple co-scheduled CCs (e.g. Bank
+        Select before Program Change).
+        """
+
+        event.sequence = next(self._event_counter)
+        heapq.heappush(self.event_queue, event)
+
+    def _spawn(self, coro: typing.Coroutine) -> None:
+        """Fire-and-forget *coro* on the event loop, tracked and exception-safe.
+
+        Retains a strong reference until the task completes (so it cannot be
+        collected mid-flight) and surfaces any exception via the done-callback —
+        a bare ``asyncio.create_task`` drops both, silently losing a raising bar
+        or beat callback.
+        """
+
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._reap_background_task)
+
+    def _reap_background_task(self, task: "asyncio.Task") -> None:
+        """Done-callback: drop the reference and log any exception."""
+
+        self._background_tasks.discard(task)
+
+        if not task.cancelled() and task.exception() is not None:
+            logger.error("Background task failed", exc_info=task.exception())
+
+    async def schedule_pattern(self, pattern: PatternLike, start_pulse: int) -> None:
+        """
+        Schedules a pattern's notes and CC events into the sequencer's event queue.
+
+        If ``pattern.mirrors`` is non-empty, every note, CC, pitch bend, program
+        change, SysEx, NRPN/RPN burst, and drone event is duplicated onto each
+        mirror destination — see the "MIDI mirroring" section of the README.
+
+        **Bandwidth note**: each mirror destination multiplies the per-pattern
+        event count.  A dense pattern with two mirrors emits 3× the original.
+        For DIN-MIDI hardware on a saturated bus this can matter; over USB or
+        IAC it is rarely a concern.
+
+        **Tuning + mirrors**: ``CcEvent.channel`` and ``CcEvent.device`` overrides
+        (used by polyphonic microtonal tuning to rotate notes onto separate
+        channels) apply to the *primary* destination only.  Mirror destinations
+        always use their own pinned ``(device, channel)`` — i.e. a polyphonic-
+        tuning pattern mirrored to another synth will collapse all channel
+        rotations onto the mirror's single channel, losing per-note bend
+        isolation on that destination.  Apply tuning per-pattern if both ends
+        need it.
+        """
+
+        # Primary destination first; mirrors follow.  Iteration order matters
+        # only for human readability when inspecting the queue — FIFO ordering
+        # at equal pulses is enforced by ``_push_event`` (the ``sequence``
+        # tie-breaker on ``MidiEvent``).
+        mirrors = getattr(pattern, "mirrors", [])
+        destinations: typing.List[_MirrorTarget] = [
+            _MirrorTarget(pattern.device, pattern.channel, None)
+        ] + [_to_target(entry) for entry in mirrors]
+
+        async with self.queue_lock:
+            for position, step in pattern.steps.items():
+                abs_pulse = start_pulse + position
+
+                for note in step.notes:
+                    for i, target in enumerate(destinations):
+                        # Resolve the drum name for this destination; None means the
+                        # destination has no voice for it, so it stays silent (no
+                        # note_on AND no note_off — nothing can hang).
+                        note_value = _destination_pitch(note, target, primary=(i == 0))
+                        if note_value is None:
+                            # A mirror carrying its own map that lacks this named
+                            # voice drops it here by design (faithful-core: silence,
+                            # never a wrong note).  Surface it at debug level so
+                            # "why is the clap missing on the sampler?" is answerable
+                            # without guessing — the build-time warning only covers a
+                            # name absent from *every* destination.
+                            if (
+                                i != 0
+                                and note.origin is not None
+                                and target.drum_note_map is not None
+                            ):
+                                logger.debug(
+                                    "Mirror device %d channel %d has no voice for drum '%s' — dropped for this destination",
+                                    target.device,
+                                    target.channel,
+                                    note.origin,
+                                )
+                            continue
+
+                        # Primary preserves the Note's own channel (so polyphonic
+                        # tuning's per-voice channel rotation lands correctly).
+                        # Mirrors collapse onto the mirror's pinned channel and
+                        # re-resolve the drum name through their own map.
+                        note_channel = note.channel if i == 0 else target.channel
+                        note_device = pattern.device if i == 0 else target.device
+
+                        on_event = MidiEvent(
+                            pulse=abs_pulse,
+                            message_type="note_on",
+                            channel=note_channel,
+                            note=note_value,
+                            velocity=note.velocity,
+                            device=note_device,
+                        )
+                        self._push_event(on_event)
+
+                        off_event = MidiEvent(
+                            pulse=abs_pulse + note.duration,
+                            message_type="note_off",
+                            channel=note_channel,
+                            note=note_value,
+                            velocity=0,
+                            device=note_device,
+                        )
+                        self._push_event(off_event)
+
+            # CC / pitch bend / program change / SysEx events
+            for cc_event in getattr(pattern, "cc_events", []):
+                abs_pulse = start_pulse + cc_event.pulse
+
+                for i, target in enumerate(destinations):
+                    if i == 0:
+                        # Primary: respect per-event channel/device override if set
+                        # (e.g. tuning pitch bends targeting specific channels).
+                        event_channel = (
+                            cc_event.channel
+                            if cc_event.channel is not None
+                            else target.channel
+                        )
+                        event_device = (
+                            cc_event.device
+                            if cc_event.device is not None
+                            else target.device
+                        )
+                    else:
+                        # Mirror: always use the mirror's pinned (device, channel).
+                        # See class docstring for the tuning interaction note.
+                        event_channel = target.channel
+                        event_device = target.device
+
+                    midi_event = MidiEvent(
+                        pulse=abs_pulse,
+                        message_type=cc_event.message_type,
+                        channel=event_channel,
+                        control=cc_event.control,
+                        value=cc_event.value,
+                        data=cc_event.data,
+                        device=event_device,
+                        priority=getattr(cc_event, "priority", 0),
+                    )
+                    self._push_event(midi_event)
+
+            # Raw Note On/Off events (drones)
+            for note_ev in getattr(pattern, "raw_note_events", []):
+                abs_pulse = start_pulse + note_ev.pulse
+
+                for i, target in enumerate(destinations):
+                    # Same faithful-core rule as step notes: a named drone is
+                    # re-resolved through each mirror's own drum_note_map, and
+                    # a destination lacking the voice stays silent rather than
+                    # sounding the primary device's note number.
+                    note_value = _destination_pitch(note_ev, target, primary=(i == 0))
+                    if note_value is None:
+                        if (
+                            i != 0
+                            and note_ev.origin is not None
+                            and target.drum_note_map is not None
+                        ):
+                            logger.debug(
+                                "Mirror device %d channel %d has no voice for drum '%s' — dropped for this destination",
+                                target.device,
+                                target.channel,
+                                note_ev.origin,
+                            )
+                        continue
+
+                    midi_event = MidiEvent(
+                        pulse=abs_pulse,
+                        message_type=note_ev.message_type,
+                        channel=target.channel,
+                        note=note_value,
+                        velocity=note_ev.velocity,
+                        device=target.device,
+                    )
+                    self._push_event(midi_event)
+
+            # OSC events — never mirrored.  OSC isn't bound to a MIDI port and
+            # mirroring it would require a different abstraction (multiple OSC
+            # servers / addresses).  If users want to broadcast OSC to several
+            # endpoints, that belongs in the OSC server config, not here.
+            for osc_event in getattr(pattern, "osc_events", []):
+                abs_pulse = start_pulse + osc_event.pulse
+
+                osc_midi_event = MidiEvent(
+                    pulse=abs_pulse,
+                    message_type="osc",
+                    channel=0,
+                    data=(osc_event.address, osc_event.args),
+                )
+
+                self._push_event(osc_midi_event)
+
+        logger.debug(
+            f"Scheduled pattern at {start_pulse}, queue size: {len(self.event_queue)}"
+        )
+
+    async def schedule_pattern_repeating(
+        self, pattern: PatternLike, start_pulse: int
+    ) -> None:
+        """
+        Schedule a pattern and register it for rescheduling each cycle.
+        """
+
+        length_pulses, lookahead_pulses = self._get_pattern_timing(pattern)
+
+        # Anchor the first cycle for window-reading rebuilds (kept current on
+        # every reschedule in _maybe_reschedule_patterns).
+        pattern._cycle_start_pulse = start_pulse
+
+        await self.schedule_pattern(pattern, start_pulse)
+
+        next_reschedule_pulse = start_pulse + length_pulses - lookahead_pulses
+
+        scheduled_pattern = ScheduledPattern(
+            pattern=pattern,
+            cycle_start_pulse=start_pulse,
+            length_pulses=length_pulses,
+            lookahead_pulses=lookahead_pulses,
+            next_reschedule_pulse=next_reschedule_pulse,
+        )
+
+        async with self.pattern_lock:
+            counter = next(self._reschedule_counter)
+            heapq.heappush(
+                self.reschedule_queue,
+                (scheduled_pattern.next_reschedule_pulse, counter, scheduled_pattern),
+            )
+
+    async def schedule_callback_repeating(
+        self,
+        callback: typing.Callable[[int], typing.Any],
+        interval_beats: float,
+        start_pulse: int = 0,
+        reschedule_lookahead: float = 1,
+    ) -> None:
+        """
+        Schedule a repeating callback on a beat interval.
+        """
+
+        interval_pulses, lookahead_pulses = self._get_schedule_timing(
+            interval_beats, reschedule_lookahead
+        )
+
+        # "Backshift" initialization: treat start_pulse as the *target* of the first fire,
+        # not the start of the first cycle. This ensures callbacks fire `lookahead` before
+        # start_pulse (often ≤ 0, so they fire immediately when playback begins).
+        #
+        # Formula: cycle_start = start_pulse - interval
+        #          first_fire  = start_pulse - lookahead
+        #
+        # After the first fire the loop advances normally:
+        #   next_start = cycle_start + interval = start_pulse
+        #   next_fire  = start_pulse + interval - lookahead
+        #
+        # Note: if start_pulse = 0, first_fire is negative, so the callback fires
+        # at pulse 0 (the very start of playback). Pass start_pulse = interval_pulses
+        # to skip the initial fire and have the first fire at (interval - lookahead).
+        # The harmonic clock does this because HarmonicState already holds the tonic.
+
+        initial_cycle_start = start_pulse - interval_pulses
+        initial_fire_pulse = start_pulse - lookahead_pulses
+
+        scheduled_callback = ScheduledCallback(
+            callback=callback,
+            cycle_start_pulse=initial_cycle_start,
+            interval_pulses=interval_pulses,
+            lookahead_pulses=lookahead_pulses,
+            next_fire_pulse=initial_fire_pulse,
+        )
+
+        async with self.callback_lock:
+            counter = next(self._callback_counter)
+            heapq.heappush(
+                self.callback_queue,
+                (scheduled_callback.next_fire_pulse, counter, scheduled_callback),
+            )
+
+    async def schedule_callback_sequence(
+        self,
+        callback: typing.Callable[
+            [int],
+            typing.Union[
+                typing.Optional[float],
+                typing.Coroutine[typing.Any, typing.Any, typing.Optional[float]],
+            ],
+        ],
+        start_pulse: int = 0,
+        reschedule_lookahead: float = 1,
+    ) -> None:
+        """Schedule a self-rescheduling callback with a variable firing interval.
+
+        Where :meth:`schedule_callback_repeating` fires on a fixed beat
+        interval, this primitive lets the callback decide each hop: it is
+        called ``lookahead`` before every *boundary* pulse, receives that
+        boundary pulse, and returns the number of beats to the **next**
+        boundary — or ``None`` to stop.  Built for clocks that walk irregular
+        spans, e.g. the harmonic clock under a bound progression's
+        harmonic rhythm.
+
+        The first fire targets *start_pulse* as its boundary and is due
+        ``lookahead`` before it (immediately, when that is already past —
+        the same backshift idiom as the repeating scheduler).
+
+        Parameters:
+                callback: ``fn(boundary_pulse) -> beats_to_next_boundary | None``.
+                        May be sync or async.
+                start_pulse: The first boundary pulse.
+                reschedule_lookahead: How many beats before each boundary the
+                        callback fires.
+        """
+
+        lookahead_pulses = int(reschedule_lookahead * self.pulses_per_beat)
+
+        if lookahead_pulses < 0:
+            raise ValueError("Reschedule lookahead cannot be negative")
+
+        scheduled = ScheduledCallbackSequence(
+            callback=callback,
+            boundary_pulse=start_pulse,
+            lookahead_pulses=lookahead_pulses,
+            next_fire_pulse=start_pulse - lookahead_pulses,
+        )
+
+        async with self.callback_lock:
+            counter = next(self._callback_counter)
+            heapq.heappush(
+                self.callback_sequence_queue,
+                (scheduled.next_fire_pulse, counter, scheduled),
+            )
+
+    async def play(self) -> None:
+        """
+        Convenience method to start playback and wait for completion.
+        """
+
+        await self.start()
+
+        try:
+            if self.task:
+                await self.task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await self.stop()
+
+    def _send_clock_message(self, message_type: str) -> None:
+        """Send a bare MIDI system-realtime message (clock, start, stop, continue).
+
+        These messages carry no channel or data bytes — they are sent directly to
+        the output port.  Used for MIDI clock output when ``clock_output`` is True.
+
+        Parameters:
+                message_type: One of ``"clock"``, ``"start"``, ``"stop"``, ``"continue"``.
+        """
+
+        for port in self._output_devices:
+            try:
+                self._locked_send(port, mido.Message(message_type))
+            except Exception:
+                logger.exception(f"Failed to send MIDI {message_type} message")
+
+    async def start(self) -> None:
+        """Start the sequencer playback in a separate asyncio task.
+
+        When an input device is configured, the MIDI input port is opened here
+        (after the event loop is running) so that call_soon_threadsafe works.
+        When ``clock_output`` is True, a MIDI Start (0xFA) message is sent before
+        the first clock tick so connected hardware begins from the top.
+        """
+
+        if self.running:
+            return
+
+        # Set up MIDI input queue before opening the port.
+        self._open_midi_inputs()
+
+        # Store the event loop for thread-safe scheduling (e.g., trigger() from user threads)
+        self._event_loop = asyncio.get_running_loop()
+
+        self._waiting_for_start = self.clock_follow
+        self.running = True
+        self.task = asyncio.create_task(self._run_loop())
+
+        if self.clock_output:
+            self._send_clock_message("start")
+
+        logger.info("Sequencer started")
+
+        await self.events.emit_async("start")
+
+    async def stop(self) -> None:
+        """
+        Stop the sequencer playback and cleanup resources.
+        """
+
+        if not self.running and not self._output_devices:
+            return
+
+        logger.info("Stopping sequencer...")
+
+        self.running = False
+
+        if self.task:
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                # The loop task was cancelled (the Ctrl-C path) — since
+                # Python 3.8 CancelledError is a BaseException, so a bare
+                # `except Exception` missed it and the whole cleanup below
+                # was skipped.
+                logger.info("Sequencer loop task cancelled - continuing shutdown")
+            except Exception:
+                # A crashed loop must not abort shutdown - the cleanup below
+                # (pending-send cancellation, panic, port close, recording
+                # save) is exactly what a dying session needs most.
+                logger.exception(
+                    "Sequencer loop task ended with an exception - continuing shutdown"
+                )
+
+        # Cancel any latency-compensation deferrals still in flight.  Must happen
+        # after the loop has stopped producing (await self.task) and before
+        # close_all() so a pending call_later can't fire on a closed port.
+        # panic() below is the silence authority for any note stranded by this.
+        self._cancel_pending_sends()
+
+        if self.clock_output:
+            self._send_clock_message("stop")
+
+        await self.panic()
+
+        self._output_devices.close_all()
+        self._input_devices.close_all()
+
+        # Leave the Ableton Link session cleanly if one was active, rather than
+        # letting the socket linger in the session until process exit.
+        if self._link_clock is not None:
+            try:
+                self._link_clock.disable()
+            except Exception:
+                logger.exception("Failed to disable Ableton Link clock")
+
+        self._midi_input_queue = None
+        self._input_loop = None
+
+        self.save_recording()
+
+        logger.info("Sequencer stopped")
+
+        async with self.pattern_lock:
+            self.reschedule_queue = []
+            self._reschedule_counter = itertools.count()
+
+        async with self.callback_lock:
+            self.callback_queue = []
+            self.callback_sequence_queue = []
+            self._callback_counter = itertools.count()
+
+        # Note: ``_event_counter`` is intentionally NOT reset here.  The two
+        # counters above pair with queues that we do clear, so resetting them
+        # is symmetric.  ``self.event_queue`` is left to drain naturally and
+        # may carry stale items into a restart; resetting ``_event_counter``
+        # alongside an un-cleared queue would let a fresh push (sequence=0)
+        # sort ahead of a stale push (sequence=N) at the same pulse.  Since
+        # pulse is the primary heap key and the counter never overflows, we
+        # just let it keep counting forever.
+
+        self.active_notes = set()
+
+        await self.events.emit_async("stop")
+
+    async def _run_loop(self) -> None:
+        """Main playback loop - delegates to internal, external, or Link clock mode."""
+
+        self.start_time = time.perf_counter()
+        self.pulse_count = 0
+        self.current_bar = -1
+
+        pulses_per_bar = self.time_signature[0] * self.pulses_per_beat
+
+        if self.clock_follow and self._midi_input_queue is not None:
+            await self._run_loop_external_clock(pulses_per_bar)
+        elif self._link_clock is not None:
+            await self._run_loop_link_clock(self._link_clock, pulses_per_bar)
+        else:
+            await self._run_loop_internal_clock(pulses_per_bar)
+
+    def _check_bar_change(self, pulse: int, pulses_per_bar: int) -> None:
+        """Detect bar boundaries and fire bar callbacks + events."""
+
+        new_bar = pulse // pulses_per_bar
+
+        if new_bar > self.current_bar:
+            self.current_bar = new_bar
+
+            # In render mode, stop after the requested number of bars.
+            if (
+                self.render_mode
+                and self.render_bars > 0
+                and self.current_bar >= self.render_bars
+            ):
+                self.running = False
+                return
+
+            self._spawn(self.events.emit_async("bar", self.current_bar))
+
+    def _check_beat_change(self, pulse: int, pulses_per_beat: int) -> None:
+        """Detect beat boundaries within the bar and fire beat events."""
+
+        beat_in_bar = (
+            pulse % (self.time_signature[0] * pulses_per_beat)
+        ) // pulses_per_beat
+
+        if beat_in_bar != self.current_beat:
+            self.current_beat = beat_in_bar
+            self._spawn(self.events.emit_async("beat", self.current_beat))
+
+    async def _advance_pulse(self) -> None:
+        """Reschedule patterns, process events, and increment the pulse counter."""
+
+        if self._bpm_transition is not None:
+            self._bpm_transition.elapsed_pulses += 1
+
+            if self._bpm_transition.elapsed_pulses >= self._bpm_transition.total_pulses:
+                target = self._bpm_transition.target_bpm
+                self._bpm_transition = None
+                self.set_bpm(target)
+            else:
+                progress = (
+                    self._bpm_transition.elapsed_pulses
+                    / self._bpm_transition.total_pulses
+                )
+                eased = self._bpm_transition.easing_fn(progress)
+                interpolated = (
+                    self._bpm_transition.start_bpm
+                    + (self._bpm_transition.target_bpm - self._bpm_transition.start_bpm)
+                    * eased
+                )
+                self.current_bpm = interpolated
+                self.seconds_per_beat = 60.0 / self.current_bpm
+                self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
+
+                # Keep the recording's tempo map honest: without these events
+                # a recorded ramp plays back at the pre-ramp tempo and jumps.
+                if self.recording:
+                    self._record_event(
+                        self.pulse_count,
+                        mido.MetaMessage(
+                            "set_tempo", tempo=mido.bpm2tempo(interpolated)
+                        ),
+                    )
+
+        # Accumulate simulated time and enforce the render time cap.
+        if self.render_mode:
+            self._render_elapsed_seconds += self.seconds_per_pulse
+            if (
+                self.render_max_seconds is not None
+                and self._render_elapsed_seconds >= self.render_max_seconds
+            ):
+                max_min = self.render_max_seconds / 60.0
+                logger.warning(
+                    f"Render stopped at {max_min:.1f}-minute safety limit. "
+                    f"Pass max_minutes=None with an explicit bars= count to remove this limit."
+                )
+                self.running = False
+                return
+
+        # Drain buffered note input into the held-note tracker BEFORE patterns
+        # rebuild, so a pattern's held_notes() snapshot reflects this pulse rather
+        # than the previous one.  deque.popleft() is GIL-atomic; the tracker is
+        # only ever touched on this loop thread (here and during rebuild).
+        if self._held_notes is not None:
+            while self._note_input_buffer:
+                is_on, pitch, velocity, when = self._note_input_buffer.popleft()
+                if is_on:
+                    self._held_notes.note_on(pitch, velocity, when)
+                else:
+                    self._held_notes.note_off(pitch, when)
+
+        await self._maybe_reschedule_patterns(self.pulse_count)
+        await self._process_pulse(self.pulse_count)
+        self.pulse_count += 1
+
+    async def _run_loop_internal_clock(self, pulses_per_bar: int) -> None:
+        """Playback loop driven by the internal wall clock.
+
+        In normal mode the loop sleeps between pulses to maintain tempo.
+        In render mode it runs as fast as possible (simulates time rather than
+        waiting for the wall clock), stopping after *render_bars* bars.
+        """
+
+        next_pulse_time = self.start_time
+
+        while self.running:
+            # In render mode, simulate time advancing one pulse at a time so
+            # the inner loop always fires exactly once without spin-waiting.
+            current_time = next_pulse_time if self.render_mode else time.perf_counter()
+
+            while current_time >= next_pulse_time:
+                # Ordering within each pulse:
+                #   1. _check_bar/beat_change() — update counters and queue "bar"/"beat"
+                #      event tasks (asyncio.create_task; not run yet).
+                #   2. Send MIDI clock tick (if clock_output) so hardware receives it at
+                #      the same time as note events for tight sync.
+                #   3. _advance_pulse() — fire callbacks, then send MIDI via _process_pulse().
+                #   4. After the await returns, the event loop runs the queued event tasks,
+                #      which update the terminal display.
+                #
+                # Consequence: MIDI notes are sent *before* the display updates. The display
+                # always trails the audio by roughly one pulse-processing cycle plus any
+                # terminal rendering latency (~10-50 ms). This is expected and acceptable for
+                # a visual status line — it cannot be tightened without restructuring the loop.
+                self._check_bar_change(self.pulse_count, pulses_per_bar)
+
+                if not self.running:
+                    # A render bar-limit trips inside _check_bar_change; stop before
+                    # dispatching this pulse so the first beat of the next (unrendered)
+                    # bar never leaks into the recording.
+                    break  # type: ignore[unreachable]
+
+                self._check_beat_change(self.pulse_count, self.pulses_per_beat)
+                if self.clock_output:
+                    self._send_clock_message("clock")
+                await self._advance_pulse()
+                next_pulse_time += self.seconds_per_pulse
+
+                if not self.running:
+                    break  # type: ignore[unreachable]
+
+            if not self.running:
+                break  # type: ignore[unreachable]
+
+            if not self.render_mode:
+                # Check if queue is empty and we are past the last event.
+                # Skipped in benchmark mode (_jitter_log set) so the clock
+                # runs until explicitly cancelled via asyncio.
+                if self._jitter_log is None:
+                    async with self.queue_lock:
+                        if (
+                            not self.event_queue
+                            and not self.active_notes
+                            and not self.reschedule_queue
+                            and not self.callback_queue
+                            and not self.callback_sequence_queue
+                        ):
+                            logger.info(
+                                "Sequence complete (no more events or active notes)."
+                            )
+                            self.running = False
+                            break
+
+                sleep_time = next_pulse_time - time.perf_counter()
+
+                if sleep_time > 0:
+                    if self._spin_wait and sleep_time > self._spin_threshold:
+                        # Sleep to within _spin_threshold of the target, then busy-wait
+                        # for the remaining sub-millisecond.  Trades ~1ms of CPU spin per
+                        # pulse for significantly tighter timing than asyncio.sleep alone.
+                        await asyncio.sleep(sleep_time - self._spin_threshold)
+                        while time.perf_counter() < next_pulse_time:
+                            pass
+                    else:
+                        await asyncio.sleep(sleep_time)
+
+                if self._jitter_log is not None:
+                    self._jitter_log.append(time.perf_counter() - next_pulse_time)
+            else:
+                # Yield to the event loop so queued tasks (pattern rescheduling,
+                # asyncio.create_task callbacks) can run between pulses.
+                await asyncio.sleep(0)
+
+    async def _run_loop_external_clock(self, pulses_per_bar: int) -> None:
+        """Playback loop driven by incoming MIDI clock messages.
+
+        Each MIDI ``clock`` tick advances exactly one pulse (24 ppqn = internal ppqn).
+        Transport messages (``start``, ``stop``, ``continue``) control sequencer state.
+        The loop waits for a ``start`` or ``continue`` before advancing pulses,
+        but still uses incoming ticks to estimate BPM for display.
+        """
+
+        assert self._midi_input_queue is not None, (
+            "MIDI input queue must be initialized for external clock"
+        )
+
+        while self.running:
+            try:
+                device_idx, message = await asyncio.wait_for(
+                    self._midi_input_queue.get(), timeout=2.0
+                )
+            except asyncio.TimeoutError:
+                continue
+
+            if device_idx != self.clock_device_idx:
+                continue
+
+            if message.type == "clock":
+                # Prime BPM estimation while waiting for start/continue,
+                # but do not advance pulses or schedule events yet.
+                if self._waiting_for_start:
+                    self._estimate_bpm(time.perf_counter())
+                    continue
+
+                self._estimate_bpm(time.perf_counter())
+                self._check_bar_change(self.pulse_count, pulses_per_bar)
+                self._check_beat_change(self.pulse_count, self.pulses_per_beat)
+                await self._advance_pulse()
+
+            elif message.type == "start":
+                logger.info("MIDI start received")
+                self.pulse_count = 0
+                self.current_bar = -1
+                self.current_beat = -1
+                self._waiting_for_start = False
+
+            elif message.type == "stop":
+                logger.info("MIDI stop received")
+                self.running = False
+
+            elif message.type == "continue":
+                logger.info("MIDI continue received")
+                self._waiting_for_start = False
+
+    async def _run_loop_link_clock(
+        self, link_clock: typing.Any, pulses_per_bar: int
+    ) -> None:
+        """Playback loop driven by Ableton Link beat clock.
+
+        Uses ``link_clock.sync(beat)`` as the timing primitive: for each pulse N
+        we wait until the Link session beat reaches ``beat_origin + N / PPQN``.
+        This gives accurate, phase-locked timing at 24 PPQN with typical jitter
+        of ~0.3–0.5 ms (dominated by asyncio/OS scheduling overhead).
+
+        Starts on the next quantum boundary so that bar 0 aligns with all other
+        Link participants in the session.
+        """
+
+        logger.info("Ableton Link clock mode: waiting for bar boundary…")
+
+        # Wait for the next quantum boundary (bar start) for a clean, phase-locked start.
+        beat_origin = await link_clock.wait_for_bar()
+
+        logger.info(
+            f"Ableton Link: started at beat {beat_origin:.3f} (tempo={link_clock.tempo:.1f} BPM, peers={link_clock.num_peers})"
+        )
+
+        # Reset pulse counter here so bar/beat tracking starts from 0 at beat_origin.
+        self.pulse_count = 0
+        self.current_bar = -1
+        self.current_beat = -1
+
+        while self.running:
+            # Compute the Link beat corresponding to the current pulse.
+            target_beat = beat_origin + self.pulse_count / self.pulses_per_beat
+
+            # Wait for Link to reach that beat (this is the timing gate).
+            await link_clock.sync(target_beat)
+
+            # Update local tempo from the Link session — propagates network BPM changes.
+            link_bpm = link_clock.tempo
+            if abs(link_bpm - self.current_bpm) > 0.01:
+                # Record the change so a recorded session's .mid plays back
+                # at the Link session tempo (mirrors the external-clock path).
+                if self.recording:
+                    self._record_event(
+                        self.pulse_count,
+                        mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(link_bpm)),
+                    )
+                self.current_bpm = link_bpm
+                self.seconds_per_beat = 60.0 / self.current_bpm
+                self.seconds_per_pulse = self.seconds_per_beat / self.pulses_per_beat
+                logger.debug(f"Link tempo update: {link_bpm:.2f} BPM")
+
+            self._check_bar_change(self.pulse_count, pulses_per_bar)
+            self._check_beat_change(self.pulse_count, self.pulses_per_beat)
+
+            if self.clock_output:
+                self._send_clock_message("clock")
+
+            await self._advance_pulse()
+
+            # Stop when all events are exhausted (same check as internal clock).
+            async with self.queue_lock:
+                if (
+                    not self.event_queue
+                    and not self.active_notes
+                    and not self.reschedule_queue
+                    and not self.callback_queue
+                    and not self.callback_sequence_queue
+                ):
+                    logger.info("Sequence complete (no more events or active notes).")
+                    self.running = False
+                    break
+
+    async def _maybe_reschedule_patterns(self, pulse: int) -> None:
+        """
+        Reschedule repeating callbacks and patterns when they reach their lookahead threshold.
+        """
+
+        to_fire: typing.List[ScheduledCallback] = []
+        to_reschedule: typing.List[ScheduledPattern] = []
+
+        async with self.callback_lock:
+            while self.callback_queue and self.callback_queue[0][0] <= pulse:
+                _, _, scheduled_callback = heapq.heappop(self.callback_queue)
+
+                next_start_pulse = (
+                    scheduled_callback.cycle_start_pulse
+                    + scheduled_callback.interval_pulses
+                )
+                scheduled_callback.cycle_start_pulse = next_start_pulse
+                scheduled_callback.next_fire_pulse = (
+                    next_start_pulse
+                    + scheduled_callback.interval_pulses
+                    - scheduled_callback.lookahead_pulses
+                )
+
+                to_fire.append(scheduled_callback)
+
+        if to_fire:
+            # Decision path: composition-level callbacks fire before pattern rebuilds.
+            for scheduled_callback in to_fire:
+                try:
+                    result = scheduled_callback.callback(pulse)
+
+                    if asyncio.iscoroutine(result):
+                        await result
+
+                except Exception:
+                    # Isolate a misbehaving callback so the rest still fire and
+                    # get rescheduled below — one bad callback must not stall the clock.
+                    logger.exception(
+                        "Scheduled callback failed during reschedule (pulse %d) - continuing",
+                        pulse,
+                    )
+
+        async with self.callback_lock:
+            for scheduled_callback in to_fire:
+                counter = next(self._callback_counter)
+                heapq.heappush(
+                    self.callback_queue,
+                    (scheduled_callback.next_fire_pulse, counter, scheduled_callback),
+                )
+
+        # Variable-interval sequences fire after the fixed callbacks at the
+        # same pulse (the form clock is fixed; the harmonic span clock is a
+        # sequence — form-before-harmony ordering is preserved) and before
+        # pattern rebuilds below.
+        sequences_to_fire: typing.List[ScheduledCallbackSequence] = []
+
+        async with self.callback_lock:
+            while (
+                self.callback_sequence_queue
+                and self.callback_sequence_queue[0][0] <= pulse
+            ):
+                _, _, scheduled_sequence = heapq.heappop(self.callback_sequence_queue)
+                sequences_to_fire.append(scheduled_sequence)
+
+        requeue: typing.List[ScheduledCallbackSequence] = []
+
+        for scheduled_sequence in sequences_to_fire:
+            try:
+                result = scheduled_sequence.callback(scheduled_sequence.boundary_pulse)
+
+                if asyncio.iscoroutine(result):
+                    result = await result
+
+            except Exception:
+                # Isolate a misbehaving callback so the clock survives; the
+                # sequence is dropped — with no interval there is no next hop.
+                logger.exception(
+                    "Callback sequence failed (pulse %d) - sequence stopped", pulse
+                )
+                continue
+
+            if result is None:
+                continue  # the sequence chose to stop
+
+            interval_pulses = max(1, int(float(result) * self.pulses_per_beat))
+            scheduled_sequence.boundary_pulse += interval_pulses
+            scheduled_sequence.next_fire_pulse = max(
+                pulse + 1,
+                scheduled_sequence.boundary_pulse - scheduled_sequence.lookahead_pulses,
+            )
+            requeue.append(scheduled_sequence)
+
+        if requeue:
+            async with self.callback_lock:
+                for scheduled_sequence in requeue:
+                    counter = next(self._callback_counter)
+                    heapq.heappush(
+                        self.callback_sequence_queue,
+                        (
+                            scheduled_sequence.next_fire_pulse,
+                            counter,
+                            scheduled_sequence,
+                        ),
+                    )
+
+        async with self.pattern_lock:
+            while self.reschedule_queue and self.reschedule_queue[0][0] <= pulse:
+                _, _, scheduled_pattern = heapq.heappop(self.reschedule_queue)
+
+                # Lazy pattern removal: if Composition.unregister() set the
+                # ``_removed`` flag on this pattern, skip both the rebuild and
+                # the re-push so it disappears from rotation.  Already-queued
+                # events in event_queue play out; sustaining notes were stopped
+                # by unregister() via _stop_pattern_notes().
+                if getattr(scheduled_pattern.pattern, "_removed", False):
+                    continue
+
+                next_start_pulse = (
+                    scheduled_pattern.cycle_start_pulse
+                    + scheduled_pattern.length_pulses
+                )
+                scheduled_pattern.cycle_start_pulse = next_start_pulse
+
+                # Anchor the upcoming cycle on the pattern itself, BEFORE
+                # on_reschedule() below — rebuilds read it to place the cycle
+                # on the absolute beat axis (the harmony window's axis).
+                scheduled_pattern.pattern._cycle_start_pulse = next_start_pulse
+
+                to_reschedule.append(scheduled_pattern)
+
+        if to_reschedule:
+            # Decision path: update shared composition state before pattern rebuilds.
+            patterns = [
+                scheduled_pattern.pattern for scheduled_pattern in to_reschedule
+            ]
+
+            try:
+                await self.events.emit_async("reschedule_pulse", pulse, patterns)
+            except Exception:
+                logger.exception(
+                    "reschedule_pulse listener failed (pulse %d) - continuing", pulse
+                )
+
+        for scheduled_pattern in to_reschedule:
+            # Containment: a failing rebuild — or an invalid set_length() that
+            # makes _get_pattern_timing raise — must cost this pattern its
+            # cycle, never the clock.  On failure the pattern keeps its
+            # previous timing and is re-queued below for another try.
+            try:
+                scheduled_pattern.pattern.on_reschedule()
+
+                # Re-read length in case on_reschedule() changed it (e.g. via set_length).
+                new_length_pulses, new_lookahead_pulses = self._get_pattern_timing(
+                    scheduled_pattern.pattern
+                )
+                scheduled_pattern.length_pulses = new_length_pulses
+                scheduled_pattern.lookahead_pulses = new_lookahead_pulses
+                scheduled_pattern.next_reschedule_pulse = (
+                    scheduled_pattern.cycle_start_pulse
+                    + new_length_pulses
+                    - new_lookahead_pulses
+                )
+
+                await self.schedule_pattern(
+                    scheduled_pattern.pattern, scheduled_pattern.cycle_start_pulse
+                )
+
+            except Exception:
+                logger.exception(
+                    "Pattern reschedule failed - pattern is silent this cycle and keeps its previous timing"
+                )
+                scheduled_pattern.next_reschedule_pulse = (
+                    scheduled_pattern.cycle_start_pulse
+                    + scheduled_pattern.length_pulses
+                    - scheduled_pattern.lookahead_pulses
+                )
+
+            self._spawn(
+                self.events.emit_async(
+                    "pattern_reschedule",
+                    scheduled_pattern.pattern,
+                    scheduled_pattern.cycle_start_pulse,
+                )
+            )
+
+        async with self.pattern_lock:
+            for scheduled_pattern in to_reschedule:
+                counter = next(self._reschedule_counter)
+                heapq.heappush(
+                    self.reschedule_queue,
+                    (
+                        scheduled_pattern.next_reschedule_pulse,
+                        counter,
+                        scheduled_pattern,
+                    ),
+                )
+
+    async def _process_pulse(self, pulse: int) -> None:
+        """
+        Process and execute all events for a specific pulse.
+        """
+
+        async with self.queue_lock:
+            # Drain queued CC forwards into the event heap.
+            # deque.popleft() is GIL-atomic; safe to call from the event loop thread
+            # while the callback thread calls append().
+            while self._forward_buffer:
+                fwd_pulse, fwd_msg, fwd_device = self._forward_buffer.popleft()
+                self._push_event(
+                    MidiEvent.from_mido(fwd_pulse, fwd_msg, device=fwd_device)
+                )
+
+            while self.event_queue and self.event_queue[0].pulse <= pulse:
+                event = heapq.heappop(self.event_queue)
+
+                # Defensive: dispatching a single malformed event must not
+                # crash the sequencer loop and stop the whole composition.
+                # A bad event (e.g. a tuple stored on Note.velocity by a
+                # misuse of a builder method) is logged with full context
+                # and skipped; subsequent events continue normally.
+                try:
+                    # Track active notes (keyed by device, channel, note)
+                    if event.message_type == "note_on" and event.velocity > 0:
+                        self.active_notes.add((event.device, event.channel, event.note))
+                    elif event.message_type == "note_off" or (
+                        event.message_type == "note_on" and event.velocity == 0
+                    ):
+                        if (
+                            event.device,
+                            event.channel,
+                            event.note,
+                        ) in self.active_notes:
+                            self.active_notes.remove(
+                                (event.device, event.channel, event.note)
+                            )
+
+                    # Send events at or before the current pulse (late events are sent
+                    # immediately).  Latency compensation may defer the actual send by
+                    # the device's offset, but recording below always uses the LOGICAL
+                    # pulse — the .mid is the uncompensated score.
+                    self._dispatch_with_compensation(event)
+
+                    if self.recording and event.message_type != "osc":
+                        mido_msg = event.to_mido()
+                        if mido_msg is not None:
+                            self._record_event(event.pulse, mido_msg)
+
+                except Exception:
+                    logger.exception(
+                        "Failed to dispatch %s event at pulse %d (device=%s, channel=%s) — skipping",
+                        event.message_type,
+                        event.pulse,
+                        event.device,
+                        event.channel,
+                    )
+
+    async def _stop_all_active_notes(self) -> None:
+        """
+        Send note_off for all currently tracked active notes.
+        """
+
+        async with self.queue_lock:
+            for dev, channel, note in list(self.active_notes):
+                port = self._output_devices.get(dev)
+                if port is not None:
+                    try:
+                        self._locked_send(
+                            port,
+                            mido.Message(
+                                "note_off", channel=channel, note=note, velocity=0
+                            ),
+                        )
+                    except Exception:
+                        logger.exception("Failed to send note_off during stop")
+            self.active_notes.clear()
+
+    async def _stop_pattern_notes(self, pattern: PatternLike) -> None:
+        """Send note_off for active notes belonging to a single pattern.
+
+        Targets the pattern's primary ``(device, channel)`` plus every entry
+        in ``pattern.mirrors``, so patterns with mirrors have their notes
+        stopped on every output port they fan out to.  Used by
+        ``Composition.unregister()`` to flush drones and any sustaining
+        notes when a pattern is being torn down.
+        """
+
+        mirrors = getattr(pattern, "mirrors", [])
+        # Build the target set from each entry's (device, channel) prefix — a
+        # 3-tuple mirror carries a dict (drum_note_map) and would be unhashable.
+        targets: typing.Set[typing.Tuple[int, int]] = {
+            (pattern.device, pattern.channel)
+        } | {(e[0], e[1]) for e in mirrors}
+
+        async with self.queue_lock:
+            stranded = [t for t in self.active_notes if (t[0], t[1]) in targets]
+
+            for dev, channel, note in stranded:
+                # Route through latency compensation, NOT straight to the
+                # port: a note_on for this device may still be deferred in
+                # _pending_sends, and an immediate note_off would overtake it,
+                # leaving the note stuck ringing (drones have no later
+                # note_off to rescue them).  The shared per-device offset
+                # preserves on→off order.
+                try:
+                    self._dispatch_with_compensation(
+                        MidiEvent(
+                            pulse=self.pulse_count,
+                            message_type="note_off",
+                            channel=channel,
+                            note=note,
+                            velocity=0,
+                            device=dev,
+                        )
+                    )
+                except Exception:
+                    logger.exception(
+                        f"Failed to send note_off during unregister (dev={dev}, ch={channel}, note={note})"
+                    )
+                self.active_notes.discard((dev, channel, note))
+
+    def _send_offset_seconds(self, device: int) -> float:
+        """Return the latency-compensation send offset (seconds) for *device*.
+
+        ``(max_latency − device_latency) / 1000``, clamped ≥ 0.  The slowest
+        device returns 0 (sent at logical time); faster devices return a
+        positive delay so they sound together.
+
+        Invariant: the offset is **per-device**, so every event for one device
+        shares it.  That is what preserves same-pulse FIFO order through
+        deferral — an NRPN burst (CC 99 → 98 → 6 → 38) on one device stays in
+        order because all four are deferred by the same amount.  A future
+        per-channel/per-message latency would break that and must not be added
+        without re-thinking burst ordering.
+        """
+
+        offset_ms = self._max_device_latency_ms - self._output_devices.latency_of(
+            device
+        )
+        if offset_ms <= 0.0:
+            return 0.0
+        return offset_ms / 1000.0
+
+    def _dispatch_with_compensation(self, event: MidiEvent) -> None:
+        """Send *event* now, or defer it by its device's latency offset.
+
+        Deferral is a wall-clock ``call_later`` so it is correct regardless of
+        tempo or clock source.  Skipped entirely in render mode (no real clock
+        — deferring would drop events from the rendered file) and when no event
+        loop is running (the synchronous test path).
+        """
+
+        if self.render_mode or self._event_loop is None:
+            self._send_midi(event)
+            return
+
+        offset_s = self._send_offset_seconds(event.device)
+        if offset_s <= 0.0:
+            self._send_midi(event)
+            return
+
+        # Defer the physical send.  The one-element ``cell`` lets the callback
+        # discard exactly its own handle from _pending_sends (the handle isn't
+        # known until call_later returns, but _fire only runs after we append).
+        cell: typing.List[asyncio.TimerHandle] = []
+
+        def _fire() -> None:
+            self._pending_sends.discard(cell[0])
+            self._send_midi(event)
+
+        handle = self._event_loop.call_later(offset_s, _fire)
+        cell.append(handle)
+        self._pending_sends.add(handle)
+
+    def _cancel_pending_sends(self) -> None:
+        """Cancel and forget all in-flight deferred sends.  Idempotent.
+
+        Called during ``stop()`` before ports close so a pending ``call_later``
+        can never fire ``port.send()`` on a closed port.  Stranded notes are not
+        a concern here: ``panic()`` runs after this and is the silence
+        authority (``active_notes`` reflects logical time and can diverge from
+        what physically fired, so it is not relied upon).
+        """
+
+        for handle in self._pending_sends:
+            handle.cancel()
+        self._pending_sends.clear()
+
+    def _locked_send(self, port: typing.Any, message: typing.Any) -> None:
+        """Write one message to a port under the send lock.
+
+        The lock keeps the loop thread and the instant cc_forward callback
+        thread from interleaving bytes on the same port.
+        """
+
+        with self._port_send_lock:
+            port.send(message)
+
+    def _send_midi(self, event: MidiEvent) -> None:
+        """
+        Send a MIDI message to the appropriate output device.
+        """
+
+        port = self._output_devices.get(event.device)
+        if port is not None:
+            try:
+                if event.message_type == "osc":
+                    if self.osc_server is not None:
+                        address, args = event.data
+                        self.osc_server.send(address, *args)
+                    return
+
+                msg = event.to_mido()
+                if msg is None:
+                    return
+
+                self._locked_send(port, msg)
+
+            except Exception:
+                logger.exception("MIDI send failed (device may be disconnected)")
+
+    async def panic(self) -> None:
+        """
+        Send a MIDI panic message to all channels.
+        """
+
+        logger.info("Panic: sending all notes off.")
+
+        # 1. Stop all tracked active notes manually
+        await self._stop_all_active_notes()
+
+        for port in self._output_devices:
+            try:
+                # Hold the send lock so an instant cc_forward on the callback
+                # thread cannot interleave with the panic sweep.
+                with self._port_send_lock:
+                    # 2. Send "All Notes Off" (CC 123) and "All Sound Off" (CC 120) to all 16 channels
+                    for channel in range(16):
+                        port.send(
+                            mido.Message(
+                                "control_change", channel=channel, control=123, value=0
+                            )
+                        )
+                        port.send(
+                            mido.Message(
+                                "control_change", channel=channel, control=120, value=0
+                            )
+                        )
+
+                    # 3. Use built-in panic and reset
+                    port.panic()
+
+                    # Note: reset() might close/reopen ports or clear internal buffers depending on backend,
+                    # but mido docs say it sends "All Notes Off" and "Reset All Controllers".
+                    port.reset()
+
+            except Exception:
+                logger.exception("MIDI panic failed (device may be disconnected)")

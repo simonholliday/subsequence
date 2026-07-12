@@ -11,230 +11,236 @@ import subsequence.intervals
 # diatonic_chords() tests
 # ---------------------------------------------------------------------------
 
-def test_diatonic_chords_c_major () -> None:
 
-	"""C Ionian should produce the standard major-key triads."""
+def test_diatonic_chords_c_major() -> None:
+    """C Ionian should produce the standard major-key triads."""
 
-	chords = subsequence.harmony.diatonic_chords("C", mode="ionian")
+    chords = subsequence.harmony.diatonic_chords("C", mode="ionian")
 
-	assert len(chords) == 7
+    assert len(chords) == 7
 
-	# Root pitch classes: C D E F G A B = 0 2 4 5 7 9 11
-	expected_pcs = [0, 2, 4, 5, 7, 9, 11]
-	expected_qualities = subsequence.intervals.IONIAN_QUALITIES
+    # Root pitch classes: C D E F G A B = 0 2 4 5 7 9 11
+    expected_pcs = [0, 2, 4, 5, 7, 9, 11]
+    expected_qualities = subsequence.intervals.IONIAN_QUALITIES
 
-	for chord, pc, quality in zip(chords, expected_pcs, expected_qualities):
-		assert chord.root_pc == pc
-		assert chord.quality == quality
-
-
-def test_diatonic_chords_major_alias () -> None:
-
-	"""'major' should be an alias for 'ionian'."""
-
-	assert subsequence.harmony.diatonic_chords("C", "major") == subsequence.harmony.diatonic_chords("C", "ionian")
+    for chord, pc, quality in zip(chords, expected_pcs, expected_qualities):
+        assert chord.root_pc == pc
+        assert chord.quality == quality
 
 
-def test_diatonic_chords_minor_alias () -> None:
+def test_diatonic_chords_major_alias() -> None:
+    """'major' should be an alias for 'ionian'."""
 
-	"""'minor' should be an alias for 'aeolian'."""
-
-	assert subsequence.harmony.diatonic_chords("A", "minor") == subsequence.harmony.diatonic_chords("A", "aeolian")
-
-
-def test_diatonic_chords_a_minor () -> None:
-
-	"""A Aeolian should produce natural minor triads."""
-
-	chords = subsequence.harmony.diatonic_chords("A", mode="minor")
-
-	assert len(chords) == 7
-
-	# A natural minor: A B C D E F G = 9 11 0 2 4 5 7
-	expected_pcs = [9, 11, 0, 2, 4, 5, 7]
-	expected_qualities = subsequence.intervals.AEOLIAN_QUALITIES
-
-	for chord, pc, quality in zip(chords, expected_pcs, expected_qualities):
-		assert chord.root_pc == pc
-		assert chord.quality == quality
+    assert subsequence.harmony.diatonic_chords(
+        "C", "major"
+    ) == subsequence.harmony.diatonic_chords("C", "ionian")
 
 
-def test_diatonic_chords_all_modes () -> None:
+def test_diatonic_chords_minor_alias() -> None:
+    """'minor' should be an alias for 'aeolian'."""
 
-	"""Every mode with chord qualities should return chords without error."""
-
-	for mode_name, (_, qualities) in subsequence.intervals.SCALE_MODE_MAP.items():
-		if qualities is None:
-			continue
-		chords = subsequence.harmony.diatonic_chords("C", mode=mode_name)
-		assert len(chords) == len(qualities), f"{mode_name} chord count mismatch"
+    assert subsequence.harmony.diatonic_chords(
+        "A", "minor"
+    ) == subsequence.harmony.diatonic_chords("A", "aeolian")
 
 
-def test_diatonic_chords_invalid_mode () -> None:
+def test_diatonic_chords_a_minor() -> None:
+    """A Aeolian should produce natural minor triads."""
 
-	"""An unknown mode should raise ValueError."""
+    chords = subsequence.harmony.diatonic_chords("A", mode="minor")
 
-	with pytest.raises(ValueError, match="Unknown mode"):
-		subsequence.harmony.diatonic_chords("C", mode="bebop")
+    assert len(chords) == 7
+
+    # A natural minor: A B C D E F G = 9 11 0 2 4 5 7
+    expected_pcs = [9, 11, 0, 2, 4, 5, 7]
+    expected_qualities = subsequence.intervals.AEOLIAN_QUALITIES
+
+    for chord, pc, quality in zip(chords, expected_pcs, expected_qualities):
+        assert chord.root_pc == pc
+        assert chord.quality == quality
 
 
-def test_diatonic_chords_invalid_key () -> None:
+def test_diatonic_chords_all_modes() -> None:
+    """Every mode with chord qualities should return chords without error."""
 
-	"""An unknown key name should raise ValueError."""
+    for mode_name, (_, qualities) in subsequence.intervals.SCALE_MODE_MAP.items():
+        if qualities is None:
+            continue
+        chords = subsequence.harmony.diatonic_chords("C", mode=mode_name)
+        assert len(chords) == len(qualities), f"{mode_name} chord count mismatch"
 
-	with pytest.raises(ValueError, match="Unknown key name"):
-		subsequence.harmony.diatonic_chords("Z", mode="ionian")
+
+def test_diatonic_chords_invalid_mode() -> None:
+    """An unknown mode should raise ValueError."""
+
+    with pytest.raises(ValueError, match="Unknown mode"):
+        subsequence.harmony.diatonic_chords("C", mode="bebop")
+
+
+def test_diatonic_chords_invalid_key() -> None:
+    """An unknown key name should raise ValueError."""
+
+    with pytest.raises(ValueError, match="Unknown key name"):
+        subsequence.harmony.diatonic_chords("Z", mode="ionian")
 
 
 # ---------------------------------------------------------------------------
 # diatonic_chord() tests
 # ---------------------------------------------------------------------------
 
-def test_diatonic_chord_default_is_tonic () -> None:
 
-	"""Default degree (0) should return the tonic chord."""
+def test_diatonic_chord_default_is_tonic() -> None:
+    """Default degree (0) should return the tonic chord."""
 
-	tonic = subsequence.harmony.diatonic_chord("C")
-	all_chords = subsequence.harmony.diatonic_chords("C")
-	assert tonic == all_chords[0]
-
-
-def test_diatonic_chord_degree () -> None:
-
-	"""Explicit degree should return the matching chord."""
-
-	dominant = subsequence.harmony.diatonic_chord("C", degree=4)
-	all_chords = subsequence.harmony.diatonic_chords("C")
-	assert dominant == all_chords[4]
+    tonic = subsequence.harmony.diatonic_chord("C")
+    all_chords = subsequence.harmony.diatonic_chords("C")
+    assert tonic == all_chords[0]
 
 
-def test_diatonic_chord_out_of_range () -> None:
+def test_diatonic_chord_degree() -> None:
+    """Explicit degree should return the matching chord."""
 
-	"""Degree outside the scale should raise ValueError."""
+    dominant = subsequence.harmony.diatonic_chord("C", degree=4)
+    all_chords = subsequence.harmony.diatonic_chords("C")
+    assert dominant == all_chords[4]
 
-	with pytest.raises(ValueError, match="degree 7 out of range"):
-		subsequence.harmony.diatonic_chord("C", degree=7)
 
-	with pytest.raises(ValueError, match="degree -1 out of range"):
-		subsequence.harmony.diatonic_chord("C", degree=-1)
+def test_diatonic_chord_out_of_range() -> None:
+    """Degree outside the scale should raise ValueError."""
+
+    with pytest.raises(ValueError, match="degree 7 out of range"):
+        subsequence.harmony.diatonic_chord("C", degree=7)
+
+    with pytest.raises(ValueError, match="degree -1 out of range"):
+        subsequence.harmony.diatonic_chord("C", degree=-1)
 
 
 # ---------------------------------------------------------------------------
 # diatonic_chord_sequence() tests
 # ---------------------------------------------------------------------------
 
-def test_diatonic_chord_sequence_d_major () -> None:
 
-	"""D major from MIDI 50 should return correct roots for all 7 degrees."""
+def test_diatonic_chord_sequence_d_major() -> None:
+    """D major from MIDI 50 should return correct roots for all 7 degrees."""
 
-	seq = subsequence.harmony.diatonic_chord_sequence("D", root_midi=50, count=7)
+    seq = subsequence.harmony.diatonic_chord_sequence("D", root_midi=50, count=7)
 
-	assert len(seq) == 7
+    assert len(seq) == 7
 
-	# D major scale: D E F# G A B C# → intervals 0 2 4 5 7 9 11
-	expected_roots = [50, 52, 54, 55, 57, 59, 61]
-	expected_qualities = subsequence.intervals.IONIAN_QUALITIES
+    # D major scale: D E F# G A B C# → intervals 0 2 4 5 7 9 11
+    expected_roots = [50, 52, 54, 55, 57, 59, 61]
+    expected_qualities = subsequence.intervals.IONIAN_QUALITIES
 
-	for (chord, root), exp_root, exp_quality in zip(seq, expected_roots, expected_qualities):
-		assert root == exp_root
-		assert chord.quality == exp_quality
-
-
-def test_diatonic_chord_sequence_octave_wrap () -> None:
-
-	"""Step 8 (count=8) should wrap into the next octave."""
-
-	seq = subsequence.harmony.diatonic_chord_sequence("D", root_midi=50, count=8)
-
-	assert len(seq) == 8
-	# 8th entry wraps: D3 (50) + 12 = D4 (62)
-	_, eighth_root = seq[7]
-	assert eighth_root == 62
+    for (chord, root), exp_root, exp_quality in zip(
+        seq, expected_roots, expected_qualities
+    ):
+        assert root == exp_root
+        assert chord.quality == exp_quality
 
 
-def test_diatonic_chord_sequence_count_one () -> None:
+def test_diatonic_chord_sequence_octave_wrap() -> None:
+    """Step 8 (count=8) should wrap into the next octave."""
 
-	"""count=1 should return exactly the starting chord."""
+    seq = subsequence.harmony.diatonic_chord_sequence("D", root_midi=50, count=8)
 
-	seq = subsequence.harmony.diatonic_chord_sequence("C", root_midi=60, count=1)
-
-	assert len(seq) == 1
-	chord, root = seq[0]
-	assert root == 60
-	assert chord.quality == "major"
-
-
-def test_diatonic_chord_sequence_invalid_root_midi () -> None:
-
-	"""A chromatic note not in the scale should raise ValueError."""
-
-	with pytest.raises(ValueError, match="not a scale degree"):
-		# C natural (MIDI 48, pitch class 0) is not a degree of D major (which has C#)
-		subsequence.harmony.diatonic_chord_sequence("D", root_midi=48, count=4)
+    assert len(seq) == 8
+    # 8th entry wraps: D3 (50) + 12 = D4 (62)
+    _, eighth_root = seq[7]
+    assert eighth_root == 62
 
 
-def test_diatonic_chord_sequence_invalid_mode () -> None:
+def test_diatonic_chord_sequence_count_one() -> None:
+    """count=1 should return exactly the starting chord."""
 
-	"""An unknown mode should raise ValueError."""
+    seq = subsequence.harmony.diatonic_chord_sequence("C", root_midi=60, count=1)
 
-	with pytest.raises(ValueError, match="Unknown mode"):
-		subsequence.harmony.diatonic_chord_sequence("C", root_midi=60, count=4, mode="bebop")
-
-
-def test_dominant_7th_included () -> None:
-
-	"""
-	Dominant seventh should appear when enabled and resolve to tonic.
-	"""
-
-	graph, tonic = subsequence.chord_graphs.functional_major.build_graph("E", include_dominant_7th=True)
-
-	dominant = subsequence.chords.Chord(root_pc=11, quality="major")
-	dominant_7th = subsequence.chords.Chord(root_pc=11, quality="dominant_7th")
-
-	transitions = graph.get_transitions(dominant)
-	assert any(chord == dominant_7th for chord, _ in transitions)
-
-	transitions_7th = graph.get_transitions(dominant_7th)
-	assert any(chord == tonic for chord, _ in transitions_7th)
+    assert len(seq) == 1
+    chord, root = seq[0]
+    assert root == 60
+    assert chord.quality == "major"
 
 
-def test_invalid_key_name () -> None:
+def test_diatonic_chord_sequence_invalid_root_midi() -> None:
+    """A chromatic note not in the scale should raise ValueError."""
 
-	"""
-	Invalid key names should raise an error.
-	"""
-
-	with pytest.raises(ValueError):
-		subsequence.chord_graphs.functional_major.build_graph("H", include_dominant_7th=True)
+    with pytest.raises(ValueError, match="not a scale degree"):
+        # C natural (MIDI 48, pitch class 0) is not a degree of D major (which has C#)
+        subsequence.harmony.diatonic_chord_sequence("D", root_midi=48, count=4)
 
 
-def test_key_gravity_blend_changes_weights () -> None:
+def test_diatonic_chord_sequence_invalid_mode() -> None:
+    """An unknown mode should raise ValueError."""
 
-	"""
-	HarmonicState's key_gravity_blend setting alters real transition weights.
-	"""
+    with pytest.raises(ValueError, match="Unknown mode"):
+        subsequence.harmony.diatonic_chord_sequence(
+            "C", root_midi=60, count=4, mode="bebop"
+        )
 
-	diatonic, function_chords = subsequence.chord_graphs.functional_major.DiatonicMajor().gravity_sets("E")
 
-	functional_state = subsequence.harmonic_state.HarmonicState(key_name="E", key_gravity_blend=0.0)
-	diatonic_state = subsequence.harmonic_state.HarmonicState(key_name="E", key_gravity_blend=1.0)
+def test_dominant_7th_included() -> None:
+    """
+    Dominant seventh should appear when enabled and resolve to tonic.
+    """
 
-	source = functional_state.current_chord
-	target_function = next(iter(chord for chord in function_chords if chord in diatonic))
-	target_diatonic = next(iter(chord for chord in diatonic if chord not in function_chords))
+    graph, tonic = subsequence.chord_graphs.functional_major.build_graph(
+        "E", include_dominant_7th=True
+    )
 
-	# A diatonic-but-not-function chord is boosted only under full diatonic
-	# gravity (blend=1.0); functional-only gravity (blend=0.0) leaves it flat.
-	weight_functional = functional_state._transition_weight(source, target_diatonic, 10)
-	weight_diatonic = diatonic_state._transition_weight(source, target_diatonic, 10)
+    dominant = subsequence.chords.Chord(root_pc=11, quality="major")
+    dominant_7th = subsequence.chords.Chord(root_pc=11, quality="dominant_7th")
 
-	assert weight_diatonic > weight_functional
-	assert weight_diatonic == pytest.approx(2.0 * weight_functional)
+    transitions = graph.get_transitions(dominant)
+    assert any(chord == dominant_7th for chord, _ in transitions)
 
-	# A function chord is also diatonic, so it earns the boost at BOTH blend
-	# extremes — the blend only redistributes gravity over non-function chords.
-	assert (
-		functional_state._transition_weight(source, target_function, 10)
-		== pytest.approx(diatonic_state._transition_weight(source, target_function, 10))
-	)
+    transitions_7th = graph.get_transitions(dominant_7th)
+    assert any(chord == tonic for chord, _ in transitions_7th)
+
+
+def test_invalid_key_name() -> None:
+    """
+    Invalid key names should raise an error.
+    """
+
+    with pytest.raises(ValueError):
+        subsequence.chord_graphs.functional_major.build_graph(
+            "H", include_dominant_7th=True
+        )
+
+
+def test_key_gravity_blend_changes_weights() -> None:
+    """
+    HarmonicState's key_gravity_blend setting alters real transition weights.
+    """
+
+    diatonic, function_chords = (
+        subsequence.chord_graphs.functional_major.DiatonicMajor().gravity_sets("E")
+    )
+
+    functional_state = subsequence.harmonic_state.HarmonicState(
+        key_name="E", key_gravity_blend=0.0
+    )
+    diatonic_state = subsequence.harmonic_state.HarmonicState(
+        key_name="E", key_gravity_blend=1.0
+    )
+
+    source = functional_state.current_chord
+    target_function = next(
+        iter(chord for chord in function_chords if chord in diatonic)
+    )
+    target_diatonic = next(
+        iter(chord for chord in diatonic if chord not in function_chords)
+    )
+
+    # A diatonic-but-not-function chord is boosted only under full diatonic
+    # gravity (blend=1.0); functional-only gravity (blend=0.0) leaves it flat.
+    weight_functional = functional_state._transition_weight(source, target_diatonic, 10)
+    weight_diatonic = diatonic_state._transition_weight(source, target_diatonic, 10)
+
+    assert weight_diatonic > weight_functional
+    assert weight_diatonic == pytest.approx(2.0 * weight_functional)
+
+    # A function chord is also diatonic, so it earns the boost at BOTH blend
+    # extremes — the blend only redistributes gravity over non-function chords.
+    assert functional_state._transition_weight(
+        source, target_function, 10
+    ) == pytest.approx(diatonic_state._transition_weight(source, target_function, 10))

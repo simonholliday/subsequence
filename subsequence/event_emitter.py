@@ -10,100 +10,101 @@ CallbackType = typing.Callable[..., typing.Any]
 
 
 class EventEmitter:
+    """
+    A simple event emitter supporting sync and async callbacks.
+    """
 
-	"""
-	A simple event emitter supporting sync and async callbacks.
-	"""
+    def __init__(self) -> None:
+        """
+        Initialize an empty event registry.
+        """
 
-	def __init__ (self) -> None:
+        self._listeners: typing.Dict[str, typing.List[CallbackType]] = {}
 
-		"""
-		Initialize an empty event registry.
-		"""
+    def on(self, event_name: str, callback: CallbackType) -> None:
+        """
+        Register a callback for an event name.
+        """
 
-		self._listeners: typing.Dict[str, typing.List[CallbackType]] = {}
+        if event_name not in self._listeners:
+            self._listeners[event_name] = []
 
+        self._listeners[event_name].append(callback)
 
-	def on (self, event_name: str, callback: CallbackType) -> None:
+    def off(self, event_name: str, callback: CallbackType) -> None:
+        """
+        Unregister a previously registered callback.
 
-		"""
-		Register a callback for an event name.
-		"""
+        Raises ``ValueError`` if the callback is not registered for the event.
+        """
 
-		if event_name not in self._listeners:
-			self._listeners[event_name] = []
+        if (
+            event_name not in self._listeners
+            or callback not in self._listeners[event_name]
+        ):
+            raise ValueError(f"Callback not registered for event {event_name!r}")
 
-		self._listeners[event_name].append(callback)
+        self._listeners[event_name].remove(callback)
 
-	def off (self, event_name: str, callback: CallbackType) -> None:
+    def emit_sync(
+        self, event_name: str, *args: typing.Any, **kwargs: typing.Any
+    ) -> None:
+        """
+        Emit an event and call non-async listeners immediately.
+        """
 
-		"""
-		Unregister a previously registered callback.
+        if event_name not in self._listeners:
+            return
 
-		Raises ``ValueError`` if the callback is not registered for the event.
-		"""
+        for callback in self._listeners[event_name]:
+            if inspect.iscoroutinefunction(callback):
+                raise ValueError("Async callback encountered in emit_sync")
 
-		if event_name not in self._listeners or callback not in self._listeners[event_name]:
-			raise ValueError(f"Callback not registered for event {event_name!r}")
+            result = callback(*args, **kwargs)
 
-		self._listeners[event_name].remove(callback)
+            # Catch async-callable objects too (async __call__ fails the
+            # iscoroutinefunction check but still returns an awaitable).
+            if inspect.isawaitable(result):
+                typing.cast(typing.Coroutine, result).close()
+                raise ValueError("Async callback encountered in emit_sync")
 
+    async def emit_async(
+        self, event_name: str, *args: typing.Any, **kwargs: typing.Any
+    ) -> None:
+        """
+        Emit an event, awaiting async listeners.
 
-	def emit_sync (self, event_name: str, *args: typing.Any, **kwargs: typing.Any) -> None:
+        One raising listener never silences the others: sync exceptions are
+        logged and the remaining listeners still run, and async listeners are
+        gathered with their exceptions logged individually.
+        """
 
-		"""
-		Emit an event and call non-async listeners immediately.
-		"""
+        if event_name not in self._listeners:
+            return
 
-		if event_name not in self._listeners:
-			return
+        tasks: typing.List[typing.Awaitable[typing.Any]] = []
 
-		for callback in self._listeners[event_name]:
+        for callback in self._listeners[event_name]:
+            # Calling first and checking the RESULT handles both coroutine
+            # functions and async-callable objects (async __call__), which
+            # iscoroutinefunction misses.
+            try:
+                result = callback(*args, **kwargs)
+            except Exception:
+                logger.exception(
+                    "Listener for %r raised - continuing with remaining listeners",
+                    event_name,
+                )
+                continue
 
-			if inspect.iscoroutinefunction(callback):
-				raise ValueError("Async callback encountered in emit_sync")
+            if inspect.isawaitable(result):
+                tasks.append(result)
 
-			result = callback(*args, **kwargs)
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-			# Catch async-callable objects too (async __call__ fails the
-			# iscoroutinefunction check but still returns an awaitable).
-			if inspect.isawaitable(result):
-				typing.cast(typing.Coroutine, result).close()
-				raise ValueError("Async callback encountered in emit_sync")
-
-
-	async def emit_async (self, event_name: str, *args: typing.Any, **kwargs: typing.Any) -> None:
-
-		"""
-		Emit an event, awaiting async listeners.
-
-		One raising listener never silences the others: sync exceptions are
-		logged and the remaining listeners still run, and async listeners are
-		gathered with their exceptions logged individually.
-		"""
-
-		if event_name not in self._listeners:
-			return
-
-		tasks: typing.List[typing.Awaitable[typing.Any]] = []
-
-		for callback in self._listeners[event_name]:
-
-			# Calling first and checking the RESULT handles both coroutine
-			# functions and async-callable objects (async __call__), which
-			# iscoroutinefunction misses.
-			try:
-				result = callback(*args, **kwargs)
-			except Exception:
-				logger.exception("Listener for %r raised - continuing with remaining listeners", event_name)
-				continue
-
-			if inspect.isawaitable(result):
-				tasks.append(result)
-
-		if tasks:
-			results = await asyncio.gather(*tasks, return_exceptions=True)
-
-			for outcome in results:
-				if isinstance(outcome, BaseException):
-					logger.error("Async listener for %r raised", event_name, exc_info=outcome)
+            for outcome in results:
+                if isinstance(outcome, BaseException):
+                    logger.error(
+                        "Async listener for %r raised", event_name, exc_info=outcome
+                    )

@@ -21,9 +21,9 @@ Canonical source: `pymididefs <https://github.com/simonholliday/PyMidiDefs>`_.
 # lookup tables, and conversion functions.
 from pymididefs.notes import *  # noqa: F401,F403
 from pymididefs.notes import (  # noqa: F401 — explicit re-exports for type checkers
-	NOTE_CLASSES,
-	NOTE_NAMES,
-	SEMITONE_MAP,
-	name_to_note,
-	note_to_name,
+    NOTE_CLASSES,
+    NOTE_NAMES,
+    SEMITONE_MAP,
+    name_to_note,
+    note_to_name,
 )

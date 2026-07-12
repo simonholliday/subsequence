@@ -61,17 +61,17 @@ import typing
 #  Drum note constants
 # ═══════════════════════════════════════════════════════════════════════
 
-BD = 36          # Bass Drum
-SD = 38          # Snare Drum
-LT = 43          # Low Tom
-MT = 47          # Mid Tom
-HT = 50          # High Tom
-RS = 37          # Rim Shot
-HC = 39          # Hand Clap
-CH = 42          # Closed Hi-Hat
-OH = 46          # Open Hi-Hat
-CC = 49          # Crash Cymbal
-RC = 51          # Ride Cymbal
+BD = 36  # Bass Drum
+SD = 38  # Snare Drum
+LT = 43  # Low Tom
+MT = 47  # Mid Tom
+HT = 50  # High Tom
+RS = 37  # Rim Shot
+HC = 39  # Hand Clap
+CH = 42  # Closed Hi-Hat
+OH = 46  # Open Hi-Hat
+CC = 49  # Crash Cymbal
+RC = 51  # Ride Cymbal
 
 # Alternate note numbers (configurable on UTILITY:MIDI:Inst Note)
 BD_ALT = 35
@@ -91,17 +91,17 @@ RC_ALT = 63
 #  CC constants — global controls
 # ═══════════════════════════════════════════════════════════════════════
 
-SHUFFLE            = 9    # Shuffle amount
-EXTERNAL_IN_LEVEL  = 12   # External input level
-AUTO_FILL_IN       = 14   # Auto fill in on/off
-MASTER_FX_ON       = 15   # Master FX on/off
-DELAY_LEVEL        = 16   # Delay send level
-DELAY_TIME         = 17   # Delay time
-DELAY_FEEDBACK     = 18   # Delay feedback
-MASTER_FX_CTRL     = 19   # Master FX control knob
+SHUFFLE = 9  # Shuffle amount
+EXTERNAL_IN_LEVEL = 12  # External input level
+AUTO_FILL_IN = 14  # Auto fill in on/off
+MASTER_FX_ON = 15  # Master FX on/off
+DELAY_LEVEL = 16  # Delay send level
+DELAY_TIME = 17  # Delay time
+DELAY_FEEDBACK = 18  # Delay feedback
+MASTER_FX_CTRL = 19  # Master FX control knob
 AUTO_FILL_IN_MANUAL = 70  # Auto fill in manual trigger
-ACCENT             = 71   # Accent level
-REVERB_LEVEL       = 91   # Reverb send level
+ACCENT = 71  # Accent level
+REVERB_LEVEL = 91  # Reverb send level
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -109,70 +109,70 @@ REVERB_LEVEL       = 91   # Reverb send level
 # ═══════════════════════════════════════════════════════════════════════
 
 # Bass Drum
-BD_TUNE  = 20
+BD_TUNE = 20
 BD_DECAY = 23
 BD_LEVEL = 24
-BD_CTRL  = 96
+BD_CTRL = 96
 
 # Snare Drum
-SD_TUNE  = 25
+SD_TUNE = 25
 SD_DECAY = 28
 SD_LEVEL = 29
-SD_CTRL  = 97
+SD_CTRL = 97
 
 # Low Tom
-LT_TUNE  = 46
+LT_TUNE = 46
 LT_DECAY = 47
 LT_LEVEL = 48
-LT_CTRL  = 102
+LT_CTRL = 102
 
 # Mid Tom
-MT_TUNE  = 49
+MT_TUNE = 49
 MT_DECAY = 50
 MT_LEVEL = 51
-MT_CTRL  = 103
+MT_CTRL = 103
 
 # High Tom
-HT_TUNE  = 52
+HT_TUNE = 52
 HT_DECAY = 53
 HT_LEVEL = 54
-HT_CTRL  = 104
+HT_CTRL = 104
 
 # Rim Shot
-RS_TUNE  = 55
+RS_TUNE = 55
 RS_DECAY = 56
 RS_LEVEL = 57
-RS_CTRL  = 105
+RS_CTRL = 105
 
 # Hand Clap
-HC_TUNE  = 58
+HC_TUNE = 58
 HC_DECAY = 59
 HC_LEVEL = 60
-HC_CTRL  = 106
+HC_CTRL = 106
 
 # Closed Hi-Hat
-CH_TUNE  = 61
+CH_TUNE = 61
 CH_DECAY = 62
 CH_LEVEL = 63
-CH_CTRL  = 107
+CH_CTRL = 107
 
 # Open Hi-Hat
-OH_TUNE  = 80
+OH_TUNE = 80
 OH_DECAY = 81
 OH_LEVEL = 82
-OH_CTRL  = 108
+OH_CTRL = 108
 
 # Crash Cymbal
-CC_TUNE  = 83
+CC_TUNE = 83
 CC_DECAY = 84
 CC_LEVEL = 85
-CC_CTRL  = 109
+CC_CTRL = 109
 
 # Ride Cymbal
-RC_TUNE  = 86
+RC_TUNE = 86
 RC_DECAY = 87
 RC_LEVEL = 88
-RC_CTRL  = 110
+RC_CTRL = 110
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -180,57 +180,54 @@ RC_CTRL  = 110
 # ═══════════════════════════════════════════════════════════════════════
 
 ROLAND_TR8S_DRUM_MAP: typing.Dict[str, int] = {
-	# Native TR-8S track names
-	"bd": BD,
-	"sd": SD,
-	"lt": LT,
-	"mt": MT,
-	"ht": HT,
-	"rs": RS,
-	"hc": HC,
-	"ch": CH,
-	"oh": OH,
-	"cc": CC,
-	"rc": RC,
-
-	# General MIDI aliases — *faithful correspondences only*, i.e. GM names for
-	# the voices the TR-8S genuinely has.  Canonical names come from
-	# ``pymididefs.drums`` (``GM_DRUM_MAP``).  This lets GM-named patterns play
-	# on the TR-8S and lets it take part in symbolic mirroring (each device
-	# re-resolves a shared drum name through its own map).  Voices the TR-8S
-	# lacks (cowbell, tambourine, congas, splash/Chinese cymbals, guiro, …) are
-	# deliberately NOT aliased — no creative approximations onto unrelated voices.
-	#
-	# Unnumbered "primary" aliases (the GM_DRUM_PRIMARY_ALIASES convention from
-	# pymididefs.drums): the bare name resolves to the same voice as the _1
-	# variant.  The TR-8S has a real kick / snare / crash / ride, so all four apply.
-	"kick":  BD,
-	"snare": SD,
-	"crash": CC,
-	"ride":  RC,
-
-	"kick_1": BD,
-	"kick_2": BD,
-	"snare_1": SD,
-	"snare_2": SD,
-	"side_stick": RS,			# GM 37 == TR-8S RS 37
-	"hand_clap": HC,			# GM 39 == TR-8S HC 39
-	"hi_hat_closed": CH,		# GM 42 == TR-8S CH 42
-	"hi_hat_pedal": CH,			# foot-closed hat -> the closed hi-hat voice
-	"hi_hat_open": OH,			# GM 46 == TR-8S OH 46
-	"crash_1": CC,				# GM 49 == TR-8S CC 49
-	"crash_2": CC,
-	"ride_1": RC,				# GM 51 == TR-8S RC 51
-	"ride_2": RC,
-
-	# GM's six toms onto the TR-8S's three, grouped by register (each TR-8S tom
-	# anchored on an exact note match: LT 43, MT 47, HT 50).
-	"low_floor_tom": LT,
-	"high_floor_tom": LT,
-	"low_tom": MT,
-	"low_mid_tom": MT,
-	"high_mid_tom": HT,
-	"high_tom": HT,
+    # Native TR-8S track names
+    "bd": BD,
+    "sd": SD,
+    "lt": LT,
+    "mt": MT,
+    "ht": HT,
+    "rs": RS,
+    "hc": HC,
+    "ch": CH,
+    "oh": OH,
+    "cc": CC,
+    "rc": RC,
+    # General MIDI aliases — *faithful correspondences only*, i.e. GM names for
+    # the voices the TR-8S genuinely has.  Canonical names come from
+    # ``pymididefs.drums`` (``GM_DRUM_MAP``).  This lets GM-named patterns play
+    # on the TR-8S and lets it take part in symbolic mirroring (each device
+    # re-resolves a shared drum name through its own map).  Voices the TR-8S
+    # lacks (cowbell, tambourine, congas, splash/Chinese cymbals, guiro, …) are
+    # deliberately NOT aliased — no creative approximations onto unrelated voices.
+    #
+    # Unnumbered "primary" aliases (the GM_DRUM_PRIMARY_ALIASES convention from
+    # pymididefs.drums): the bare name resolves to the same voice as the _1
+    # variant.  The TR-8S has a real kick / snare / crash / ride, so all four apply.
+    "kick": BD,
+    "snare": SD,
+    "crash": CC,
+    "ride": RC,
+    "kick_1": BD,
+    "kick_2": BD,
+    "snare_1": SD,
+    "snare_2": SD,
+    "side_stick": RS,  # GM 37 == TR-8S RS 37
+    "hand_clap": HC,  # GM 39 == TR-8S HC 39
+    "hi_hat_closed": CH,  # GM 42 == TR-8S CH 42
+    "hi_hat_pedal": CH,  # foot-closed hat -> the closed hi-hat voice
+    "hi_hat_open": OH,  # GM 46 == TR-8S OH 46
+    "crash_1": CC,  # GM 49 == TR-8S CC 49
+    "crash_2": CC,
+    "ride_1": RC,  # GM 51 == TR-8S RC 51
+    "ride_2": RC,
+    # GM's six toms onto the TR-8S's three, grouped by register (each TR-8S tom
+    # anchored on an exact note match: LT 43, MT 47, HT 50).
+    "low_floor_tom": LT,
+    "high_floor_tom": LT,
+    "low_tom": MT,
+    "low_mid_tom": MT,
+    "high_mid_tom": HT,
+    "high_tom": HT,
 }
 
 
@@ -239,82 +236,71 @@ ROLAND_TR8S_DRUM_MAP: typing.Dict[str, int] = {
 # ═══════════════════════════════════════════════════════════════════════
 
 ROLAND_TR8S_CC_MAP: typing.Dict[str, int] = {
-	# Global controls
-	"shuffle":              SHUFFLE,
-	"external_in_level":    EXTERNAL_IN_LEVEL,
-	"auto_fill_in":         AUTO_FILL_IN,
-	"master_fx_on":         MASTER_FX_ON,
-	"delay_level":          DELAY_LEVEL,
-	"delay_time":           DELAY_TIME,
-	"delay_feedback":       DELAY_FEEDBACK,
-	"master_fx_ctrl":       MASTER_FX_CTRL,
-	"auto_fill_in_manual":  AUTO_FILL_IN_MANUAL,
-	"accent":               ACCENT,
-	"reverb_level":         REVERB_LEVEL,
-
-	# Bass Drum
-	"bd_tune":  BD_TUNE,
-	"bd_decay": BD_DECAY,
-	"bd_level": BD_LEVEL,
-	"bd_ctrl":  BD_CTRL,
-
-	# Snare Drum
-	"sd_tune":  SD_TUNE,
-	"sd_decay": SD_DECAY,
-	"sd_level": SD_LEVEL,
-	"sd_ctrl":  SD_CTRL,
-
-	# Low Tom
-	"lt_tune":  LT_TUNE,
-	"lt_decay": LT_DECAY,
-	"lt_level": LT_LEVEL,
-	"lt_ctrl":  LT_CTRL,
-
-	# Mid Tom
-	"mt_tune":  MT_TUNE,
-	"mt_decay": MT_DECAY,
-	"mt_level": MT_LEVEL,
-	"mt_ctrl":  MT_CTRL,
-
-	# High Tom
-	"ht_tune":  HT_TUNE,
-	"ht_decay": HT_DECAY,
-	"ht_level": HT_LEVEL,
-	"ht_ctrl":  HT_CTRL,
-
-	# Rim Shot
-	"rs_tune":  RS_TUNE,
-	"rs_decay": RS_DECAY,
-	"rs_level": RS_LEVEL,
-	"rs_ctrl":  RS_CTRL,
-
-	# Hand Clap
-	"hc_tune":  HC_TUNE,
-	"hc_decay": HC_DECAY,
-	"hc_level": HC_LEVEL,
-	"hc_ctrl":  HC_CTRL,
-
-	# Closed Hi-Hat
-	"ch_tune":  CH_TUNE,
-	"ch_decay": CH_DECAY,
-	"ch_level": CH_LEVEL,
-	"ch_ctrl":  CH_CTRL,
-
-	# Open Hi-Hat
-	"oh_tune":  OH_TUNE,
-	"oh_decay": OH_DECAY,
-	"oh_level": OH_LEVEL,
-	"oh_ctrl":  OH_CTRL,
-
-	# Crash Cymbal
-	"cc_tune":  CC_TUNE,
-	"cc_decay": CC_DECAY,
-	"cc_level": CC_LEVEL,
-	"cc_ctrl":  CC_CTRL,
-
-	# Ride Cymbal
-	"rc_tune":  RC_TUNE,
-	"rc_decay": RC_DECAY,
-	"rc_level": RC_LEVEL,
-	"rc_ctrl":  RC_CTRL,
+    # Global controls
+    "shuffle": SHUFFLE,
+    "external_in_level": EXTERNAL_IN_LEVEL,
+    "auto_fill_in": AUTO_FILL_IN,
+    "master_fx_on": MASTER_FX_ON,
+    "delay_level": DELAY_LEVEL,
+    "delay_time": DELAY_TIME,
+    "delay_feedback": DELAY_FEEDBACK,
+    "master_fx_ctrl": MASTER_FX_CTRL,
+    "auto_fill_in_manual": AUTO_FILL_IN_MANUAL,
+    "accent": ACCENT,
+    "reverb_level": REVERB_LEVEL,
+    # Bass Drum
+    "bd_tune": BD_TUNE,
+    "bd_decay": BD_DECAY,
+    "bd_level": BD_LEVEL,
+    "bd_ctrl": BD_CTRL,
+    # Snare Drum
+    "sd_tune": SD_TUNE,
+    "sd_decay": SD_DECAY,
+    "sd_level": SD_LEVEL,
+    "sd_ctrl": SD_CTRL,
+    # Low Tom
+    "lt_tune": LT_TUNE,
+    "lt_decay": LT_DECAY,
+    "lt_level": LT_LEVEL,
+    "lt_ctrl": LT_CTRL,
+    # Mid Tom
+    "mt_tune": MT_TUNE,
+    "mt_decay": MT_DECAY,
+    "mt_level": MT_LEVEL,
+    "mt_ctrl": MT_CTRL,
+    # High Tom
+    "ht_tune": HT_TUNE,
+    "ht_decay": HT_DECAY,
+    "ht_level": HT_LEVEL,
+    "ht_ctrl": HT_CTRL,
+    # Rim Shot
+    "rs_tune": RS_TUNE,
+    "rs_decay": RS_DECAY,
+    "rs_level": RS_LEVEL,
+    "rs_ctrl": RS_CTRL,
+    # Hand Clap
+    "hc_tune": HC_TUNE,
+    "hc_decay": HC_DECAY,
+    "hc_level": HC_LEVEL,
+    "hc_ctrl": HC_CTRL,
+    # Closed Hi-Hat
+    "ch_tune": CH_TUNE,
+    "ch_decay": CH_DECAY,
+    "ch_level": CH_LEVEL,
+    "ch_ctrl": CH_CTRL,
+    # Open Hi-Hat
+    "oh_tune": OH_TUNE,
+    "oh_decay": OH_DECAY,
+    "oh_level": OH_LEVEL,
+    "oh_ctrl": OH_CTRL,
+    # Crash Cymbal
+    "cc_tune": CC_TUNE,
+    "cc_decay": CC_DECAY,
+    "cc_level": CC_LEVEL,
+    "cc_ctrl": CC_CTRL,
+    # Ride Cymbal
+    "rc_tune": RC_TUNE,
+    "rc_decay": RC_DECAY,
+    "rc_level": RC_LEVEL,
+    "rc_ctrl": RC_CTRL,
 }

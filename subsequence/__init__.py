@@ -1,4 +1,3 @@
-
 """
 Subsequence - an algorithmic composition framework for Python.
 
@@ -140,8 +139,8 @@ Integration:
   distinct at a glance.
   Add ``grid_scale=2`` to zoom in horizontally, revealing swing and
   groove micro-timing.
-- **Web UI Dashboard (Beta).** Enable with ``composition.web_ui()`` to 
-  broadcast live composition metadata and visualize piano-roll pattern 
+- **Web UI Dashboard (Beta).** Enable with ``composition.web_ui()`` to
+  broadcast live composition metadata and visualize piano-roll pattern
   grids in a reactive HTTP/WebSocket browser dashboard.
 - **Ableton Link.** Industry-standard wireless tempo/phase sync
   (``comp.link()``; requires ``pip install subsequence[link]``).

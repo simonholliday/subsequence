@@ -15,7 +15,7 @@ comp.phrase_part(channel=4, part="lead", **subsequence.roles.LEAD, root=78)   # 
 
 @comp.pattern(channel=3, bars=2)
 def pad (p):
-	p.motif(chords, **subsequence.roles.PAD)
+        p.motif(chords, **subsequence.roles.PAD)
 ```
 
 These are taste defaults, not rules — a bass usually sits low and locks to
@@ -28,36 +28,36 @@ import typing
 
 # A bass: low register, strong, locked hard to the chord tones.
 BASS: typing.Dict[str, typing.Any] = {
-	"root": 36,			# C2
-	"velocity": 105,
-	"fit": 0.9,
+    "root": 36,  # C2
+    "velocity": 105,
+    "fit": 0.9,
 }
 
 # A pad: mid register, soft, floating loosely over the changes.
 PAD: typing.Dict[str, typing.Any] = {
-	"root": 60,			# C4
-	"velocity": 70,
-	"fit": 0.6,
+    "root": 60,  # C4
+    "velocity": 70,
+    "fit": 0.6,
 }
 
 # A lead: upper register, present, playing against the changes.
 LEAD: typing.Dict[str, typing.Any] = {
-	"root": 72,			# C5
-	"velocity": 95,
-	"fit": 0.7,
+    "root": 72,  # C5
+    "velocity": 95,
+    "fit": 0.7,
 }
 
 # An arp: mid register, even and bright, free to wander between chord tones.
 ARP: typing.Dict[str, typing.Any] = {
-	"root": 60,			# C4
-	"velocity": 85,
-	"fit": 0.5,
+    "root": 60,  # C4
+    "velocity": 85,
+    "fit": 0.5,
 }
 
 # The bundles by name, for programmatic lookup.
 ROLES: typing.Dict[str, typing.Dict[str, typing.Any]] = {
-	"bass": BASS,
-	"pad": PAD,
-	"lead": LEAD,
-	"arp": ARP,
+    "bass": BASS,
+    "pad": PAD,
+    "lead": LEAD,
+    "arp": ARP,
 }

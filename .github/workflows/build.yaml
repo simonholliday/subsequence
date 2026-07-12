@@ -1,0 +1,35 @@
+name: CI Build
+
+on: [push, workflow_dispatch]
+
+jobs:
+  execute:
+    name: CI Build
+    runs-on: enverus-ubuntu
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Sync dependencies
+        env:
+          JFROG_ARTIFACTORY_USER: ${{ secrets.SRE_ARTIFACTORY_USER_VIRTUAL_REPO_RW }}
+          JFROG_ARTIFACTORY_TOKEN: ${{ secrets.SRE_ARTIFACTORY_TOKEN_VIRTUAL_REPO_RW }}
+        run: |
+          set -euo pipefail
+          ./run_with_artifactory_creds.sh uv sync --all-groups --all-extras --frozen
+
+      - name: Build
+        env:
+          JFROG_ARTIFACTORY_USER: ${{ secrets.SRE_ARTIFACTORY_USER_VIRTUAL_REPO_RW }}
+          JFROG_ARTIFACTORY_TOKEN: ${{ secrets.SRE_ARTIFACTORY_TOKEN_VIRTUAL_REPO_RW }}
+        run: |
+          set -euo pipefail
+          ./run_with_artifactory_creds.sh uv run invoke build

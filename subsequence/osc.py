@@ -30,165 +30,156 @@ import pythonosc.osc_server
 import pythonosc.udp_client
 
 if typing.TYPE_CHECKING:
-	from subsequence.composition import Composition
+    from subsequence.composition import Composition
 
 
 logger = logging.getLogger(__name__)
 
 
 class OscServer:
+    """Async OSC server/client for bi-directional communication."""
 
-	"""Async OSC server/client for bi-directional communication."""
+    def __init__(
+        self,
+        composition: "Composition",
+        receive_port: int = 9000,
+        send_port: int = 9001,
+        send_host: str = "127.0.0.1",
+        receive_host: str = "0.0.0.0",
+    ) -> None:
+        """
+        Wire up the OSC ports and built-in control handlers; call start() to begin listening.
+        """
 
-	def __init__ (
-		self,
-		composition: "Composition",
-		receive_port: int = 9000,
-		send_port: int = 9001,
-		send_host: str = "127.0.0.1",
-		receive_host: str = "0.0.0.0"
-	) -> None:
+        self._composition = composition
+        self._receive_port = receive_port
+        self._receive_host = receive_host
+        self._send_port = send_port
+        self._send_host = send_host
 
-		"""
-		Wire up the OSC ports and built-in control handlers; call start() to begin listening.
-		"""
+        self._server: typing.Optional[typing.Any] = None
+        self._transport: typing.Optional[asyncio.BaseTransport] = None
+        self._client: typing.Optional[pythonosc.udp_client.SimpleUDPClient] = None
+        self._dispatcher = pythonosc.dispatcher.Dispatcher()
 
-		self._composition = composition
-		self._receive_port = receive_port
-		self._receive_host = receive_host
-		self._send_port = send_port
-		self._send_host = send_host
+        # Register built-in handlers
+        self._dispatcher.map("/bpm", self._handle_bpm)
+        self._dispatcher.map("/mute/*", self._handle_mute)
+        self._dispatcher.map("/unmute/*", self._handle_unmute)
+        self._dispatcher.map("/data/*", self._handle_data)
 
-		self._server: typing.Optional[typing.Any] = None
-		self._transport: typing.Optional[asyncio.BaseTransport] = None
-		self._client: typing.Optional[pythonosc.udp_client.SimpleUDPClient] = None
-		self._dispatcher = pythonosc.dispatcher.Dispatcher()
+    async def start(self) -> None:
+        """Start the OSC server and client."""
 
-		# Register built-in handlers
-		self._dispatcher.map("/bpm", self._handle_bpm)
-		self._dispatcher.map("/mute/*", self._handle_mute)
-		self._dispatcher.map("/unmute/*", self._handle_unmute)
-		self._dispatcher.map("/data/*", self._handle_data)
+        # client for sending
+        self._client = pythonosc.udp_client.SimpleUDPClient(
+            self._send_host, self._send_port
+        )
 
+        # server for receiving
+        self._server = pythonosc.osc_server.AsyncIOOSCUDPServer(
+            (self._receive_host, self._receive_port),
+            self._dispatcher,
+            asyncio.get_event_loop(),  # type: ignore[arg-type]
+        )
 
-	async def start (self) -> None:
+        transport, _ = await self._server.create_serve_endpoint()
+        self._transport = transport
 
-		"""Start the OSC server and client."""
+        logger.info(
+            f"OSC listening on :{self._receive_port}, sending to {self._send_host}:{self._send_port}"
+        )
 
-		# client for sending
-		self._client = pythonosc.udp_client.SimpleUDPClient(self._send_host, self._send_port)
+    async def stop(self) -> None:
+        """Stop the OSC server and close the outgoing client socket."""
 
-		# server for receiving
-		self._server = pythonosc.osc_server.AsyncIOOSCUDPServer(
-			(self._receive_host, self._receive_port),
-			self._dispatcher,
-			asyncio.get_event_loop()  # type: ignore[arg-type]
-		)
+        if self._transport:
+            self._transport.close()
+            self._transport = None
+            logger.info("OSC server stopped")
 
-		transport, _ = await self._server.create_serve_endpoint()
-		self._transport = transport
+        if self._client is not None:
+            # python-osc's SimpleUDPClient owns a raw socket; close it so a
+            # stopped composition doesn't keep a zombie sender alive.
+            try:
+                self._client._sock.close()
+            except (AttributeError, OSError):
+                pass
+            self._client = None
 
-		logger.info(f"OSC listening on :{self._receive_port}, sending to {self._send_host}:{self._send_port}")
+    def send(self, address: str, *args: typing.Any) -> None:
+        """Send an OSC message."""
 
+        if self._client:
+            try:
+                self._client.send_message(address, args)
+            except Exception as e:
+                logger.warning(f"OSC send error: {e}")
 
-	async def stop (self) -> None:
+    def map(self, address: str, handler: typing.Callable) -> None:
+        """Register a custom OSC handler."""
 
-		"""Stop the OSC server and close the outgoing client socket."""
+        self._dispatcher.map(address, handler)
 
-		if self._transport:
-			self._transport.close()
-			self._transport = None
-			logger.info("OSC server stopped")
+    # Handlers
 
-		if self._client is not None:
-			# python-osc's SimpleUDPClient owns a raw socket; close it so a
-			# stopped composition doesn't keep a zombie sender alive.
-			try:
-				self._client._sock.close()
-			except (AttributeError, OSError):
-				pass
-			self._client = None
+    def _handle_bpm(self, address: str, *args: typing.Any) -> None:
+        """
+        Set the composition tempo from an incoming ``/bpm <int>`` message.
+        """
 
+        if not args:
+            return
 
-	def send (self, address: str, *args: typing.Any) -> None:
+        try:
+            bpm = int(args[0])
+            self._composition.set_bpm(bpm)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid OSC BPM argument: {args[0]}")
 
-		"""Send an OSC message."""
+    def _handle_mute(self, address: str, *args: typing.Any) -> None:
+        """
+        Silence the pattern named in an incoming ``/mute/<name>`` message.
+        """
 
-		if self._client:
-			try:
-				self._client.send_message(address, args)
-			except Exception as e:
-				logger.warning(f"OSC send error: {e}")
+        # address is like /mute/drums
+        parts = address.split("/")
+        if len(parts) >= 3:
+            name = parts[2]
+            self._composition.mute(name)
 
+    def _handle_unmute(self, address: str, *args: typing.Any) -> None:
+        """
+        Bring back the pattern named in an incoming ``/unmute/<name>`` message.
+        """
 
-	def map (self, address: str, handler: typing.Callable) -> None:
+        parts = address.split("/")
+        if len(parts) >= 3:
+            name = parts[2]
+            self._composition.unmute(name)
 
-		"""Register a custom OSC handler."""
+    def _handle_data(self, address: str, *args: typing.Any) -> None:
+        """
+        Update a composition.data value from an incoming ``/data/<key> <value>`` message, preserving the existing numeric type.
+        """
 
-		self._dispatcher.map(address, handler)
+        # address is like /data/intensity
+        if not args:
+            return
 
+        parts = address.split("/")
+        if len(parts) >= 3:
+            key = parts[2]
+            val = args[0]
+            if key in self._composition.data:
+                existing = self._composition.data[key]
+                if isinstance(existing, (float, int)):
+                    try:
+                        val = float(val) if isinstance(existing, float) else int(val)
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            f"OSC /data: failed to cast {val} to numeric for key {key}"
+                        )
+                        return
 
-	# Handlers
-
-	def _handle_bpm (self, address: str, *args: typing.Any) -> None:
-
-		"""
-		Set the composition tempo from an incoming ``/bpm <int>`` message.
-		"""
-
-		if not args:
-			return
-
-		try:
-			bpm = int(args[0])
-			self._composition.set_bpm(bpm)
-		except (ValueError, TypeError):
-			logger.warning(f"Invalid OSC BPM argument: {args[0]}")
-
-	def _handle_mute (self, address: str, *args: typing.Any) -> None:
-
-		"""
-		Silence the pattern named in an incoming ``/mute/<name>`` message.
-		"""
-
-		# address is like /mute/drums
-		parts = address.split("/")
-		if len(parts) >= 3:
-			name = parts[2]
-			self._composition.mute(name)
-
-	def _handle_unmute (self, address: str, *args: typing.Any) -> None:
-
-		"""
-		Bring back the pattern named in an incoming ``/unmute/<name>`` message.
-		"""
-
-		parts = address.split("/")
-		if len(parts) >= 3:
-			name = parts[2]
-			self._composition.unmute(name)
-
-	def _handle_data (self, address: str, *args: typing.Any) -> None:
-
-		"""
-		Update a composition.data value from an incoming ``/data/<key> <value>`` message, preserving the existing numeric type.
-		"""
-
-		# address is like /data/intensity
-		if not args:
-			return
-
-		parts = address.split("/")
-		if len(parts) >= 3:
-			key = parts[2]
-			val = args[0]
-			if key in self._composition.data:
-				existing = self._composition.data[key]
-				if isinstance(existing, (float, int)):
-					try:
-						val = float(val) if isinstance(existing, float) else int(val)
-					except (ValueError, TypeError):
-						logger.warning(f"OSC /data: failed to cast {val} to numeric for key {key}")
-						return
-
-			self._composition.data[key] = val
+            self._composition.data[key] = val

@@ -1,4 +1,3 @@
-
 import collections
 import random
 
@@ -8,367 +7,360 @@ import subsequence.chords
 import subsequence.harmonic_state
 
 
-def test_nir_history_tracking () -> None:
+def test_nir_history_tracking() -> None:
+    hs = subsequence.harmonic_state.HarmonicState(key_name="C")
 
-	hs = subsequence.harmonic_state.HarmonicState(key_name="C")
+    # Simulate a sequence: C -> F -> G
+    c = subsequence.chords.Chord(root_pc=0, quality="major")
+    f = subsequence.chords.Chord(root_pc=5, quality="major")
+    g = subsequence.chords.Chord(root_pc=7, quality="major")
 
-	# Simulate a sequence: C -> F -> G
-	c = subsequence.chords.Chord(root_pc=0, quality="major")
-	f = subsequence.chords.Chord(root_pc=5, quality="major")
-	g = subsequence.chords.Chord(root_pc=7, quality="major")
+    # Manually inject history for testing
+    hs.current_chord = c
+    hs.step()  # transition to something (mocked)
 
-	# Manually inject history for testing
-	hs.current_chord = c
-	hs.step() # transition to something (mocked)
+    # Step simulation
+    hs.current_chord = f
+    hs.step()
 
-	# Step simulation
-	hs.current_chord = f
-	hs.step()
-
-	assert len(hs.history) > 0
-	assert hs.history[-1] == f
-
-
-def test_calculate_nir_score_reversal () -> None:
-
-	"""
-	Test Rule A: Reversal (Gap Fill)
-	If previous move was a Large Leap (> 5 semitones),
-	BOOST targets that change direction.
-	"""
-
-	hs = subsequence.harmonic_state.HarmonicState(key_name="C")
-
-	# History: C (0) -> G (7)
-	# Modulo 12 shortest path: 7 - 0 = +7. >6 so 7-12 = -5.
-	# Interval = 5 (Large Leap). Direction = DOWN.
-	c = subsequence.chords.Chord(root_pc=0, quality="major")
-	g = subsequence.chords.Chord(root_pc=7, quality="major")
-
-	# step() appends the source before scoring, so history is [prev, source].
-	hs.history = [c, g]
-	source = g
-
-	# Target 1: A (9). G->A is +2.
-	# Direction = UP (Opposite to prev DOWN).
-	# Interval = 2 (Small).
-	# Reversal Expects: Change Direction (Yes) AND Small Interval (Yes).
-	# Should get MAX boost.
-	target_reversal = subsequence.chords.Chord(root_pc=9, quality="minor")
-
-	# Target 2: E (4). G->E is -3.
-	# Direction = DOWN (Same as prev).
-	# Interval = 3.
-	# Should get NO boost.
-	target_continuation = subsequence.chords.Chord(root_pc=4, quality="minor")
-
-	score_rev = hs._calculate_nir_score(source, target_reversal)
-	score_cont = hs._calculate_nir_score(source, target_continuation)
-
-	assert score_rev > 1.0
-	assert score_rev > score_cont
+    assert len(hs.history) > 0
+    assert hs.history[-1] == f
 
 
-def test_calculate_nir_score_process () -> None:
+def test_calculate_nir_score_reversal() -> None:
+    """
+    Test Rule A: Reversal (Gap Fill)
+    If previous move was a Large Leap (> 5 semitones),
+    BOOST targets that change direction.
+    """
 
-	"""
-	Test Rule B: Process (Continuation)
-	If previous move was a Small Step (< 4 semitones),
-	BOOST targets that continue in the Same Direction.
-	"""
+    hs = subsequence.harmonic_state.HarmonicState(key_name="C")
 
-	hs = subsequence.harmonic_state.HarmonicState(key_name="C")
+    # History: C (0) -> G (7)
+    # Modulo 12 shortest path: 7 - 0 = +7. >6 so 7-12 = -5.
+    # Interval = 5 (Large Leap). Direction = DOWN.
+    c = subsequence.chords.Chord(root_pc=0, quality="major")
+    g = subsequence.chords.Chord(root_pc=7, quality="major")
 
-	# History: C (0) -> D (2) = +2 semitones (Small Step Up)
-	c = subsequence.chords.Chord(root_pc=0, quality="major")
-	d = subsequence.chords.Chord(root_pc=2, quality="minor")
+    # step() appends the source before scoring, so history is [prev, source].
+    hs.history = [c, g]
+    source = g
 
-	# step() appends the source before scoring, so history is [prev, source].
-	hs.history = [c, d]
-	source = d
+    # Target 1: A (9). G->A is +2.
+    # Direction = UP (Opposite to prev DOWN).
+    # Interval = 2 (Small).
+    # Reversal Expects: Change Direction (Yes) AND Small Interval (Yes).
+    # Should get MAX boost.
+    target_reversal = subsequence.chords.Chord(root_pc=9, quality="minor")
 
-	# Target 1: E (4) = +2 semitones (Continuation Up) -> Expect BOOST
-	target_continuation = subsequence.chords.Chord(root_pc=4, quality="minor")
+    # Target 2: E (4). G->E is -3.
+    # Direction = DOWN (Same as prev).
+    # Interval = 3.
+    # Should get NO boost.
+    target_continuation = subsequence.chords.Chord(root_pc=4, quality="minor")
 
-	# Target 2: B (11) = -3 semitones (Reversal Down) -> Expect NEUTRAL
-	target_reversal = subsequence.chords.Chord(root_pc=11, quality="diminished")
+    score_rev = hs._calculate_nir_score(source, target_reversal)
+    score_cont = hs._calculate_nir_score(source, target_continuation)
 
-	score_cont = hs._calculate_nir_score(source, target_continuation)
-	score_rev = hs._calculate_nir_score(source, target_reversal)
-
-	assert score_cont > 1.0
-	assert score_cont > score_rev
-
-
-def test_calculate_nir_score_closure () -> None:
-
-	"""
-	Test Rule C: Closure
-	Return to Tonic implies closure and should be boosted if other conditions match.
-	"""
-
-	hs = subsequence.harmonic_state.HarmonicState(key_name="C")
-
-	# History: C (0) -> E (4).
-	# Interval = 4 (Neutral - neither Small Step <3 nor Large Leap >4).
-	# Rule A and Rule B should NOT fire.
-	c = subsequence.chords.Chord(root_pc=0, quality="major")
-	e = subsequence.chords.Chord(root_pc=4, quality="minor")
-
-	hs.history = [c, e]
-	source = e
-
-	# Target 1: C (0). E->C is -4. Neutral interval.
-	# Gets Closure Boost (+0.2).
-	target_tonic = subsequence.chords.Chord(root_pc=0, quality="major")
-
-	# Target 2: G# (8). E->G# is +4. Neutral interval.
-	# No Closure Boost.
-	target_other = subsequence.chords.Chord(root_pc=8, quality="major")
-
-	score_tonic = hs._calculate_nir_score(source, target_tonic)
-	score_other = hs._calculate_nir_score(source, target_other)
-
-	# Tonic return usually gets a small boost for closure
-	assert score_tonic > score_other
+    assert score_rev > 1.0
+    assert score_rev > score_cont
 
 
-def test_calculate_nir_score_proximity () -> None:
+def test_calculate_nir_score_process() -> None:
+    """
+    Test Rule B: Process (Continuation)
+    If previous move was a Small Step (< 4 semitones),
+    BOOST targets that continue in the Same Direction.
+    """
 
-	"""
-	Test Rule D: Proximity
-	Small intervals (≤ 3 semitones) get a general boost.
-	"""
+    hs = subsequence.harmonic_state.HarmonicState(key_name="C")
 
-	hs = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=1.0)
+    # History: C (0) -> D (2) = +2 semitones (Small Step Up)
+    c = subsequence.chords.Chord(root_pc=0, quality="major")
+    d = subsequence.chords.Chord(root_pc=2, quality="minor")
 
-	# History: C (0) -> E (4). Interval = 4 (neutral zone).
-	c = subsequence.chords.Chord(root_pc=0, quality="major")
-	e = subsequence.chords.Chord(root_pc=4, quality="minor")
+    # step() appends the source before scoring, so history is [prev, source].
+    hs.history = [c, d]
+    source = d
 
-	hs.history = [c, e]
-	source = e
+    # Target 1: E (4) = +2 semitones (Continuation Up) -> Expect BOOST
+    target_continuation = subsequence.chords.Chord(root_pc=4, quality="minor")
 
-	# Target 1: F (5). E->F is +1 semitone (small, proximate).
-	target_close = subsequence.chords.Chord(root_pc=5, quality="major")
+    # Target 2: B (11) = -3 semitones (Reversal Down) -> Expect NEUTRAL
+    target_reversal = subsequence.chords.Chord(root_pc=11, quality="diminished")
 
-	# Target 2: Bb (10). E->Bb is +6 semitones (large, not proximate).
-	target_far = subsequence.chords.Chord(root_pc=10, quality="major")
+    score_cont = hs._calculate_nir_score(source, target_continuation)
+    score_rev = hs._calculate_nir_score(source, target_reversal)
 
-	score_close = hs._calculate_nir_score(source, target_close)
-	score_far = hs._calculate_nir_score(source, target_far)
-
-	assert score_close > 1.0
-	assert score_close > score_far
-
-
-def test_nir_strength_zero_disables () -> None:
-
-	"""With nir_strength=0.0, all NIR scores should return 1.0 (neutral)."""
-
-	hs = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=0.0)
-
-	c = subsequence.chords.Chord(root_pc=0, quality="major")
-	d = subsequence.chords.Chord(root_pc=2, quality="minor")
-	e = subsequence.chords.Chord(root_pc=4, quality="minor")
-
-	hs.history = [c, d]
-
-	# C -> D is a small step (+2), D -> E continues (+2).
-	# At full strength this would get boosted. At 0.0 it should be neutral.
-	score = hs._calculate_nir_score(d, e)
-	assert score == 1.0
+    assert score_cont > 1.0
+    assert score_cont > score_rev
 
 
-def test_nir_strength_scales_boost () -> None:
+def test_calculate_nir_score_closure() -> None:
+    """
+    Test Rule C: Closure
+    Return to Tonic implies closure and should be boosted if other conditions match.
+    """
 
-	"""With nir_strength=0.5, boosts should be halved compared to nir_strength=1.0."""
+    hs = subsequence.harmonic_state.HarmonicState(key_name="C")
 
-	c = subsequence.chords.Chord(root_pc=0, quality="major")
-	d = subsequence.chords.Chord(root_pc=2, quality="minor")
-	e = subsequence.chords.Chord(root_pc=4, quality="minor")
+    # History: C (0) -> E (4).
+    # Interval = 4 (Neutral - neither Small Step <3 nor Large Leap >4).
+    # Rule A and Rule B should NOT fire.
+    c = subsequence.chords.Chord(root_pc=0, quality="major")
+    e = subsequence.chords.Chord(root_pc=4, quality="minor")
 
-	hs_full = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=1.0)
-	hs_full.history = [c, d]
-	score_full = hs_full._calculate_nir_score(d, e)
+    hs.history = [c, e]
+    source = e
 
-	hs_half = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=0.5)
-	hs_half.history = [c, d]
-	score_half = hs_half._calculate_nir_score(d, e)
+    # Target 1: C (0). E->C is -4. Neutral interval.
+    # Gets Closure Boost (+0.2).
+    target_tonic = subsequence.chords.Chord(root_pc=0, quality="major")
 
-	# Both should be boosted above 1.0
-	assert score_full > 1.0
-	assert score_half > 1.0
+    # Target 2: G# (8). E->G# is +4. Neutral interval.
+    # No Closure Boost.
+    target_other = subsequence.chords.Chord(root_pc=8, quality="major")
 
-	# Half-strength boost should be half the full-strength boost
-	boost_full = score_full - 1.0
-	boost_half = score_half - 1.0
-	assert abs(boost_half - boost_full * 0.5) < 0.001
+    score_tonic = hs._calculate_nir_score(source, target_tonic)
+    score_other = hs._calculate_nir_score(source, target_other)
+
+    # Tonic return usually gets a small boost for closure
+    assert score_tonic > score_other
+
+
+def test_calculate_nir_score_proximity() -> None:
+    """
+    Test Rule D: Proximity
+    Small intervals (≤ 3 semitones) get a general boost.
+    """
+
+    hs = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=1.0)
+
+    # History: C (0) -> E (4). Interval = 4 (neutral zone).
+    c = subsequence.chords.Chord(root_pc=0, quality="major")
+    e = subsequence.chords.Chord(root_pc=4, quality="minor")
+
+    hs.history = [c, e]
+    source = e
+
+    # Target 1: F (5). E->F is +1 semitone (small, proximate).
+    target_close = subsequence.chords.Chord(root_pc=5, quality="major")
+
+    # Target 2: Bb (10). E->Bb is +6 semitones (large, not proximate).
+    target_far = subsequence.chords.Chord(root_pc=10, quality="major")
+
+    score_close = hs._calculate_nir_score(source, target_close)
+    score_far = hs._calculate_nir_score(source, target_far)
+
+    assert score_close > 1.0
+    assert score_close > score_far
+
+
+def test_nir_strength_zero_disables() -> None:
+    """With nir_strength=0.0, all NIR scores should return 1.0 (neutral)."""
+
+    hs = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=0.0)
+
+    c = subsequence.chords.Chord(root_pc=0, quality="major")
+    d = subsequence.chords.Chord(root_pc=2, quality="minor")
+    e = subsequence.chords.Chord(root_pc=4, quality="minor")
+
+    hs.history = [c, d]
+
+    # C -> D is a small step (+2), D -> E continues (+2).
+    # At full strength this would get boosted. At 0.0 it should be neutral.
+    score = hs._calculate_nir_score(d, e)
+    assert score == 1.0
+
+
+def test_nir_strength_scales_boost() -> None:
+    """With nir_strength=0.5, boosts should be halved compared to nir_strength=1.0."""
+
+    c = subsequence.chords.Chord(root_pc=0, quality="major")
+    d = subsequence.chords.Chord(root_pc=2, quality="minor")
+    e = subsequence.chords.Chord(root_pc=4, quality="minor")
+
+    hs_full = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=1.0)
+    hs_full.history = [c, d]
+    score_full = hs_full._calculate_nir_score(d, e)
+
+    hs_half = subsequence.harmonic_state.HarmonicState(key_name="C", nir_strength=0.5)
+    hs_half.history = [c, d]
+    score_half = hs_half._calculate_nir_score(d, e)
+
+    # Both should be boosted above 1.0
+    assert score_full > 1.0
+    assert score_half > 1.0
+
+    # Half-strength boost should be half the full-strength boost
+    boost_full = score_full - 1.0
+    boost_half = score_half - 1.0
+    assert abs(boost_half - boost_full * 0.5) < 0.001
 
 
 # --- Root Diversity ---
 
 
-def test_root_diversity_reduces_same_root_frequency () -> None:
+def test_root_diversity_reduces_same_root_frequency() -> None:
+    """The suspended graph at gravity=0.0 should no longer get stuck on one root."""
 
-	"""The suspended graph at gravity=0.0 should no longer get stuck on one root."""
+    rng = random.Random(42)
 
-	rng = random.Random(42)
+    hs = subsequence.harmonic_state.HarmonicState(
+        key_name="C",
+        graph_style="suspended",
+        key_gravity_blend=0.0,
+        nir_strength=0.5,
+        rng=rng,
+    )
 
-	hs = subsequence.harmonic_state.HarmonicState(
-		key_name = "C",
-		graph_style = "suspended",
-		key_gravity_blend = 0.0,
-		nir_strength = 0.5,
-		rng = rng
-	)
+    roots: typing.List[int] = []
 
-	roots: typing.List[int] = []
+    for _ in range(500):
+        chord = hs.step()
+        roots.append(chord.root_pc)
 
-	for _ in range(500):
-		chord = hs.step()
-		roots.append(chord.root_pc)
+    counts = collections.Counter(roots)
+    top_pct = counts.most_common(1)[0][1] / len(roots)
 
-	counts = collections.Counter(roots)
-	top_pct = counts.most_common(1)[0][1] / len(roots)
-
-	# Was 0.63 before the fix; should now stay below 0.50.
-	assert top_pct < 0.50
-
-
-def test_root_diversity_does_not_suppress_entirely () -> None:
-
-	"""Even with 4 same-root chords in history, step() should still return a chord."""
-
-	rng = random.Random(99)
-
-	hs = subsequence.harmonic_state.HarmonicState(
-		key_name = "C",
-		graph_style = "suspended",
-		key_gravity_blend = 0.0,
-		nir_strength = 0.5,
-		rng = rng
-	)
-
-	# Fill history with 4 C-root chords.
-	c_sus2 = subsequence.chords.Chord(root_pc=0, quality="sus2")
-	c_sus4 = subsequence.chords.Chord(root_pc=0, quality="sus4")
-	hs.history = [c_sus2, c_sus4, c_sus2, c_sus4]
-	hs.current_chord = c_sus2
-
-	# Should still produce a valid chord (modifier is 0.4^4 ≈ 0.026, not 0).
-	result = hs.step()
-
-	assert isinstance(result, subsequence.chords.Chord)
+    # Was 0.63 before the fix; should now stay below 0.50.
+    assert top_pct < 0.50
 
 
-def test_root_diversity_counts_root_not_quality () -> None:
+def test_root_diversity_does_not_suppress_entirely() -> None:
+    """Even with 4 same-root chords in history, step() should still return a chord."""
 
-	"""History with Csus2 and Csus4 should both count toward the C-root penalty."""
+    rng = random.Random(99)
 
-	rng = random.Random(42)
+    hs = subsequence.harmonic_state.HarmonicState(
+        key_name="C",
+        graph_style="suspended",
+        key_gravity_blend=0.0,
+        nir_strength=0.5,
+        rng=rng,
+    )
 
-	hs = subsequence.harmonic_state.HarmonicState(
-		key_name = "C",
-		graph_style = "suspended",
-		key_gravity_blend = 1.0,
-		nir_strength = 0.0,
-		rng = rng
-	)
+    # Fill history with 4 C-root chords.
+    c_sus2 = subsequence.chords.Chord(root_pc=0, quality="sus2")
+    c_sus4 = subsequence.chords.Chord(root_pc=0, quality="sus4")
+    hs.history = [c_sus2, c_sus4, c_sus2, c_sus4]
+    hs.current_chord = c_sus2
 
-	# History: two different qualities on root C.
-	c_sus2 = subsequence.chords.Chord(root_pc=0, quality="sus2")
-	c_sus4 = subsequence.chords.Chord(root_pc=0, quality="sus4")
-	hs.history = [c_sus2, c_sus4]
-	hs.current_chord = c_sus4
+    # Should still produce a valid chord (modifier is 0.4^4 ≈ 0.026, not 0).
+    result = hs.step()
 
-	# Run many steps from this state and count C-root results.
-	c_root_count = 0
-	trials = 200
-
-	for _ in range(trials):
-		# Reset to the same state each trial.
-		hs.history = [c_sus2, c_sus4]
-		hs.current_chord = c_sus4
-		result = hs.step()
-
-		if result.root_pc == 0:
-			c_root_count += 1
-
-	# With 2 C-root entries in history, the penalty is 0.4² = 0.16×.
-	# C-root should appear far less than half the time.
-	assert c_root_count / trials < 0.45
+    assert isinstance(result, subsequence.chords.Chord)
 
 
-def test_root_diversity_disabled_at_one () -> None:
+def test_root_diversity_counts_root_not_quality() -> None:
+    """History with Csus2 and Csus4 should both count toward the C-root penalty."""
 
-	"""Setting root_diversity=1.0 should disable the penalty entirely."""
+    rng = random.Random(42)
 
-	rng_a = random.Random(42)
-	rng_b = random.Random(42)
+    hs = subsequence.harmonic_state.HarmonicState(
+        key_name="C",
+        graph_style="suspended",
+        key_gravity_blend=1.0,
+        nir_strength=0.0,
+        rng=rng,
+    )
 
-	# With penalty (default 0.5)
-	hs_with = subsequence.harmonic_state.HarmonicState(
-		key_name = "C",
-		graph_style = "suspended",
-		key_gravity_blend = 0.0,
-		nir_strength = 0.5,
-		root_diversity = 0.5,
-		rng = rng_a
-	)
+    # History: two different qualities on root C.
+    c_sus2 = subsequence.chords.Chord(root_pc=0, quality="sus2")
+    c_sus4 = subsequence.chords.Chord(root_pc=0, quality="sus4")
+    hs.history = [c_sus2, c_sus4]
+    hs.current_chord = c_sus4
 
-	# Without penalty (1.0 = disabled)
-	hs_without = subsequence.harmonic_state.HarmonicState(
-		key_name = "C",
-		graph_style = "suspended",
-		key_gravity_blend = 0.0,
-		nir_strength = 0.5,
-		root_diversity = 1.0,
-		rng = rng_b
-	)
+    # Run many steps from this state and count C-root results.
+    c_root_count = 0
+    trials = 200
 
-	roots_with: typing.List[int] = []
-	roots_without: typing.List[int] = []
+    for _ in range(trials):
+        # Reset to the same state each trial.
+        hs.history = [c_sus2, c_sus4]
+        hs.current_chord = c_sus4
+        result = hs.step()
 
-	for _ in range(200):
-		roots_with.append(hs_with.step().root_pc)
-		roots_without.append(hs_without.step().root_pc)
+        if result.root_pc == 0:
+            c_root_count += 1
 
-	top_with = collections.Counter(roots_with).most_common(1)[0][1] / 200
-	top_without = collections.Counter(roots_without).most_common(1)[0][1] / 200
-
-	# Disabled penalty should produce more concentrated distribution.
-	assert top_without > top_with
+    # With 2 C-root entries in history, the penalty is 0.4² = 0.16×.
+    # C-root should appear far less than half the time.
+    assert c_root_count / trials < 0.45
 
 
-def test_step_scoring_sees_distinct_previous_chord () -> None:
+def test_root_diversity_disabled_at_one() -> None:
+    """Setting root_diversity=1.0 should disable the penalty entirely."""
 
-	"""During step(), the NIR scorer must compare against the chord BEFORE the
-	current one - not the current chord itself.
+    rng_a = random.Random(42)
+    rng_b = random.Random(42)
 
-	Regression: step() appends the current chord to history before choosing,
-	so reading history[-1] as "previous" made prev == source on every call and
-	left the reversal/continuation rules permanently inert (pre-2026-06 bug).
-	"""
+    # With penalty (default 0.5)
+    hs_with = subsequence.harmonic_state.HarmonicState(
+        key_name="C",
+        graph_style="suspended",
+        key_gravity_blend=0.0,
+        nir_strength=0.5,
+        root_diversity=0.5,
+        rng=rng_a,
+    )
 
-	rng = random.Random(5)
-	hs = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="functional_major", rng=rng)
+    # Without penalty (1.0 = disabled)
+    hs_without = subsequence.harmonic_state.HarmonicState(
+        key_name="C",
+        graph_style="suspended",
+        key_gravity_blend=0.0,
+        nir_strength=0.5,
+        root_diversity=1.0,
+        rng=rng_b,
+    )
 
-	calls = []
-	original = hs._calculate_nir_score
+    roots_with: typing.List[int] = []
+    roots_without: typing.List[int] = []
 
-	def spy (source: subsequence.chords.Chord, target: subsequence.chords.Chord) -> float:
-		calls.append((list(hs.history), source))
-		return original(source, target)
+    for _ in range(200):
+        roots_with.append(hs_with.step().root_pc)
+        roots_without.append(hs_without.step().root_pc)
 
-	hs._calculate_nir_score = spy  # type: ignore[method-assign]
+    top_with = collections.Counter(roots_with).most_common(1)[0][1] / 200
+    top_without = collections.Counter(roots_without).most_common(1)[0][1] / 200
 
-	for _ in range(30):
-		hs.step()
+    # Disabled penalty should produce more concentrated distribution.
+    assert top_without > top_with
 
-	distinct = [
-		1 for history, source in calls
-		if len(history) >= 2 and history[-2] != source
-	]
 
-	assert distinct, "scorer never saw a previous chord distinct from the source - implication rules are inert"
+def test_step_scoring_sees_distinct_previous_chord() -> None:
+    """During step(), the NIR scorer must compare against the chord BEFORE the
+    current one - not the current chord itself.
+
+    Regression: step() appends the current chord to history before choosing,
+    so reading history[-1] as "previous" made prev == source on every call and
+    left the reversal/continuation rules permanently inert (pre-2026-06 bug).
+    """
+
+    rng = random.Random(5)
+    hs = subsequence.harmonic_state.HarmonicState(
+        key_name="C", graph_style="functional_major", rng=rng
+    )
+
+    calls = []
+    original = hs._calculate_nir_score
+
+    def spy(
+        source: subsequence.chords.Chord, target: subsequence.chords.Chord
+    ) -> float:
+        calls.append((list(hs.history), source))
+        return original(source, target)
+
+    hs._calculate_nir_score = spy  # type: ignore[method-assign]
+
+    for _ in range(30):
+        hs.step()
+
+    distinct = [
+        1 for history, source in calls if len(history) >= 2 and history[-2] != source
+    ]
+
+    assert distinct, (
+        "scorer never saw a previous chord distinct from the source - implication rules are inert"
+    )

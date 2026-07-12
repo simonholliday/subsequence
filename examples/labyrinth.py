@@ -128,8 +128,12 @@ composition = subsequence.Composition(bpm=TEMPO, key=SCALE_ROOT)
 #               increasing probability.  Mirrors Labyrinth CORRUPT above
 #               12 o'clock (BIT FLIP territory).
 # Labyrinth range: 0.0–1.0 (fully CCW to fully CW).
-composition.conductor.lfo("SEQ1_CORRUPT", shape="triangle", cycle_beats=48, min_val=0.0, max_val=0.55)
-composition.conductor.lfo("SEQ2_CORRUPT", shape="sine",     cycle_beats=32, min_val=0.0, max_val=0.45)
+composition.conductor.lfo(
+    "SEQ1_CORRUPT", shape="triangle", cycle_beats=48, min_val=0.0, max_val=0.55
+)
+composition.conductor.lfo(
+    "SEQ2_CORRUPT", shape="sine", cycle_beats=32, min_val=0.0, max_val=0.45
+)
 
 # EG_TRIG_MIX: Velocity crossfader between SEQ1 and SEQ2 (0.0–1.0).
 # Maps directly to the Labyrinth's EG TRIG MIX panel knob:
@@ -137,7 +141,9 @@ composition.conductor.lfo("SEQ2_CORRUPT", shape="sine",     cycle_beats=32, min_
 #   0.5 = both sequences at equal velocity.
 #   1.0 = SEQ2 at full velocity; SEQ1 output is suppressed.
 # Labyrinth range: 0.0–1.0 (fully CCW to fully CW).
-composition.conductor.lfo("EG_TRIG_MIX", shape="triangle", cycle_beats=64, min_val=0.2, max_val=0.8)
+composition.conductor.lfo(
+    "EG_TRIG_MIX", shape="triangle", cycle_beats=64, min_val=0.2, max_val=0.8
+)
 
 
 # ─── PHYSICAL CONTROLLER MAPPING (OPTIONAL) ───────────────────────────────────
@@ -177,159 +183,158 @@ composition.conductor.lfo("EG_TRIG_MIX", shape="triangle", cycle_beats=64, min_v
 # then clip the pool so that lower values compress pitch content toward the root,
 # faithfully replicating the Labyrinth's CV RANGE attenuator before its quantizer.
 
-def _build_pitch_pool (root, mode, cv_range, base_octave=3):
-	"""Build the list of MIDI note numbers available to a sequencer.
 
-	This replicates the Labyrinth's internal quantizer: random CV voltages are
-	snapped to the nearest note in the chosen scale.  The CV RANGE attenuator
-	then compresses the available range toward the root - lower values mean
-	fewer pitches to choose from, so melodies stay closer to home.
-	"""
+def _build_pitch_pool(root, mode, cv_range, base_octave=3):
+    """Build the list of MIDI note numbers available to a sequencer.
 
-	# Convert the root note name ("C", "F#", etc.) to a pitch class number
-	# (0 = C, 1 = C#, 2 = D, ... 11 = B).
-	root_pc = subsequence.chords.key_name_to_pc(root)
+    This replicates the Labyrinth's internal quantizer: random CV voltages are
+    snapped to the nearest note in the chosen scale.  The CV RANGE attenuator
+    then compresses the available range toward the root - lower values mean
+    fewer pitches to choose from, so melodies stay closer to home.
+    """
 
-	# Get the pitch classes that belong to this scale.  For example,
-	# C minor pentatonic → [0, 3, 5, 7, 10] (the notes C, Eb, F, G, Bb).
-	# If no scale is selected, use all 12 chromatic semitones.
-	if mode is None:
-		scale_notes = list(range(12))
-	else:
-		scale_notes = subsequence.intervals.scale_pitch_classes(root_pc, mode)
+    # Convert the root note name ("C", "F#", etc.) to a pitch class number
+    # (0 = C, 1 = C#, 2 = D, ... 11 = B).
+    root_pc = subsequence.chords.key_name_to_pc(root)
 
-	# Convert pitch classes to actual MIDI note numbers across two octaves.
-	# MIDI note formula: note = 12 × (octave + 1) + pitch_class.
-	# For example, C4 = 12 × 5 + 0 = 60.
-	base_midi = 12 * (base_octave + 1) + root_pc
-	pitches = []
-	for octave_offset in range(2):
-		for pc in scale_notes:
-			midi = base_midi + octave_offset * 12 + (pc - root_pc) % 12
-			if 0 <= midi <= 127:
-				pitches.append(midi)
+    # Get the pitch classes that belong to this scale.  For example,
+    # C minor pentatonic → [0, 3, 5, 7, 10] (the notes C, Eb, F, G, Bb).
+    # If no scale is selected, use all 12 chromatic semitones.
+    if mode is None:
+        scale_notes = list(range(12))
+    else:
+        scale_notes = subsequence.intervals.scale_pitch_classes(root_pc, mode)
 
-	# Remove any duplicates and sort low to high.
-	pitches = sorted(set(pitches))
+    # Convert pitch classes to actual MIDI note numbers across two octaves.
+    # MIDI note formula: note = 12 × (octave + 1) + pitch_class.
+    # For example, C4 = 12 × 5 + 0 = 60.
+    base_midi = 12 * (base_octave + 1) + root_pc
+    pitches = []
+    for octave_offset in range(2):
+        for pc in scale_notes:
+            midi = base_midi + octave_offset * 12 + (pc - root_pc) % 12
+            if 0 <= midi <= 127:
+                pitches.append(midi)
 
-	# CV_RANGE clips the pool: 1.0 = full range, 0.0 = root pitch only.
-	n = max(1, round(len(pitches) * cv_range))
-	return pitches[:n]
+    # Remove any duplicates and sort low to high.
+    pitches = sorted(set(pitches))
+
+    # CV_RANGE clips the pool: 1.0 = full range, 0.0 = root pitch only.
+    n = max(1, round(len(pitches) * cv_range))
+    return pitches[:n]
 
 
-SEQ1_PITCHES = _build_pitch_pool(SCALE_ROOT, SCALE_MODE, SEQ1_CV_RANGE, base_octave=SEQ1_OCTAVE)
-SEQ2_PITCHES = _build_pitch_pool(SCALE_ROOT, SCALE_MODE, SEQ2_CV_RANGE, base_octave=SEQ2_OCTAVE)
+SEQ1_PITCHES = _build_pitch_pool(
+    SCALE_ROOT, SCALE_MODE, SEQ1_CV_RANGE, base_octave=SEQ1_OCTAVE
+)
+SEQ2_PITCHES = _build_pitch_pool(
+    SCALE_ROOT, SCALE_MODE, SEQ2_CV_RANGE, base_octave=SEQ2_OCTAVE
+)
 
 
 # ─── SEQUENCER PATTERNS ───────────────────────────────────────────────────────
 
 if CHAIN_SEQ:
+    # CHAIN SEQ mode: SEQ1 and SEQ2 run as one longer loop.
+    # Merge both pitch pools into one combined set (removing duplicates).
+    CHAINED_PITCHES = sorted(set(SEQ1_PITCHES + SEQ2_PITCHES))
 
-	# CHAIN SEQ mode: SEQ1 and SEQ2 run as one longer loop.
-	# Merge both pitch pools into one combined set (removing duplicates).
-	CHAINED_PITCHES = sorted(set(SEQ1_PITCHES + SEQ2_PITCHES))
+    @composition.pattern(
+        channel=CHANNEL, steps=SEQ1_LENGTH + SEQ2_LENGTH, step_duration=SEQ1_UNIT
+    )
+    def chained(p):
+        corrupt = p.signal("SEQ1_CORRUPT")
+        trig_mix = p.signal("EG_TRIG_MIX")
 
-	@composition.pattern(channel=CHANNEL, steps=SEQ1_LENGTH + SEQ2_LENGTH, step_duration=SEQ1_UNIT)
-	def chained (p):
+        # In chained mode, velocity is loudest at the extremes of the crossfader
+        # and quietest at centre (where the two sequences would cancel out).
+        vel_ceiling = round(110 * (0.5 + abs(trig_mix - 0.5)))
 
-		corrupt  = p.signal("SEQ1_CORRUPT")
-		trig_mix = p.signal("EG_TRIG_MIX")
+        # Rhythm mutation: CORRUPT above 0.5 starts suppressing steps.
+        rhythm_dropout = max(0.0, (corrupt - 0.5) * 2.0)
 
-		# In chained mode, velocity is loudest at the extremes of the crossfader
-		# and quietest at centre (where the two sequences would cancel out).
-		vel_ceiling = round(110 * (0.5 + abs(trig_mix - 0.5)))
+        for step in range(SEQ1_LENGTH + SEQ2_LENGTH):
+            if p.rng.random() < rhythm_dropout:
+                continue
 
-		# Rhythm mutation: CORRUPT above 0.5 starts suppressing steps.
-		rhythm_dropout = max(0.0, (corrupt - 0.5) * 2.0)
+            pitch = p.rng.choice(CHAINED_PITCHES)
 
-		for step in range(SEQ1_LENGTH + SEQ2_LENGTH):
+            # Pitch mutation: CORRUPT below 0.5 drifts pitch within the pool.
+            if corrupt > 0.0 and p.rng.random() < corrupt * 0.8:
+                pitch = p.rng.choice(CHAINED_PITCHES)
 
-			if p.rng.random() < rhythm_dropout:
-				continue
-
-			pitch = p.rng.choice(CHAINED_PITCHES)
-
-			# Pitch mutation: CORRUPT below 0.5 drifts pitch within the pool.
-			if corrupt > 0.0 and p.rng.random() < corrupt * 0.8:
-				pitch = p.rng.choice(CHAINED_PITCHES)
-
-			vel = round(p.rng.uniform(0.65, 1.0) * vel_ceiling)
-			p.hit_steps(pitch, [step], velocity=max(1, vel), duration=SEQ1_UNIT * 0.85)
+            vel = round(p.rng.uniform(0.65, 1.0) * vel_ceiling)
+            p.hit_steps(pitch, [step], velocity=max(1, vel), duration=SEQ1_UNIT * 0.85)
 
 else:
+    # Independent polymetric mode: SEQ1 and SEQ2 run on separate cycle lengths.
+    # With SEQ1_LENGTH=7 and SEQ2_LENGTH=5 using EIGHTH notes, the full pattern
+    # repeats every LCM(7,5)=35 eighth notes (8.75 bars at 4/4).
 
-	# Independent polymetric mode: SEQ1 and SEQ2 run on separate cycle lengths.
-	# With SEQ1_LENGTH=7 and SEQ2_LENGTH=5 using EIGHTH notes, the full pattern
-	# repeats every LCM(7,5)=35 eighth notes (8.75 bars at 4/4).
+    @composition.pattern(channel=CHANNEL, steps=SEQ1_LENGTH, step_duration=SEQ1_UNIT)
+    def seq1(p):
+        # Read the current value of each Conductor LFO signal.
+        # These change slowly over time (see the LFO definitions above).
+        corrupt = p.signal("SEQ1_CORRUPT")  # 0.0–0.55, sweeping
+        trig_mix = p.signal("EG_TRIG_MIX")  # 0.2–0.8, sweeping
 
-	@composition.pattern(channel=CHANNEL, steps=SEQ1_LENGTH, step_duration=SEQ1_UNIT)
-	def seq1 (p):
+        # EG_TRIG_MIX: fully left (0.0) = SEQ1 loud; fully right (1.0) = SEQ1 quiet.
+        vel_ceiling = round(110 * (1.0 - trig_mix))
 
-		# Read the current value of each Conductor LFO signal.
-		# These change slowly over time (see the LFO definitions above).
-		corrupt  = p.signal("SEQ1_CORRUPT")   # 0.0–0.55, sweeping
-		trig_mix = p.signal("EG_TRIG_MIX")    # 0.2–0.8, sweeping
+        # Rhythm mutation kicks in above CORRUPT 0.5 (BIT FLIP territory).
+        # Scale 0.5–1.0 into 0.0–1.0 so it ramps from "no dropout" to "all dropout".
+        rhythm_dropout = max(0.0, (corrupt - 0.5) * 2.0)
 
-		# EG_TRIG_MIX: fully left (0.0) = SEQ1 loud; fully right (1.0) = SEQ1 quiet.
-		vel_ceiling = round(110 * (1.0 - trig_mix))
+        for step in range(SEQ1_LENGTH):
+            # p.rng is this pattern's random number generator (seeded for
+            # reproducibility).  p.rng.random() returns a float between 0.0 and 1.0.
+            # If that value falls below the dropout probability, this step is skipped.
+            if p.rng.random() < rhythm_dropout:
+                continue  # This step's bit is suppressed this cycle.
 
-		# Rhythm mutation kicks in above CORRUPT 0.5 (BIT FLIP territory).
-		# Scale 0.5–1.0 into 0.0–1.0 so it ramps from "no dropout" to "all dropout".
-		rhythm_dropout = max(0.0, (corrupt - 0.5) * 2.0)
+            # Pick a random pitch from the quantized pool for this step.
+            pitch = p.rng.choice(SEQ1_PITCHES)
 
-		for step in range(SEQ1_LENGTH):
+            # Pitch mutation: the higher the CORRUPT value, the more likely
+            # the original pitch gets swapped for a different one from the pool.
+            if corrupt > 0.0 and p.rng.random() < corrupt * 0.8:
+                pitch = p.rng.choice(SEQ1_PITCHES)
 
-			# p.rng is this pattern's random number generator (seeded for
-			# reproducibility).  p.rng.random() returns a float between 0.0 and 1.0.
-			# If that value falls below the dropout probability, this step is skipped.
-			if p.rng.random() < rhythm_dropout:
-				continue  # This step's bit is suppressed this cycle.
+            # Random velocity between 65% and 100% of the ceiling, for humanisation.
+            vel = round(p.rng.uniform(0.65, 1.0) * vel_ceiling)
+            p.hit_steps(pitch, [step], velocity=max(1, vel), duration=SEQ1_UNIT * 0.85)
 
-			# Pick a random pitch from the quantized pool for this step.
-			pitch = p.rng.choice(SEQ1_PITCHES)
+    @composition.pattern(channel=CHANNEL, steps=SEQ2_LENGTH, step_duration=SEQ2_UNIT)
+    def seq2(p):
+        """SEQ2: mirrors SEQ1 logic (see comments there) but reads SEQ2_CORRUPT
+        and uses the opposite trig_mix polarity - SEQ2 is loudest when the
+        crossfader is fully right (1.0)."""
 
-			# Pitch mutation: the higher the CORRUPT value, the more likely
-			# the original pitch gets swapped for a different one from the pool.
-			if corrupt > 0.0 and p.rng.random() < corrupt * 0.8:
-				pitch = p.rng.choice(SEQ1_PITCHES)
+        corrupt = p.signal("SEQ2_CORRUPT")
+        trig_mix = p.signal("EG_TRIG_MIX")
 
-			# Random velocity between 65% and 100% of the ceiling, for humanisation.
-			vel = round(p.rng.uniform(0.65, 1.0) * vel_ceiling)
-			p.hit_steps(pitch, [step], velocity=max(1, vel), duration=SEQ1_UNIT * 0.85)
+        # EG_TRIG_MIX: SEQ2 is loud when the crossfader is fully right (1.0).
+        # This is the inverse of SEQ1's formula (1.0 - trig_mix).
+        vel_ceiling = round(110 * trig_mix)
 
-	@composition.pattern(channel=CHANNEL, steps=SEQ2_LENGTH, step_duration=SEQ2_UNIT)
-	def seq2 (p):
-		"""SEQ2: mirrors SEQ1 logic (see comments there) but reads SEQ2_CORRUPT
-		and uses the opposite trig_mix polarity - SEQ2 is loudest when the
-		crossfader is fully right (1.0)."""
+        # Rhythm dropout: same logic as SEQ1 - CORRUPT above 0.5 starts
+        # suppressing steps.
+        rhythm_dropout = max(0.0, (corrupt - 0.5) * 2.0)
 
-		corrupt  = p.signal("SEQ2_CORRUPT")
-		trig_mix = p.signal("EG_TRIG_MIX")
+        for step in range(SEQ2_LENGTH):
+            if p.rng.random() < rhythm_dropout:
+                continue
 
-		# EG_TRIG_MIX: SEQ2 is loud when the crossfader is fully right (1.0).
-		# This is the inverse of SEQ1's formula (1.0 - trig_mix).
-		vel_ceiling = round(110 * trig_mix)
+            pitch = p.rng.choice(SEQ2_PITCHES)
 
-		# Rhythm dropout: same logic as SEQ1 - CORRUPT above 0.5 starts
-		# suppressing steps.
-		rhythm_dropout = max(0.0, (corrupt - 0.5) * 2.0)
+            if corrupt > 0.0 and p.rng.random() < corrupt * 0.8:
+                pitch = p.rng.choice(SEQ2_PITCHES)
 
-		for step in range(SEQ2_LENGTH):
-
-			if p.rng.random() < rhythm_dropout:
-				continue
-
-			pitch = p.rng.choice(SEQ2_PITCHES)
-
-			if corrupt > 0.0 and p.rng.random() < corrupt * 0.8:
-				pitch = p.rng.choice(SEQ2_PITCHES)
-
-			vel = round(p.rng.uniform(0.65, 1.0) * vel_ceiling)
-			p.hit_steps(pitch, [step], velocity=max(1, vel), duration=SEQ2_UNIT * 0.85)
+            vel = round(p.rng.uniform(0.65, 1.0) * vel_ceiling)
+            p.hit_steps(pitch, [step], velocity=max(1, vel), duration=SEQ2_UNIT * 0.85)
 
 
 if __name__ == "__main__":
-
-	composition.display(grid=True, grid_scale=4)
-	composition.web_ui()
-	composition.play()
+    composition.display(grid=True, grid_scale=4)
+    composition.web_ui()
+    composition.play()

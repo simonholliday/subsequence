@@ -12,7 +12,7 @@ import sys
 import typing
 
 # Add the path so we can import subsequence
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import subsequence
 import subsequence.chords
@@ -31,271 +31,261 @@ import subsequence.sequence_utils
 import subsequence.tuning
 
 classes_to_document: typing.List[typing.Type] = [
-	subsequence.composition.Composition,
-	subsequence.pattern_builder.PatternBuilder,
-	subsequence.groove.Groove,
-	subsequence.melodic_state.MelodicState,
-	subsequence.tuning.Tuning,
-	subsequence.chords.Chord,
-	subsequence.progressions.Progression,
-	subsequence.progressions.ChordSpan,
-	subsequence.progressions.PitchSet,
-	subsequence.motifs.Motif,
-	subsequence.motifs.Phrase,
-	subsequence.forms.Section,
-	subsequence.forms.Form,
+    subsequence.composition.Composition,
+    subsequence.pattern_builder.PatternBuilder,
+    subsequence.groove.Groove,
+    subsequence.melodic_state.MelodicState,
+    subsequence.tuning.Tuning,
+    subsequence.chords.Chord,
+    subsequence.progressions.Progression,
+    subsequence.progressions.ChordSpan,
+    subsequence.progressions.PitchSet,
+    subsequence.motifs.Motif,
+    subsequence.motifs.Phrase,
+    subsequence.forms.Section,
+    subsequence.forms.Form,
 ]
 
 functions_to_document: typing.List[typing.Callable] = [
-	subsequence.intervals.register_scale,
-	subsequence.intervals.scale_notes,
-	subsequence.midi_utils.bank_select,
-	subsequence.harmonic_rhythm.between,
-	subsequence.chords.parse_chord,
-	subsequence.chords.register_chord_quality,
-	subsequence.progressions.progression,
-	subsequence.motifs.motif,
-	subsequence.motifs.sentence,
-	subsequence.motifs.period,
-	subsequence.cadences.cadence_formula,
-	subsequence.sequence_utils.vl_distance,
-	subsequence.sequence_utils.branch_sequence,
-	subsequence.sequence_utils.build_metric_weights,
-	subsequence.sequence_utils.sieve,
-	subsequence.sequence_utils.residual_class,
-	subsequence.sequence_utils.rhythmic_evenness,
-	subsequence.sequence_utils.offbeatness,
-	subsequence.sequence_utils.syncopation,
+    subsequence.intervals.register_scale,
+    subsequence.intervals.scale_notes,
+    subsequence.midi_utils.bank_select,
+    subsequence.harmonic_rhythm.between,
+    subsequence.chords.parse_chord,
+    subsequence.chords.register_chord_quality,
+    subsequence.progressions.progression,
+    subsequence.motifs.motif,
+    subsequence.motifs.sentence,
+    subsequence.motifs.period,
+    subsequence.cadences.cadence_formula,
+    subsequence.sequence_utils.vl_distance,
+    subsequence.sequence_utils.branch_sequence,
+    subsequence.sequence_utils.build_metric_weights,
+    subsequence.sequence_utils.sieve,
+    subsequence.sequence_utils.residual_class,
+    subsequence.sequence_utils.rhythmic_evenness,
+    subsequence.sequence_utils.offbeatness,
+    subsequence.sequence_utils.syncopation,
 ]
 
 
-def get_first_line (doc: typing.Optional[str]) -> str:
+def get_first_line(doc: typing.Optional[str]) -> str:
+    """Extract the first paragraph from a docstring, handling indentation and word-wrap."""
 
-	"""Extract the first paragraph from a docstring, handling indentation and word-wrap."""
+    if not doc:
+        return ""
 
-	if not doc:
-		return ""
+    paragraphs = re.split(r"\n\s*\n", doc.strip())
 
-	paragraphs = re.split(r'\n\s*\n', doc.strip())
+    if not paragraphs:
+        return ""
 
-	if not paragraphs:
-		return ""
+    first_para = paragraphs[0]
+    first_para = first_para.replace("\n", " ")
+    first_para = re.sub(r"\s+", " ", first_para)
 
-	first_para = paragraphs[0]
-	first_para = first_para.replace('\n', ' ')
-	first_para = re.sub(r'\s+', ' ', first_para)
+    return re.sub(r"^[\s*`-]*", "", first_para).strip()
 
-	return re.sub(r'^[\s*`-]*', '', first_para).strip()
 
+def format_signature(sig: inspect.Signature) -> str:
+    """Format a signature by removing 'self' and type annotations for a cleaner cheat sheet."""
 
-def format_signature (sig: inspect.Signature) -> str:
+    s = str(sig)
+    ret_part = ""
 
-	"""Format a signature by removing 'self' and type annotations for a cleaner cheat sheet."""
+    if ") -> " in s:
+        # Find the last ") -> " which separates params from return type
+        ret_part = s[s.rfind(") -> ") + 1 :]
+        # Forward-reference annotations ("PatternBuilder") render with their
+        # quote characters — strip them so the sheet shows `-> Groove`, not
+        # the confusing `-> "'Groove'"`.
+        ret_part = ret_part.replace('"', "").replace("'", "")
 
-	s = str(sig)
-	ret_part = ""
+    params = []
 
-	if ") -> " in s:
-		# Find the last ") -> " which separates params from return type
-		ret_part = s[s.rfind(") -> ") + 1:]
-		# Forward-reference annotations ("PatternBuilder") render with their
-		# quote characters — strip them so the sheet shows `-> Groove`, not
-		# the confusing `-> "'Groove'"`.
-		ret_part = ret_part.replace('"', '').replace("'", "")
+    for name, param in sig.parameters.items():
+        if name == "self":
+            continue
 
-	params = []
+        if param.kind == inspect.Parameter.VAR_POSITIONAL:
+            params.append(f"*{name}")
 
-	for name, param in sig.parameters.items():
+        elif param.kind == inspect.Parameter.VAR_KEYWORD:
+            params.append(f"**{name}")
 
-		if name == 'self':
-			continue
+        else:
+            params.append(name)
 
-		if param.kind == inspect.Parameter.VAR_POSITIONAL:
-			params.append(f"*{name}")
+    return f"({', '.join(params)}){ret_part}"
 
-		elif param.kind == inspect.Parameter.VAR_KEYWORD:
-			params.append(f"**{name}")
 
-		else:
-			params.append(name)
+def escape_md(text: str) -> str:
+    """Escape characters that might break Markdown table formatting."""
 
-	return f"({', '.join(params)}){ret_part}"
+    return text.replace("|", "\\|").replace("\n", " ")
 
 
-def escape_md (text: str) -> str:
+def is_public_method(name: str, member: typing.Any) -> bool:
+    """Determine if a class member should be included in the public API documentation."""
 
-	"""Escape characters that might break Markdown table formatting."""
+    if name.startswith("_"):
+        if name != "__init__":
+            return False
 
-	return text.replace('|', '\\|').replace('\n', ' ')
+    return (
+        inspect.isfunction(member)
+        or isinstance(member, property)
+        or inspect.ismethod(member)
+    )
 
 
-def is_public_method (name: str, member: typing.Any) -> bool:
+def generate_markdown() -> str:
+    """Iterate through the public API surface and generate a Markdown cheat sheet."""
 
-	"""Determine if a class member should be included in the public API documentation."""
+    output = ["# Subsequence API Cheat Sheet\n"]
+    output.append(
+        "This document provides a quick overview of the public classes, methods, and functions available in the Subsequence API.\n"
+    )
 
-	if name.startswith('_'):
+    # The package-level inventory first — everything importable directly from
+    # `subsequence`, read from the live package so this table cannot go stale.
+    # (The per-class sections below cover the big classes in detail; several
+    # smaller exports appear ONLY here.)
+    output.append("## Package-level exports\n")
+    output.append("Everything importable as `subsequence.X`:\n")
+    output.append("| Export | Kind | Description |")
+    output.append("|---|---|---|")
 
-		if name != '__init__':
-			return False
+    for name in sorted(dir(subsequence)):
+        if name.startswith("_"):
+            continue
 
-	return inspect.isfunction(member) or isinstance(member, property) or inspect.ismethod(member)
+        member = getattr(subsequence, name)
 
+        if inspect.ismodule(member):
+            continue
 
-def generate_markdown () -> str:
+        if inspect.isclass(member):
+            kind = "class"
+        elif callable(member):
+            kind = "function"
+        else:
+            kind = "value"
 
-	"""Iterate through the public API surface and generate a Markdown cheat sheet."""
+        desc = get_first_line(getattr(member, "__doc__", None))
+        output.append(f"| `{name}` | {kind} | {escape_md(desc)} |")
 
-	output = ["# Subsequence API Cheat Sheet\n"]
-	output.append("This document provides a quick overview of the public classes, methods, and functions available in the Subsequence API.\n")
+    output.append("\n")
 
-	# The package-level inventory first — everything importable directly from
-	# `subsequence`, read from the live package so this table cannot go stale.
-	# (The per-class sections below cover the big classes in detail; several
-	# smaller exports appear ONLY here.)
-	output.append("## Package-level exports\n")
-	output.append("Everything importable as `subsequence.X`:\n")
-	output.append("| Export | Kind | Description |")
-	output.append("|---|---|---|")
+    for cls in classes_to_document:
+        output.append(f"## `{cls.__name__}`\n")
+        doc = get_first_line(cls.__doc__)
 
-	for name in sorted(dir(subsequence)):
+        if doc:
+            output.append(f"{doc}\n")
 
-		if name.startswith('_'):
-			continue
+        output.append("| Method | Description |")
+        output.append("|---|---|")
 
-		member = getattr(subsequence, name)
+        # Get public methods
+        methods = []
 
-		if inspect.ismodule(member):
-			continue
+        for name, member in inspect.getmembers(cls):
+            if is_public_method(name, member):
+                methods.append((name, member))
 
-		if inspect.isclass(member):
-			kind = "class"
-		elif callable(member):
-			kind = "function"
-		else:
-			kind = "value"
+        methods.sort(key=lambda x: x[0])
 
-		desc = get_first_line(getattr(member, '__doc__', None))
-		output.append(f"| `{name}` | {kind} | {escape_md(desc)} |")
+        for name, member in methods:
+            try:
+                if isinstance(member, property):
+                    signature = " *(property)*"
+                    desc = get_first_line(member.__doc__)
 
-	output.append("\n")
+                else:
+                    try:
+                        sig = inspect.signature(member)
+                        signature = format_signature(sig)
 
-	for cls in classes_to_document:
+                    except ValueError:
+                        signature = "(...)"
 
-		output.append(f"## `{cls.__name__}`\n")
-		doc = get_first_line(cls.__doc__)
+                    desc = get_first_line(member.__doc__)
 
-		if doc:
-			output.append(f"{doc}\n")
+                code_col = f"`{name}{signature}`"
 
-		output.append("| Method | Description |")
-		output.append("|---|---|")
+                # escape pipes if any
+                code_col = escape_md(code_col)
+                desc_md = escape_md(desc)
 
-		# Get public methods
-		methods = []
+                output.append(f"| {code_col} | {desc_md} |")
 
-		for name, member in inspect.getmembers(cls):
+            except Exception:
+                # Fallback if something fails
+                output.append(f"| `{name}` | Error formatting |")
 
-			if is_public_method(name, member):
-				methods.append((name, member))
+        output.append("\n")
 
-		methods.sort(key=lambda x: x[0])
+    output.append("## Global Functions\n\n")
+    output.append("| Function | Description |")
+    output.append("|---|---|")
 
-		for name, member in methods:
+    for func in functions_to_document:
+        name = func.__name__
 
-			try:
-				if isinstance(member, property):
-					signature = " *(property)*"
-					desc = get_first_line(member.__doc__)
+        try:
+            sig = inspect.signature(func)
+            signature = format_signature(sig)
 
-				else:
+        except Exception:
+            signature = "(...)"
 
-					try:
-						sig = inspect.signature(member)
-						signature = format_signature(sig)
+        desc = get_first_line(func.__doc__)
 
-					except ValueError:
-						signature = "(...)"
+        code_col = f"`{name}{signature}`"
+        output.append(f"| {escape_md(code_col)} | {escape_md(desc)} |")
 
-					desc = get_first_line(member.__doc__)
+    output.append("\n## Sequence Utilities (`subsequence.sequence_utils`)\n\n")
+    output.append("Functions for generating and transforming sequences.\n\n")
+    output.append("| Function | Description |")
+    output.append("|---|---|")
 
-				code_col = f"`{name}{signature}`"
+    seq_funcs = []
 
-				# escape pipes if any
-				code_col = escape_md(code_col)
-				desc_md = escape_md(desc)
+    for name, member in inspect.getmembers(subsequence.sequence_utils):
+        if is_public_method(name, member):
+            seq_funcs.append((name, member))
 
-				output.append(f"| {code_col} | {desc_md} |")
+    seq_funcs.sort(key=lambda x: x[0])
 
-			except Exception:
-				# Fallback if something fails
-				output.append(f"| `{name}` | Error formatting |")
+    for name, func in seq_funcs:
+        # Ignore imported modules like typing, math, random, etc.
 
-		output.append("\n")
+        if func.__module__ != "subsequence.sequence_utils":
+            continue
 
-	output.append("## Global Functions\n\n")
-	output.append("| Function | Description |")
-	output.append("|---|---|")
+        try:
+            sig = inspect.signature(func)
+            signature = format_signature(sig)
 
-	for func in functions_to_document:
+        except Exception:
+            signature = "(...)"
 
-		name = func.__name__
+        desc = get_first_line(func.__doc__)
 
-		try:
-			sig = inspect.signature(func)
-			signature = format_signature(sig)
+        code_col = f"`{name}{signature}`"
+        output.append(f"| {escape_md(code_col)} | {escape_md(desc)} |")
 
-		except Exception:
-			signature = "(...)"
-
-		desc = get_first_line(func.__doc__)
-
-		code_col = f"`{name}{signature}`"
-		output.append(f"| {escape_md(code_col)} | {escape_md(desc)} |")
-
-	output.append("\n## Sequence Utilities (`subsequence.sequence_utils`)\n\n")
-	output.append("Functions for generating and transforming sequences.\n\n")
-	output.append("| Function | Description |")
-	output.append("|---|---|")
-
-	seq_funcs = []
-
-	for name, member in inspect.getmembers(subsequence.sequence_utils):
-
-		if is_public_method(name, member):
-			seq_funcs.append((name, member))
-
-	seq_funcs.sort(key=lambda x: x[0])
-
-	for name, func in seq_funcs:
-		# Ignore imported modules like typing, math, random, etc.
-
-		if func.__module__ != 'subsequence.sequence_utils':
-			continue
-
-		try:
-			sig = inspect.signature(func)
-			signature = format_signature(sig)
-
-		except Exception:
-			signature = "(...)"
-
-		desc = get_first_line(func.__doc__)
-
-		code_col = f"`{name}{signature}`"
-		output.append(f"| {escape_md(code_col)} | {escape_md(desc)} |")
-
-	return "\n".join(output)
+    return "\n".join(output)
 
 
 if __name__ == "__main__":
+    md_content = generate_markdown()
 
-	md_content = generate_markdown()
+    docs_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    output_path = os.path.join(docs_dir, "api-cheatsheet.md")
 
-	docs_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-	output_path = os.path.join(docs_dir, 'api-cheatsheet.md')
+    with open(output_path, "w") as f:
+        f.write(md_content)
 
-	with open(output_path, 'w') as f:
-		f.write(md_content)
-
-	print(f"Generated cheatsheet at {output_path}")
-
+    print(f"Generated cheatsheet at {output_path}")

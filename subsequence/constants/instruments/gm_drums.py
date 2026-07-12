@@ -48,6 +48,6 @@ from pymididefs.drums import *  # noqa: F401,F403
 # assignment deliberately specialises the spec map re-exported by ``import *``
 # above (hence the no-redef suppression).
 GM_DRUM_MAP: typing.Dict[str, int] = {  # type: ignore[no-redef]
-	**pymididefs.drums.GM_DRUM_MAP,
-	**pymididefs.drums.GM_DRUM_PRIMARY_ALIASES,
+    **pymididefs.drums.GM_DRUM_MAP,
+    **pymididefs.drums.GM_DRUM_PRIMARY_ALIASES,
 }

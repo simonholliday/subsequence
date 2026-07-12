@@ -28,86 +28,86 @@ import typing
 
 @dataclasses.dataclass(frozen=True)
 class Cadence:
+    """One cadence formula — a named tail plus its melodic close.
 
-	"""One cadence formula — a named tail plus its melodic close.
+    Attributes:
+            name: The producer name (the primary key in the table).
+            theory_name: The traditional name, for the curious.
+            formula: The chord tail, in progression-element grammar, ending on
+                    the arrival chord.
+            close_degree: The scale degree a melody lands on at this cadence
+                    (1 for full closes; 5 for the open half — and 1 for the
+                    fakeout too: the melody resolves as promised while the
+                    harmony swerves, which is the trick of it).
+    """
 
-	Attributes:
-		name: The producer name (the primary key in the table).
-		theory_name: The traditional name, for the curious.
-		formula: The chord tail, in progression-element grammar, ending on
-			the arrival chord.
-		close_degree: The scale degree a melody lands on at this cadence
-			(1 for full closes; 5 for the open half — and 1 for the
-			fakeout too: the melody resolves as promised while the
-			harmony swerves, which is the trick of it).
-	"""
-
-	name: str
-	theory_name: str
-	formula: typing.Tuple[typing.Any, ...]
-	close_degree: int
+    name: str
+    theory_name: str
+    formula: typing.Tuple[typing.Any, ...]
+    close_degree: int
 
 
 # The curated table — producer names primary.  Two-chord tails throughout:
 # a cadence is an arrival WITH its approach, and two chords is the smallest
 # honest spelling of that.
 CADENCES: typing.Dict[str, Cadence] = {
-	"strong": Cadence(
-		name = "strong",
-		theory_name = "authentic",
-		formula = ("V", 1),
-		close_degree = 1,
-	),
-	"soft": Cadence(
-		name = "soft",
-		theory_name = "plagal",
-		formula = (4, 1),
-		close_degree = 1,
-	),
-	"open": Cadence(
-		name = "open",
-		theory_name = "half",
-		formula = (4, "V"),
-		close_degree = 5,
-	),
-	"fakeout": Cadence(
-		name = "fakeout",
-		theory_name = "deceptive",
-		formula = ("V", 6),
-		close_degree = 1,
-	),
+    "strong": Cadence(
+        name="strong",
+        theory_name="authentic",
+        formula=("V", 1),
+        close_degree=1,
+    ),
+    "soft": Cadence(
+        name="soft",
+        theory_name="plagal",
+        formula=(4, 1),
+        close_degree=1,
+    ),
+    "open": Cadence(
+        name="open",
+        theory_name="half",
+        formula=(4, "V"),
+        close_degree=5,
+    ),
+    "fakeout": Cadence(
+        name="fakeout",
+        theory_name="deceptive",
+        formula=("V", 6),
+        close_degree=1,
+    ),
 }
 
 # Theory names as aliases — accuracy costs nothing here, the words name the
 # same formulas.
 _ALIASES: typing.Dict[str, str] = {
-	"authentic": "strong",
-	"perfect": "strong",
-	"plagal": "soft",
-	"half": "open",
-	"deceptive": "fakeout",
-	"interrupted": "fakeout",
+    "authentic": "strong",
+    "perfect": "strong",
+    "plagal": "soft",
+    "half": "open",
+    "deceptive": "fakeout",
+    "interrupted": "fakeout",
 }
 
 
-def cadence_formula (name: str) -> Cadence:
+def cadence_formula(name: str) -> Cadence:
+    """Look up a cadence by producer name or theory alias, loudly.
 
-	"""Look up a cadence by producer name or theory alias, loudly.
+    Raises:
+            ValueError: If the name is unknown — the error lists every valid
+                    name and alias.
+    """
 
-	Raises:
-		ValueError: If the name is unknown — the error lists every valid
-			name and alias.
-	"""
+    if not isinstance(name, str):
+        raise TypeError(f"a cadence is named by string, got {name!r}")
 
-	if not isinstance(name, str):
-		raise TypeError(f"a cadence is named by string, got {name!r}")
+    key = name.strip().lower()
+    key = _ALIASES.get(key, key)
 
-	key = name.strip().lower()
-	key = _ALIASES.get(key, key)
+    if key not in CADENCES:
+        names = ", ".join(sorted(CADENCES))
+        aliases = ", ".join(sorted(_ALIASES))
+        raise ValueError(
+            f"Unknown cadence {name!r}. Cadences: {names} (aliases: {aliases})."
+        )
 
-	if key not in CADENCES:
-		names = ", ".join(sorted(CADENCES))
-		aliases = ", ".join(sorted(_ALIASES))
-		raise ValueError(f"Unknown cadence {name!r}. Cadences: {names} (aliases: {aliases}).")
-
-	return CADENCES[key]
+    return CADENCES[key]

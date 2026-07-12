@@ -75,4 +75,9 @@ module = "rtmidi.*"
 ignore_missing_imports = true
 
 [tool.setuptools_scm]
+
+[dependency-groups]
+dev = [
+    "invoke>=3.0.3",
+]
 # Enable setuptools_scm to derive version from git tags

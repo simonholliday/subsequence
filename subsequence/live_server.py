@@ -24,7 +24,7 @@ import traceback
 import typing
 
 if typing.TYPE_CHECKING:
-	from subsequence.composition import Composition
+    from subsequence.composition import Composition
 
 
 logger = logging.getLogger(__name__)
@@ -33,129 +33,119 @@ SENTINEL = b"\x04"
 
 
 class LiveServer:
+    """Async TCP server that evaluates Python code inside a running composition."""
 
-	"""Async TCP server that evaluates Python code inside a running composition."""
+    def __init__(self, composition: "Composition", port: int = 5555) -> None:
+        """Store a reference to the composition and the port to listen on."""
 
-	def __init__ (self, composition: "Composition", port: int = 5555) -> None:
+        self._composition = composition
+        self._port = port
+        self._server: typing.Optional[asyncio.AbstractServer] = None
+        self._namespace: typing.Dict[str, typing.Any] = {}
 
-		"""Store a reference to the composition and the port to listen on."""
+    async def start(self) -> None:
+        """Start listening for connections on localhost."""
 
-		self._composition = composition
-		self._port = port
-		self._server: typing.Optional[asyncio.AbstractServer] = None
-		self._namespace: typing.Dict[str, typing.Any] = {}
+        self._namespace = self._composition._build_live_namespace()
 
-	async def start (self) -> None:
+        self._server = await asyncio.start_server(
+            self._handle_connection, host="127.0.0.1", port=self._port
+        )
 
-		"""Start listening for connections on localhost."""
+        logger.info(f"Live server listening on 127.0.0.1:{self._port}")
 
-		self._namespace = self._composition._build_live_namespace()
+    async def stop(self) -> None:
+        """Close the server and wait for it to shut down."""
 
-		self._server = await asyncio.start_server(
-			self._handle_connection,
-			host = "127.0.0.1",
-			port = self._port
-		)
+        if self._server is not None:
+            self._server.close()
+            await self._server.wait_closed()
+            self._server = None
+            logger.info("Live server stopped")
 
-		logger.info(f"Live server listening on 127.0.0.1:{self._port}")
+    async def _handle_connection(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        """Handle a single client connection with an eval/exec loop."""
 
-	async def stop (self) -> None:
+        peer = writer.get_extra_info("peername")
+        logger.info(f"Live client connected: {peer}")
 
-		"""Close the server and wait for it to shut down."""
+        try:
+            while True:
+                code = await self._read_message(reader)
 
-		if self._server is not None:
-			self._server.close()
-			await self._server.wait_closed()
-			self._server = None
-			logger.info("Live server stopped")
+                if code is None:
+                    break
 
-	async def _handle_connection (self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+                response = await asyncio.to_thread(self._evaluate, code)
+                writer.write(response.encode() + SENTINEL)
+                await writer.drain()
 
-		"""Handle a single client connection with an eval/exec loop."""
+        except ConnectionResetError:
+            logger.info(f"Live client disconnected (reset): {peer}")
 
-		peer = writer.get_extra_info("peername")
-		logger.info(f"Live client connected: {peer}")
+        except Exception as exc:
+            logger.warning(f"Live connection error: {exc}")
 
-		try:
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            logger.info(f"Live client disconnected: {peer}")
 
-			while True:
+    async def _read_message(self, reader: asyncio.StreamReader) -> typing.Optional[str]:
+        """Read bytes until the sentinel or EOF, returning the decoded string or None."""
 
-				code = await self._read_message(reader)
+        chunks: typing.List[bytes] = []
 
-				if code is None:
-					break
+        while True:
+            try:
+                chunk = await reader.read(4096)
+            except ConnectionResetError:
+                return None
 
-				response = await asyncio.to_thread(self._evaluate, code)
-				writer.write(response.encode() + SENTINEL)
-				await writer.drain()
+            if not chunk:
+                return None
 
-		except ConnectionResetError:
-			logger.info(f"Live client disconnected (reset): {peer}")
+            if SENTINEL in chunk:
+                before, _, _ = chunk.partition(SENTINEL)
+                chunks.append(before)
+                break
 
-		except Exception as exc:
-			logger.warning(f"Live connection error: {exc}")
+            chunks.append(chunk)
 
-		finally:
-			writer.close()
-			try:
-				await writer.wait_closed()
-			except Exception:
-				pass
-			logger.info(f"Live client disconnected: {peer}")
+        data = b"".join(chunks).decode("utf-8").strip()
 
-	async def _read_message (self, reader: asyncio.StreamReader) -> typing.Optional[str]:
+        return data if data else None
 
-		"""Read bytes until the sentinel or EOF, returning the decoded string or None."""
+    def _evaluate(self, code: str) -> str:
+        """Validate, then eval/exec the code string. Return the result or error traceback."""
 
-		chunks: typing.List[bytes] = []
+        # Validate syntax before executing - never run invalid code.
+        try:
+            compile(code, "<live>", "exec")
+        except SyntaxError:
+            return traceback.format_exc()
 
-		while True:
+        # Try as an expression first (returns a value).
+        try:
+            result = eval(compile(code, "<live>", "eval"), self._namespace)
+            return repr(result) if result is not None else "OK"
+        except SyntaxError:
+            pass
+        except SystemExit:
+            return "SystemExit is not allowed in live mode."
+        except Exception:
+            return traceback.format_exc()
 
-			try:
-				chunk = await reader.read(4096)
-			except ConnectionResetError:
-				return None
-
-			if not chunk:
-				return None
-
-			if SENTINEL in chunk:
-				before, _, _ = chunk.partition(SENTINEL)
-				chunks.append(before)
-				break
-
-			chunks.append(chunk)
-
-		data = b"".join(chunks).decode("utf-8").strip()
-
-		return data if data else None
-
-	def _evaluate (self, code: str) -> str:
-
-		"""Validate, then eval/exec the code string. Return the result or error traceback."""
-
-		# Validate syntax before executing - never run invalid code.
-		try:
-			compile(code, "<live>", "exec")
-		except SyntaxError:
-			return traceback.format_exc()
-
-		# Try as an expression first (returns a value).
-		try:
-			result = eval(compile(code, "<live>", "eval"), self._namespace)
-			return repr(result) if result is not None else "OK"
-		except SyntaxError:
-			pass
-		except SystemExit:
-			return "SystemExit is not allowed in live mode."
-		except Exception:
-			return traceback.format_exc()
-
-		# Fall back to statement execution.
-		try:
-			exec(compile(code, "<live>", "exec"), self._namespace)
-			return "OK"
-		except SystemExit:
-			return "SystemExit is not allowed in live mode."
-		except Exception:
-			return traceback.format_exc()
+        # Fall back to statement execution.
+        try:
+            exec(compile(code, "<live>", "exec"), self._namespace)
+            return "OK"
+        except SystemExit:
+            return "SystemExit is not allowed in live mode."
+        except Exception:
+            return traceback.format_exc()

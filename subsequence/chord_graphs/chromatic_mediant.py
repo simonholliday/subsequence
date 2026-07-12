@@ -13,101 +13,127 @@ WEIGHT_WEAK = subsequence.chord_graphs.WEIGHT_WEAK
 WEIGHT_MEDIANT = 5
 
 
-class ChromaticMediant (subsequence.chord_graphs.ChordGraph):
+class ChromaticMediant(subsequence.chord_graphs.ChordGraph):
+    """Chromatic third-related harmony - roots move by major or minor thirds.
 
-	"""Chromatic third-related harmony - roots move by major or minor thirds.
+    Many transitions connect chords whose roots are a major or minor third
+    apart (the characteristic motion); others are chromatic, fourth-, or
+    fifth-related, creating dramatic, colorful shifts that sound both surprising
+    and connected through shared common tones. No dominant-tonic functional
+    motion is used; the one subdominant-tonic edge is the minor-plagal
+    iv → I close from the subdominant-minor connector.
 
-	Many transitions connect chords whose roots are a major or minor third
-	apart (the characteristic motion); others are chromatic, fourth-, or
-	fifth-related, creating dramatic, colorful shifts that sound both surprising
-	and connected through shared common tones. No dominant-tonic functional
-	motion is used; the one subdominant-tonic edge is the minor-plagal
-	iv → I close from the subdominant-minor connector.
+    Good for cinematic, ambient, soundtrack, and experimental music.
+    """
 
-	Good for cinematic, ambient, soundtrack, and experimental music.
-	"""
+    def build(
+        self, key_name: str
+    ) -> typing.Tuple[
+        subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord],
+        subsequence.chords.Chord,
+    ]:
+        """Build a chromatic mediant graph with third-related root movement."""
 
-	def build (self, key_name: str) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		"""Build a chromatic mediant graph with third-related root movement."""
+        # Core chords - major and minor triads at third-related intervals.
+        tonic = subsequence.chords.Chord(root_pc=key_pc, quality="major")
+        flat_mediant = subsequence.chords.Chord(
+            root_pc=(key_pc + 3) % 12, quality="major"
+        )
+        mediant = subsequence.chords.Chord(root_pc=(key_pc + 4) % 12, quality="major")
+        flat_submediant = subsequence.chords.Chord(
+            root_pc=(key_pc + 8) % 12, quality="major"
+        )
+        submediant = subsequence.chords.Chord(
+            root_pc=(key_pc + 9) % 12, quality="major"
+        )
 
-		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
+        # Minor variants for color contrast.
+        tonic_minor = subsequence.chords.Chord(root_pc=key_pc, quality="minor")
+        subdominant_minor = subsequence.chords.Chord(
+            root_pc=(key_pc + 5) % 12, quality="minor"
+        )
 
-		# Core chords - major and minor triads at third-related intervals.
-		tonic = subsequence.chords.Chord(root_pc=key_pc, quality="major")
-		flat_mediant = subsequence.chords.Chord(root_pc=(key_pc + 3) % 12, quality="major")
-		mediant = subsequence.chords.Chord(root_pc=(key_pc + 4) % 12, quality="major")
-		flat_submediant = subsequence.chords.Chord(root_pc=(key_pc + 8) % 12, quality="major")
-		submediant = subsequence.chords.Chord(root_pc=(key_pc + 9) % 12, quality="major")
+        graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = (
+            subsequence.weighted_graph.WeightedGraph()
+        )
 
-		# Minor variants for color contrast.
-		tonic_minor = subsequence.chords.Chord(root_pc=key_pc, quality="minor")
-		subdominant_minor = subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="minor")
+        # --- Tonic departures (by thirds) ---
+        graph.add_transition(tonic, flat_mediant, WEIGHT_MEDIANT)
+        graph.add_transition(tonic, mediant, WEIGHT_MEDIANT)
+        graph.add_transition(tonic, flat_submediant, WEIGHT_COMMON)
+        graph.add_transition(tonic, submediant, WEIGHT_COMMON)
+        graph.add_transition(tonic, tonic_minor, WEIGHT_WEAK)
 
-		graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = subsequence.weighted_graph.WeightedGraph()
+        # --- Flat mediant (bIII) departures ---
+        graph.add_transition(flat_mediant, tonic, WEIGHT_MEDIANT)
+        graph.add_transition(flat_mediant, flat_submediant, WEIGHT_COMMON)
+        graph.add_transition(flat_mediant, submediant, WEIGHT_MEDIUM)
 
-		# --- Tonic departures (by thirds) ---
-		graph.add_transition(tonic, flat_mediant, WEIGHT_MEDIANT)
-		graph.add_transition(tonic, mediant, WEIGHT_MEDIANT)
-		graph.add_transition(tonic, flat_submediant, WEIGHT_COMMON)
-		graph.add_transition(tonic, submediant, WEIGHT_COMMON)
-		graph.add_transition(tonic, tonic_minor, WEIGHT_WEAK)
+        # --- Mediant (III) departures ---
+        graph.add_transition(mediant, tonic, WEIGHT_MEDIANT)
+        graph.add_transition(mediant, flat_submediant, WEIGHT_MEDIUM)
+        graph.add_transition(mediant, submediant, WEIGHT_COMMON)
+        graph.add_transition(mediant, flat_mediant, WEIGHT_WEAK)
 
-		# --- Flat mediant (bIII) departures ---
-		graph.add_transition(flat_mediant, tonic, WEIGHT_MEDIANT)
-		graph.add_transition(flat_mediant, flat_submediant, WEIGHT_COMMON)
-		graph.add_transition(flat_mediant, submediant, WEIGHT_MEDIUM)
+        # --- Flat submediant (bVI) departures ---
+        graph.add_transition(flat_submediant, tonic, WEIGHT_MEDIANT)
+        graph.add_transition(flat_submediant, mediant, WEIGHT_COMMON)
+        graph.add_transition(flat_submediant, flat_mediant, WEIGHT_COMMON)
+        graph.add_transition(flat_submediant, subdominant_minor, WEIGHT_WEAK)
 
-		# --- Mediant (III) departures ---
-		graph.add_transition(mediant, tonic, WEIGHT_MEDIANT)
-		graph.add_transition(mediant, flat_submediant, WEIGHT_MEDIUM)
-		graph.add_transition(mediant, submediant, WEIGHT_COMMON)
-		graph.add_transition(mediant, flat_mediant, WEIGHT_WEAK)
+        # --- Submediant (VI) departures ---
+        graph.add_transition(submediant, tonic, WEIGHT_MEDIUM)
+        graph.add_transition(submediant, mediant, WEIGHT_COMMON)
+        graph.add_transition(submediant, flat_mediant, WEIGHT_COMMON)
+        graph.add_transition(submediant, flat_submediant, WEIGHT_WEAK)
 
-		# --- Flat submediant (bVI) departures ---
-		graph.add_transition(flat_submediant, tonic, WEIGHT_MEDIANT)
-		graph.add_transition(flat_submediant, mediant, WEIGHT_COMMON)
-		graph.add_transition(flat_submediant, flat_mediant, WEIGHT_COMMON)
-		graph.add_transition(flat_submediant, subdominant_minor, WEIGHT_WEAK)
+        # --- Tonic minor departures ---
+        graph.add_transition(tonic_minor, flat_mediant, WEIGHT_MEDIANT)
+        graph.add_transition(tonic_minor, flat_submediant, WEIGHT_COMMON)
+        graph.add_transition(tonic_minor, tonic, WEIGHT_MEDIUM)
 
-		# --- Submediant (VI) departures ---
-		graph.add_transition(submediant, tonic, WEIGHT_MEDIUM)
-		graph.add_transition(submediant, mediant, WEIGHT_COMMON)
-		graph.add_transition(submediant, flat_mediant, WEIGHT_COMMON)
-		graph.add_transition(submediant, flat_submediant, WEIGHT_WEAK)
+        # --- Subdominant minor (iv) connector ---
+        graph.add_transition(subdominant_minor, tonic, WEIGHT_MEDIUM)
+        graph.add_transition(subdominant_minor, flat_submediant, WEIGHT_COMMON)
+        graph.add_transition(subdominant_minor, flat_mediant, WEIGHT_WEAK)
 
-		# --- Tonic minor departures ---
-		graph.add_transition(tonic_minor, flat_mediant, WEIGHT_MEDIANT)
-		graph.add_transition(tonic_minor, flat_submediant, WEIGHT_COMMON)
-		graph.add_transition(tonic_minor, tonic, WEIGHT_MEDIUM)
+        return graph, tonic
 
-		# --- Subdominant minor (iv) connector ---
-		graph.add_transition(subdominant_minor, tonic, WEIGHT_MEDIUM)
-		graph.add_transition(subdominant_minor, flat_submediant, WEIGHT_COMMON)
-		graph.add_transition(subdominant_minor, flat_mediant, WEIGHT_WEAK)
+    def gravity_sets(
+        self, key_name: str
+    ) -> typing.Tuple[
+        typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]
+    ]:
+        """Return chromatic mediant diatonic and functional chord sets."""
 
-		return graph, tonic
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-	def gravity_sets (self, key_name: str) -> typing.Tuple[typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]]:
+        # All chords in the graph form the "diatonic" set for gravity.
+        diatonic: typing.Set[subsequence.chords.Chord] = set()
 
-		"""Return chromatic mediant diatonic and functional chord sets."""
+        for interval in [0, 3, 4, 8, 9]:
+            diatonic.add(
+                subsequence.chords.Chord(
+                    root_pc=(key_pc + interval) % 12, quality="major"
+                )
+            )
 
-		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
+        diatonic.add(subsequence.chords.Chord(root_pc=key_pc, quality="minor"))
+        diatonic.add(
+            subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="minor")
+        )
 
-		# All chords in the graph form the "diatonic" set for gravity.
-		diatonic: typing.Set[subsequence.chords.Chord] = set()
+        # Functional set: I, bIII, bVI (strongest mediant poles).
+        functional: typing.Set[subsequence.chords.Chord] = set()
 
-		for interval in [0, 3, 4, 8, 9]:
-			diatonic.add(subsequence.chords.Chord(root_pc=(key_pc + interval) % 12, quality="major"))
+        functional.add(subsequence.chords.Chord(root_pc=key_pc, quality="major"))
+        functional.add(
+            subsequence.chords.Chord(root_pc=(key_pc + 3) % 12, quality="major")
+        )
+        functional.add(
+            subsequence.chords.Chord(root_pc=(key_pc + 8) % 12, quality="major")
+        )
 
-		diatonic.add(subsequence.chords.Chord(root_pc=key_pc, quality="minor"))
-		diatonic.add(subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="minor"))
-
-		# Functional set: I, bIII, bVI (strongest mediant poles).
-		functional: typing.Set[subsequence.chords.Chord] = set()
-
-		functional.add(subsequence.chords.Chord(root_pc=key_pc, quality="major"))
-		functional.add(subsequence.chords.Chord(root_pc=(key_pc + 3) % 12, quality="major"))
-		functional.add(subsequence.chords.Chord(root_pc=(key_pc + 8) % 12, quality="major"))
-
-		return diatonic, functional
+        return diatonic, functional

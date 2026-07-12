@@ -1,4 +1,3 @@
-
 import pytest
 import subsequence.easing
 import subsequence.sequencer
@@ -7,296 +6,266 @@ import subsequence.sequencer
 # ─── Core properties of all easing functions ─────────────────────────────────
 
 
-def test_all_easings_zero_at_zero () -> None:
+def test_all_easings_zero_at_zero() -> None:
+    """Every easing function returns 0.0 at t=0."""
 
-	"""Every easing function returns 0.0 at t=0."""
-
-	for name, fn in subsequence.easing.EASING_FUNCTIONS.items():
-		assert fn(0.0) == pytest.approx(0.0), f"{name}(0) should be 0.0"
-
-
-def test_all_easings_one_at_one () -> None:
-
-	"""Every easing function returns 1.0 at t=1."""
-
-	for name, fn in subsequence.easing.EASING_FUNCTIONS.items():
-		assert fn(1.0) == pytest.approx(1.0), f"{name}(1) should be 1.0"
+    for name, fn in subsequence.easing.EASING_FUNCTIONS.items():
+        assert fn(0.0) == pytest.approx(0.0), f"{name}(0) should be 0.0"
 
 
-def test_all_easings_monotonic () -> None:
+def test_all_easings_one_at_one() -> None:
+    """Every easing function returns 1.0 at t=1."""
 
-	"""Every easing function is non-decreasing over [0, 1]."""
+    for name, fn in subsequence.easing.EASING_FUNCTIONS.items():
+        assert fn(1.0) == pytest.approx(1.0), f"{name}(1) should be 1.0"
 
-	steps = 100
-	for name, fn in subsequence.easing.EASING_FUNCTIONS.items():
-		values = [fn(i / steps) for i in range(steps + 1)]
-		for i in range(len(values) - 1):
-			assert values[i] <= values[i + 1] + 1e-9, (
-				f"{name} is not monotonic at t={i/steps:.2f}"
-			)
+
+def test_all_easings_monotonic() -> None:
+    """Every easing function is non-decreasing over [0, 1]."""
+
+    steps = 100
+    for name, fn in subsequence.easing.EASING_FUNCTIONS.items():
+        values = [fn(i / steps) for i in range(steps + 1)]
+        for i in range(len(values) - 1):
+            assert values[i] <= values[i + 1] + 1e-9, (
+                f"{name} is not monotonic at t={i / steps:.2f}"
+            )
 
 
 # ─── Shape-specific characteristics ──────────────────────────────────────────
 
 
-def test_linear_is_identity () -> None:
+def test_linear_is_identity() -> None:
+    """linear(t) == t for a range of values."""
 
-	"""linear(t) == t for a range of values."""
-
-	for t in [0.0, 0.25, 0.5, 0.75, 1.0]:
-		assert subsequence.easing.linear(t) == pytest.approx(t)
-
-
-def test_ease_in_slow_start () -> None:
-
-	"""ease_in should be below the diagonal — slow start."""
-
-	assert subsequence.easing.ease_in(0.5) < 0.5
+    for t in [0.0, 0.25, 0.5, 0.75, 1.0]:
+        assert subsequence.easing.linear(t) == pytest.approx(t)
 
 
-def test_ease_out_fast_start () -> None:
+def test_ease_in_slow_start() -> None:
+    """ease_in should be below the diagonal — slow start."""
 
-	"""ease_out should be above the diagonal — fast start."""
-
-	assert subsequence.easing.ease_out(0.5) > 0.5
-
-
-def test_ease_in_out_symmetric () -> None:
-
-	"""ease_in_out midpoint should equal 0.5."""
-
-	assert subsequence.easing.ease_in_out(0.5) == pytest.approx(0.5)
+    assert subsequence.easing.ease_in(0.5) < 0.5
 
 
-def test_s_curve_symmetric () -> None:
+def test_ease_out_fast_start() -> None:
+    """ease_out should be above the diagonal — fast start."""
 
-	"""s_curve midpoint should equal 0.5."""
-
-	assert subsequence.easing.s_curve(0.5) == pytest.approx(0.5)
-
-
-def test_exponential_slower_than_ease_in () -> None:
-
-	"""exponential (cubic) should be slower early than ease_in (quadratic)."""
-
-	assert subsequence.easing.exponential(0.5) < subsequence.easing.ease_in(0.5)
+    assert subsequence.easing.ease_out(0.5) > 0.5
 
 
-def test_logarithmic_faster_than_ease_out () -> None:
+def test_ease_in_out_symmetric() -> None:
+    """ease_in_out midpoint should equal 0.5."""
 
-	"""logarithmic (cubic) should be faster early than ease_out (quadratic)."""
-
-	assert subsequence.easing.logarithmic(0.5) > subsequence.easing.ease_out(0.5)
+    assert subsequence.easing.ease_in_out(0.5) == pytest.approx(0.5)
 
 
-def test_s_curve_smoother_than_ease_in_out () -> None:
+def test_s_curve_symmetric() -> None:
+    """s_curve midpoint should equal 0.5."""
 
-	"""s_curve should have a flatter start than ease_in_out (derivative closer to 0 near t=0)."""
+    assert subsequence.easing.s_curve(0.5) == pytest.approx(0.5)
 
-	# Near t=0, s_curve should be below ease_in_out (starts more slowly)
-	assert subsequence.easing.s_curve(0.1) < subsequence.easing.ease_in_out(0.1)
+
+def test_exponential_slower_than_ease_in() -> None:
+    """exponential (cubic) should be slower early than ease_in (quadratic)."""
+
+    assert subsequence.easing.exponential(0.5) < subsequence.easing.ease_in(0.5)
+
+
+def test_logarithmic_faster_than_ease_out() -> None:
+    """logarithmic (cubic) should be faster early than ease_out (quadratic)."""
+
+    assert subsequence.easing.logarithmic(0.5) > subsequence.easing.ease_out(0.5)
+
+
+def test_s_curve_smoother_than_ease_in_out() -> None:
+    """s_curve should have a flatter start than ease_in_out (derivative closer to 0 near t=0)."""
+
+    # Near t=0, s_curve should be below ease_in_out (starts more slowly)
+    assert subsequence.easing.s_curve(0.1) < subsequence.easing.ease_in_out(0.1)
 
 
 # ─── get_easing ───────────────────────────────────────────────────────────────
 
 
-def test_get_easing_by_string () -> None:
+def test_get_easing_by_string() -> None:
+    """get_easing returns the correct function for a valid name."""
 
-	"""get_easing returns the correct function for a valid name."""
-
-	fn = subsequence.easing.get_easing("linear")
-	assert fn is subsequence.easing.linear
-
-
-def test_get_easing_all_names () -> None:
-
-	"""get_easing works for every registered name."""
-
-	for name, expected in subsequence.easing.EASING_FUNCTIONS.items():
-		assert subsequence.easing.get_easing(name) is expected
+    fn = subsequence.easing.get_easing("linear")
+    assert fn is subsequence.easing.linear
 
 
-def test_get_easing_callable_passthrough () -> None:
+def test_get_easing_all_names() -> None:
+    """get_easing works for every registered name."""
 
-	"""get_easing returns the callable unchanged when passed a function."""
-
-	custom = lambda t: t ** 0.5
-	assert subsequence.easing.get_easing(custom) is custom
+    for name, expected in subsequence.easing.EASING_FUNCTIONS.items():
+        assert subsequence.easing.get_easing(name) is expected
 
 
-def test_get_easing_unknown_raises () -> None:
+def test_get_easing_callable_passthrough() -> None:
+    """get_easing returns the callable unchanged when passed a function."""
 
-	"""get_easing raises ValueError for an unknown string name."""
+    custom = lambda t: t**0.5
+    assert subsequence.easing.get_easing(custom) is custom
 
-	with pytest.raises(ValueError, match="Unknown easing shape"):
-		subsequence.easing.get_easing("bogus_shape")
+
+def test_get_easing_unknown_raises() -> None:
+    """get_easing raises ValueError for an unknown string name."""
+
+    with pytest.raises(ValueError, match="Unknown easing shape"):
+        subsequence.easing.get_easing("bogus_shape")
 
 
 # ─── BpmTransition easing integration ────────────────────────────────────────
 
 
-def test_bpm_transition_ease_in_out_midpoint_is_linear () -> None:
+def test_bpm_transition_ease_in_out_midpoint_is_linear() -> None:
+    """BpmTransition with ease_in_out: midpoint BPM equals the arithmetic midpoint."""
 
-	"""BpmTransition with ease_in_out: midpoint BPM equals the arithmetic midpoint."""
+    transition = subsequence.sequencer.BpmTransition(
+        start_bpm=100.0,
+        target_bpm=140.0,
+        total_pulses=100,
+        easing_fn=subsequence.easing.ease_in_out,
+    )
 
-	transition = subsequence.sequencer.BpmTransition(
-		start_bpm = 100.0,
-		target_bpm = 140.0,
-		total_pulses = 100,
-		easing_fn = subsequence.easing.ease_in_out,
-	)
+    # At exactly the midpoint, ease_in_out(0.5) == 0.5, so BPM should be 120
+    transition.elapsed_pulses = 50
+    progress = transition.elapsed_pulses / transition.total_pulses
+    eased = transition.easing_fn(progress)
+    bpm = transition.start_bpm + (transition.target_bpm - transition.start_bpm) * eased
 
-	# At exactly the midpoint, ease_in_out(0.5) == 0.5, so BPM should be 120
-	transition.elapsed_pulses = 50
-	progress = transition.elapsed_pulses / transition.total_pulses
-	eased = transition.easing_fn(progress)
-	bpm = transition.start_bpm + (transition.target_bpm - transition.start_bpm) * eased
-
-	assert bpm == pytest.approx(120.0)
-
-
-def test_bpm_transition_ease_in_starts_slowly () -> None:
-
-	"""BpmTransition with ease_in: BPM at 25% of duration should be well below 25% of range."""
-
-	transition = subsequence.sequencer.BpmTransition(
-		start_bpm = 100.0,
-		target_bpm = 140.0,
-		total_pulses = 100,
-		easing_fn = subsequence.easing.ease_in,
-	)
-
-	transition.elapsed_pulses = 25
-	progress = transition.elapsed_pulses / transition.total_pulses  # 0.25
-	eased = transition.easing_fn(progress)                          # ease_in(0.25) = 0.0625
-	bpm = transition.start_bpm + (transition.target_bpm - transition.start_bpm) * eased
-
-	# Linear at 25% would be 110; ease_in should be much lower
-	assert bpm < 110.0
+    assert bpm == pytest.approx(120.0)
 
 
-def test_bpm_transition_default_easing_is_linear () -> None:
+def test_bpm_transition_ease_in_starts_slowly() -> None:
+    """BpmTransition with ease_in: BPM at 25% of duration should be well below 25% of range."""
 
-	"""BpmTransition default easing is linear (regression test)."""
+    transition = subsequence.sequencer.BpmTransition(
+        start_bpm=100.0,
+        target_bpm=140.0,
+        total_pulses=100,
+        easing_fn=subsequence.easing.ease_in,
+    )
 
-	transition = subsequence.sequencer.BpmTransition(
-		start_bpm = 100.0,
-		target_bpm = 140.0,
-		total_pulses = 100,
-	)
+    transition.elapsed_pulses = 25
+    progress = transition.elapsed_pulses / transition.total_pulses  # 0.25
+    eased = transition.easing_fn(progress)  # ease_in(0.25) = 0.0625
+    bpm = transition.start_bpm + (transition.target_bpm - transition.start_bpm) * eased
 
-	transition.elapsed_pulses = 50
-	progress = transition.elapsed_pulses / transition.total_pulses
-	eased = transition.easing_fn(progress)
-	bpm = transition.start_bpm + (transition.target_bpm - transition.start_bpm) * eased
+    # Linear at 25% would be 110; ease_in should be much lower
+    assert bpm < 110.0
 
-	assert bpm == pytest.approx(120.0)  # linear midpoint
+
+def test_bpm_transition_default_easing_is_linear() -> None:
+    """BpmTransition default easing is linear (regression test)."""
+
+    transition = subsequence.sequencer.BpmTransition(
+        start_bpm=100.0,
+        target_bpm=140.0,
+        total_pulses=100,
+    )
+
+    transition.elapsed_pulses = 50
+    progress = transition.elapsed_pulses / transition.total_pulses
+    eased = transition.easing_fn(progress)
+    bpm = transition.start_bpm + (transition.target_bpm - transition.start_bpm) * eased
+
+    assert bpm == pytest.approx(120.0)  # linear midpoint
 
 
 # ─── map_value ────────────────────────────────────────────────────────────────
 
 
-def test_map_value_linear () -> None:
+def test_map_value_linear() -> None:
+    """map_value should interpolate linearly by default."""
 
-	"""map_value should interpolate linearly by default."""
+    # Map 0.5 from [0, 1] to [0, 100] -> 50.0
+    val = subsequence.easing.map_value(0.5, 0.0, 1.0, 0.0, 100.0)
+    assert val == pytest.approx(50.0)
 
-	# Map 0.5 from [0, 1] to [0, 100] -> 50.0
-	val = subsequence.easing.map_value(0.5, 0.0, 1.0, 0.0, 100.0)
-	assert val == pytest.approx(50.0)
-
-	# Map 5 from [0, 10] to [100, 200] -> 150.0
-	val = subsequence.easing.map_value(5, 0, 10, 100, 200)
-	assert val == pytest.approx(150.0)
-
-
-def test_map_value_clamp () -> None:
-
-	"""map_value should clamp to output bounds when clamp=True."""
-
-	# Value exceeds in_max (1.5 > 1.0)
-	val = subsequence.easing.map_value(1.5, 0.0, 1.0, 0.0, 100.0)
-	assert val == pytest.approx(100.0)
-
-	# Value below in_min (-0.5 < 0.0)
-	val = subsequence.easing.map_value(-0.5, 0.0, 1.0, 0.0, 100.0)
-	assert val == pytest.approx(0.0)
+    # Map 5 from [0, 10] to [100, 200] -> 150.0
+    val = subsequence.easing.map_value(5, 0, 10, 100, 200)
+    assert val == pytest.approx(150.0)
 
 
-def test_map_value_no_clamp () -> None:
+def test_map_value_clamp() -> None:
+    """map_value should clamp to output bounds when clamp=True."""
 
-	"""map_value should extrapolate when clamp=False."""
+    # Value exceeds in_max (1.5 > 1.0)
+    val = subsequence.easing.map_value(1.5, 0.0, 1.0, 0.0, 100.0)
+    assert val == pytest.approx(100.0)
 
-	val = subsequence.easing.map_value(1.5, 0.0, 1.0, 0.0, 100.0, clamp=False)
-	assert val == pytest.approx(150.0)
-
-
-def test_map_value_easing_shape () -> None:
-
-	"""map_value should apply the requested easing curve."""
-
-	# At 0.5 progress, ease_in is < 0.5.
-	line_val = subsequence.easing.map_value(0.5, 0.0, 1.0, 0.0, 100.0, shape="linear")
-	ease_val = subsequence.easing.map_value(0.5, 0.0, 1.0, 0.0, 100.0, shape="ease_in")
-
-	assert line_val == pytest.approx(50.0)
-	assert ease_val < 50.0
+    # Value below in_min (-0.5 < 0.0)
+    val = subsequence.easing.map_value(-0.5, 0.0, 1.0, 0.0, 100.0)
+    assert val == pytest.approx(0.0)
 
 
-def test_map_value_reversed_range () -> None:
+def test_map_value_no_clamp() -> None:
+    """map_value should extrapolate when clamp=False."""
 
-	"""map_value should handle descending output ranges."""
-
-	# Map 0.25 from [0, 1] to [100, 0] -> 75.0
-	val = subsequence.easing.map_value(0.25, 0.0, 1.0, 100.0, 0.0)
-	assert val == pytest.approx(75.0)
+    val = subsequence.easing.map_value(1.5, 0.0, 1.0, 0.0, 100.0, clamp=False)
+    assert val == pytest.approx(150.0)
 
 
-def test_map_value_zero_range_safeguard () -> None:
+def test_map_value_easing_shape() -> None:
+    """map_value should apply the requested easing curve."""
 
-	"""map_value should handle in_min == in_max safely."""
+    # At 0.5 progress, ease_in is < 0.5.
+    line_val = subsequence.easing.map_value(0.5, 0.0, 1.0, 0.0, 100.0, shape="linear")
+    ease_val = subsequence.easing.map_value(0.5, 0.0, 1.0, 0.0, 100.0, shape="ease_in")
 
-	val = subsequence.easing.map_value(0.5, 0.0, 0.0, 0.0, 100.0)
-	assert val == pytest.approx(0.0)
+    assert line_val == pytest.approx(50.0)
+    assert ease_val < 50.0
+
+
+def test_map_value_reversed_range() -> None:
+    """map_value should handle descending output ranges."""
+
+    # Map 0.25 from [0, 1] to [100, 0] -> 75.0
+    val = subsequence.easing.map_value(0.25, 0.0, 1.0, 100.0, 0.0)
+    assert val == pytest.approx(75.0)
+
+
+def test_map_value_zero_range_safeguard() -> None:
+    """map_value should handle in_min == in_max safely."""
+
+    val = subsequence.easing.map_value(0.5, 0.0, 0.0, 0.0, 100.0)
+    assert val == pytest.approx(0.0)
 
 
 # ─── ramp ─────────────────────────────────────────────────────────────────────
 
 
-def test_ramp_linear_three_steps () -> None:
+def test_ramp_linear_three_steps() -> None:
+    """ramp with linear shape produces evenly spaced values."""
 
-	"""ramp with linear shape produces evenly spaced values."""
-
-	result = subsequence.easing.ramp(3, 0.0, 1.0, "linear")
-	assert result == pytest.approx([0.0, 0.5, 1.0])
-
-
-def test_ramp_bounds () -> None:
-
-	"""ramp first and last values match low and high exactly."""
-
-	result = subsequence.easing.ramp(8, 50.0, 100.0, "ease_in_out")
-	assert result[0] == pytest.approx(50.0)
-	assert result[-1] == pytest.approx(100.0)
+    result = subsequence.easing.ramp(3, 0.0, 1.0, "linear")
+    assert result == pytest.approx([0.0, 0.5, 1.0])
 
 
-def test_ramp_single_step () -> None:
+def test_ramp_bounds() -> None:
+    """ramp first and last values match low and high exactly."""
 
-	"""ramp(1, ...) returns [low] regardless of shape."""
-
-	assert subsequence.easing.ramp(1, 42.0, 99.0) == pytest.approx([42.0])
-
-
-def test_ramp_monotonic_ease_in () -> None:
-
-	"""ramp with ease_in shape produces monotonically non-decreasing values."""
-
-	result = subsequence.easing.ramp(8, 0.0, 1.0, "ease_in")
-	assert all(result[i] <= result[i + 1] for i in range(len(result) - 1))
+    result = subsequence.easing.ramp(8, 50.0, 100.0, "ease_in_out")
+    assert result[0] == pytest.approx(50.0)
+    assert result[-1] == pytest.approx(100.0)
 
 
-def test_ramp_length () -> None:
+def test_ramp_single_step() -> None:
+    """ramp(1, ...) returns [low] regardless of shape."""
 
-	"""ramp returns a list of exactly n values."""
+    assert subsequence.easing.ramp(1, 42.0, 99.0) == pytest.approx([42.0])
 
-	assert len(subsequence.easing.ramp(16, 20.0, 80.0)) == 16
 
+def test_ramp_monotonic_ease_in() -> None:
+    """ramp with ease_in shape produces monotonically non-decreasing values."""
+
+    result = subsequence.easing.ramp(8, 0.0, 1.0, "ease_in")
+    assert all(result[i] <= result[i + 1] for i in range(len(result) - 1))
+
+
+def test_ramp_length() -> None:
+    """ramp returns a list of exactly n values."""
+
+    assert len(subsequence.easing.ramp(16, 20.0, 80.0)) == 16
