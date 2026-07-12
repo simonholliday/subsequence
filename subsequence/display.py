@@ -16,13 +16,13 @@ composition.play()
 
 The status line updates every beat and looks like::
 
-	125.00 BPM  Key: E  Bar: 17.1  [chorus 1/8]  Chord: Em7
+        125.00 BPM  Key: E  Bar: 17.1  [chorus 1/8]  Chord: Em7
 
 The grid (when enabled) updates every bar and looks like::
 
-	kick_2          |█ · · · █ · · · █ · · · █ · · ·|
-	snare_1         |· · · · ▓ · · · · · · · ▓ · · ·|
-	bass            |▓ · · ▓ · · ▓ · ▓ · · · ▓ · · ·|
+        kick_2          |█ · · · █ · · · █ · · · █ · · ·|
+        snare_1         |· · · · ▓ · · · · · · · ▓ · · ·|
+        bass            |▓ · · ▓ · · ▓ · ▓ · · · ▓ · · ·|
 """
 
 import logging
@@ -34,7 +34,7 @@ import typing
 import subsequence.constants
 
 if typing.TYPE_CHECKING:
-	from subsequence.composition import Composition
+    from subsequence.composition import Composition
 
 
 _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -46,572 +46,562 @@ _SUSTAIN = -1
 
 
 class GridDisplay:
-
-	"""Multi-line ASCII grid visualisation of running pattern steps.
-
-	Renders one block per pattern showing which grid steps have notes and at
-	what velocity.  Drum patterns (those with a ``drum_note_map``) show one
-	row per drum sound; pitched patterns show a single summary row.
-
-	Not used directly — instantiated by ``Display`` when ``grid=True``.
-	"""
-
-	def __init__ (self, composition: "Composition", scale: float = 1.0) -> None:
-
-		"""Store composition reference for reading pattern state.
-
-		Parameters:
-			composition: The ``Composition`` instance to read running
-				patterns from.
-			scale: Horizontal zoom factor.  Snapped to the nearest
-				integer ``cols_per_step`` so that all on-grid markers
-				are uniformly spaced.  Default ``1.0`` = one visual
-				column per grid step (current behaviour).
-		"""
-
-		self._composition = composition
-		self._scale = scale
-		self._lines: typing.List[str] = []
-
-	@property
-	def line_count (self) -> int:
-
-		"""Number of terminal lines the grid currently occupies."""
-
-		return len(self._lines)
-
-	# ------------------------------------------------------------------
-	# Static helpers
-	# ------------------------------------------------------------------
-
-	@staticmethod
-	def _velocity_char (velocity: typing.Union[int, float]) -> str:
-
-		"""Map a MIDI velocity (0-127) to a single ANSI block character.
-
-		Returns:
-			``">"`` for sustain (note still sounding),
-			``"░"`` for velocity > 0 to < 31.75 (0 - < 25%),
-			``"▒"`` for velocity >= 31.75 to < 63.5 (25% to < 50%),
-			``"▓"`` for velocity >= 63.5 to < 95.25 (50% to < 75%),
-			``"█"`` for velocity >= 95.25 (75% to 100%).
-		"""
-
-		if velocity == _SUSTAIN:
-			return ">"
-		if velocity == 0:
-			return "·"
-		
-		pct = velocity / 127.0
-		if pct < 0.25:
-			return "░"
-		if pct < 0.50:
-			return "▒"
-		if pct < 0.75:
-			return "▓"
-		return "█"
-
-	@staticmethod
-	def _cell_char (velocity: typing.Union[int, float], is_on_grid: bool) -> str:
-
-		"""Return the display character for a grid cell.
-
-		Non-zero velocities (attacks and sustain) always show their
-		velocity glyph.  Empty on-grid positions show ``"·"``, empty
-		between-grid positions show ``" "`` (space).
-		"""
-
-		if velocity != 0:
-			return GridDisplay._velocity_char(velocity)
-		return "·" if is_on_grid else " "
-
-	@staticmethod
-	def _midi_note_name (pitch: int) -> str:
-
-		"""Convert a MIDI note number to a human-readable name.
-
-		Examples: 60 → ``"C4"``, 42 → ``"F#2"``, 36 → ``"C2"``.
-		"""
-
-		octave = (pitch // 12) - 1
-		note = _NOTE_NAMES[pitch % 12]
-		return f"{note}{octave}"
-
-	# ------------------------------------------------------------------
-	# Grid building
-	# ------------------------------------------------------------------
-
-	def build (self) -> None:
-
-		"""Rebuild grid lines from the current state of all running patterns."""
-
-		lines: typing.List[str] = []
-		term_width = shutil.get_terminal_size(fallback=(80, 24)).columns
-
-		if term_width < _MIN_TERMINAL_WIDTH:
-			self._lines = []
-			return
-
-		for name, pattern in self._composition.running_patterns.items():
-
-			grid_size = min(getattr(pattern, "_default_grid", 16), _MAX_GRID_COLUMNS)
-			muted = getattr(pattern, "_muted", False)
-			drum_map: typing.Optional[typing.Dict[str, int]] = getattr(pattern, "_drum_note_map", None)
-
-			# Snap to integer cols_per_step for uniform marker spacing.
-			cols_per_step = max(1, round(self._scale))
-			visual_cols = grid_size * cols_per_step
-			display_cols = self._fit_columns(visual_cols, term_width)
-
-			# On-grid columns: exact multiples of cols_per_step.
-			on_grid = frozenset(
-				i * cols_per_step
-				for i in range(grid_size)
-				if i * cols_per_step < display_cols
-			)
-
-			if muted:
-				lines.extend(self._render_muted(name, display_cols, on_grid))
-			elif drum_map:
-				lines.extend(self._render_drum_pattern(name, pattern, drum_map, visual_cols, display_cols, on_grid))
-			else:
-				lines.extend(self._render_pitched_pattern(name, pattern, visual_cols, display_cols, on_grid))
-
-		self._lines = lines
-
-	# ------------------------------------------------------------------
-	# Rendering helpers
-	# ------------------------------------------------------------------
-
-	def _render_muted (self, name: str, display_cols: int, on_grid: typing.FrozenSet[int]) -> typing.List[str]:
-
-		"""Render a muted pattern as a single row of dashes."""
-
-		cells = " ".join("-" if col in on_grid else " " for col in range(display_cols))
-		label = f"({name})"[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)
-		return [f"{label}|{cells}|"]
-
-	def _render_drum_pattern (
-		self,
-		name: str,
-		pattern: typing.Any,
-		drum_map: typing.Dict[str, int],
-		visual_cols: int,
-		display_cols: int,
-		on_grid: typing.FrozenSet[int],
-	) -> typing.List[str]:
-
-		"""Render a drum pattern with one row per distinct drum sound."""
-
-		lines: typing.List[str] = []
-
-		# Build reverse map: {midi_note: drum_name}.
-		reverse_map: typing.Dict[int, str] = {}
-		for drum_name, midi_note in drum_map.items():
-			if midi_note not in reverse_map:
-				reverse_map[midi_note] = drum_name
-
-		# Discover which pitches are present in the pattern.
-		velocity_grid = self._build_velocity_grid(pattern, visual_cols, display_cols)
-
-		if not velocity_grid:
-			return lines
-
-		# Sort rows by MIDI pitch (lowest first — kick before hi-hat).
-
-		for pitch in sorted(velocity_grid):
-			label_text = reverse_map.get(pitch, self._midi_note_name(pitch))
-			label = label_text[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)
-			cells = " ".join(
-				self._cell_char(v, col in on_grid)
-				for col, v in enumerate(velocity_grid[pitch][:display_cols])
-			)
-			lines.append(f"{label}|{cells}|")
-
-		return lines
-
-	def _render_pitched_pattern (
-		self,
-		name: str,
-		pattern: typing.Any,
-		visual_cols: int,
-		display_cols: int,
-		on_grid: typing.FrozenSet[int],
-	) -> typing.List[str]:
-
-		"""Render a pitched pattern as a single summary row."""
-
-		# Collapse all pitches into a single row using max velocity per slot.
-		velocity_grid = self._build_velocity_grid(pattern, visual_cols, display_cols)
-
-		summary = [0] * display_cols
-		for pitch_velocities in velocity_grid.values():
-			for i, vel in enumerate(pitch_velocities[:display_cols]):
-				if vel > summary[i] or (vel == _SUSTAIN and summary[i] == 0):
-					summary[i] = vel
-
-		label = name[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)
-		cells = " ".join(
-			self._cell_char(v, col in on_grid)
-			for col, v in enumerate(summary)
-		)
-		return [f"{label}|{cells}|"]
-
-	# ------------------------------------------------------------------
-	# Internal helpers
-	# ------------------------------------------------------------------
-
-	def _build_velocity_grid (
-		self,
-		pattern: typing.Any,
-		grid_size: int,
-		display_cols: int,
-	) -> typing.Dict[int, typing.List[int]]:
-
-		"""Scan pattern steps and build a {pitch: [velocity_per_slot]} dict.
-
-		Each pitch gets a list of length *display_cols*.  At each grid slot
-		the highest velocity from any note at that position is stored.
-		"""
-
-		total_pulses = int(pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
-
-		if total_pulses <= 0 or grid_size <= 0:
-			return {}
-
-		pulses_per_slot = total_pulses / grid_size
-
-		velocity_grid: typing.Dict[int, typing.List[int]] = {}
-
-		for pulse, step in pattern.steps.items():
-			# Map pulse → grid slot.
-			slot = int(pulse / pulses_per_slot)
-
-			if slot < 0 or slot >= display_cols:
-				continue
-
-			for note in step.notes:
-				if note.pitch not in velocity_grid:
-					velocity_grid[note.pitch] = [0] * display_cols
-
-				if note.velocity > velocity_grid[note.pitch][slot]:
-					velocity_grid[note.pitch][slot] = note.velocity
-
-				# Fill sustain markers for slots where the note is
-				# still sounding.  Short notes (drums, staccato) never
-				# enter this loop.
-				end_pulse = pulse + note.duration
-				for s in range(slot + 1, display_cols):
-					if s * pulses_per_slot >= end_pulse:
-						break
-					if velocity_grid[note.pitch][s] == 0:
-						velocity_grid[note.pitch][s] = _SUSTAIN
-
-		return velocity_grid
-
-	@staticmethod
-	def _fit_columns (grid_size: int, term_width: int) -> int:
-
-		"""Determine how many grid columns fit in the terminal.
-
-		Each column occupies 2 characters (char + space), plus the label
-		prefix and pipe delimiters.
-		"""
-
-		# label (LABEL_WIDTH) + "|" + cells + "|"
-		# Each cell is "X " (2 chars) but last cell has no trailing space
-		# inside the pipes: "X . X ." is grid_size * 2 - 1 chars.
-		overhead = _LABEL_WIDTH + 2  # label + pipes
-		available = term_width - overhead
-
-		if available <= 0:
-			return 0
-
-		# Each column needs 2 chars (char + space), except the last needs 1.
-		max_cols = (available + 1) // 2
-
-		return min(grid_size, max_cols)
-
-
-class DisplayLogHandler (logging.Handler):
-
-	"""Logging handler that clears and redraws the status line around log output.
-
-	Installed by ``Display.start()`` and removed by ``Display.stop()``. Ensures
-	log messages do not overwrite or corrupt the persistent status line.
-	"""
-
-	def __init__ (self, display: "Display") -> None:
-
-		"""Store reference to the display for clear/redraw calls."""
-
-		super().__init__()
-		self._display = display
-
-	def emit (self, record: logging.LogRecord) -> None:
-
-		"""Clear the status line, write the log message, then redraw."""
-
-		try:
-			# emit() runs on whatever thread logged; hold the display's render
-			# lock across the whole clear → write → redraw sequence so a
-			# concurrent event-loop draw() cannot interleave ANSI sequences.
-			with self._display._render_lock:
-
-				self._display.clear_line()
-
-				msg = self.format(record)
-				sys.stderr.write(msg + "\n")
-				sys.stderr.flush()
-
-				self._display.draw()
-
-		except Exception:
-			self.handleError(record)
+    """Multi-line ASCII grid visualisation of running pattern steps.
+
+    Renders one block per pattern showing which grid steps have notes and at
+    what velocity.  Drum patterns (those with a ``drum_note_map``) show one
+    row per drum sound; pitched patterns show a single summary row.
+
+    Not used directly — instantiated by ``Display`` when ``grid=True``.
+    """
+
+    def __init__(self, composition: "Composition", scale: float = 1.0) -> None:
+        """Store composition reference for reading pattern state.
+
+        Parameters:
+                composition: The ``Composition`` instance to read running
+                        patterns from.
+                scale: Horizontal zoom factor.  Snapped to the nearest
+                        integer ``cols_per_step`` so that all on-grid markers
+                        are uniformly spaced.  Default ``1.0`` = one visual
+                        column per grid step (current behaviour).
+        """
+
+        self._composition = composition
+        self._scale = scale
+        self._lines: typing.List[str] = []
+
+    @property
+    def line_count(self) -> int:
+        """Number of terminal lines the grid currently occupies."""
+
+        return len(self._lines)
+
+    # ------------------------------------------------------------------
+    # Static helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _velocity_char(velocity: typing.Union[int, float]) -> str:
+        """Map a MIDI velocity (0-127) to a single ANSI block character.
+
+        Returns:
+                ``">"`` for sustain (note still sounding),
+                ``"░"`` for velocity > 0 to < 31.75 (0 - < 25%),
+                ``"▒"`` for velocity >= 31.75 to < 63.5 (25% to < 50%),
+                ``"▓"`` for velocity >= 63.5 to < 95.25 (50% to < 75%),
+                ``"█"`` for velocity >= 95.25 (75% to 100%).
+        """
+
+        if velocity == _SUSTAIN:
+            return ">"
+        if velocity == 0:
+            return "·"
+
+        pct = velocity / 127.0
+        if pct < 0.25:
+            return "░"
+        if pct < 0.50:
+            return "▒"
+        if pct < 0.75:
+            return "▓"
+        return "█"
+
+    @staticmethod
+    def _cell_char(velocity: typing.Union[int, float], is_on_grid: bool) -> str:
+        """Return the display character for a grid cell.
+
+        Non-zero velocities (attacks and sustain) always show their
+        velocity glyph.  Empty on-grid positions show ``"·"``, empty
+        between-grid positions show ``" "`` (space).
+        """
+
+        if velocity != 0:
+            return GridDisplay._velocity_char(velocity)
+        return "·" if is_on_grid else " "
+
+    @staticmethod
+    def _midi_note_name(pitch: int) -> str:
+        """Convert a MIDI note number to a human-readable name.
+
+        Examples: 60 → ``"C4"``, 42 → ``"F#2"``, 36 → ``"C2"``.
+        """
+
+        octave = (pitch // 12) - 1
+        note = _NOTE_NAMES[pitch % 12]
+        return f"{note}{octave}"
+
+    # ------------------------------------------------------------------
+    # Grid building
+    # ------------------------------------------------------------------
+
+    def build(self) -> None:
+        """Rebuild grid lines from the current state of all running patterns."""
+
+        lines: typing.List[str] = []
+        term_width = shutil.get_terminal_size(fallback=(80, 24)).columns
+
+        if term_width < _MIN_TERMINAL_WIDTH:
+            self._lines = []
+            return
+
+        for name, pattern in self._composition.running_patterns.items():
+            grid_size = min(getattr(pattern, "_default_grid", 16), _MAX_GRID_COLUMNS)
+            muted = getattr(pattern, "_muted", False)
+            drum_map: typing.Optional[typing.Dict[str, int]] = getattr(
+                pattern, "_drum_note_map", None
+            )
+
+            # Snap to integer cols_per_step for uniform marker spacing.
+            cols_per_step = max(1, round(self._scale))
+            visual_cols = grid_size * cols_per_step
+            display_cols = self._fit_columns(visual_cols, term_width)
+
+            # On-grid columns: exact multiples of cols_per_step.
+            on_grid = frozenset(
+                i * cols_per_step
+                for i in range(grid_size)
+                if i * cols_per_step < display_cols
+            )
+
+            if muted:
+                lines.extend(self._render_muted(name, display_cols, on_grid))
+            elif drum_map:
+                lines.extend(
+                    self._render_drum_pattern(
+                        name, pattern, drum_map, visual_cols, display_cols, on_grid
+                    )
+                )
+            else:
+                lines.extend(
+                    self._render_pitched_pattern(
+                        name, pattern, visual_cols, display_cols, on_grid
+                    )
+                )
+
+        self._lines = lines
+
+    # ------------------------------------------------------------------
+    # Rendering helpers
+    # ------------------------------------------------------------------
+
+    def _render_muted(
+        self, name: str, display_cols: int, on_grid: typing.FrozenSet[int]
+    ) -> typing.List[str]:
+        """Render a muted pattern as a single row of dashes."""
+
+        cells = " ".join("-" if col in on_grid else " " for col in range(display_cols))
+        label = f"({name})"[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)
+        return [f"{label}|{cells}|"]
+
+    def _render_drum_pattern(
+        self,
+        name: str,
+        pattern: typing.Any,
+        drum_map: typing.Dict[str, int],
+        visual_cols: int,
+        display_cols: int,
+        on_grid: typing.FrozenSet[int],
+    ) -> typing.List[str]:
+        """Render a drum pattern with one row per distinct drum sound."""
+
+        lines: typing.List[str] = []
+
+        # Build reverse map: {midi_note: drum_name}.
+        reverse_map: typing.Dict[int, str] = {}
+        for drum_name, midi_note in drum_map.items():
+            if midi_note not in reverse_map:
+                reverse_map[midi_note] = drum_name
+
+        # Discover which pitches are present in the pattern.
+        velocity_grid = self._build_velocity_grid(pattern, visual_cols, display_cols)
+
+        if not velocity_grid:
+            return lines
+
+        # Sort rows by MIDI pitch (lowest first — kick before hi-hat).
+
+        for pitch in sorted(velocity_grid):
+            label_text = reverse_map.get(pitch, self._midi_note_name(pitch))
+            label = label_text[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)
+            cells = " ".join(
+                self._cell_char(v, col in on_grid)
+                for col, v in enumerate(velocity_grid[pitch][:display_cols])
+            )
+            lines.append(f"{label}|{cells}|")
+
+        return lines
+
+    def _render_pitched_pattern(
+        self,
+        name: str,
+        pattern: typing.Any,
+        visual_cols: int,
+        display_cols: int,
+        on_grid: typing.FrozenSet[int],
+    ) -> typing.List[str]:
+        """Render a pitched pattern as a single summary row."""
+
+        # Collapse all pitches into a single row using max velocity per slot.
+        velocity_grid = self._build_velocity_grid(pattern, visual_cols, display_cols)
+
+        summary = [0] * display_cols
+        for pitch_velocities in velocity_grid.values():
+            for i, vel in enumerate(pitch_velocities[:display_cols]):
+                if vel > summary[i] or (vel == _SUSTAIN and summary[i] == 0):
+                    summary[i] = vel
+
+        label = name[:_LABEL_WIDTH].ljust(_LABEL_WIDTH)
+        cells = " ".join(
+            self._cell_char(v, col in on_grid) for col, v in enumerate(summary)
+        )
+        return [f"{label}|{cells}|"]
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _build_velocity_grid(
+        self,
+        pattern: typing.Any,
+        grid_size: int,
+        display_cols: int,
+    ) -> typing.Dict[int, typing.List[int]]:
+        """Scan pattern steps and build a {pitch: [velocity_per_slot]} dict.
+
+        Each pitch gets a list of length *display_cols*.  At each grid slot
+        the highest velocity from any note at that position is stored.
+        """
+
+        total_pulses = int(pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
+
+        if total_pulses <= 0 or grid_size <= 0:
+            return {}
+
+        pulses_per_slot = total_pulses / grid_size
+
+        velocity_grid: typing.Dict[int, typing.List[int]] = {}
+
+        for pulse, step in pattern.steps.items():
+            # Map pulse → grid slot.
+            slot = int(pulse / pulses_per_slot)
+
+            if slot < 0 or slot >= display_cols:
+                continue
+
+            for note in step.notes:
+                if note.pitch not in velocity_grid:
+                    velocity_grid[note.pitch] = [0] * display_cols
+
+                if note.velocity > velocity_grid[note.pitch][slot]:
+                    velocity_grid[note.pitch][slot] = note.velocity
+
+                # Fill sustain markers for slots where the note is
+                # still sounding.  Short notes (drums, staccato) never
+                # enter this loop.
+                end_pulse = pulse + note.duration
+                for s in range(slot + 1, display_cols):
+                    if s * pulses_per_slot >= end_pulse:
+                        break
+                    if velocity_grid[note.pitch][s] == 0:
+                        velocity_grid[note.pitch][s] = _SUSTAIN
+
+        return velocity_grid
+
+    @staticmethod
+    def _fit_columns(grid_size: int, term_width: int) -> int:
+        """Determine how many grid columns fit in the terminal.
+
+        Each column occupies 2 characters (char + space), plus the label
+        prefix and pipe delimiters.
+        """
+
+        # label (LABEL_WIDTH) + "|" + cells + "|"
+        # Each cell is "X " (2 chars) but last cell has no trailing space
+        # inside the pipes: "X . X ." is grid_size * 2 - 1 chars.
+        overhead = _LABEL_WIDTH + 2  # label + pipes
+        available = term_width - overhead
+
+        if available <= 0:
+            return 0
+
+        # Each column needs 2 chars (char + space), except the last needs 1.
+        max_cols = (available + 1) // 2
+
+        return min(grid_size, max_cols)
+
+
+class DisplayLogHandler(logging.Handler):
+    """Logging handler that clears and redraws the status line around log output.
+
+    Installed by ``Display.start()`` and removed by ``Display.stop()``. Ensures
+    log messages do not overwrite or corrupt the persistent status line.
+    """
+
+    def __init__(self, display: "Display") -> None:
+        """Store reference to the display for clear/redraw calls."""
+
+        super().__init__()
+        self._display = display
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Clear the status line, write the log message, then redraw."""
+
+        try:
+            # emit() runs on whatever thread logged; hold the display's render
+            # lock across the whole clear → write → redraw sequence so a
+            # concurrent event-loop draw() cannot interleave ANSI sequences.
+            with self._display._render_lock:
+                self._display.clear_line()
+
+                msg = self.format(record)
+                sys.stderr.write(msg + "\n")
+                sys.stderr.flush()
+
+                self._display.draw()
+
+        except Exception:
+            self.handleError(record)
 
 
 class Display:
+    """Live-updating terminal dashboard showing composition state.
 
-	"""Live-updating terminal dashboard showing composition state.
+    Reads bar, section, chord, BPM, and key from the ``Composition`` and renders
+    a persistent region to stderr.  When ``grid=True`` an ASCII pattern grid is
+    rendered above the status line.  A custom ``DisplayLogHandler`` ensures log
+    messages scroll cleanly above the dashboard.
 
-	Reads bar, section, chord, BPM, and key from the ``Composition`` and renders
-	a persistent region to stderr.  When ``grid=True`` an ASCII pattern grid is
-	rendered above the status line.  A custom ``DisplayLogHandler`` ensures log
-	messages scroll cleanly above the dashboard.
+    Example:
+            ```python
+            composition.display(grid=True)
+            composition.play()
+            ```
+    """
 
-	Example:
-		```python
-		composition.display(grid=True)
-		composition.play()
-		```
-	"""
+    def __init__(
+        self, composition: "Composition", grid: bool = False, grid_scale: float = 1.0
+    ) -> None:
+        """Store composition reference for reading playback state.
 
-	def __init__ (self, composition: "Composition", grid: bool = False, grid_scale: float = 1.0) -> None:
+        Parameters:
+                composition: The ``Composition`` instance to read state from.
+                grid: When True, render an ASCII grid of running patterns
+                        above the status line.
+                grid_scale: Horizontal zoom factor for the grid (default
+                        ``1.0``).  Snapped internally to the nearest integer
+                        ``cols_per_step`` for uniform marker spacing.
+        """
 
-		"""Store composition reference for reading playback state.
+        self._composition = composition
+        self._active: bool = False
+        self._handler: typing.Optional[DisplayLogHandler] = None
+        self._saved_handlers: typing.List[logging.Handler] = []
+        self._last_line: str = ""
+        self._last_bar: typing.Optional[int] = None
+        self._cached_section: typing.Any = None
+        self._grid: typing.Optional[GridDisplay] = (
+            GridDisplay(composition, scale=grid_scale) if grid else None
+        )
+        self._last_grid_bar: typing.Optional[int] = None
+        self._drawn_line_count: int = 0
+        # Serialises terminal writes: update()/draw() run on the event loop,
+        # but DisplayLogHandler.emit() runs on whatever thread logged (e.g.
+        # the web UI's HTTP worker) — unsynchronised, an emit mid-draw would
+        # interleave ANSI sequences and garble the dashboard.  RLock because
+        # emit() holds it across its clear_line() → write → draw() sequence.
+        self._render_lock = threading.RLock()
 
-		Parameters:
-			composition: The ``Composition`` instance to read state from.
-			grid: When True, render an ASCII grid of running patterns
-				above the status line.
-			grid_scale: Horizontal zoom factor for the grid (default
-				``1.0``).  Snapped internally to the nearest integer
-				``cols_per_step`` for uniform marker spacing.
-		"""
+    def start(self) -> None:
+        """Install the log handler and activate the display.
 
-		self._composition = composition
-		self._active: bool = False
-		self._handler: typing.Optional[DisplayLogHandler] = None
-		self._saved_handlers: typing.List[logging.Handler] = []
-		self._last_line: str = ""
-		self._last_bar: typing.Optional[int] = None
-		self._cached_section: typing.Any = None
-		self._grid: typing.Optional[GridDisplay] = GridDisplay(composition, scale=grid_scale) if grid else None
-		self._last_grid_bar: typing.Optional[int] = None
-		self._drawn_line_count: int = 0
-		# Serialises terminal writes: update()/draw() run on the event loop,
-		# but DisplayLogHandler.emit() runs on whatever thread logged (e.g.
-		# the web UI's HTTP worker) — unsynchronised, an emit mid-draw would
-		# interleave ANSI sequences and garble the dashboard.  RLock because
-		# emit() holds it across its clear_line() → write → draw() sequence.
-		self._render_lock = threading.RLock()
+        Saves existing root logger handlers and replaces them with a
+        ``DisplayLogHandler`` that clears/redraws the status line around
+        each log message. Original handlers are restored by ``stop()``.
+        """
 
-	def start (self) -> None:
+        if self._active:
+            return
 
-		"""Install the log handler and activate the display.
+        self._active = True
 
-		Saves existing root logger handlers and replaces them with a
-		``DisplayLogHandler`` that clears/redraws the status line around
-		each log message. Original handlers are restored by ``stop()``.
-		"""
+        root_logger = logging.getLogger()
 
-		if self._active:
-			return
+        # Save existing handlers so we can restore them on stop.
+        self._saved_handlers = list(root_logger.handlers)
 
-		self._active = True
+        # Build the replacement handler, inheriting the formatter from the
+        # first existing handler (if any) for consistent log formatting.
+        self._handler = DisplayLogHandler(self)
 
-		root_logger = logging.getLogger()
+        if self._saved_handlers and self._saved_handlers[0].formatter:
+            self._handler.setFormatter(self._saved_handlers[0].formatter)
+        else:
+            self._handler.setFormatter(
+                logging.Formatter("%(levelname)s:%(name)s:%(message)s")
+            )
 
-		# Save existing handlers so we can restore them on stop.
-		self._saved_handlers = list(root_logger.handlers)
+        root_logger.handlers.clear()
+        root_logger.addHandler(self._handler)
 
-		# Build the replacement handler, inheriting the formatter from the
-		# first existing handler (if any) for consistent log formatting.
-		self._handler = DisplayLogHandler(self)
+    def stop(self) -> None:
+        """Clear the status line and restore original log handlers."""
 
-		if self._saved_handlers and self._saved_handlers[0].formatter:
-			self._handler.setFormatter(self._saved_handlers[0].formatter)
-		else:
-			self._handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+        if not self._active:
+            return
 
-		root_logger.handlers.clear()
-		root_logger.addHandler(self._handler)
+        self.clear_line()
+        self._active = False
 
-	def stop (self) -> None:
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
 
-		"""Clear the status line and restore original log handlers."""
+        for handler in self._saved_handlers:
+            root_logger.addHandler(handler)
 
-		if not self._active:
-			return
+        self._saved_handlers = []
+        self._handler = None
 
-		self.clear_line()
-		self._active = False
+    def update(self, _: int = 0) -> None:
+        """Rebuild and redraw the dashboard; called on ``"bar"`` and ``"beat"`` events.
 
-		root_logger = logging.getLogger()
-		root_logger.handlers.clear()
+        The integer argument (bar or beat number) is ignored — state is read directly from
+        the composition.
 
-		for handler in self._saved_handlers:
-			root_logger.addHandler(handler)
+        Note: "bar" and "beat" events are emitted as ``asyncio.create_task`` at the start
+        of each pulse, but the tasks only execute *after* ``_advance_pulse()`` completes
+        (which includes sending MIDI via ``_process_pulse()``). The display therefore
+        always trails the audio slightly — this is inherent to the architecture and cannot
+        be avoided without restructuring the sequencer loop.
+        """
 
-		self._saved_handlers = []
-		self._handler = None
+        if not self._active:
+            return
 
-	def update (self, _: int = 0) -> None:
+        self._last_line = self._format_status()
 
-		"""Rebuild and redraw the dashboard; called on ``"bar"`` and ``"beat"`` events.
+        # Rebuild grid data only when the bar counter changes.
+        if self._grid is not None:
+            current_bar = self._composition.sequencer.current_bar
+            if current_bar != self._last_grid_bar:
+                self._last_grid_bar = current_bar
+                self._grid.build()
 
-		The integer argument (bar or beat number) is ignored — state is read directly from
-		the composition.
+        self.draw()
 
-		Note: "bar" and "beat" events are emitted as ``asyncio.create_task`` at the start
-		of each pulse, but the tasks only execute *after* ``_advance_pulse()`` completes
-		(which includes sending MIDI via ``_process_pulse()``). The display therefore
-		always trails the audio slightly — this is inherent to the architecture and cannot
-		be avoided without restructuring the sequencer loop.
-		"""
+    def draw(self) -> None:
+        """Write the current dashboard to the terminal."""
 
-		if not self._active:
-			return
+        if not self._active or not self._last_line:
+            return
 
-		self._last_line = self._format_status()
+        with self._render_lock:
+            grid_lines = self._grid._lines if self._grid is not None else []
+            total = len(grid_lines) + 1  # grid lines + status line
 
-		# Rebuild grid data only when the bar counter changes.
-		if self._grid is not None:
-			current_bar = self._composition.sequencer.current_bar
-			if current_bar != self._last_grid_bar:
-				self._last_grid_bar = current_bar
-				self._grid.build()
+            if grid_lines:
+                total += 1  # separator line
 
-		self.draw()
+            # Move cursor up to overwrite the previously drawn region.
+            # Cursor sits on the last line (status) with no trailing newline,
+            # so we move up (total - 1) to reach the first line.
+            if self._drawn_line_count > 1:
+                sys.stderr.write(f"\033[{self._drawn_line_count - 1}A")
 
-	def draw (self) -> None:
+            if grid_lines:
+                sep = "-" * len(grid_lines[0])
+                sys.stderr.write(f"\r\033[K{sep}\n")
+                for line in grid_lines:
+                    sys.stderr.write(f"\r\033[K{line}\n")
 
-		"""Write the current dashboard to the terminal."""
+            # Status line (no trailing newline — cursor stays on this line).
+            sys.stderr.write(f"\r\033[K{self._last_line}")
+            # Clear to end of screen in case the grid shrank since the last draw
+            # (e.g. a pattern disappeared), which would otherwise leave the old
+            # status line stranded one line below the new one.
+            sys.stderr.write("\033[J")
+            sys.stderr.flush()
 
-		if not self._active or not self._last_line:
-			return
+            self._drawn_line_count = total
 
-		with self._render_lock:
+    def clear_line(self) -> None:
+        """Erase the entire dashboard region from the terminal."""
 
-			grid_lines = self._grid._lines if self._grid is not None else []
-			total = len(grid_lines) + 1  # grid lines + status line
+        if not self._active:
+            return
 
-			if grid_lines:
-				total += 1  # separator line
+        with self._render_lock:
+            if self._drawn_line_count > 1:
+                # Cursor is on the last line (no trailing newline).
+                # Move up (total - 1) to reach the first line.
+                sys.stderr.write(f"\033[{self._drawn_line_count - 1}A")
 
-			# Move cursor up to overwrite the previously drawn region.
-			# Cursor sits on the last line (status) with no trailing newline,
-			# so we move up (total - 1) to reach the first line.
-			if self._drawn_line_count > 1:
-				sys.stderr.write(f"\033[{self._drawn_line_count - 1}A")
+                # Clear each line.
+                for _ in range(self._drawn_line_count):
+                    sys.stderr.write("\r\033[K\n")
 
-			if grid_lines:
-				sep = "-" * len(grid_lines[0])
-				sys.stderr.write(f"\r\033[K{sep}\n")
-				for line in grid_lines:
-					sys.stderr.write(f"\r\033[K{line}\n")
+                # Move cursor back up to the starting position.
+                sys.stderr.write(f"\033[{self._drawn_line_count}A")
+            else:
+                sys.stderr.write("\r\033[K")
 
-			# Status line (no trailing newline — cursor stays on this line).
-			sys.stderr.write(f"\r\033[K{self._last_line}")
-			# Clear to end of screen in case the grid shrank since the last draw
-			# (e.g. a pattern disappeared), which would otherwise leave the old
-			# status line stranded one line below the new one.
-			sys.stderr.write("\033[J")
-			sys.stderr.flush()
+            sys.stderr.flush()
+            self._drawn_line_count = 0
 
-			self._drawn_line_count = total
+    def _format_status(self) -> str:
+        """Build the status string from current composition state."""
 
-	def clear_line (self) -> None:
+        parts: typing.List[str] = []
+        comp = self._composition
 
-		"""Erase the entire dashboard region from the terminal."""
+        parts.append(f"{comp.sequencer.current_bpm:.2f} BPM")
 
-		if not self._active:
-			return
+        if comp.key:
+            parts.append(f"Key: {comp.key}")
 
-		with self._render_lock:
+        bar = max(0, comp.sequencer.current_bar) + 1
+        beat = max(0, comp.sequencer.current_beat) + 1
+        parts.append(f"Bar: {bar}.{beat}")
 
-			if self._drawn_line_count > 1:
-				# Cursor is on the last line (no trailing newline).
-				# Move up (total - 1) to reach the first line.
-				sys.stderr.write(f"\033[{self._drawn_line_count - 1}A")
+        # Section info (only when form is configured).
+        # Cache refreshes only when the bar counter changes, keeping
+        # the section display in sync with the bar display even though
+        # the form state advances one beat early (due to lookahead).
+        if comp.form_state is not None:
+            current_bar = comp.sequencer.current_bar
 
-				# Clear each line.
-				for _ in range(self._drawn_line_count):
-					sys.stderr.write("\r\033[K\n")
+            if current_bar != self._last_bar:
+                self._last_bar = current_bar
+                self._cached_section = comp.form_state.get_section_info()
 
-				# Move cursor back up to the starting position.
-				sys.stderr.write(f"\033[{self._drawn_line_count}A")
-			else:
-				sys.stderr.write("\r\033[K")
+            section = self._cached_section
 
-			sys.stderr.flush()
-			self._drawn_line_count = 0
+            if section:
+                section_str = f"[{section.name} {section.bar + 1}/{section.bars}"
+                if section.next_section:
+                    section_str += f" \u2192 {section.next_section}"
+                section_str += "]"
+                parts.append(section_str)
+            else:
+                parts.append("[form finished]")
 
-	def _format_status (self) -> str:
+        # Current chord (only when harmony is configured).  Reads the harmony
+        # window at the playhead, so it tracks sub-bar harmonic rhythm and
+        # covers progression-only mode (no engine) — the display refreshes
+        # per beat, which bounds how stale it can be.
+        chord = comp.current_chord()
+        if chord is not None:
+            parts.append(f"Chord: {chord.name()}")
 
-		"""Build the status string from current composition state."""
+        # Conductor signals (when any are registered).  builder_bar is the
+        # lookahead bar - deliberately the same time base the pattern builders
+        # read, so the status line shows the values shaping what you are about
+        # to hear (the section line above shows playing-bar time instead).
+        conductor = comp.conductor
+        if conductor.signal_names:
+            beat = comp.builder_bar * comp.sequencer.time_signature[0]
+            for name in conductor.signal_names:
+                value = conductor.get(name, beat)
+                parts.append(f"{name.title()}: {value:.2f}")
 
-		parts: typing.List[str] = []
-		comp = self._composition
-
-		parts.append(f"{comp.sequencer.current_bpm:.2f} BPM")
-
-		if comp.key:
-			parts.append(f"Key: {comp.key}")
-
-		bar  = max(0, comp.sequencer.current_bar)  + 1
-		beat = max(0, comp.sequencer.current_beat) + 1
-		parts.append(f"Bar: {bar}.{beat}")
-
-		# Section info (only when form is configured).
-		# Cache refreshes only when the bar counter changes, keeping
-		# the section display in sync with the bar display even though
-		# the form state advances one beat early (due to lookahead).
-		if comp.form_state is not None:
-			current_bar = comp.sequencer.current_bar
-
-			if current_bar != self._last_bar:
-				self._last_bar = current_bar
-				self._cached_section = comp.form_state.get_section_info()
-
-			section = self._cached_section
-
-			if section:
-				section_str = f"[{section.name} {section.bar + 1}/{section.bars}"
-				if section.next_section:
-					section_str += f" \u2192 {section.next_section}"
-				section_str += "]"
-				parts.append(section_str)
-			else:
-				parts.append("[form finished]")
-
-		# Current chord (only when harmony is configured).  Reads the harmony
-		# window at the playhead, so it tracks sub-bar harmonic rhythm and
-		# covers progression-only mode (no engine) — the display refreshes
-		# per beat, which bounds how stale it can be.
-		chord = comp.current_chord()
-		if chord is not None:
-			parts.append(f"Chord: {chord.name()}")
-
-		# Conductor signals (when any are registered).  builder_bar is the
-		# lookahead bar - deliberately the same time base the pattern builders
-		# read, so the status line shows the values shaping what you are about
-		# to hear (the section line above shows playing-bar time instead).
-		conductor = comp.conductor
-		if conductor.signal_names:
-			beat = comp.builder_bar * comp.sequencer.time_signature[0]
-			for name in conductor.signal_names:
-				value = conductor.get(name, beat)
-				parts.append(f"{name.title()}: {value:.2f}")
-
-		return "  ".join(parts)
+        return "  ".join(parts)

@@ -12,91 +12,108 @@ WEIGHT_DECEPTIVE = subsequence.chord_graphs.WEIGHT_DECEPTIVE
 WEIGHT_WEAK = subsequence.chord_graphs.WEIGHT_WEAK
 
 
-class DiatonicMajor (subsequence.chord_graphs.ChordGraph):
+class DiatonicMajor(subsequence.chord_graphs.ChordGraph):
+    """Single-key functional major harmony graph."""
 
-	"""Single-key functional major harmony graph."""
+    def __init__(self, include_dominant_7th: bool = True) -> None:
+        """Configure whether to include dominant seventh chords."""
 
-	def __init__ (self, include_dominant_7th: bool = True) -> None:
+        self.include_dominant_7th = include_dominant_7th
 
-		"""Configure whether to include dominant seventh chords."""
+    def build(
+        self, key_name: str
+    ) -> typing.Tuple[
+        subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord],
+        subsequence.chords.Chord,
+    ]:
+        """Build the graph for a given major key."""
 
-		self.include_dominant_7th = include_dominant_7th
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-	def build (self, key_name: str) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
+        chords = subsequence.chord_graphs.build_diatonic_chords(
+            subsequence.intervals.scale_pitch_classes(key_pc, "ionian"),
+            subsequence.intervals.IONIAN_QUALITIES,
+        )
 
-		"""Build the graph for a given major key."""
+        tonic = chords[0]
+        supertonic = chords[1]
+        mediant = chords[2]
+        subdominant = chords[3]
+        dominant = chords[4]
+        submediant = chords[5]
+        leading = chords[6]
 
-		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
+        graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = (
+            subsequence.weighted_graph.WeightedGraph()
+        )
 
-		chords = subsequence.chord_graphs.build_diatonic_chords(
-			subsequence.intervals.scale_pitch_classes(key_pc, "ionian"),
-			subsequence.intervals.IONIAN_QUALITIES
-		)
+        graph.add_transition(tonic, subdominant, WEIGHT_COMMON)
+        graph.add_transition(tonic, dominant, WEIGHT_COMMON)
+        graph.add_transition(tonic, submediant, WEIGHT_COMMON)
+        graph.add_transition(tonic, supertonic, WEIGHT_WEAK)
 
-		tonic = chords[0]
-		supertonic = chords[1]
-		mediant = chords[2]
-		subdominant = chords[3]
-		dominant = chords[4]
-		submediant = chords[5]
-		leading = chords[6]
+        graph.add_transition(supertonic, dominant, WEIGHT_STRONG)
 
-		graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = subsequence.weighted_graph.WeightedGraph()
+        graph.add_transition(mediant, submediant, WEIGHT_COMMON)
+        graph.add_transition(mediant, subdominant, WEIGHT_WEAK)
 
-		graph.add_transition(tonic, subdominant, WEIGHT_COMMON)
-		graph.add_transition(tonic, dominant, WEIGHT_COMMON)
-		graph.add_transition(tonic, submediant, WEIGHT_COMMON)
-		graph.add_transition(tonic, supertonic, WEIGHT_WEAK)
+        graph.add_transition(subdominant, dominant, WEIGHT_STRONG, label="open")
+        graph.add_transition(subdominant, supertonic, WEIGHT_COMMON)
+        # The plagal close (IV → I, the "Amen") — outside strict functional
+        # motion, so weak; it also makes the "soft" cadence formula walkable.
+        graph.add_transition(subdominant, tonic, WEIGHT_WEAK, label="soft")
 
-		graph.add_transition(supertonic, dominant, WEIGHT_STRONG)
+        graph.add_transition(dominant, tonic, WEIGHT_STRONG, label="strong")
+        graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE, label="fakeout")
 
-		graph.add_transition(mediant, submediant, WEIGHT_COMMON)
-		graph.add_transition(mediant, subdominant, WEIGHT_WEAK)
+        graph.add_transition(submediant, supertonic, WEIGHT_COMMON)
+        graph.add_transition(submediant, subdominant, WEIGHT_COMMON)
+        graph.add_transition(submediant, dominant, WEIGHT_WEAK)
 
-		graph.add_transition(subdominant, dominant, WEIGHT_STRONG, label="open")
-		graph.add_transition(subdominant, supertonic, WEIGHT_COMMON)
-		# The plagal close (IV → I, the "Amen") — outside strict functional
-		# motion, so weak; it also makes the "soft" cadence formula walkable.
-		graph.add_transition(subdominant, tonic, WEIGHT_WEAK, label="soft")
+        graph.add_transition(leading, tonic, WEIGHT_STRONG)
 
-		graph.add_transition(dominant, tonic, WEIGHT_STRONG, label="strong")
-		graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE, label="fakeout")
+        # Make the two remaining diatonic triads reachable as occasional colour —
+        # they were defined with resolving edges but nothing led into them:
+        #   vi → iii  — the descending-thirds sequence (I–V–vi–iii–IV).
+        #   IV → vii° — predominant into the leading-tone triad (a dominant
+        #               substitute), which then resolves via its vii° → I edge.
+        graph.add_transition(submediant, mediant, WEIGHT_WEAK)
+        graph.add_transition(subdominant, leading, WEIGHT_WEAK)
 
-		graph.add_transition(submediant, supertonic, WEIGHT_COMMON)
-		graph.add_transition(submediant, subdominant, WEIGHT_COMMON)
-		graph.add_transition(submediant, dominant, WEIGHT_WEAK)
+        if self.include_dominant_7th:
+            # Decision path: optional dominant seventh color for stronger cadences.
+            dominant_7th = subsequence.chords.Chord(
+                root_pc=dominant.root_pc, quality="dominant_7th"
+            )
 
-		graph.add_transition(leading, tonic, WEIGHT_STRONG)
+            graph.add_transition(dominant, dominant_7th, WEIGHT_WEAK)
+            graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG, label="strong")
+            graph.add_transition(
+                dominant_7th, submediant, WEIGHT_DECEPTIVE, label="fakeout"
+            )
 
-		# Make the two remaining diatonic triads reachable as occasional colour —
-		# they were defined with resolving edges but nothing led into them:
-		#   vi → iii  — the descending-thirds sequence (I–V–vi–iii–IV).
-		#   IV → vii° — predominant into the leading-tone triad (a dominant
-		#               substitute), which then resolves via its vii° → I edge.
-		graph.add_transition(submediant, mediant, WEIGHT_WEAK)
-		graph.add_transition(subdominant, leading, WEIGHT_WEAK)
+        return graph, tonic
 
-		if self.include_dominant_7th:
-			# Decision path: optional dominant seventh color for stronger cadences.
-			dominant_7th = subsequence.chords.Chord(root_pc=dominant.root_pc, quality="dominant_7th")
+    def gravity_sets(
+        self, key_name: str
+    ) -> typing.Tuple[
+        typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]
+    ]:
+        """Return major-key diatonic and functional chord sets."""
 
-			graph.add_transition(dominant, dominant_7th, WEIGHT_WEAK)
-			graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG, label="strong")
-			graph.add_transition(dominant_7th, submediant, WEIGHT_DECEPTIVE, label="fakeout")
-
-		return graph, tonic
-
-	def gravity_sets (self, key_name: str) -> typing.Tuple[typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]]:
-
-		"""Return major-key diatonic and functional chord sets."""
-
-		return subsequence.chord_graphs._major_key_gravity_sets(key_name)
+        return subsequence.chord_graphs._major_key_gravity_sets(key_name)
 
 
-def build_graph (key_name: str, include_dominant_7th: bool = True, minor_turnaround_weight: float = 0.0) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
+def build_graph(
+    key_name: str,
+    include_dominant_7th: bool = True,
+    minor_turnaround_weight: float = 0.0,
+) -> typing.Tuple[
+    subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord],
+    subsequence.chords.Chord,
+]:
+    """Build a functional major-key graph and return it with the tonic chord."""
 
-	"""Build a functional major-key graph and return it with the tonic chord."""
+    graph_obj = DiatonicMajor(include_dominant_7th=include_dominant_7th)
 
-	graph_obj = DiatonicMajor(include_dominant_7th=include_dominant_7th)
-
-	return graph_obj.build(key_name)
+    return graph_obj.build(key_name)

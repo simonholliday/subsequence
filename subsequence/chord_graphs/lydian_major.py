@@ -16,115 +16,136 @@ WEIGHT_WEAK = subsequence.chord_graphs.WEIGHT_WEAK
 WEIGHT_LYDIAN = 5
 
 
-class LydianMajor (subsequence.chord_graphs.ChordGraph):
+class LydianMajor(subsequence.chord_graphs.ChordGraph):
+    """Lydian-flavored major harmony with a raised fourth degree.
 
-	"""Lydian-flavored major harmony with a raised fourth degree.
+    The raised 4th (#4) gives a bright, floating quality. The II chord
+    (major, a whole step above tonic) is the defining Lydian sound  -
+    the I ↔ II "shimmer" is the strongest motion in the graph. The
+    natural IV chord is absent entirely, keeping the harmony purely modal.
 
-	The raised 4th (#4) gives a bright, floating quality. The II chord
-	(major, a whole step above tonic) is the defining Lydian sound  - 
-	the I ↔ II "shimmer" is the strongest motion in the graph. The
-	natural IV chord is absent entirely, keeping the harmony purely modal.
+    Good for ambient, cinematic, and progressive electronic music.
+    """
 
-	Good for ambient, cinematic, and progressive electronic music.
-	"""
+    def __init__(self, include_dominant_7th: bool = True) -> None:
+        """Configure whether to include dominant seventh chords."""
 
-	def __init__ (self, include_dominant_7th: bool = True) -> None:
+        self.include_dominant_7th = include_dominant_7th
 
-		"""Configure whether to include dominant seventh chords."""
+    def build(
+        self, key_name: str
+    ) -> typing.Tuple[
+        subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord],
+        subsequence.chords.Chord,
+    ]:
+        """Build a Lydian major-key graph for the given key."""
 
-		self.include_dominant_7th = include_dominant_7th
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-	def build (self, key_name: str) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
+        # Lydian scale: 0, 2, 4, 6, 7, 9, 11
+        # Degrees:      I, II, iii, #iv°, V, vi, vii
+        tonic = subsequence.chords.Chord(root_pc=key_pc, quality="major")
+        supertonic = subsequence.chords.Chord(
+            root_pc=(key_pc + 2) % 12, quality="major"
+        )
+        mediant = subsequence.chords.Chord(root_pc=(key_pc + 4) % 12, quality="minor")
+        sharp_four_dim = subsequence.chords.Chord(
+            root_pc=(key_pc + 6) % 12, quality="diminished"
+        )
+        dominant = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="major")
+        submediant = subsequence.chords.Chord(
+            root_pc=(key_pc + 9) % 12, quality="minor"
+        )
+        leading = subsequence.chords.Chord(root_pc=(key_pc + 11) % 12, quality="minor")
 
-		"""Build a Lydian major-key graph for the given key."""
+        graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = (
+            subsequence.weighted_graph.WeightedGraph()
+        )
 
-		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
+        # --- The Lydian shimmer: I ↔ II ---
+        graph.add_transition(tonic, supertonic, WEIGHT_LYDIAN)
+        graph.add_transition(supertonic, tonic, WEIGHT_LYDIAN)
 
-		# Lydian scale: 0, 2, 4, 6, 7, 9, 11
-		# Degrees:      I, II, iii, #iv°, V, vi, vii
-		tonic = subsequence.chords.Chord(root_pc=key_pc, quality="major")
-		supertonic = subsequence.chords.Chord(root_pc=(key_pc + 2) % 12, quality="major")
-		mediant = subsequence.chords.Chord(root_pc=(key_pc + 4) % 12, quality="minor")
-		sharp_four_dim = subsequence.chords.Chord(root_pc=(key_pc + 6) % 12, quality="diminished")
-		dominant = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="major")
-		submediant = subsequence.chords.Chord(root_pc=(key_pc + 9) % 12, quality="minor")
-		leading = subsequence.chords.Chord(root_pc=(key_pc + 11) % 12, quality="minor")
+        # --- Tonic departures ---
+        graph.add_transition(tonic, dominant, WEIGHT_COMMON)
+        graph.add_transition(tonic, submediant, WEIGHT_COMMON)
+        graph.add_transition(tonic, mediant, WEIGHT_WEAK)
 
-		graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = subsequence.weighted_graph.WeightedGraph()
+        # --- Supertonic departures (beyond → tonic) ---
+        graph.add_transition(supertonic, dominant, WEIGHT_COMMON)
+        graph.add_transition(supertonic, mediant, WEIGHT_WEAK)
 
-		# --- The Lydian shimmer: I ↔ II ---
-		graph.add_transition(tonic, supertonic, WEIGHT_LYDIAN)
-		graph.add_transition(supertonic, tonic, WEIGHT_LYDIAN)
+        # --- Mediant departures ---
+        graph.add_transition(mediant, submediant, WEIGHT_COMMON)
+        graph.add_transition(mediant, tonic, WEIGHT_WEAK)
 
-		# --- Tonic departures ---
-		graph.add_transition(tonic, dominant, WEIGHT_COMMON)
-		graph.add_transition(tonic, submediant, WEIGHT_COMMON)
-		graph.add_transition(tonic, mediant, WEIGHT_WEAK)
+        # --- Dominant departures ---
+        graph.add_transition(dominant, tonic, WEIGHT_STRONG)
+        graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE)
 
-		# --- Supertonic departures (beyond → tonic) ---
-		graph.add_transition(supertonic, dominant, WEIGHT_COMMON)
-		graph.add_transition(supertonic, mediant, WEIGHT_WEAK)
+        # --- Submediant departures ---
+        graph.add_transition(submediant, supertonic, WEIGHT_COMMON)
+        graph.add_transition(submediant, dominant, WEIGHT_COMMON)
+        graph.add_transition(submediant, tonic, WEIGHT_WEAK)
 
-		# --- Mediant departures ---
-		graph.add_transition(mediant, submediant, WEIGHT_COMMON)
-		graph.add_transition(mediant, tonic, WEIGHT_WEAK)
+        # --- Leading tone (vii) departures ---
+        graph.add_transition(leading, tonic, WEIGHT_STRONG)
+        graph.add_transition(leading, supertonic, WEIGHT_WEAK)
 
-		# --- Dominant departures ---
-		graph.add_transition(dominant, tonic, WEIGHT_STRONG)
-		graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE)
+        # --- #iv° connectors ---
+        graph.add_transition(sharp_four_dim, dominant, WEIGHT_MEDIUM)
+        graph.add_transition(sharp_four_dim, tonic, WEIGHT_WEAK)
 
-		# --- Submediant departures ---
-		graph.add_transition(submediant, supertonic, WEIGHT_COMMON)
-		graph.add_transition(submediant, dominant, WEIGHT_COMMON)
-		graph.add_transition(submediant, tonic, WEIGHT_WEAK)
+        # Make the two diatonic chords that had only outgoing edges reachable, as
+        # occasional colour:
+        #   I → #iv° — passing into the signature raised-4 dim (→ V / I).
+        #   V → vii  — into the minor leading-tone triad, which resolves vii → I.
+        graph.add_transition(tonic, sharp_four_dim, WEIGHT_WEAK)
+        graph.add_transition(dominant, leading, WEIGHT_WEAK)
 
-		# --- Leading tone (vii) departures ---
-		graph.add_transition(leading, tonic, WEIGHT_STRONG)
-		graph.add_transition(leading, supertonic, WEIGHT_WEAK)
+        if self.include_dominant_7th:
+            dominant_7th = subsequence.chords.Chord(
+                root_pc=dominant.root_pc, quality="dominant_7th"
+            )
 
-		# --- #iv° connectors ---
-		graph.add_transition(sharp_four_dim, dominant, WEIGHT_MEDIUM)
-		graph.add_transition(sharp_four_dim, tonic, WEIGHT_WEAK)
+            graph.add_transition(dominant, dominant_7th, WEIGHT_WEAK)
+            graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG)
+            graph.add_transition(dominant_7th, submediant, WEIGHT_DECEPTIVE)
 
-		# Make the two diatonic chords that had only outgoing edges reachable, as
-		# occasional colour:
-		#   I → #iv° — passing into the signature raised-4 dim (→ V / I).
-		#   V → vii  — into the minor leading-tone triad, which resolves vii → I.
-		graph.add_transition(tonic, sharp_four_dim, WEIGHT_WEAK)
-		graph.add_transition(dominant, leading, WEIGHT_WEAK)
+        return graph, tonic
 
-		if self.include_dominant_7th:
-			dominant_7th = subsequence.chords.Chord(root_pc=dominant.root_pc, quality="dominant_7th")
+    def gravity_sets(
+        self, key_name: str
+    ) -> typing.Tuple[
+        typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]
+    ]:
+        """Return Lydian diatonic and functional chord sets."""
 
-			graph.add_transition(dominant, dominant_7th, WEIGHT_WEAK)
-			graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG)
-			graph.add_transition(dominant_7th, submediant, WEIGHT_DECEPTIVE)
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		return graph, tonic
+        diatonic: typing.Set[subsequence.chords.Chord] = set(
+            subsequence.chord_graphs.build_diatonic_chords(
+                subsequence.intervals.scale_pitch_classes(key_pc, "lydian"),
+                subsequence.intervals.LYDIAN_QUALITIES,
+            )
+        )
 
-	def gravity_sets (self, key_name: str) -> typing.Tuple[typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]]:
+        # Add dominant 7th to diatonic set.
+        dominant_7th = subsequence.chords.Chord(
+            root_pc=(key_pc + 7) % 12, quality="dominant_7th"
+        )
+        diatonic.add(dominant_7th)
 
-		"""Return Lydian diatonic and functional chord sets."""
+        # Functional set: I, II (Lydian signature), V.
+        functional: typing.Set[subsequence.chords.Chord] = set()
 
-		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
+        functional.add(subsequence.chords.Chord(root_pc=key_pc, quality="major"))
+        functional.add(
+            subsequence.chords.Chord(root_pc=(key_pc + 2) % 12, quality="major")
+        )
+        functional.add(
+            subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="major")
+        )
+        functional.add(dominant_7th)
 
-		diatonic: typing.Set[subsequence.chords.Chord] = set(
-			subsequence.chord_graphs.build_diatonic_chords(
-				subsequence.intervals.scale_pitch_classes(key_pc, "lydian"),
-				subsequence.intervals.LYDIAN_QUALITIES
-			)
-		)
-
-		# Add dominant 7th to diatonic set.
-		dominant_7th = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="dominant_7th")
-		diatonic.add(dominant_7th)
-
-		# Functional set: I, II (Lydian signature), V.
-		functional: typing.Set[subsequence.chords.Chord] = set()
-
-		functional.add(subsequence.chords.Chord(root_pc=key_pc, quality="major"))
-		functional.add(subsequence.chords.Chord(root_pc=(key_pc + 2) % 12, quality="major"))
-		functional.add(subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="major"))
-		functional.add(dominant_7th)
-
-		return diatonic, functional
+        return diatonic, functional

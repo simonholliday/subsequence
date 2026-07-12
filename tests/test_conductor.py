@@ -1,4 +1,3 @@
-
 import warnings
 
 import pytest
@@ -7,292 +6,283 @@ import subsequence.pattern
 import subsequence.pattern_builder
 
 
-def test_lfo_sine () -> None:
-
-	"""Test sine wave LFO output."""
-	
-	conductor = subsequence.conductor.Conductor()
-	conductor.lfo("sine", shape="sine", cycle_beats=4.0, min_val=0.0, max_val=1.0)
-	
-	# Start (phase 0) -> sin(0) = 0 -> mapped to 0.5
-	assert conductor.get("sine", 0.0) == 0.5
-	
-	# 1 beat (0.25 cycle) -> sin(pi/2) = 1 -> mapped to 1.0
-	assert conductor.get("sine", 1.0) == 1.0
-	
-	# 2 beats (0.5 cycle) -> sin(pi) = 0 -> mapped to 0.5
-	assert conductor.get("sine", 2.0) == pytest.approx(0.5)
-	
-	# 3 beats (0.75 cycle) -> sin(3pi/2) = -1 -> mapped to 0.0
-	assert conductor.get("sine", 3.0) == pytest.approx(0.0)
-	
-	# 4 beats (1.0 cycle) -> sin(2pi) = 0 -> mapped to 0.5
-	assert conductor.get("sine", 4.0) == pytest.approx(0.5)
-
-
-def test_lfo_triangle () -> None:
-
-	"""Test triangle wave LFO output."""
-	
-	conductor = subsequence.conductor.Conductor()
-	conductor.lfo("tri", shape="triangle", cycle_beats=4.0)
-	
-	# 0.0 -> 0.0
-	assert conductor.get("tri", 0.0) == 0.0
-	
-	# 1.0 (0.25 cycle) -> 0.5
-	assert conductor.get("tri", 1.0) == 0.5
-	
-	# 2.0 (0.5 cycle) -> 1.0
-	assert conductor.get("tri", 2.0) == 1.0
-	
-	# 3.0 (0.75 cycle) -> 0.5
-	assert conductor.get("tri", 3.0) == 0.5
+def test_lfo_sine() -> None:
+    """Test sine wave LFO output."""
 
+    conductor = subsequence.conductor.Conductor()
+    conductor.lfo("sine", shape="sine", cycle_beats=4.0, min_val=0.0, max_val=1.0)
 
-def test_line_ramp () -> None:
+    # Start (phase 0) -> sin(0) = 0 -> mapped to 0.5
+    assert conductor.get("sine", 0.0) == 0.5
 
-	"""Test linear ramp."""
-	
-	conductor = subsequence.conductor.Conductor()
-	conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=4.0)
-	
-	# Start
-	assert conductor.get("ramp", 0.0) == 0.0
-	
-	# Midpoint
-	assert conductor.get("ramp", 2.0) == 0.5
-	
-	# End
-	assert conductor.get("ramp", 4.0) == 1.0
-	
-	# Past end (clamped)
-	assert conductor.get("ramp", 5.0) == 1.0
+    # 1 beat (0.25 cycle) -> sin(pi/2) = 1 -> mapped to 1.0
+    assert conductor.get("sine", 1.0) == 1.0
 
+    # 2 beats (0.5 cycle) -> sin(pi) = 0 -> mapped to 0.5
+    assert conductor.get("sine", 2.0) == pytest.approx(0.5)
 
-def test_line_loop () -> None:
+    # 3 beats (0.75 cycle) -> sin(3pi/2) = -1 -> mapped to 0.0
+    assert conductor.get("sine", 3.0) == pytest.approx(0.0)
 
-	"""Test looping ramp."""
-	
-	conductor = subsequence.conductor.Conductor()
-	conductor.line("loop", start_val=0.0, end_val=1.0, duration_beats=4.0, loop=True)
-	
-	# Start
-	assert conductor.get("loop", 0.0) == 0.0
-	
-	# End of first loop is start of second
-	assert conductor.get("loop", 4.0) == 0.0
-	
-	# 1.5 loops
-	assert conductor.get("loop", 6.0) == 0.5
+    # 4 beats (1.0 cycle) -> sin(2pi) = 0 -> mapped to 0.5
+    assert conductor.get("sine", 4.0) == pytest.approx(0.5)
 
 
-def test_lfo_saw () -> None:
+def test_lfo_triangle() -> None:
+    """Test triangle wave LFO output."""
 
-	"""Test saw wave LFO output."""
+    conductor = subsequence.conductor.Conductor()
+    conductor.lfo("tri", shape="triangle", cycle_beats=4.0)
 
-	conductor = subsequence.conductor.Conductor()
-	conductor.lfo("saw", shape="saw", cycle_beats=4.0)
+    # 0.0 -> 0.0
+    assert conductor.get("tri", 0.0) == 0.0
 
-	# Start of cycle -> 0.0
-	assert conductor.get("saw", 0.0) == 0.0
+    # 1.0 (0.25 cycle) -> 0.5
+    assert conductor.get("tri", 1.0) == 0.5
 
-	# Quarter cycle -> 0.25
-	assert conductor.get("saw", 1.0) == 0.25
+    # 2.0 (0.5 cycle) -> 1.0
+    assert conductor.get("tri", 2.0) == 1.0
 
-	# Half cycle -> 0.5
-	assert conductor.get("saw", 2.0) == 0.5
+    # 3.0 (0.75 cycle) -> 0.5
+    assert conductor.get("tri", 3.0) == 0.5
 
-	# Three-quarter cycle -> 0.75
-	assert conductor.get("saw", 3.0) == 0.75
 
+def test_line_ramp() -> None:
+    """Test linear ramp."""
 
-def test_lfo_square () -> None:
+    conductor = subsequence.conductor.Conductor()
+    conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=4.0)
 
-	"""Test square wave LFO output."""
+    # Start
+    assert conductor.get("ramp", 0.0) == 0.0
 
-	conductor = subsequence.conductor.Conductor()
-	conductor.lfo("sq", shape="square", cycle_beats=4.0)
+    # Midpoint
+    assert conductor.get("ramp", 2.0) == 0.5
 
-	# First half of cycle -> 1.0
-	assert conductor.get("sq", 0.0) == 1.0
-	assert conductor.get("sq", 1.0) == 1.0
+    # End
+    assert conductor.get("ramp", 4.0) == 1.0
 
-	# Second half of cycle -> 0.0
-	assert conductor.get("sq", 2.0) == 0.0
-	assert conductor.get("sq", 3.0) == 0.0
+    # Past end (clamped)
+    assert conductor.get("ramp", 5.0) == 1.0
 
 
-def test_lfo_phase_offset () -> None:
+def test_line_loop() -> None:
+    """Test looping ramp."""
 
-	"""Test LFO with phase offset."""
+    conductor = subsequence.conductor.Conductor()
+    conductor.line("loop", start_val=0.0, end_val=1.0, duration_beats=4.0, loop=True)
 
-	conductor = subsequence.conductor.Conductor()
-	conductor.lfo("sine", shape="sine", cycle_beats=4.0, phase=0.25)
+    # Start
+    assert conductor.get("loop", 0.0) == 0.0
 
-	# phase=0.25 shifts by quarter cycle, so beat 0 is at sin(pi/2) = 1 -> mapped to 1.0
-	assert conductor.get("sine", 0.0) == pytest.approx(1.0)
+    # End of first loop is start of second
+    assert conductor.get("loop", 4.0) == 0.0
 
-	# beat 1 is at sin(pi) = 0 -> mapped to 0.5
-	assert conductor.get("sine", 1.0) == pytest.approx(0.5)
+    # 1.5 loops
+    assert conductor.get("loop", 6.0) == 0.5
 
 
-def test_lfo_custom_range () -> None:
+def test_lfo_saw() -> None:
+    """Test saw wave LFO output."""
 
-	"""Test LFO with custom min/max values."""
+    conductor = subsequence.conductor.Conductor()
+    conductor.lfo("saw", shape="saw", cycle_beats=4.0)
 
-	conductor = subsequence.conductor.Conductor()
-	conductor.lfo("vel", shape="triangle", cycle_beats=4.0, min_val=50.0, max_val=100.0)
+    # Start of cycle -> 0.0
+    assert conductor.get("saw", 0.0) == 0.0
 
-	# Triangle at 0.0 -> 0.0 -> mapped to 50.0
-	assert conductor.get("vel", 0.0) == 50.0
+    # Quarter cycle -> 0.25
+    assert conductor.get("saw", 1.0) == 0.25
 
-	# Triangle peak at 2.0 -> 1.0 -> mapped to 100.0
-	assert conductor.get("vel", 2.0) == 100.0
+    # Half cycle -> 0.5
+    assert conductor.get("saw", 2.0) == 0.5
 
-	# Triangle at 1.0 -> 0.5 -> mapped to 75.0
-	assert conductor.get("vel", 1.0) == 75.0
+    # Three-quarter cycle -> 0.75
+    assert conductor.get("saw", 3.0) == 0.75
 
 
-def test_lfo_invalid_cycle_beats () -> None:
+def test_lfo_square() -> None:
+    """Test square wave LFO output."""
 
-	"""Test that zero or negative cycle_beats raises ValueError."""
+    conductor = subsequence.conductor.Conductor()
+    conductor.lfo("sq", shape="square", cycle_beats=4.0)
 
-	conductor = subsequence.conductor.Conductor()
+    # First half of cycle -> 1.0
+    assert conductor.get("sq", 0.0) == 1.0
+    assert conductor.get("sq", 1.0) == 1.0
 
-	with pytest.raises(ValueError):
-		conductor.lfo("bad", cycle_beats=0)
+    # Second half of cycle -> 0.0
+    assert conductor.get("sq", 2.0) == 0.0
+    assert conductor.get("sq", 3.0) == 0.0
 
-	with pytest.raises(ValueError):
-		conductor.lfo("bad", cycle_beats=-1.0)
 
+def test_lfo_phase_offset() -> None:
+    """Test LFO with phase offset."""
 
-def test_line_invalid_duration () -> None:
+    conductor = subsequence.conductor.Conductor()
+    conductor.lfo("sine", shape="sine", cycle_beats=4.0, phase=0.25)
 
-	"""Test that zero or negative duration_beats raises ValueError."""
+    # phase=0.25 shifts by quarter cycle, so beat 0 is at sin(pi/2) = 1 -> mapped to 1.0
+    assert conductor.get("sine", 0.0) == pytest.approx(1.0)
 
-	conductor = subsequence.conductor.Conductor()
+    # beat 1 is at sin(pi) = 0 -> mapped to 0.5
+    assert conductor.get("sine", 1.0) == pytest.approx(0.5)
 
-	with pytest.raises(ValueError):
-		conductor.line("bad", start_val=0, end_val=1, duration_beats=0)
 
-	with pytest.raises(ValueError):
-		conductor.line("bad", start_val=0, end_val=1, duration_beats=-4.0)
+def test_lfo_custom_range() -> None:
+    """Test LFO with custom min/max values."""
 
+    conductor = subsequence.conductor.Conductor()
+    conductor.lfo("vel", shape="triangle", cycle_beats=4.0, min_val=50.0, max_val=100.0)
 
-def test_missing_signal () -> None:
+    # Triangle at 0.0 -> 0.0 -> mapped to 50.0
+    assert conductor.get("vel", 0.0) == 50.0
 
-	"""Querying an unregistered signal returns 0.0 and issues a warning."""
+    # Triangle peak at 2.0 -> 1.0 -> mapped to 100.0
+    assert conductor.get("vel", 2.0) == 100.0
 
-	conductor = subsequence.conductor.Conductor()
+    # Triangle at 1.0 -> 0.5 -> mapped to 75.0
+    assert conductor.get("vel", 1.0) == 75.0
 
-	with pytest.warns(UserWarning, match="ghost"):
-		result = conductor.get("ghost", 0.0)
 
-	assert result == 0.0
+def test_lfo_invalid_cycle_beats() -> None:
+    """Test that zero or negative cycle_beats raises ValueError."""
 
+    conductor = subsequence.conductor.Conductor()
 
-def test_missing_signal_warns_once () -> None:
+    with pytest.raises(ValueError):
+        conductor.lfo("bad", cycle_beats=0)
 
-	"""The missing-signal warning is issued only once per signal name."""
+    with pytest.raises(ValueError):
+        conductor.lfo("bad", cycle_beats=-1.0)
 
-	conductor = subsequence.conductor.Conductor()
 
-	with pytest.warns(UserWarning):
-		conductor.get("ghost", 0.0)
+def test_line_invalid_duration() -> None:
+    """Test that zero or negative duration_beats raises ValueError."""
 
-	# Second call must not issue another warning.
-	with warnings.catch_warnings():
-		warnings.simplefilter("error")
-		assert conductor.get("ghost", 1.0) == 0.0
+    conductor = subsequence.conductor.Conductor()
 
+    with pytest.raises(ValueError):
+        conductor.line("bad", start_val=0, end_val=1, duration_beats=0)
 
-def test_lfo_invalid_shape () -> None:
+    with pytest.raises(ValueError):
+        conductor.line("bad", start_val=0, end_val=1, duration_beats=-4.0)
 
-	"""An unrecognised LFO shape raises ValueError at construction time."""
 
-	conductor = subsequence.conductor.Conductor()
+def test_missing_signal() -> None:
+    """Querying an unregistered signal returns 0.0 and issues a warning."""
 
-	with pytest.raises(ValueError, match="wobbly"):
-		conductor.lfo("bad", shape="wobbly")
+    conductor = subsequence.conductor.Conductor()
 
+    with pytest.warns(UserWarning, match="ghost"):
+        result = conductor.get("ghost", 0.0)
 
-def test_signal_helper () -> None:
+    assert result == 0.0
 
-	"""Test p.signal() reads the conductor at the current bar."""
 
-	conductor = subsequence.conductor.Conductor()
-	conductor.lfo("tri", shape="triangle", cycle_beats=16.0)
+def test_missing_signal_warns_once() -> None:
+    """The missing-signal warning is issued only once per signal name."""
 
-	pattern = subsequence.pattern.Pattern(channel=0, length=4.0)
+    conductor = subsequence.conductor.Conductor()
 
-	# bar=2 -> beat=8 -> progress 8/16=0.5 -> triangle peak = 1.0
-	builder = subsequence.pattern_builder.PatternBuilder(pattern, cycle=0, conductor=conductor, bar=2)
+    with pytest.warns(UserWarning):
+        conductor.get("ghost", 0.0)
 
-	assert builder.signal("tri") == 1.0
+    # Second call must not issue another warning.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert conductor.get("ghost", 1.0) == 0.0
 
-	# bar=0 -> beat=0 -> triangle start = 0.0
-	builder_zero = subsequence.pattern_builder.PatternBuilder(pattern, cycle=0, conductor=conductor, bar=0)
 
-	assert builder_zero.signal("tri") == 0.0
+def test_lfo_invalid_shape() -> None:
+    """An unrecognised LFO shape raises ValueError at construction time."""
 
+    conductor = subsequence.conductor.Conductor()
 
-def test_line_with_shape_ease_in () -> None:
+    with pytest.raises(ValueError, match="wobbly"):
+        conductor.lfo("bad", shape="wobbly")
 
-	"""Line with shape='ease_in' returns non-linear values."""
 
-	conductor = subsequence.conductor.Conductor()
-	conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=4.0, shape="ease_in")
+def test_signal_helper() -> None:
+    """Test p.signal() reads the conductor at the current bar."""
 
-	# ease_in(0.5) = 0.25, so the midpoint value should be 0.25, not 0.5
-	assert conductor.get("ramp", 2.0) == pytest.approx(0.25)
+    conductor = subsequence.conductor.Conductor()
+    conductor.lfo("tri", shape="triangle", cycle_beats=16.0)
 
-	# Endpoints should still clamp correctly
-	assert conductor.get("ramp", 0.0) == pytest.approx(0.0)
-	assert conductor.get("ramp", 4.0) == pytest.approx(1.0)
+    pattern = subsequence.pattern.Pattern(channel=0, length=4.0)
 
+    # bar=2 -> beat=8 -> progress 8/16=0.5 -> triangle peak = 1.0
+    builder = subsequence.pattern_builder.PatternBuilder(
+        pattern, cycle=0, conductor=conductor, bar=2
+    )
 
-def test_line_with_shape_ease_in_out () -> None:
+    assert builder.signal("tri") == 1.0
 
-	"""Line with shape='ease_in_out' is symmetric around the midpoint."""
+    # bar=0 -> beat=0 -> triangle start = 0.0
+    builder_zero = subsequence.pattern_builder.PatternBuilder(
+        pattern, cycle=0, conductor=conductor, bar=0
+    )
 
-	conductor = subsequence.conductor.Conductor()
-	conductor.line("ramp", start_val=0.0, end_val=100.0, duration_beats=4.0, shape="ease_in_out")
+    assert builder_zero.signal("tri") == 0.0
 
-	# ease_in_out is symmetric: midpoint value is the midpoint of start/end
-	assert conductor.get("ramp", 2.0) == pytest.approx(50.0)
 
-	# The value at 1/4 duration should be less than 25 (slow start)
-	assert conductor.get("ramp", 1.0) < 25.0
+def test_line_with_shape_ease_in() -> None:
+    """Line with shape='ease_in' returns non-linear values."""
 
+    conductor = subsequence.conductor.Conductor()
+    conductor.line(
+        "ramp", start_val=0.0, end_val=1.0, duration_beats=4.0, shape="ease_in"
+    )
 
-def test_line_with_callable_shape () -> None:
+    # ease_in(0.5) = 0.25, so the midpoint value should be 0.25, not 0.5
+    assert conductor.get("ramp", 2.0) == pytest.approx(0.25)
 
-	"""Line accepts a raw callable as the shape parameter."""
+    # Endpoints should still clamp correctly
+    assert conductor.get("ramp", 0.0) == pytest.approx(0.0)
+    assert conductor.get("ramp", 4.0) == pytest.approx(1.0)
 
-	conductor = subsequence.conductor.Conductor()
-	# Custom square-root easing
-	conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=4.0, shape=lambda t: t ** 0.5)
 
-	# At midpoint, sqrt(0.5) ≈ 0.707
-	assert conductor.get("ramp", 2.0) == pytest.approx(0.5 ** 0.5)
+def test_line_with_shape_ease_in_out() -> None:
+    """Line with shape='ease_in_out' is symmetric around the midpoint."""
 
+    conductor = subsequence.conductor.Conductor()
+    conductor.line(
+        "ramp", start_val=0.0, end_val=100.0, duration_beats=4.0, shape="ease_in_out"
+    )
 
-def test_line_default_shape_is_linear () -> None:
+    # ease_in_out is symmetric: midpoint value is the midpoint of start/end
+    assert conductor.get("ramp", 2.0) == pytest.approx(50.0)
 
-	"""The default Line shape remains linear (regression test)."""
+    # The value at 1/4 duration should be less than 25 (slow start)
+    assert conductor.get("ramp", 1.0) < 25.0
 
-	conductor = subsequence.conductor.Conductor()
-	conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=4.0)
 
-	assert conductor.get("ramp", 2.0) == pytest.approx(0.5)
+def test_line_with_callable_shape() -> None:
+    """Line accepts a raw callable as the shape parameter."""
 
+    conductor = subsequence.conductor.Conductor()
+    # Custom square-root easing
+    conductor.line(
+        "ramp", start_val=0.0, end_val=1.0, duration_beats=4.0, shape=lambda t: t**0.5
+    )
 
-def test_signal_helper_no_conductor () -> None:
+    # At midpoint, sqrt(0.5) ≈ 0.707
+    assert conductor.get("ramp", 2.0) == pytest.approx(0.5**0.5)
 
-	"""Test p.signal() returns 0.0 when no conductor is attached."""
 
-	pattern = subsequence.pattern.Pattern(channel=0, length=4.0)
-	builder = subsequence.pattern_builder.PatternBuilder(pattern, cycle=0)
+def test_line_default_shape_is_linear() -> None:
+    """The default Line shape remains linear (regression test)."""
 
-	assert builder.signal("anything") == 0.0
+    conductor = subsequence.conductor.Conductor()
+    conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=4.0)
+
+    assert conductor.get("ramp", 2.0) == pytest.approx(0.5)
+
+
+def test_signal_helper_no_conductor() -> None:
+    """Test p.signal() returns 0.0 when no conductor is attached."""
+
+    pattern = subsequence.pattern.Pattern(channel=0, length=4.0)
+    builder = subsequence.pattern_builder.PatternBuilder(pattern, cycle=0)
+
+    assert builder.signal("anything") == 0.0

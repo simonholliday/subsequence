@@ -18,227 +18,220 @@ import subsequence.harmony
 import subsequence.sequencer
 
 
-def test_parameter_only_harmony_recall_keeps_style (patch_midi: None) -> None:
+def test_parameter_only_harmony_recall_keeps_style(patch_midi: None) -> None:
+    """harmony(gravity=...) after harmony(style=...) keeps the configured style.
 
-	"""harmony(gravity=...) after harmony(style=...) keeps the configured style.
+    A parameter-only re-call used to fall back to functional_major,
+    silently replacing the configured graph.
+    """
 
-	A parameter-only re-call used to fall back to functional_major,
-	silently replacing the configured graph.
-	"""
+    comp = subsequence.Composition(bpm=120, key="A")
+    comp.harmony(style="aeolian_minor")
 
-	comp = subsequence.Composition(bpm=120, key="A")
-	comp.harmony(style="aeolian_minor")
+    comp.harmony(gravity=0.2)
 
-	comp.harmony(gravity=0.2)
+    assert comp._harmony_style == "aeolian_minor"
 
-	assert comp._harmony_style == "aeolian_minor"
 
+def test_first_harmony_call_still_defaults_to_functional_major(
+    patch_midi: None,
+) -> None:
+    """With no style ever configured, a bare harmony() call keeps today's default."""
 
-def test_first_harmony_call_still_defaults_to_functional_major (patch_midi: None) -> None:
+    comp = subsequence.Composition(bpm=120, key="C")
+    comp.harmony(gravity=0.5)
 
-	"""With no style ever configured, a bare harmony() call keeps today's default."""
+    assert comp._harmony_style == "functional_major"
 
-	comp = subsequence.Composition(bpm=120, key="C")
-	comp.harmony(gravity=0.5)
 
-	assert comp._harmony_style == "functional_major"
+def test_performer_mute_claims_ownership_from_transition(patch_midi: None) -> None:
+    """mute() during a transition approach window survives the boundary.
 
+    The performer's mute removes the name from _transition_muted, so the
+    section-boundary restore pass no longer silently unmutes it.
+    """
 
-def test_performer_mute_claims_ownership_from_transition (patch_midi: None) -> None:
+    comp = subsequence.Composition(bpm=120)
 
-	"""mute() during a transition approach window survives the boundary.
+    class _Stub:
+        _muted = False
 
-	The performer's mute removes the name from _transition_muted, so the
-	section-boundary restore pass no longer silently unmutes it.
-	"""
+    comp._running_patterns["bass"] = _Stub()
+    comp._transition_muted.add("bass")
 
-	comp = subsequence.Composition(bpm=120)
+    comp.mute("bass")
 
-	class _Stub:
-		_muted = False
+    assert "bass" not in comp._transition_muted
+    assert comp._running_patterns["bass"]._muted is True
 
-	comp._running_patterns["bass"] = _Stub()
-	comp._transition_muted.add("bass")
+    # The boundary restore pass only touches names still in the set —
+    # simulate it directly and confirm the performer's mute holds.
+    for name in comp._transition_muted:
+        comp._running_patterns[name]._muted = False
+    comp._transition_muted.clear()
 
-	comp.mute("bass")
+    assert comp._running_patterns["bass"]._muted is True
 
-	assert "bass" not in comp._transition_muted
-	assert comp._running_patterns["bass"]._muted is True
 
-	# The boundary restore pass only touches names still in the set —
-	# simulate it directly and confirm the performer's mute holds.
-	for name in comp._transition_muted:
-		comp._running_patterns[name]._muted = False
-	comp._transition_muted.clear()
+def test_performer_unmute_claims_ownership_from_transition(patch_midi: None) -> None:
+    """unmute() also removes the transition machinery's claim on the pattern."""
 
-	assert comp._running_patterns["bass"]._muted is True
+    comp = subsequence.Composition(bpm=120)
 
+    class _Stub:
+        _muted = True
 
-def test_performer_unmute_claims_ownership_from_transition (patch_midi: None) -> None:
+    comp._running_patterns["lead"] = _Stub()
+    comp._transition_muted.add("lead")
 
-	"""unmute() also removes the transition machinery's claim on the pattern."""
+    comp.unmute("lead")
 
-	comp = subsequence.Composition(bpm=120)
+    assert "lead" not in comp._transition_muted
+    assert comp._running_patterns["lead"]._muted is False
 
-	class _Stub:
-		_muted = True
 
-	comp._running_patterns["lead"] = _Stub()
-	comp._transition_muted.add("lead")
+def test_failing_builder_leaves_pattern_silent(patch_midi: None) -> None:
+    """A builder that raises mid-build discards what it already placed.
 
-	comp.unmute("lead")
+    The log promises the pattern "will be silent this cycle" — events
+    placed before the exception used to play anyway.
+    """
 
-	assert "lead" not in comp._transition_muted
-	assert comp._running_patterns["lead"]._muted is False
+    comp = subsequence.Composition(bpm=120, seed=1)
 
+    @comp.pattern(channel=1, beats=4)
+    def partial(p: typing.Any) -> None:
+        p.note(60, beat=0.0, duration=0.5)
+        raise RuntimeError("halfway through the build")
 
-def test_failing_builder_leaves_pattern_silent (patch_midi: None) -> None:
+    pending = comp._pending_patterns[0]
+    pattern = comp._build_pattern_from_pending(pending)
 
-	"""A builder that raises mid-build discards what it already placed.
+    pattern._rebuild()
 
-	The log promises the pattern "will be silent this cycle" — events
-	placed before the exception used to play anyway.
-	"""
+    assert pattern.steps == {}
+    assert pattern.cc_events == []
+    assert pattern.raw_note_events == []
 
-	comp = subsequence.Composition(bpm=120, seed=1)
 
-	@comp.pattern(channel=1, beats=4)
-	def partial (p: typing.Any) -> None:
+def test_set_bpm_validates_before_link_proposal(patch_midi: None) -> None:
+    """set_bpm(0) raises without proposing the tempo to the Link session."""
 
-		p.note(60, beat=0.0, duration=0.5)
-		raise RuntimeError("halfway through the build")
+    seq = subsequence.sequencer.Sequencer(initial_bpm=120)
 
-	pending = comp._pending_patterns[0]
-	pattern = comp._build_pattern_from_pending(pending)
+    class _LinkSpy:
+        def __init__(self) -> None:
+            self.proposed: typing.List[float] = []
 
-	pattern._rebuild()
+        def request_tempo(self, bpm: float) -> None:
+            self.proposed.append(bpm)
 
-	assert pattern.steps == {}
-	assert pattern.cc_events == []
-	assert pattern.raw_note_events == []
+    spy = _LinkSpy()
+    seq._link_clock = spy
+    seq.running = True
 
+    with pytest.raises(ValueError):
+        seq.set_bpm(0)
 
-def test_set_bpm_validates_before_link_proposal (patch_midi: None) -> None:
+    assert spy.proposed == []
 
-	"""set_bpm(0) raises without proposing the tempo to the Link session."""
 
-	seq = subsequence.sequencer.Sequencer(initial_bpm=120)
+def test_dashboard_page_carries_ws_port_token() -> None:
+    """index.html uses the __WS_PORT__ token web_ui.py substitutes at serve time.
 
-	class _LinkSpy:
+    The page hardcoding 8765 made WebUI(ws_port=...) a dashboard that
+    could never connect; the raw file must keep a regex fallback so it
+    still works opened directly from disk.
+    """
 
-		def __init__ (self) -> None:
+    import os
+    import subsequence.web_ui
 
-			self.proposed: typing.List[float] = []
+    page_path = os.path.join(
+        os.path.dirname(subsequence.web_ui.__file__), "assets", "web", "index.html"
+    )
+    page = open(page_path, encoding="utf-8").read()
 
-		def request_tempo (self, bpm: float) -> None:
+    assert "__WS_PORT__" in page
+    assert "8765" in page  # the no-server fallback
 
-			self.proposed.append(bpm)
+    substituted = page.replace("__WS_PORT__", "9999")
+    assert "9999" in substituted
 
-	spy = _LinkSpy()
-	seq._link_clock = spy
-	seq.running = True
 
-	with pytest.raises(ValueError):
-		seq.set_bpm(0)
+def test_queue_next_error_names_the_operation() -> None:
+    """An unknown section error says which navigation call failed."""
 
-	assert spy.proposed == []
+    state = subsequence.form_state.FormState([subsequence.forms.Section("verse", 4)])
 
+    with pytest.raises(ValueError) as exc:
+        state.queue_next("nope")
 
-def test_dashboard_page_carries_ws_port_token () -> None:
+    assert "queue_next" in str(exc.value)
+    assert "nope" in str(exc.value)
 
-	"""index.html uses the __WS_PORT__ token web_ui.py substitutes at serve time.
 
-	The page hardcoding 8765 made WebUI(ws_port=...) a dashboard that
-	could never connect; the raw file must keep a regex fallback so it
-	still works opened directly from disk.
-	"""
+def test_chord_pattern_class_removed() -> None:
+    """ChordPattern (zero callers, zero tests) is gone; the helpers remain."""
 
-	import os
-	import subsequence.web_ui
+    assert not hasattr(subsequence.harmony, "ChordPattern")
+    assert callable(subsequence.harmony.diatonic_chords)
+    assert callable(subsequence.harmony.diatonic_chord_sequence)
 
-	page_path = os.path.join(os.path.dirname(subsequence.web_ui.__file__), "assets", "web", "index.html")
-	page = open(page_path, encoding="utf-8").read()
 
-	assert "__WS_PORT__" in page
-	assert "8765" in page		# the no-server fallback
+def test_section_info_at_bar_honours_loop_and_hold() -> None:
+    """The layout lookup agrees with the playhead about the loop seam.
 
-	substituted = page.replace("__WS_PORT__", "9999")
-	assert "9999" in substituted
+    The last section of a looping form leads back to the first (so
+    ``.ending`` is True there); a holding form's last section repeats
+    itself; a stopping form still reports None.
+    """
 
+    sections = [
+        subsequence.forms.Section("verse", 2),
+        subsequence.forms.Section("chorus", 2),
+    ]
 
-def test_queue_next_error_names_the_operation () -> None:
+    looping = subsequence.form_state.FormState(list(sections), loop=True)
+    info = looping.section_info_at_bar(4)  # last bar of chorus
+    assert info is not None
+    assert info.next_section == "verse"
 
-	"""An unknown section error says which navigation call failed."""
+    holding = subsequence.form_state.FormState(list(sections), at_end="hold")
+    info = holding.section_info_at_bar(4)
+    assert info is not None
+    assert info.next_section == "chorus"
 
-	state = subsequence.form_state.FormState([subsequence.forms.Section("verse", 4)])
+    stopping = subsequence.form_state.FormState(list(sections))
+    info = stopping.section_info_at_bar(4)
+    assert info is not None
+    assert info.next_section is None
 
-	with pytest.raises(ValueError) as exc:
-		state.queue_next("nope")
 
-	assert "queue_next" in str(exc.value)
-	assert "nope" in str(exc.value)
+def test_stop_completes_cleanup_after_cancelled_loop(patch_midi: None) -> None:
+    """A cancelled run loop no longer aborts stop()'s cleanup.
 
+    CancelledError is a BaseException, so the old ``except Exception``
+    let it propagate out of stop(), skipping pending-send cancellation,
+    panic, port close, and recording save (the Ctrl-C path).
+    """
 
-def test_chord_pattern_class_removed () -> None:
+    import asyncio
 
-	"""ChordPattern (zero callers, zero tests) is gone; the helpers remain."""
+    async def drive() -> None:
+        seq = subsequence.sequencer.Sequencer(
+            output_device_name="Dummy MIDI", initial_bpm=240
+        )
 
-	assert not hasattr(subsequence.harmony, "ChordPattern")
-	assert callable(subsequence.harmony.diatonic_chords)
-	assert callable(subsequence.harmony.diatonic_chord_sequence)
+        await seq.start()
+        assert seq.task is not None
 
+        seq.task.cancel()
 
-def test_section_info_at_bar_honours_loop_and_hold () -> None:
+        # Must not raise, and must run the full cleanup.
+        await seq.stop()
 
-	"""The layout lookup agrees with the playhead about the loop seam.
+        assert seq.running is False
+        assert len(seq._output_devices) == 0  # close_all() was reached
 
-	The last section of a looping form leads back to the first (so
-	``.ending`` is True there); a holding form's last section repeats
-	itself; a stopping form still reports None.
-	"""
-
-	sections = [subsequence.forms.Section("verse", 2), subsequence.forms.Section("chorus", 2)]
-
-	looping = subsequence.form_state.FormState(list(sections), loop=True)
-	info = looping.section_info_at_bar(4)		# last bar of chorus
-	assert info is not None
-	assert info.next_section == "verse"
-
-	holding = subsequence.form_state.FormState(list(sections), at_end="hold")
-	info = holding.section_info_at_bar(4)
-	assert info is not None
-	assert info.next_section == "chorus"
-
-	stopping = subsequence.form_state.FormState(list(sections))
-	info = stopping.section_info_at_bar(4)
-	assert info is not None
-	assert info.next_section is None
-
-
-def test_stop_completes_cleanup_after_cancelled_loop (patch_midi: None) -> None:
-
-	"""A cancelled run loop no longer aborts stop()'s cleanup.
-
-	CancelledError is a BaseException, so the old ``except Exception``
-	let it propagate out of stop(), skipping pending-send cancellation,
-	panic, port close, and recording save (the Ctrl-C path).
-	"""
-
-	import asyncio
-
-	async def drive () -> None:
-
-		seq = subsequence.sequencer.Sequencer(output_device_name="Dummy MIDI", initial_bpm=240)
-
-		await seq.start()
-		assert seq.task is not None
-
-		seq.task.cancel()
-
-		# Must not raise, and must run the full cleanup.
-		await seq.stop()
-
-		assert seq.running is False
-		assert len(seq._output_devices) == 0		# close_all() was reached
-
-	asyncio.run(drive())
+    asyncio.run(drive())

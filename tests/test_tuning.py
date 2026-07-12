@@ -15,49 +15,54 @@ import subsequence.tuning
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _make_builder (
-	channel: int = 0,
-	length: float = 4,
-	cycle: int = 0,
-	data: typing.Optional[dict] = None,
-) -> typing.Tuple[subsequence.pattern.Pattern, subsequence.pattern_builder.PatternBuilder]:
 
-	"""Create a Pattern and PatternBuilder pair for testing."""
+def _make_builder(
+    channel: int = 0,
+    length: float = 4,
+    cycle: int = 0,
+    data: typing.Optional[dict] = None,
+) -> typing.Tuple[
+    subsequence.pattern.Pattern, subsequence.pattern_builder.PatternBuilder
+]:
+    """Create a Pattern and PatternBuilder pair for testing."""
 
-	default_grid = round(length / subsequence.constants.durations.SIXTEENTH)
-	pattern = subsequence.pattern.Pattern(channel=channel, length=length)
-	builder = subsequence.pattern_builder.PatternBuilder(
-		pattern=pattern,
-		cycle=cycle,
-		default_grid=default_grid,
-		data=data if data is not None else {},
-	)
-	return pattern, builder
-
-
-def _pitches (pattern: subsequence.pattern.Pattern) -> typing.List[int]:
-
-	"""Return all note pitches in pulse order."""
-
-	return [n.pitch for pulse in sorted(pattern.steps) for n in pattern.steps[pulse].notes]
+    default_grid = round(length / subsequence.constants.durations.SIXTEENTH)
+    pattern = subsequence.pattern.Pattern(channel=channel, length=length)
+    builder = subsequence.pattern_builder.PatternBuilder(
+        pattern=pattern,
+        cycle=cycle,
+        default_grid=default_grid,
+        data=data if data is not None else {},
+    )
+    return pattern, builder
 
 
-def _channels (pattern: subsequence.pattern.Pattern) -> typing.List[int]:
+def _pitches(pattern: subsequence.pattern.Pattern) -> typing.List[int]:
+    """Return all note pitches in pulse order."""
 
-	"""Return all note channels in pulse order."""
+    return [
+        n.pitch for pulse in sorted(pattern.steps) for n in pattern.steps[pulse].notes
+    ]
 
-	return [n.channel for pulse in sorted(pattern.steps) for n in pattern.steps[pulse].notes]
+
+def _channels(pattern: subsequence.pattern.Pattern) -> typing.List[int]:
+    """Return all note channels in pulse order."""
+
+    return [
+        n.channel for pulse in sorted(pattern.steps) for n in pattern.steps[pulse].notes
+    ]
 
 
-def _bend_events (pattern: subsequence.pattern.Pattern) -> typing.List[typing.Tuple[int, float, int]]:
+def _bend_events(
+    pattern: subsequence.pattern.Pattern,
+) -> typing.List[typing.Tuple[int, float, int]]:
+    """Return list of (pulse, value, channel) for all pitchwheel events."""
 
-	"""Return list of (pulse, value, channel) for all pitchwheel events."""
-
-	return [
-		(ev.pulse, ev.value, ev.channel)
-		for ev in pattern.cc_events
-		if ev.message_type == "pitchwheel"
-	]
+    return [
+        (ev.pulse, ev.value, ev.channel)
+        for ev in pattern.cc_events
+        if ev.message_type == "pitchwheel"
+    ]
 
 
 # ── .scl parser ───────────────────────────────────────────────────────────────
@@ -119,413 +124,476 @@ Bad scale
 """
 
 
-def test_parse_12tet_cents () -> None:
-	t = subsequence.tuning.Tuning.from_scl_string(SCL_12TET)
-	assert t.size == 12
-	assert abs(t.cents[0] - 100.0) < 1e-6
-	assert abs(t.cents[-1] - 1200.0) < 1e-6
-	assert t.description == "12-tone equal temperament"
+def test_parse_12tet_cents() -> None:
+    t = subsequence.tuning.Tuning.from_scl_string(SCL_12TET)
+    assert t.size == 12
+    assert abs(t.cents[0] - 100.0) < 1e-6
+    assert abs(t.cents[-1] - 1200.0) < 1e-6
+    assert t.description == "12-tone equal temperament"
 
 
-def test_parse_meantone_mixed () -> None:
-	"""Quarter-comma meantone uses both cents and ratio notation."""
-	t = subsequence.tuning.Tuning.from_scl_string(SCL_MEANTONE)
-	assert t.size == 12
-	# 5/4 = 386.313... cents
-	assert abs(t.cents[3] - 1200.0 * math.log2(5 / 4)) < 0.001
-	# 2/1 = 1200 cents
-	assert abs(t.cents[-1] - 1200.0) < 0.001
+def test_parse_meantone_mixed() -> None:
+    """Quarter-comma meantone uses both cents and ratio notation."""
+    t = subsequence.tuning.Tuning.from_scl_string(SCL_MEANTONE)
+    assert t.size == 12
+    # 5/4 = 386.313... cents
+    assert abs(t.cents[3] - 1200.0 * math.log2(5 / 4)) < 0.001
+    # 2/1 = 1200 cents
+    assert abs(t.cents[-1] - 1200.0) < 0.001
 
 
-def test_parse_just_intonation_ratios () -> None:
-	t = subsequence.tuning.Tuning.from_scl_string(SCL_JUST)
-	assert t.size == 7
-	assert abs(t.cents[0] - 1200.0 * math.log2(9 / 8)) < 0.001  # 203.91 cents
-	assert abs(t.cents[2] - 1200.0 * math.log2(4 / 3)) < 0.001  # 498.04 cents
-	assert abs(t.cents[-1] - 1200.0) < 0.001
+def test_parse_just_intonation_ratios() -> None:
+    t = subsequence.tuning.Tuning.from_scl_string(SCL_JUST)
+    assert t.size == 7
+    assert abs(t.cents[0] - 1200.0 * math.log2(9 / 8)) < 0.001  # 203.91 cents
+    assert abs(t.cents[2] - 1200.0 * math.log2(4 / 3)) < 0.001  # 498.04 cents
+    assert abs(t.cents[-1] - 1200.0) < 0.001
 
 
-def test_parse_bad_count_raises () -> None:
-	with pytest.raises(ValueError, match="expected 3 pitch values"):
-		subsequence.tuning.Tuning.from_scl_string(SCL_BAD_COUNT)
+def test_parse_bad_count_raises() -> None:
+    with pytest.raises(ValueError, match="expected 3 pitch values"):
+        subsequence.tuning.Tuning.from_scl_string(SCL_BAD_COUNT)
 
 
-def test_parse_comment_lines_ignored () -> None:
-	"""Lines starting with ! are comments and must not affect the parse."""
-	t = subsequence.tuning.Tuning.from_scl_string(SCL_12TET)
-	assert t.size == 12  # not 13 (the ! lines aren't counted)
+def test_parse_comment_lines_ignored() -> None:
+    """Lines starting with ! are comments and must not affect the parse."""
+    t = subsequence.tuning.Tuning.from_scl_string(SCL_12TET)
+    assert t.size == 12  # not 13 (the ! lines aren't counted)
 
 
-def test_from_scl_reads_file (tmp_path: pathlib.Path) -> None:
-	"""from_scl() opens a real .scl file from disk, via a PathLike or a str path."""
-	scl_path = tmp_path / "twelve.scl"
-	scl_path.write_text(SCL_12TET, encoding="utf-8")
+def test_from_scl_reads_file(tmp_path: pathlib.Path) -> None:
+    """from_scl() opens a real .scl file from disk, via a PathLike or a str path."""
+    scl_path = tmp_path / "twelve.scl"
+    scl_path.write_text(SCL_12TET, encoding="utf-8")
 
-	t = subsequence.tuning.Tuning.from_scl(scl_path)
-	assert t.size == 12
-	assert t.description == "12-tone equal temperament"
-	assert abs(t.cents[0] - 100.0) < 1e-6
+    t = subsequence.tuning.Tuning.from_scl(scl_path)
+    assert t.size == 12
+    assert t.description == "12-tone equal temperament"
+    assert abs(t.cents[0] - 100.0) < 1e-6
 
-	# A plain string path parses identically.
-	t_str = subsequence.tuning.Tuning.from_scl(str(scl_path))
-	assert t_str.cents == t.cents
+    # A plain string path parses identically.
+    t_str = subsequence.tuning.Tuning.from_scl(str(scl_path))
+    assert t_str.cents == t.cents
 
 
 # ── Factory methods ───────────────────────────────────────────────────────────
 
-def test_from_cents_roundtrip () -> None:
-	cents_in = [100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1100.0, 1200.0]
-	t = subsequence.tuning.Tuning.from_cents(cents_in)
-	assert t.cents == cents_in
-	assert t.size == 12
+
+def test_from_cents_roundtrip() -> None:
+    cents_in = [
+        100.0,
+        200.0,
+        300.0,
+        400.0,
+        500.0,
+        600.0,
+        700.0,
+        800.0,
+        900.0,
+        1000.0,
+        1100.0,
+        1200.0,
+    ]
+    t = subsequence.tuning.Tuning.from_cents(cents_in)
+    assert t.cents == cents_in
+    assert t.size == 12
 
 
-def test_from_ratios () -> None:
-	t = subsequence.tuning.Tuning.from_ratios([9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2.0])
-	assert t.size == 7
-	assert abs(t.cents[3] - 1200.0 * math.log2(3 / 2)) < 0.001  # 701.955 cents
+def test_from_ratios() -> None:
+    t = subsequence.tuning.Tuning.from_ratios(
+        [9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2.0]
+    )
+    assert t.size == 7
+    assert abs(t.cents[3] - 1200.0 * math.log2(3 / 2)) < 0.001  # 701.955 cents
 
 
-def test_equal_12 () -> None:
-	t = subsequence.tuning.Tuning.equal(12)
-	assert t.size == 12
-	for i, c in enumerate(t.cents):
-		assert abs(c - (i + 1) * 100.0) < 1e-9
+def test_equal_12() -> None:
+    t = subsequence.tuning.Tuning.equal(12)
+    assert t.size == 12
+    for i, c in enumerate(t.cents):
+        assert abs(c - (i + 1) * 100.0) < 1e-9
 
 
-def test_equal_19 () -> None:
-	t = subsequence.tuning.Tuning.equal(19)
-	assert t.size == 19
-	step = 1200.0 / 19
-	assert abs(t.cents[0] - step) < 1e-9
-	assert abs(t.cents[-1] - 1200.0) < 1e-9
+def test_equal_19() -> None:
+    t = subsequence.tuning.Tuning.equal(19)
+    assert t.size == 19
+    step = 1200.0 / 19
+    assert abs(t.cents[0] - step) < 1e-9
+    assert abs(t.cents[-1] - 1200.0) < 1e-9
 
 
-def test_period_cents () -> None:
-	t = subsequence.tuning.Tuning.equal(12)
-	assert abs(t.period_cents - 1200.0) < 1e-9
+def test_period_cents() -> None:
+    t = subsequence.tuning.Tuning.equal(12)
+    assert abs(t.period_cents - 1200.0) < 1e-9
 
 
 # ── pitch_bend_for_note() ─────────────────────────────────────────────────────
 
-def test_12tet_tuning_zero_bend () -> None:
-	"""Standard 12-TET produces (same_note, 0.0) for every note."""
-	t = subsequence.tuning.Tuning.equal(12)
-	for midi in range(21, 109):
-		nearest, bend = t.pitch_bend_for_note(midi, reference_note=60)
-		assert nearest == midi, f"note {midi}: nearest={nearest}"
-		assert abs(bend) < 1e-9, f"note {midi}: bend={bend}"
+
+def test_12tet_tuning_zero_bend() -> None:
+    """Standard 12-TET produces (same_note, 0.0) for every note."""
+    t = subsequence.tuning.Tuning.equal(12)
+    for midi in range(21, 109):
+        nearest, bend = t.pitch_bend_for_note(midi, reference_note=60)
+        assert nearest == midi, f"note {midi}: nearest={nearest}"
+        assert abs(bend) < 1e-9, f"note {midi}: bend={bend}"
 
 
-def test_meantone_major_third () -> None:
-	"""Quarter-comma meantone major third is 386.31 cents; 12-TET is 400 cents.
+def test_meantone_major_third() -> None:
+    """Quarter-comma meantone major third is 386.31 cents; 12-TET is 400 cents.
 
-	For MIDI 64 (E4, degree 4 from C4=60), the tuning is 386.31 cents above 60.
-	12-TET equivalent: 400 cents = MIDI 64. Offset = -13.69 cents = -0.1369 semitones.
-	With bend_range=2: bend ≈ -0.0684.
-	"""
-	t = subsequence.tuning.Tuning.from_scl_string(SCL_MEANTONE)
-	nearest, bend = t.pitch_bend_for_note(64, reference_note=60, bend_range=2.0)
-	# Major third in meantone is 386.31 cents → continuous note = 60 + 3.8631 = 63.8631
-	# Nearest = 64, bend = (63.8631 - 64) / 2.0 = -0.0684
-	assert nearest == 64
-	assert abs(bend - (-0.0684)) < 0.001
-
-
-def test_just_perfect_fifth () -> None:
-	"""Just perfect fifth is 701.955 cents; 12-TET is 700 cents.
-
-	Scale has 7 degrees (indices 0-6 for cents list).
-	MIDI 60 = degree 0, MIDI 67 = degree 0 of next octave.
-	MIDI 64 = steps_from_root 4, degree = 4 % 7 = 4, octave = 0.
-	cents[4] = 3/2 = 701.955 cents (the perfect fifth).
-	"""
-	t = subsequence.tuning.Tuning.from_ratios([9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2.0])
-	# MIDI 64: steps_from_root = 4, degree = 4, octave = 0
-	# total_cents = 0 + cents[3] = 701.955 cents
-	# continuous = 60 + 701.955/100 = 67.01955 → nearest = 67
-	nearest, bend = t.pitch_bend_for_note(64, reference_note=60, bend_range=2.0)
-	assert nearest == 67
-	assert abs(bend - 0.00977) < 0.001
+    For MIDI 64 (E4, degree 4 from C4=60), the tuning is 386.31 cents above 60.
+    12-TET equivalent: 400 cents = MIDI 64. Offset = -13.69 cents = -0.1369 semitones.
+    With bend_range=2: bend ≈ -0.0684.
+    """
+    t = subsequence.tuning.Tuning.from_scl_string(SCL_MEANTONE)
+    nearest, bend = t.pitch_bend_for_note(64, reference_note=60, bend_range=2.0)
+    # Major third in meantone is 386.31 cents → continuous note = 60 + 3.8631 = 63.8631
+    # Nearest = 64, bend = (63.8631 - 64) / 2.0 = -0.0684
+    assert nearest == 64
+    assert abs(bend - (-0.0684)) < 0.001
 
 
-def test_bend_clamp () -> None:
-	"""Offsets wider than the wheel range clamp to the ±1.0 normalised limit.
+def test_just_perfect_fifth() -> None:
+    """Just perfect fifth is 701.955 cents; 12-TET is 700 cents.
 
-	Degree 1 sits at 50 cents, so MIDI 61 lands exactly between 12-TET notes:
-	nearest = 60 (banker's rounding), offset = +0.5 semitones.  With
-	bend_range=0.25 the raw bend is 0.5 / 0.25 = +2.0 → clamped to +1.0.
-	Degree 2 at 150 cents mirrors this on the flat side: nearest = 62,
-	offset = -0.5, raw bend -2.0 → clamped to -1.0.
-	"""
-
-	t = subsequence.tuning.Tuning.from_cents([50.0, 150.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1100.0, 1200.0])
-
-	nearest_sharp, bend_sharp = t.pitch_bend_for_note(61, reference_note=60, bend_range=0.25)
-	assert nearest_sharp == 60
-	assert bend_sharp == 1.0
-
-	nearest_flat, bend_flat = t.pitch_bend_for_note(62, reference_note=60, bend_range=0.25)
-	assert nearest_flat == 62
-	assert bend_flat == -1.0
+    Scale has 7 degrees (indices 0-6 for cents list).
+    MIDI 60 = degree 0, MIDI 67 = degree 0 of next octave.
+    MIDI 64 = steps_from_root 4, degree = 4 % 7 = 4, octave = 0.
+    cents[4] = 3/2 = 701.955 cents (the perfect fifth).
+    """
+    t = subsequence.tuning.Tuning.from_ratios(
+        [9 / 8, 5 / 4, 4 / 3, 3 / 2, 5 / 3, 15 / 8, 2.0]
+    )
+    # MIDI 64: steps_from_root = 4, degree = 4, octave = 0
+    # total_cents = 0 + cents[3] = 701.955 cents
+    # continuous = 60 + 701.955/100 = 67.01955 → nearest = 67
+    nearest, bend = t.pitch_bend_for_note(64, reference_note=60, bend_range=2.0)
+    assert nearest == 67
+    assert abs(bend - 0.00977) < 0.001
 
 
-def test_reference_note_shifts_root () -> None:
-	t = subsequence.tuning.Tuning.equal(12)
-	# With reference_note=69 (A4), MIDI 69 should map to itself with 0 bend
-	nearest, bend = t.pitch_bend_for_note(69, reference_note=69, bend_range=2.0)
-	assert nearest == 69
-	assert abs(bend) < 1e-9
+def test_bend_clamp() -> None:
+    """Offsets wider than the wheel range clamp to the ±1.0 normalised limit.
+
+    Degree 1 sits at 50 cents, so MIDI 61 lands exactly between 12-TET notes:
+    nearest = 60 (banker's rounding), offset = +0.5 semitones.  With
+    bend_range=0.25 the raw bend is 0.5 / 0.25 = +2.0 → clamped to +1.0.
+    Degree 2 at 150 cents mirrors this on the flat side: nearest = 62,
+    offset = -0.5, raw bend -2.0 → clamped to -1.0.
+    """
+
+    t = subsequence.tuning.Tuning.from_cents(
+        [
+            50.0,
+            150.0,
+            300.0,
+            400.0,
+            500.0,
+            600.0,
+            700.0,
+            800.0,
+            900.0,
+            1000.0,
+            1100.0,
+            1200.0,
+        ]
+    )
+
+    nearest_sharp, bend_sharp = t.pitch_bend_for_note(
+        61, reference_note=60, bend_range=0.25
+    )
+    assert nearest_sharp == 60
+    assert bend_sharp == 1.0
+
+    nearest_flat, bend_flat = t.pitch_bend_for_note(
+        62, reference_note=60, bend_range=0.25
+    )
+    assert nearest_flat == 62
+    assert bend_flat == -1.0
+
+
+def test_reference_note_shifts_root() -> None:
+    t = subsequence.tuning.Tuning.equal(12)
+    # With reference_note=69 (A4), MIDI 69 should map to itself with 0 bend
+    nearest, bend = t.pitch_bend_for_note(69, reference_note=69, bend_range=2.0)
+    assert nearest == 69
+    assert abs(bend) < 1e-9
 
 
 # ── ChannelAllocator ──────────────────────────────────────────────────────────
 
-def test_allocator_single_channel () -> None:
-	alloc = subsequence.tuning.ChannelAllocator([3])
-	# First note: channel 3, released at pulse 100
-	assert alloc.allocate(0, 100) == 3
-	# New note after release: channel 3 again
-	assert alloc.allocate(100, 50) == 3
+
+def test_allocator_single_channel() -> None:
+    alloc = subsequence.tuning.ChannelAllocator([3])
+    # First note: channel 3, released at pulse 100
+    assert alloc.allocate(0, 100) == 3
+    # New note after release: channel 3 again
+    assert alloc.allocate(100, 50) == 3
 
 
-def test_allocator_round_robin () -> None:
-	alloc = subsequence.tuning.ChannelAllocator([1, 2, 3])
-	# Three simultaneous notes get different channels
-	ch1 = alloc.allocate(0, 200)
-	ch2 = alloc.allocate(0, 200)
-	ch3 = alloc.allocate(0, 200)
-	assert sorted([ch1, ch2, ch3]) == [1, 2, 3]
+def test_allocator_round_robin() -> None:
+    alloc = subsequence.tuning.ChannelAllocator([1, 2, 3])
+    # Three simultaneous notes get different channels
+    ch1 = alloc.allocate(0, 200)
+    ch2 = alloc.allocate(0, 200)
+    ch3 = alloc.allocate(0, 200)
+    assert sorted([ch1, ch2, ch3]) == [1, 2, 3]
 
 
-def test_allocator_recycles_freed_channels () -> None:
-	alloc = subsequence.tuning.ChannelAllocator([1, 2])
-	alloc.allocate(0, 100)   # channel 1 busy until 100
-	alloc.allocate(0, 100)   # channel 2 busy until 100
-	# At pulse 100, both are free
-	ch = alloc.allocate(100, 50)
-	assert ch in [1, 2]
+def test_allocator_recycles_freed_channels() -> None:
+    alloc = subsequence.tuning.ChannelAllocator([1, 2])
+    alloc.allocate(0, 100)  # channel 1 busy until 100
+    alloc.allocate(0, 100)  # channel 2 busy until 100
+    # At pulse 100, both are free
+    ch = alloc.allocate(100, 50)
+    assert ch in [1, 2]
 
 
-def test_allocator_empty_raises () -> None:
-	with pytest.raises(ValueError):
-		subsequence.tuning.ChannelAllocator([])
+def test_allocator_empty_raises() -> None:
+    with pytest.raises(ValueError):
+        subsequence.tuning.ChannelAllocator([])
 
 
 # ── subsequence.tuning.apply_tuning_to_pattern() ─────────────────────────────────────────────────
 
-def test_12tet_noop () -> None:
-	"""12-TET tuning produces zero-value bend events but doesn't change pitches."""
-	pattern, builder = _make_builder(channel=0)
-	builder.note(60, beat=0, velocity=80, duration=0.5)
-	builder.note(64, beat=1, velocity=80, duration=0.5)
 
-	t = subsequence.tuning.Tuning.equal(12)
-	subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0)
+def test_12tet_noop() -> None:
+    """12-TET tuning produces zero-value bend events but doesn't change pitches."""
+    pattern, builder = _make_builder(channel=0)
+    builder.note(60, beat=0, velocity=80, duration=0.5)
+    builder.note(64, beat=1, velocity=80, duration=0.5)
 
-	# Pitches unchanged
-	assert _pitches(pattern) == [60, 64]
-	# Bend events injected but all zero
-	bends = _bend_events(pattern)
-	assert len(bends) == 2
-	for _, val, _ in bends:
-		assert val == 0
+    t = subsequence.tuning.Tuning.equal(12)
+    subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0)
 
-
-def test_monophonic_pitch_and_bend_injected () -> None:
-	"""Each note gets its pitch corrected and a pitchwheel event at onset."""
-	pattern, builder = _make_builder(channel=0)
-	builder.note(60, beat=0, velocity=80, duration=0.5)
-	builder.note(61, beat=1, velocity=80, duration=0.5)
-	builder.note(62, beat=2, velocity=80, duration=0.5)
-
-	t = subsequence.tuning.Tuning.from_scl_string(SCL_MEANTONE)
-	subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0)
-
-	# Same number of pitch-bend events as notes
-	bends = _bend_events(pattern)
-	assert len(bends) == 3
+    # Pitches unchanged
+    assert _pitches(pattern) == [60, 64]
+    # Bend events injected but all zero
+    bends = _bend_events(pattern)
+    assert len(bends) == 2
+    for _, val, _ in bends:
+        assert val == 0
 
 
-def test_monophonic_all_on_same_channel () -> None:
-	"""Without channel rotation, all notes stay on the pattern channel."""
-	pattern, builder = _make_builder(channel=2)
-	for i in range(4):
-		builder.note(60 + i, beat=float(i), velocity=80, duration=0.5)
+def test_monophonic_pitch_and_bend_injected() -> None:
+    """Each note gets its pitch corrected and a pitchwheel event at onset."""
+    pattern, builder = _make_builder(channel=0)
+    builder.note(60, beat=0, velocity=80, duration=0.5)
+    builder.note(61, beat=1, velocity=80, duration=0.5)
+    builder.note(62, beat=2, velocity=80, duration=0.5)
 
-	t = subsequence.tuning.Tuning.equal(19)
-	subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0, channels=None)
+    t = subsequence.tuning.Tuning.from_scl_string(SCL_MEANTONE)
+    subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0)
 
-	assert all(ch == 2 for ch in _channels(pattern))
-
-
-def test_polyphonic_channel_rotation () -> None:
-	"""Overlapping notes get different channels from the pool."""
-	# Two notes at the same beat (pulse 0) — polyphonic
-	pattern = subsequence.pattern.Pattern(channel=0, length=4)
-	qn = subsequence.constants.MIDI_QUARTER_NOTE
-	dur = qn * 2  # 2 beat duration — notes overlap
-
-	step = subsequence.pattern.Step()
-	step.notes.append(subsequence.pattern.Note(pitch=60, velocity=80, duration=dur, channel=0))
-	step.notes.append(subsequence.pattern.Note(pitch=64, velocity=80, duration=dur, channel=0))
-	pattern.steps[0] = step
-
-	t = subsequence.tuning.Tuning.equal(12)
-	subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0, channels=[1, 2, 3])
-
-	channels_used = {n.channel for step in pattern.steps.values() for n in step.notes}
-	assert len(channels_used) == 2  # Two notes → two different channels
-	assert channels_used.issubset({1, 2, 3})
+    # Same number of pitch-bend events as notes
+    bends = _bend_events(pattern)
+    assert len(bends) == 3
 
 
-def test_bend_events_have_correct_channel () -> None:
-	"""Pitchwheel events for channel-rotated notes must carry the note's channel."""
-	pattern = subsequence.pattern.Pattern(channel=0, length=4)
-	qn = subsequence.constants.MIDI_QUARTER_NOTE
-	dur = qn * 2
+def test_monophonic_all_on_same_channel() -> None:
+    """Without channel rotation, all notes stay on the pattern channel."""
+    pattern, builder = _make_builder(channel=2)
+    for i in range(4):
+        builder.note(60 + i, beat=float(i), velocity=80, duration=0.5)
 
-	step = subsequence.pattern.Step()
-	step.notes.append(subsequence.pattern.Note(pitch=60, velocity=80, duration=dur, channel=0))
-	step.notes.append(subsequence.pattern.Note(pitch=64, velocity=80, duration=dur, channel=0))
-	pattern.steps[0] = step
+    t = subsequence.tuning.Tuning.equal(19)
+    subsequence.tuning.apply_tuning_to_pattern(
+        pattern, t, bend_range=2.0, channels=None
+    )
 
-	t = subsequence.tuning.Tuning.equal(12)
-	subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0, channels=[4, 5])
-
-	# Each note's channel is in the pool, and the corresponding bend event has the same channel
-	note_channels = {n.channel for step in pattern.steps.values() for n in step.notes}
-	bend_channels = {ch for _, _, ch in _bend_events(pattern)}
-	assert bend_channels == note_channels
+    assert all(ch == 2 for ch in _channels(pattern))
 
 
-def test_additive_composition_with_existing_bend () -> None:
-	"""Tuning offsets are added to existing pitchwheel events from user bends."""
-	pattern, builder = _make_builder(channel=0)
-	builder.note(60, beat=0, velocity=80, duration=1.0)
+def test_polyphonic_channel_rotation() -> None:
+    """Overlapping notes get different channels from the pool."""
+    # Two notes at the same beat (pulse 0) — polyphonic
+    pattern = subsequence.pattern.Pattern(channel=0, length=4)
+    qn = subsequence.constants.MIDI_QUARTER_NOTE
+    dur = qn * 2  # 2 beat duration — notes overlap
 
-	# Manually inject a user pitchwheel event at pulse 0 with value 1000
-	qn = subsequence.constants.MIDI_QUARTER_NOTE
-	pattern.cc_events.append(
-		subsequence.pattern.CcEvent(pulse=0, message_type="pitchwheel", value=1000)
-	)
+    step = subsequence.pattern.Step()
+    step.notes.append(
+        subsequence.pattern.Note(pitch=60, velocity=80, duration=dur, channel=0)
+    )
+    step.notes.append(
+        subsequence.pattern.Note(pitch=64, velocity=80, duration=dur, channel=0)
+    )
+    pattern.steps[0] = step
 
-	# Apply 12-TET (bend = 0 for note 60), so the existing bend should be unchanged
-	t = subsequence.tuning.Tuning.equal(12)
-	subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0)
+    t = subsequence.tuning.Tuning.equal(12)
+    subsequence.tuning.apply_tuning_to_pattern(
+        pattern, t, bend_range=2.0, channels=[1, 2, 3]
+    )
 
-	# The original event at pulse 0 is shifted by tuning offset (0 for 12-TET) = 1000
-	user_events = [ev for ev in pattern.cc_events if ev.value == 1000]
-	assert len(user_events) >= 1
-
-
-def test_bend_reset_becomes_tuning_offset () -> None:
-	"""A bend-reset (value=0) event is replaced with the active tuning offset."""
-	# Set up a pattern with meantone tuning on note 64 (major third, -14 cents from 12-TET)
-	pattern, builder = _make_builder(channel=0)
-	builder.note(64, beat=0, velocity=80, duration=2.0)
-
-	# Inject a portamento-style reset at mid-note
-	qn = subsequence.constants.MIDI_QUARTER_NOTE
-	pattern.cc_events.append(
-		subsequence.pattern.CcEvent(pulse=qn, message_type="pitchwheel", value=0)
-	)
-
-	t = subsequence.tuning.Tuning.from_scl_string(SCL_MEANTONE)
-	subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0)
-
-	# The value=0 reset should have been replaced with the tuning offset (non-zero for meantone)
-	reset_events = [ev for ev in pattern.cc_events if ev.pulse == qn and ev.message_type == "pitchwheel"]
-	assert len(reset_events) == 1
-	# For meantone major third, offset is about -560 raw MIDI units (about -0.0684 normalized)
-	assert reset_events[0].value != 0  # not zero — replaced with tuning offset
+    channels_used = {n.channel for step in pattern.steps.values() for n in step.notes}
+    assert len(channels_used) == 2  # Two notes → two different channels
+    assert channels_used.issubset({1, 2, 3})
 
 
-def test_empty_pattern_no_error () -> None:
-	"""apply_tuning_to_pattern on an empty pattern raises no error."""
-	pattern = subsequence.pattern.Pattern(channel=0, length=4)
-	t = subsequence.tuning.Tuning.equal(12)
-	subsequence.tuning.apply_tuning_to_pattern(pattern, t)  # should not raise
+def test_bend_events_have_correct_channel() -> None:
+    """Pitchwheel events for channel-rotated notes must carry the note's channel."""
+    pattern = subsequence.pattern.Pattern(channel=0, length=4)
+    qn = subsequence.constants.MIDI_QUARTER_NOTE
+    dur = qn * 2
+
+    step = subsequence.pattern.Step()
+    step.notes.append(
+        subsequence.pattern.Note(pitch=60, velocity=80, duration=dur, channel=0)
+    )
+    step.notes.append(
+        subsequence.pattern.Note(pitch=64, velocity=80, duration=dur, channel=0)
+    )
+    pattern.steps[0] = step
+
+    t = subsequence.tuning.Tuning.equal(12)
+    subsequence.tuning.apply_tuning_to_pattern(
+        pattern, t, bend_range=2.0, channels=[4, 5]
+    )
+
+    # Each note's channel is in the pool, and the corresponding bend event has the same channel
+    note_channels = {n.channel for step in pattern.steps.values() for n in step.notes}
+    bend_channels = {ch for _, _, ch in _bend_events(pattern)}
+    assert bend_channels == note_channels
 
 
-def test_drums_not_affected_by_global_tuning (patch_midi: None) -> None:
+def test_additive_composition_with_existing_bend() -> None:
+    """Tuning offsets are added to existing pitchwheel events from user bends."""
+    pattern, builder = _make_builder(channel=0)
+    builder.note(60, beat=0, velocity=80, duration=1.0)
 
-	"""The _tuning_exclude_drums guard protects drum patterns in auto-application.
+    # Manually inject a user pitchwheel event at pulse 0 with value 1000
+    qn = subsequence.constants.MIDI_QUARTER_NOTE
+    pattern.cc_events.append(
+        subsequence.pattern.CcEvent(pulse=0, message_type="pitchwheel", value=1000)
+    )
 
-	Exercises the REAL guard path: two decorator patterns built through
-	``Composition._build_pattern_from_pending`` under a global 19-TET tuning.
-	The drum-mapped pattern must come out untouched (no tuning bends, pitch
-	kept) while the melodic pattern is tuned; with ``exclude_drums=False``
-	the same drum pattern IS tuned — proving the guard, not the channel, is
-	what protects drums.
-	"""
+    # Apply 12-TET (bend = 0 for note 60), so the existing bend should be unchanged
+    t = subsequence.tuning.Tuning.equal(12)
+    subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0)
 
-	import subsequence
+    # The original event at pulse 0 is shifted by tuning offset (0 for 12-TET) = 1000
+    user_events = [ev for ev in pattern.cc_events if ev.value == 1000]
+    assert len(user_events) >= 1
 
-	composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
-	composition.tuning(equal=19, bend_range=2.0)
 
-	@composition.pattern(channel=10, beats=4, drum_note_map={"kick": 36})
-	def drums (p: typing.Any) -> None:
-		p.hit_steps("kick", [0])
+def test_bend_reset_becomes_tuning_offset() -> None:
+    """A bend-reset (value=0) event is replaced with the active tuning offset."""
+    # Set up a pattern with meantone tuning on note 64 (major third, -14 cents from 12-TET)
+    pattern, builder = _make_builder(channel=0)
+    builder.note(64, beat=0, velocity=80, duration=2.0)
 
-	@composition.pattern(channel=1, beats=4)
-	def bass (p: typing.Any) -> None:
-		p.note(50, beat=0)
+    # Inject a portamento-style reset at mid-note
+    qn = subsequence.constants.MIDI_QUARTER_NOTE
+    pattern.cc_events.append(
+        subsequence.pattern.CcEvent(pulse=qn, message_type="pitchwheel", value=0)
+    )
 
-	drum_pattern = composition._build_pattern_from_pending(composition._pending_patterns[0])
-	bass_pattern = composition._build_pattern_from_pending(composition._pending_patterns[1])
+    t = subsequence.tuning.Tuning.from_scl_string(SCL_MEANTONE)
+    subsequence.tuning.apply_tuning_to_pattern(pattern, t, bend_range=2.0)
 
-	# The drum pattern is untouched: no tuning bends, the GM pitch kept.
-	assert [e for e in drum_pattern.cc_events if e.message_type == "pitchwheel"] == []
-	assert _pitches(drum_pattern) == [36]
+    # The value=0 reset should have been replaced with the tuning offset (non-zero for meantone)
+    reset_events = [
+        ev
+        for ev in pattern.cc_events
+        if ev.pulse == qn and ev.message_type == "pitchwheel"
+    ]
+    assert len(reset_events) == 1
+    # For meantone major third, offset is about -560 raw MIDI units (about -0.0684 normalized)
+    assert reset_events[0].value != 0  # not zero — replaced with tuning offset
 
-	# The melodic pattern was tuned (bends prove the auto-apply ran).
-	assert [e for e in bass_pattern.cc_events if e.message_type == "pitchwheel"] != []
 
-	# Control: with the guard off, the SAME drum pattern is tuned.
-	unguarded = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
-	unguarded.tuning(equal=19, bend_range=2.0, exclude_drums=False)
+def test_empty_pattern_no_error() -> None:
+    """apply_tuning_to_pattern on an empty pattern raises no error."""
+    pattern = subsequence.pattern.Pattern(channel=0, length=4)
+    t = subsequence.tuning.Tuning.equal(12)
+    subsequence.tuning.apply_tuning_to_pattern(pattern, t)  # should not raise
 
-	@unguarded.pattern(channel=10, beats=4, drum_note_map={"kick": 36})
-	def drums_unguarded (p: typing.Any) -> None:
-		p.hit_steps("kick", [0])
 
-	tuned_drums = unguarded._build_pattern_from_pending(unguarded._pending_patterns[0])
+def test_drums_not_affected_by_global_tuning(patch_midi: None) -> None:
+    """The _tuning_exclude_drums guard protects drum patterns in auto-application.
 
-	assert [e for e in tuned_drums.cc_events if e.message_type == "pitchwheel"] != []
+    Exercises the REAL guard path: two decorator patterns built through
+    ``Composition._build_pattern_from_pending`` under a global 19-TET tuning.
+    The drum-mapped pattern must come out untouched (no tuning bends, pitch
+    kept) while the melodic pattern is tuned; with ``exclude_drums=False``
+    the same drum pattern IS tuned — proving the guard, not the channel, is
+    what protects drums.
+    """
+
+    import subsequence
+
+    composition = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+    composition.tuning(equal=19, bend_range=2.0)
+
+    @composition.pattern(channel=10, beats=4, drum_note_map={"kick": 36})
+    def drums(p: typing.Any) -> None:
+        p.hit_steps("kick", [0])
+
+    @composition.pattern(channel=1, beats=4)
+    def bass(p: typing.Any) -> None:
+        p.note(50, beat=0)
+
+    drum_pattern = composition._build_pattern_from_pending(
+        composition._pending_patterns[0]
+    )
+    bass_pattern = composition._build_pattern_from_pending(
+        composition._pending_patterns[1]
+    )
+
+    # The drum pattern is untouched: no tuning bends, the GM pitch kept.
+    assert [e for e in drum_pattern.cc_events if e.message_type == "pitchwheel"] == []
+    assert _pitches(drum_pattern) == [36]
+
+    # The melodic pattern was tuned (bends prove the auto-apply ran).
+    assert [e for e in bass_pattern.cc_events if e.message_type == "pitchwheel"] != []
+
+    # Control: with the guard off, the SAME drum pattern is tuned.
+    unguarded = subsequence.Composition(output_device="Dummy MIDI", bpm=120)
+    unguarded.tuning(equal=19, bend_range=2.0, exclude_drums=False)
+
+    @unguarded.pattern(channel=10, beats=4, drum_note_map={"kick": 36})
+    def drums_unguarded(p: typing.Any) -> None:
+        p.hit_steps("kick", [0])
+
+    tuned_drums = unguarded._build_pattern_from_pending(unguarded._pending_patterns[0])
+
+    assert [e for e in tuned_drums.cc_events if e.message_type == "pitchwheel"] != []
 
 
 # ── PatternBuilder.apply_tuning() ─────────────────────────────────────────────
 
-def test_builder_apply_tuning_method () -> None:
-	"""PatternBuilder.apply_tuning() is a method chaining transform."""
-	pattern, builder = _make_builder(channel=0)
-	builder.note(60, beat=0, velocity=80, duration=0.5)
-	builder.note(64, beat=1, velocity=80, duration=0.5)
 
-	t = subsequence.tuning.Tuning.equal(12)
-	result = builder.apply_tuning(t, bend_range=2.0)
+def test_builder_apply_tuning_method() -> None:
+    """PatternBuilder.apply_tuning() is a method chaining transform."""
+    pattern, builder = _make_builder(channel=0)
+    builder.note(60, beat=0, velocity=80, duration=0.5)
+    builder.note(64, beat=1, velocity=80, duration=0.5)
 
-	assert result is builder  # method chaining
-	bends = _bend_events(pattern)
-	assert len(bends) == 2
+    t = subsequence.tuning.Tuning.equal(12)
+    result = builder.apply_tuning(t, bend_range=2.0)
+
+    assert result is builder  # method chaining
+    bends = _bend_events(pattern)
+    assert len(bends) == 2
 
 
-def test_builder_apply_tuning_sets_flag () -> None:
-	"""apply_tuning() sets _tuning_applied so auto-application is skipped."""
-	pattern, builder = _make_builder(channel=0)
-	builder.note(60, beat=0, velocity=80, duration=0.5)
-	t = subsequence.tuning.Tuning.equal(12)
-	builder.apply_tuning(t)
-	assert builder._tuning_applied is True
+def test_builder_apply_tuning_sets_flag() -> None:
+    """apply_tuning() sets _tuning_applied so auto-application is skipped."""
+    pattern, builder = _make_builder(channel=0)
+    builder.note(60, beat=0, velocity=80, duration=0.5)
+    t = subsequence.tuning.Tuning.equal(12)
+    builder.apply_tuning(t)
+    assert builder._tuning_applied is True
 
 
 # ── Package-level export ──────────────────────────────────────────────────────
 
-def test_tuning_exported_from_package () -> None:
 
-	"""Tuning is accessible as subsequence.Tuning."""
+def test_tuning_exported_from_package() -> None:
+    """Tuning is accessible as subsequence.Tuning."""
 
-	import subsequence
-	assert hasattr(subsequence, "Tuning")
-	assert subsequence.Tuning is subsequence.tuning.Tuning
+    import subsequence
+
+    assert hasattr(subsequence, "Tuning")
+    assert subsequence.Tuning is subsequence.tuning.Tuning

@@ -43,4 +43,4 @@ composition.watch(LIVE_FILE)
 
 
 if __name__ == "__main__":
-	composition.play()
+    composition.play()

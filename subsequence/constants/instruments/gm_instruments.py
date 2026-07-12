@@ -26,7 +26,7 @@ Canonical source: `pymididefs <https://github.com/simonholliday/PyMidiDefs>`_.
 # Re-export everything from pymididefs.gm - all instrument constants and lookup tables.
 from pymididefs.gm import *  # noqa: F401,F403
 from pymididefs.gm import (  # noqa: F401 - explicit re-exports for type checkers
-	GM_FAMILIES,
-	GM_INSTRUMENT_MAP,
-	GM_INSTRUMENT_NAMES,
+    GM_FAMILIES,
+    GM_INSTRUMENT_MAP,
+    GM_INSTRUMENT_NAMES,
 )

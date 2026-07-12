@@ -32,2558 +32,2872 @@ import subsequence.progressions
 logger = logging.getLogger(__name__)
 
 
-def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
+def _expand_sequence_param(name: str, value: typing.Any, n: int) -> list:
+    """Expand a scalar to a list of length n, or adjust a list to length n.
 
-	"""Expand a scalar to a list of length n, or adjust a list to length n.
+    Parameters:
+            name: The name of the parameter being expanded (used for logging).
+            value: A scalar (e.g., int, float, str) or an iterable to expand.
+            n: The target length for the returned list.
 
-	Parameters:
-		name: The name of the parameter being expanded (used for logging).
-		value: A scalar (e.g., int, float, str) or an iterable to expand.
-		n: The target length for the returned list.
+    Returns:
+            A list of length ``n``. If ``value`` is a scalar, returns ``[value] * n``.
+            If ``value`` is a list longer than ``n``, truncates it and logs a warning.
+            If ``value`` is a list shorter than ``n``, repeats the last value and logs a warning.
+    """
 
-	Returns:
-		A list of length ``n``. If ``value`` is a scalar, returns ``[value] * n``.
-		If ``value`` is a list longer than ``n``, truncates it and logs a warning.
-		If ``value`` is a list shorter than ``n``, repeats the last value and logs a warning.
-	"""
+    if isinstance(value, (int, float, str)):
+        return [value] * n
 
-	if isinstance(value, (int, float, str)):
-		return [value] * n
+    result = list(value)
 
-	result = list(value)
+    if len(result) == 0:
+        raise ValueError(f"sequence(): {name} list cannot be empty")
 
-	if len(result) == 0:
-		raise ValueError(f"sequence(): {name} list cannot be empty")
+    if len(result) > n:
+        logger.warning(
+            "sequence(): %s has %d values but only %d steps - truncating",
+            name,
+            len(result),
+            n,
+        )
+        return result[:n]
 
-	if len(result) > n:
-		logger.warning("sequence(): %s has %d values but only %d steps - truncating", name, len(result), n)
-		return result[:n]
+    if len(result) < n:
+        logger.warning(
+            "sequence(): %s has %d values but %d steps - repeating last value",
+            name,
+            len(result),
+            n,
+        )
+        return result + [result[-1]] * (n - len(result))
 
-	if len(result) < n:
-		logger.warning("sequence(): %s has %d values but %d steps - repeating last value", name, len(result), n)
-		return result + [result[-1]] * (n - len(result))
-
-	return result
+    return result
 
 
 class BarCycle:
+    """Position of the current bar within a repeating cycle of bars.
 
-	"""Position of the current bar within a repeating cycle of bars.
+    Returned by :meth:`PatternBuilder.bar_cycle`. Provides readable, musician-friendly
+    properties for bar-position logic without raw modulo arithmetic.
 
-	Returned by :meth:`PatternBuilder.bar_cycle`. Provides readable, musician-friendly
-	properties for bar-position logic without raw modulo arithmetic.
+    Attributes:
+            bar: Zero-indexed bar within the cycle (0 … length−1).
+            length: The cycle length in bars passed to :meth:`PatternBuilder.bar_cycle`.
+    """
 
-	Attributes:
-		bar: Zero-indexed bar within the cycle (0 … length−1).
-		length: The cycle length in bars passed to :meth:`PatternBuilder.bar_cycle`.
-	"""
+    __slots__ = ("bar", "length")
 
-	__slots__ = ("bar", "length")
+    def __init__(self, bar: int, length: int) -> None:
+        self.bar = bar
+        self.length = length
 
-	def __init__ (self, bar: int, length: int) -> None:
-		self.bar = bar
-		self.length = length
+    @property
+    def first(self) -> bool:
+        """True on the first bar of the cycle (``bar == 0``)."""
+        return self.bar == 0
 
-	@property
-	def first (self) -> bool:
-		"""True on the first bar of the cycle (``bar == 0``)."""
-		return self.bar == 0
+    @property
+    def last(self) -> bool:
+        """True on the last bar of the cycle (``bar == length − 1``)."""
+        return self.bar == self.length - 1
 
-	@property
-	def last (self) -> bool:
-		"""True on the last bar of the cycle (``bar == length − 1``)."""
-		return self.bar == self.length - 1
+    @property
+    def progress(self) -> float:
+        """Fractional progress through the cycle: 0.0 on bar 0, rising each bar.
 
-	@property
-	def progress (self) -> float:
-		"""Fractional progress through the cycle: 0.0 on bar 0, rising each bar.
-
-		For a 4-bar cycle: 0.0, 0.25, 0.5, 0.75.
-		Useful for gradual intensity curves or as a noise/LFO seed.
-		"""
-		return self.bar / self.length
+        For a 4-bar cycle: 0.0, 0.25, 0.5, 0.75.
+        Useful for gradual intensity curves or as a noise/LFO seed.
+        """
+        return self.bar / self.length
 
 
 class PatternBuilder(
-	subsequence.pattern_algorithmic.PatternAlgorithmicMixin,
-	subsequence.pattern_midi.PatternMidiMixin,
+    subsequence.pattern_algorithmic.PatternAlgorithmicMixin,
+    subsequence.pattern_midi.PatternMidiMixin,
 ):
-
-	"""
-	The musician's 'palette' for creating musical content.
-
-	A ``PatternBuilder`` instance (commonly named ``p``) is passed to every
-	pattern function. It provides methods for placing notes, generating rhythms,
-	and transforming the resulting sequence (e.g., swinging, reversing, or transposing).
-
-	Rhythm in Subsequence is typically expressed in **beats** (where 1.0 is a
-	quarter note) or **steps** (subdivisions of a pattern).
-	"""
-
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, scale: typing.Optional[str] = None, time_signature: typing.Tuple[int, int] = (4, 4), held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None, harmony: typing.Optional[typing.Any] = None, section_motifs: typing.Optional[typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]] = None, energy: float = 0.5) -> None:
-
-		"""Initialize the builder with pattern context, cycle count, and optional section info.
-
-		Parameters:
-			pattern: The ``Pattern`` instance this builder populates.
-			cycle: Zero-based rebuild counter.
-			conductor: Optional ``Conductor`` for time-varying signals.
-			drum_note_map: Optional mapping of drum names to MIDI notes.
-			cc_name_map: Optional mapping of CC names to MIDI CC numbers.
-			nrpn_name_map: Optional mapping of NRPN parameter names to 14-bit
-				parameter numbers (0–16383).  Used by ``p.nrpn()`` and
-				``p.nrpn_ramp()`` for symbolic access — typically a
-				device-specific dictionary (e.g. Sequential Take 5's
-				``Osc1FreqFine`` → 9).
-			section: Current ``SectionInfo`` (or ``None``).
-			bar: Global bar count.
-			rng: Optional seeded ``Random`` for reproducibility.
-			tweaks: Per-pattern overrides set via ``composition.tweak()``.
-			default_grid: Number of grid slots used by ``hit_steps()``,
-				``sequence()``, and ``rotate()`` when no explicit ``grid``
-				is passed.  Normally set automatically from the decorator's
-				``beats``/``bars``/``steps`` and ``step_duration`` parameters.
-			data: Shared state dict from the parent ``Composition``
-				(same object as ``composition.data``).  Read and write
-				via ``p.data`` for cross-pattern communication and
-				external data access.  Patterns rebuild in definition
-				order; when two patterns share the same ``length``,
-				a writer defined earlier in source is guaranteed to
-				run before a reader defined later in the same cycle.
-			key: The composition's key (e.g. ``"C"``), used by ``p.progression()``
-				to generate chords from a graph style and by ``p.motif()`` to
-				resolve scale degrees.  ``None`` when the composition has no
-				key set.
-			scale: The composition's scale/mode name (e.g. ``"minor"``),
-				read via ``p.scale`` and used to resolve scale degrees in
-				``p.motif()``.  ``None`` means ionian/major.
-			time_signature: The composition's time signature, read via
-				``p.time_signature``; powers the metric-weight table.
-			section_motifs: Optional reference to the composition's
-				section-motif registry, read by ``p.section_motif()``.
-			harmony: Optional read-only harmony window view for this cycle
-				(``p.harmony``) — ``p.harmony.chord``, ``chord_at(beat)``,
-				``next_chord``, ``until_change``.  ``None`` until the
-				harmonic clock has published a window.
-			held_notes: Optional live held-note tracker from ``composition.note_input()``.
-				Read via ``p.held_notes()``.  ``None`` when no note input was declared
-				(and when rendering headlessly), so the accessor returns an empty list.
-			energy: The current section's energy level (0.0–1.0), read via
-				``p.energy`` — the arranging dial.  0.5 when no energy source
-				is configured.
-		"""
-
-		self._pattern = pattern
-		self.cycle = cycle
-		self.conductor = conductor
-		self._drum_note_map = drum_note_map
-		self._cc_name_map = cc_name_map
-		self._nrpn_name_map = nrpn_name_map
-		self.section = section
-		self.bar = bar
-		self.rng: random.Random = rng or random.Random()
-		self._tweaks: typing.Dict[str, typing.Any] = tweaks or {}
-		self._default_grid: int = default_grid
-		self.data: typing.Dict[str, typing.Any] = data if data is not None else {}
-		self.key: typing.Optional[str] = key  # composition key, for p.progression() chord generation
-		self.scale: typing.Optional[str] = scale  # composition scale/mode, for degree resolution
-		self.time_signature: typing.Tuple[int, int] = time_signature
-		self.harmony: typing.Optional[typing.Any] = harmony  # HarmonyView for this cycle, or None
-		self.energy: float = energy  # current section's energy (the arranging dial)
-		self._section_motifs: typing.Optional[typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]] = section_motifs
-		self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = held_notes
-		self._tuning_applied: bool = False  # set by apply_tuning() to prevent double-apply
-
-	@property
-	def grid (self) -> int:
-		"""Number of grid slots in this pattern (e.g. 16 for a 4-beat sixteenth-note pattern)."""
-		return self._default_grid
-
-	def _has_pitch_at_beat (self, pitch: typing.Union[int, str], beat: float) -> bool:
-		"""Helper to check if a pitch is already sounding at a specific beat.
-
-		Tolerant of unmappable drum names: a name absent from this pattern's
-		``drum_note_map`` can't already be sounding here, so it returns False
-		(the placement itself handles the drop/warn) rather than raising."""
-		if isinstance(pitch, str):
-			if self._drum_note_map is None or pitch not in self._drum_note_map:
-				return False
-			midi_pitch = self._drum_note_map[pitch]
-		else:
-			midi_pitch = pitch
-		pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
-		if pulse in self._pattern.steps:
-			return any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes)
-		return False
-
-
-	@property
-	def c (self) -> typing.Optional[subsequence.conductor.Conductor]:
-
-		"""Alias for self.conductor."""
-
-		return self.conductor
-
-	def signal (self, name: str) -> float:
-
-		"""Read a conductor signal at the current bar.
-
-		Shorthand for ``p.c.get(name, p.bar * beats_per_bar)``, where
-		``beats_per_bar`` comes from the composition's time signature —
-		so the signal is read at the beat this bar actually starts on,
-		in any metre.  Returns 0.0 if no conductor is attached or the
-		signal is not defined.
-		"""
-
-		if self.conductor is None:
-			return 0.0
-
-		return self.conductor.get(name, self.bar * float(self.time_signature[0]))
-
-	def held_notes (self) -> typing.List[int]:
-
-		"""Return the MIDI notes currently held on the ``note_input`` keyboard.
-
-		The notes are sorted ascending.  Pass the result straight to
-		``p.arpeggio()`` to arpeggiate whatever the player is holding —
-		``p.arpeggio(p.held_notes())`` rests when no keys are down.  Returns
-		an empty list when no ``note_input()`` source was declared and when
-		rendering headlessly (so seeded output stays deterministic).
-
-		The set is sampled once per rebuild; ``note_input(release_ms=…)``
-		smooths the gap during hand-position changes so the arp does not drop
-		out, and ``note_input(latch=True)`` holds the chord until you play a
-		new one.
-		"""
-
-		if self._held_notes is None:
-			return []
-
-		return self._held_notes.snapshot(time.perf_counter())
-
-	def param (self, name: str, default: typing.Any = None) -> typing.Any:
-
-		"""Read a tweakable parameter for this pattern.
-
-		Returns the value set via ``composition.tweak()`` if one
-		exists, otherwise returns ``default``.
-
-		Parameters:
-			name: The parameter name.
-			default: The value to return if no tweak is active.
-
-		Example::
-
-			@composition.pattern(channel=1, beats=4)
-			def bass (p):
-				pitches = p.param("pitches", [60, 64, 67, 72])
-				p.sequence(steps=[0, 4, 8, 12], pitches=pitches)
-		"""
-
-		return self._tweaks.get(name, default)
-
-	def set_length (self, length: float) -> "PatternBuilder":
-
-		"""
-		Dynamically change the length of the pattern.
-
-		The new length takes effect immediately for any subsequent notes
-		placed in the current builder call, and will be used by the
-		sequencer for next cycle's scheduling.
-
-		Parameters:
-			length: New pattern length in beats (e.g., 4.0 for a bar).
-
-		Returns ``self`` for fluent chaining.
-		"""
-
-		if length <= 0:
-			raise ValueError("Pattern length must be positive")
-
-		self._pattern.length = length
-		return self
-
-	def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int:
-
-		"""
-		Resolve a pitch value to a MIDI note number (strict).
-
-		Raises on an unknown drum name — the strict counterpart of
-		:meth:`_resolve_pitch_lenient`.  Note-placement and transform methods use
-		the lenient variant, so a device may legitimately lack a voice others
-		have; this strict primitive is retained for parity with the sibling
-		``_resolve_cc`` / ``_resolve_nrpn`` / ``_resolve_rpn`` name resolvers,
-		where an unknown name is always a configuration error.
-		"""
-
-		if isinstance(pitch, int):
-			return pitch
-
-		if self._drum_note_map is None:
-			raise ValueError(f"String pitch '{pitch}' requires a drum_note_map, but none was provided")
-
-		if pitch not in self._drum_note_map:
-			raise ValueError(f"Unknown drum name '{pitch}' - not found in drum_note_map")
-
-		return self._drum_note_map[pitch]
-
-	def _resolve_hit_pitch (self, pitch: typing.Union[int, str]) -> typing.Optional[typing.Tuple[int, typing.Optional[str], bool]]:
-
-		"""Resolve a step-note pitch for placement, leniently for named drums.
-
-		Returns ``(midi_pitch, origin, primary_unmapped)``, or ``None`` to drop
-		the hit entirely.
-
-		Unlike :meth:`_resolve_pitch`, an unknown drum *name* does not raise:
-		faithful-core device maps legitimately lack voices other devices have,
-		so a name a device can't voice is dropped rather than crashing the
-		pattern.  The cases:
-
-		- Integer pitch → ``(pitch, None, False)``.
-		- String in this pattern's ``drum_note_map`` → ``(note, name, False)``.
-		- String absent here but present in a mirror's map →
-		  ``(placeholder, name, True)``: the primary can't voice it, but a
-		  symbolic mirror can (the placeholder pitch is used only by transforms
-		  and display, never for playback — see ``Note.primary_unmapped``).
-		- String absent everywhere → warn once and return ``None`` (drop).
-		- String with **no** ``drum_note_map`` at all → still a configuration
-		  error; raises (you forgot the map, this is not a capability gap).
-		"""
-
-		if isinstance(pitch, int):
-			return (pitch, None, False)
-
-		if self._drum_note_map is None:
-			raise ValueError(f"String pitch '{pitch}' requires a drum_note_map, but none was provided")
-
-		if pitch in self._drum_note_map:
-			return (self._drum_note_map[pitch], pitch, False)
-
-		mirror_pitch = self._first_mirror_pitch(pitch)
-		if mirror_pitch is not None:
-			return (mirror_pitch, pitch, True)
-
-		self._warn_unknown_drum(pitch)
-		return None
-
-	def _first_mirror_pitch (self, name: str) -> typing.Optional[int]:
-
-		"""Return the first mirror ``drum_note_map`` value for *name*, or None.
-
-		Lets a named hit absent from the primary map still be placed (as a
-		``primary_unmapped`` Note) when a symbolic (3-tuple) mirror can voice it.
-		"""
-
-		for entry in getattr(self._pattern, 'mirrors', []):
-			if len(entry) == 3 and entry[2] is not None and name in entry[2]:
-				return typing.cast(int, entry[2][name])
-		return None
-
-	def _warn_unknown_drum (self, name: str, include_mirrors: bool = True) -> None:
-
-		"""Warn once (per pattern, per name) that a drum name maps to nothing.
-
-		Deduplicated via the Pattern's ``_warned_drum_names`` set so the per-bar
-		rebuild does not spam; a hot-reload builds a fresh Pattern and
-		re-surfaces the warning.
-
-		``include_mirrors`` tailors the wording: step-note placement checks the
-		mirror maps too (the name maps to *no* device), whereas the methods that
-		resolve against the primary map only — drones, ``arpeggio``, ``evolve``,
-		``branch``, and the ``thin``/``ratchet`` pitch filter — report just this
-		device.
-		"""
-
-		warned = getattr(self._pattern, '_warned_drum_names', None)
-		if warned is not None:
-			if name in warned:
-				return
-			warned.add(name)
-
-		fn = getattr(self._pattern, '_builder_fn', None)
-		label = getattr(fn, '__name__', None)
-		where = f"pattern '{label}'" if label else f"device {self._pattern.device} channel {self._pattern.channel}"
-		if include_mirrors:
-			scope  = f"the drum_note_map for {where} or any of its mirror destinations"
-			reason = "no device maps this voice"
-		else:
-			scope  = f"the drum_note_map for {where}"
-			reason = "this device has no such voice"
-		logger.warning(f"Drum name '{name}' is not in {scope} — the note is dropped ({reason}). Check the spelling, or add it to a map.")
-
-	def _resolve_pitch_lenient (self, pitch: typing.Union[int, str]) -> typing.Optional[int]:
-
-		"""Resolve a pitch against this pattern's own ``drum_note_map``, leniently.
-
-		Like :meth:`_resolve_pitch`, but an unknown drum *name* (a map is present
-		yet lacks the voice) is **dropped** — warned once, returns ``None`` —
-		instead of raising, so a device may legitimately lack a voice that other
-		devices have.  Used by the methods that do NOT carry the drum name to
-		mirror destinations (``note_on``/``note_off``/``drone``, ``arpeggio``,
-		``evolve``, ``branch``, and the ``thin``/``ratchet`` pitch filter), so
-		resolution is against the primary map only.  A string with **no**
-		``drum_note_map`` at all is still a configuration error and raises.
-		"""
-
-		if isinstance(pitch, int):
-			return pitch
-
-		if self._drum_note_map is None:
-			raise ValueError(f"String pitch '{pitch}' requires a drum_note_map, but none was provided")
-
-		if pitch in self._drum_note_map:
-			return self._drum_note_map[pitch]
-
-		self._warn_unknown_drum(pitch, include_mirrors=False)
-		return None
-
-	def _resolve_cc (self, control: typing.Union[int, str]) -> int:
-
-		"""Resolve a CC name or number to a MIDI CC number."""
-
-		if isinstance(control, int):
-			return control
-
-		if self._cc_name_map is None:
-			raise ValueError(f"String CC name '{control}' requires a cc_name_map, but none was provided")
-
-		if control not in self._cc_name_map:
-			raise ValueError(f"Unknown CC name '{control}' - not found in cc_name_map")
-
-		return self._cc_name_map[control]
-
-	def _resolve_nrpn (self, parameter: typing.Union[int, str]) -> int:
-
-		"""Resolve an NRPN parameter name or number to a 14-bit parameter number.
-
-		Strings require an ``nrpn_name_map`` on the pattern decorator —
-		NRPN parameter numbers are vendor-specific, so subsequence does not
-		ship a default mapping.  Integer parameters must be in the 14-bit
-		range 0–16383.
-		"""
-
-		if isinstance(parameter, int):
-			if not 0 <= parameter <= 16383:
-				raise ValueError(f"NRPN parameter number must be 0–16383, got {parameter}")
-			return parameter
-
-		if self._nrpn_name_map is None:
-			raise ValueError(f"String NRPN name '{parameter}' requires an nrpn_name_map, but none was provided")
-
-		if parameter not in self._nrpn_name_map:
-			raise ValueError(f"Unknown NRPN name '{parameter}' - not found in nrpn_name_map")
-
-		return self._nrpn_name_map[parameter]
-
-	def _resolve_rpn (self, parameter: typing.Union[int, str]) -> int:
-
-		"""Resolve an RPN parameter name or number to a 14-bit parameter number.
-
-		Strings fall back to ``pymididefs.rpn.RPN_MAP`` — the standardised
-		set of MIDI Registered Parameter Numbers (``pitch_bend_sensitivity``,
-		``channel_fine_tuning``, ...).  No per-pattern map needed.  Integer
-		parameters must be in the 14-bit range 0–16383.
-		"""
-
-		if isinstance(parameter, int):
-			if not 0 <= parameter <= 16383:
-				raise ValueError(f"RPN parameter number must be 0–16383, got {parameter}")
-			return parameter
-
-		if parameter not in pymididefs.rpn.RPN_MAP:
-			raise ValueError(f"Unknown RPN name '{parameter}' - not a standard Registered Parameter Number")
-
-		return pymididefs.rpn.RPN_MAP[parameter]
-
-	def note (self, pitch: typing.Union[int, str], beat: float, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
-
-		"""
-		Place a single MIDI note at a specific beat position.
-
-		A drum name is carried through to the mirror fan-out so each device can
-		re-resolve it through its own ``drum_note_map``.  A name no destination
-		maps (not in the pattern's own map nor any mirror's) is dropped and
-		warned once — it does not raise — so device maps can legitimately lack
-		voices others have.  (A string pitch with **no** ``drum_note_map`` at all
-		is still a configuration error and raises.)
-
-		Parameters:
-			pitch: MIDI note number (0-127) or a drum name string from
-				the pattern's ``drum_note_map``.
-			beat: The beat position (0.0 is the start). Negative values
-				wrap from the end (e.g., -1.0 is one beat before the end).
-			velocity: MIDI velocity (0-127, default 100), or a
-				``(low, high)`` tuple for a single random draw.
-			duration: Note duration in beats (default 0.25).
-
-		Example:
-			```python
-			p.note(60, beat=0, velocity=110)      # Middle C on beat 1
-			p.note("kick", beat=1.0)               # Kick on beat 2
-			p.note(67, beat=-0.5, duration=0.5)  # G on the 'and' of the last beat
-			```
-		"""
-
-		# Resolve leniently: a named drum the target can't voice is dropped (and
-		# warned once) rather than raising, and the drum name is carried so each
-		# destination can re-resolve it through its own drum_note_map.
-		resolution = self._resolve_hit_pitch(pitch)
-		if resolution is None:
-			return self	# unknown drum name, mapped by no destination — dropped
-		midi_pitch, origin, primary_unmapped = resolution
-
-		resolved_velocity = self._resolve_velocity(velocity)
-
-		# Negative beat values wrap to the end of the pattern.
-		if beat < 0:
-			beat = beat % self._pattern.length	# wrap from the end (any magnitude)
-
-		self._pattern.add_note_beats(
-			beat_position = beat,
-			pitch = midi_pitch,
-			velocity = resolved_velocity,
-			duration_beats = duration,
-			origin = origin,
-			primary_unmapped = primary_unmapped
-		)
-		return self
-
-	def note_on (self, pitch: typing.Union[int, str], beat: float, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
-
-		"""
-		Place an explicit Note On event without a duration.
-		Useful for drones or infinite sustains. Must be paired with
-		a ``note_off()`` later to silence the note.
-
-		Parameters:
-			pitch: MIDI note number (0-127) or a drum name string.
-			beat: The beat position (0.0 is the start).
-			velocity: MIDI velocity (0-127, default 100), or a
-				``(low, high)`` tuple for a single random draw.
-
-		A drum name this device's ``drum_note_map`` lacks is dropped (warned
-		once) rather than raising — consistent with the step-note methods.  A
-		string pitch with no ``drum_note_map`` at all is still a configuration
-		error and raises.
-		"""
-
-		midi_pitch = self._resolve_pitch_lenient(pitch)
-		if midi_pitch is None:
-			return self	# drum name this device can't voice — dropped (warned once)
-		resolved_velocity = self._resolve_velocity(velocity)
-		if beat < 0:
-			beat = beat % self._pattern.length	# wrap from the end (any magnitude)
-
-		self._pattern.add_raw_note_beats(
-			message_type = 'note_on',
-			beat_position = beat,
-			pitch = midi_pitch,
-			velocity = resolved_velocity,
-			origin = pitch if isinstance(pitch, str) else None
-		)
-		return self
-
-	def note_off (self, pitch: typing.Union[int, str], beat: float) -> "PatternBuilder":
-
-		"""
-		Place an explicit Note Off event to silence a drone.
-		
-		Parameters:
-			pitch: MIDI note number (0-127) or a drum name string.
-			beat: The beat position (0.0 is the start).
-
-		A drum name this device's ``drum_note_map`` lacks is dropped (warned
-		once) rather than raising; with no ``drum_note_map`` at all it raises.
-		"""
-
-		midi_pitch = self._resolve_pitch_lenient(pitch)
-		if midi_pitch is None:
-			return self	# nothing to silence — this device can't voice the name
-		if beat < 0:
-			beat = beat % self._pattern.length	# wrap from the end (any magnitude)
-
-		self._pattern.add_raw_note_beats(
-			message_type = 'note_off',
-			beat_position = beat,
-			pitch = midi_pitch,
-			velocity = 0,
-			origin = pitch if isinstance(pitch, str) else None
-		)
-		return self
-
-	def drone (self, pitch: typing.Union[int, str], beat: float = 0.0, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
-
-		"""
-		A musical alias for ``note_on``. Places a raw Note On event without a duration,
-		typically used for sustained notes that span multiple cycles.
-		Must be silenced later using ``drone_off()``.
-
-		Parameters:
-			pitch: MIDI note number (0-127) or a drum name string.
-			beat: The beat position (0.0 is the start).
-			velocity: MIDI velocity (0-127, default 100), or a
-				``(low, high)`` tuple for a single random draw.
-		"""
-
-		self.note_on(pitch, beat=beat, velocity=velocity)
-		return self
-
-	def drone_off (self, pitch: typing.Union[int, str]) -> "PatternBuilder":
-
-		"""
-		A musical alias for ``note_off``. Places a raw Note Off event at beat 0.0.
-		Used to stop a sequence started by ``drone()``.
-		
-		Parameters:
-			pitch: MIDI note number (0-127) or a drum name string.
-		"""
-
-		self.note_off(pitch, beat=0.0)
-		return self
-
-	def silence (self, beat: float = 0.0) -> "PatternBuilder":
-
-		"""
-		Sends an 'All Notes Off' (CC 123) and 'All Sound Off' (CC 120) message
-		on the pattern's channel to immediately silence any ringing notes or drones.
-		
-		Parameters:
-			beat: The beat position (0.0 is the start).
-		"""
-
-		self.cc(control=123, value=0, beat=beat)
-		self.cc(control=120, value=0, beat=beat)
-		return self
-
-	def hit (self, pitch: typing.Union[int, str], beats: typing.List[float], velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1) -> "PatternBuilder":
-
-		"""
-		Place multiple short 'hits' at a list of beat positions.
-
-		Parameters:
-			pitch: MIDI note number or drum name.
-			beats: List of beat positions.
-			velocity: MIDI velocity (0-127), or a ``(low, high)`` tuple
-				for a fresh random draw per hit.
-			duration: Note duration in beats.
-
-		Example:
-			```python
-			p.hit("snare", [1, 3])                      # Standard backbeat
-			p.hit("snare", [1, 3], velocity=(80, 110))  # Human velocity range
-			```
-		"""
-
-		for beat in beats:
-			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
-		return self
-
-	def hit_steps (self, pitch: typing.Union[int, str], steps: typing.List[int], velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
-
-		"""
-		Place short hits at specific step (grid) positions.
-
-		Parameters:
-			pitch: MIDI note number or drum name.
-			steps: A list of grid indices (0 to ``grid - 1``).
-			velocity: MIDI velocity (0-127), or a ``(low, high)`` tuple
-				for a fresh random draw per step.
-			duration: Note duration in beats.
-			grid: How many grid slots the pattern is divided into.
-				Defaults to the pattern's ``default_grid`` (set from the
-				decorator's ``steps``/``step_duration``, or sixteenth-note
-				resolution when ``unit`` is omitted).
-			probability: Chance (0.0 to 1.0) that each hit will play.
-			seed: Fix the probability gating for this call (an int); omit to
-				use the pattern's RNG.
-			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
-
-		Example:
-			```python
-			# Typical sixteenth-note hi-hats with some probability variation
-			p.hit_steps("hh", range(16), velocity=70, probability=0.8)
-
-			# Humanised hi-hats — each step gets a fresh random velocity.
-			p.hit_steps("hh", range(16), velocity=(40, 90))
-			```
-		"""
-
-		rng = self._rng_from(seed, rng)
-
-		if grid is None:
-			grid = self._default_grid
-
-		if grid <= 0:
-			return self
-
-		step_duration = self._pattern.length / grid
-
-		for i in steps:
-
-			if probability < 1.0 and rng.random() >= probability:
-				continue
-
-			beat = i * step_duration
-			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
-		return self
-
-	def motif (
-		self,
-		m: "subsequence.motifs.Motif",
-		beat: float = 0.0,
-		span: typing.Optional[float] = None,
-		root: int = 60,
-		velocity: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
-		fit: typing.Optional[float] = None,
-		fit_weights: typing.Optional[typing.List[float]] = None,
-		resolution: typing.Optional[int] = None,
-	) -> "PatternBuilder":
-
-		"""
-		Place an immutable :class:`~subsequence.motifs.Motif` onto the pattern.
-
-		Note events route through the universal ``note()`` funnel (drum names,
-		mirrors, velocity tuples all work); control gestures emit through the
-		same machinery as ``cc()`` / ``cc_ramp()`` / ``pitch_bend()`` /
-		``nrpn()`` / ``osc()``.  Pitch specs resolve here, late: ints are MIDI,
-		strings are drum names, scale degrees resolve against the composition
-		key + scale anchored near ``root=``.  Per-event probabilities roll
-		fresh each cycle against the pattern's seeded stream.
-
-		Parameters:
-			m: The motif value (anything exposing ``.events`` / ``.length``
-				places; ``.controls`` is read when present).
-			beat: Where the motif starts within the pattern.
-			span: Clamp — events whose onset falls at or beyond *span* beats
-				into the motif are dropped (the ``arpeggio()`` convention).
-			root: Register anchor for scale-degree resolution: the tonic
-				lands at its nearest instance to this MIDI note (ties resolve
-				upward) and the melody keeps its written contour from there.
-			velocity: Optional override applied to every note (otherwise each
-				event's own velocity is used).
-			fit: The chord-tones-on-strong-beats dial, 0.0–1.0: resolved
-				Degree/int pitches landing on strong beats (metric weight
-				>= 0.5) snap to the nearest chord tone with this
-				probability.  Defaults to the motif's own ``fit`` (0.7 on
-				generated motifs, none on hand-written ones — typed degrees
-				are sacred); inactive without a chord context.  ChordTone
-				and Approach events never snap — their harmony reading is
-				inherent (an Approach's chromaticism is the point).
-			fit_weights: Custom per-step metric weight list (the
-				``build_ghost_bias`` precedent) for additive or
-				non-isochronous meters; defaults to the time signature's
-				table.
-			resolution: Pulses between control-ramp messages (defaults to
-				each control verb's own default).  Kept out of the value by
-				design: beats and shapes are music, traffic density is wire.
-		"""
-
-		events = getattr(m, "events", None)
-
-		if events is None or not hasattr(m, "length"):
-			raise TypeError(f"motif() places Motif-like values (.events/.length) — got {type(m).__name__}")
-
-		effective_fit = fit if fit is not None else getattr(m, "fit", None)
-		fit_table: typing.Optional[typing.List[float]] = None
-		snap_probability = 0.0
-
-		if effective_fit:
-			snap_probability = float(effective_fit)
-			fit_table = list(fit_weights) if fit_weights is not None else subsequence.sequence_utils.build_metric_weights(
-				self.time_signature, grid = self._default_grid
-			)
-
-		for event in events:
-
-			if span is not None and event.beat >= span:
-				continue
-			if event.probability < 1.0 and self.rng.random() >= event.probability:
-				continue
-
-			resolved = self._resolve_motif_pitch(event.pitch, root, beat + event.beat)
-
-			# The fit dial reads only Degree/int content: drums have no
-			# pitch to snap, ChordTones already are chord tones, and an
-			# Approach's chromaticism is the point.
-			if (
-				fit_table is not None
-				and isinstance(resolved, int)
-				and isinstance(event.pitch, (int, subsequence.motifs.Degree))
-			):
-				resolved = self._fit_snap(resolved, beat + event.beat, snap_probability, fit_table)
-
-			self.note(
-				pitch = resolved,
-				beat = beat + event.beat,
-				velocity = velocity if velocity is not None else event.velocity,
-				duration = event.duration,
-			)
-
-		for control in getattr(m, "controls", ()):
-
-			if span is not None and control.beat >= span:
-				continue
-			if control.probability < 1.0 and self.rng.random() >= control.probability:
-				continue
-
-			self._emit_control(control, beat, resolution)
-
-		return self
-
-	def _resolve_motif_pitch (self, pitch: typing.Any, root: int, event_beat: float = 0.0) -> typing.Union[int, str]:
-
-		"""Resolve one stored pitch spec to a MIDI int or drum name, late.
-
-		``event_beat`` is the event's position within this cycle — chord-
-		relative specs resolve against the chord sounding *under the event*
-		(``p.harmony.chord_at``), not the cycle-start snapshot.
-		"""
-
-		if pitch is None:
-			raise ValueError(
-				"This motif is a rhythm skeleton (pitches stripped) — "
-				"re-pitch it with .pitched() before placing"
-			)
-
-		if isinstance(pitch, (int, str)):
-			return pitch
-
-		if isinstance(pitch, subsequence.motifs.Degree):
-			return self._resolve_degree_pitch(pitch, root)
-
-		if isinstance(pitch, subsequence.motifs.ChordTone):
-			return self._resolve_chord_tone_pitch(pitch, root, event_beat)
-
-		if isinstance(pitch, subsequence.motifs.Approach):
-			return self._resolve_approach_pitch(pitch, root, event_beat)
-
-		raise TypeError(f"Unknown pitch spec: {type(pitch).__name__}")
-
-	def _resolve_approach_pitch (self, approach: "subsequence.motifs.Approach", root: int, event_beat: float) -> int:
-
-		"""Resolve an Approach: one semitone below its target's pitch.
-
-		A ``ChordTone`` target reads the chord at the NEXT boundary after the
-		event (the harmony window's anticipation data) — the approach is the
-		tension, the target is where the harmony lands.  When the window
-		holds no committed next chord (the live mode horizon's edge), the
-		sounding chord stands in.  ``Degree``/``int`` targets resolve as
-		usual (no harmony needed).
-		"""
-
-		target = approach.target
-
-		if isinstance(target, subsequence.motifs.ChordTone):
-
-			if self.harmony is None:
-				raise ValueError(
-					"an Approach at a chord tone needs the harmonic clock — "
-					"call composition.harmony(...) (a style or a bound progression)"
-				)
-
-			chord = self.harmony.next_chord_at(event_beat)
-
-			if chord is None:
-				chord = self.harmony.chord_at(event_beat)
-			if chord is None:
-				raise ValueError(
-					f"No chord is known around beat {event_beat:g} of this cycle — "
-					"the harmony window does not cover it"
-				)
-
-			tones = chord.tones(root, count = target.index)
-			resolved = int(tones[target.index - 1]) + 12 * target.octave
-
-		elif isinstance(target, subsequence.motifs.Degree):
-			resolved = self._resolve_degree_pitch(target, root)
-
-		elif isinstance(target, int):
-			resolved = target
-
-		else:
-			raise TypeError(f"cannot approach {type(target).__name__} content")
-
-		pitch = resolved - 1
-
-		if not 0 <= pitch <= 127:
-			raise ValueError(
-				f"Approach resolves to MIDI {pitch}, outside 0–127 — adjust root= or the target's octave"
-			)
-
-		return pitch
-
-	def _fit_snap (self, pitch: int, event_beat: float, fit: float, weights: typing.List[float]) -> int:
-
-		"""The fit dial: snap a strong-beat pitch to the nearest chord tone, with probability *fit*.
-
-		Strong beats are the metric-weight table's >= 0.5 positions
-		(downbeats and beats); off-grid events take the nearest grid
-		position's weight.  Inactive without a chord context.
-		"""
-
-		if self.harmony is None:
-			return pitch
-
-		bar_beats = float(self.time_signature[0])
-		grid = len(weights)
-		step = (event_beat % bar_beats) * grid / bar_beats
-		weight = weights[int(round(step)) % grid]
-
-		if weight < 0.5:
-			return pitch
-		if self.rng.random() >= fit:
-			return pitch
-
-		chord = self.harmony.chord_at(event_beat)
-
-		if chord is None:
-			return pitch
-
-		chord_pcs = {tone % 12 for tone in chord.tones(pitch)}
-
-		if pitch % 12 in chord_pcs:
-			return pitch
-
-		# Nearest chord tone, ties upward.
-		for delta in (1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6):
-			if (pitch + delta) % 12 in chord_pcs and 0 <= pitch + delta <= 127:
-				return pitch + delta
-
-		return pitch
-
-	def _resolve_chord_tone_pitch (self, tone: "subsequence.motifs.ChordTone", root: int, event_beat: float) -> int:
-
-		"""Resolve a 1-based chord-tone index against the chord under the event.
-
-		Reads the harmony window (``p.harmony.chord_at(event_beat)``): indices
-		walk the sounding chord's tones nearest ``root``, cycling into higher
-		octaves past the chord's natural size, plus whole-octave shifts.
-		"""
-
-		if self.harmony is None:
-			raise ValueError(
-				"ChordTone pitches resolve against the harmonic clock — "
-				"call composition.harmony(...) (a style or a bound progression)"
-			)
-
-		chord = self.harmony.chord_at(event_beat)
-
-		if chord is None:
-			raise ValueError(
-				f"No chord is known at beat {event_beat:g} of this cycle — "
-				"the harmony window does not cover it"
-			)
-
-		tones = chord.tones(root, count = tone.index)
-		midi = int(tones[tone.index - 1]) + 12 * tone.octave
-
-		if not 0 <= midi <= 127:
-			raise ValueError(
-				f"Chord tone {tone.index} resolves to MIDI {midi}, outside 0–127 — "
-				"adjust root= or the tone's octaves"
-			)
-
-		return midi
-
-	def _resolve_degree_pitch (self, degree: "subsequence.motifs.Degree", root: int) -> int:
-
-		"""
-		Resolve a 1-based scale degree against the composition key + scale.
-
-		The tonic anchors at its nearest instance to ``root`` (ties resolve
-		upward); the degree then builds from the anchored tonic, so a written
-		melody keeps its contour.  Steps beyond the scale length carry into
-		higher octaves (8 = tonic an octave up in seven-note scales).
-		"""
-
-		if self.key is None:
-			raise ValueError("Scale degrees resolve against a key — set Composition(key=...)")
-
-		mode = self.scale or "ionian"
-		pcs = subsequence.intervals.scale_pitch_classes(subsequence.chords.key_name_to_pc(self.key), mode)
-
-		idx = (degree.step - 1) % len(pcs)
-		carry = (degree.step - 1) // len(pcs)
-
-		diff = (pcs[0] - root) % 12
-		tonic = root + diff if diff <= 6 else root + diff - 12
-		offset = (pcs[idx] - pcs[0]) % 12
-
-		midi = tonic + offset + 12 * (carry + degree.octave) + degree.chroma
-
-		if not 0 <= midi <= 127:
-			raise ValueError(
-				f"Degree {degree.step} resolves to MIDI {midi}, outside 0–127 — "
-				f"adjust root= or the degree's octaves"
-			)
-
-		return midi
-
-	def _emit_control (self, control: "subsequence.motifs.ControlEvent", beat: float, resolution: typing.Optional[int]) -> None:
-
-		"""Emit one stored control gesture through the matching builder verb."""
-
-		signal = control.signal
-		onset = beat + control.beat
-		extra: typing.Dict[str, typing.Any] = {} if resolution is None else {"resolution": resolution}
-
-		if isinstance(signal, subsequence.motifs.CC):
-			if control.end is None:
-				self.cc(signal.control, int(round(control.start)), beat=onset)
-			else:
-				self.cc_ramp(signal.control, int(round(control.start)), int(round(control.end)), beat_start=onset, beat_end=onset + control.span, shape=control.shape, **extra)
-
-		elif isinstance(signal, subsequence.motifs.PitchBend):
-			if control.end is None:
-				self.pitch_bend(control.start, beat=onset)
-			else:
-				self.pitch_bend_ramp(control.start, control.end, beat_start=onset, beat_end=onset + control.span, shape=control.shape, **extra)
-
-		elif isinstance(signal, subsequence.motifs.NRPN):
-			if control.end is None:
-				self.nrpn(signal.parameter, int(round(control.start)), beat=onset, fine=signal.fine, null_reset=signal.null_reset)
-			else:
-				self.nrpn_ramp(signal.parameter, int(round(control.start)), int(round(control.end)), beat_start=onset, beat_end=onset + control.span, shape=control.shape, fine=signal.fine, null_reset=signal.null_reset, **extra)
-
-		elif isinstance(signal, subsequence.motifs.RPN):
-			if control.end is None:
-				self.rpn(signal.parameter, int(round(control.start)), beat=onset, fine=signal.fine, null_reset=signal.null_reset)
-			else:
-				self.rpn_ramp(signal.parameter, int(round(control.start)), int(round(control.end)), beat_start=onset, beat_end=onset + control.span, shape=control.shape, fine=signal.fine, null_reset=signal.null_reset, **extra)
-
-		elif isinstance(signal, subsequence.motifs.OSC):
-			if control.end is None:
-				self.osc(signal.address, control.start, beat=onset)
-			else:
-				self.osc_ramp(signal.address, control.start, control.end, beat_start=onset, beat_end=onset + control.span, shape=control.shape, **extra)
-
-		else:
-			raise TypeError(f"Unknown control signal: {type(signal).__name__}")
-
-	def phrase (
-		self,
-		value: typing.Any,
-		root: int = 60,
-		velocity: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
-		fit: typing.Optional[float] = None,
-		resolution: typing.Optional[int] = None,
-		align: str = "pattern",
-		offset: float = 0.0,
-	) -> "PatternBuilder":
-
-		"""Place this cycle's window of a Phrase — position computed, never stored.
-
-		The playback position is stateless arithmetic over the engine's own
-		counters: ``pos = (p.cycle * pattern_length + offset) % phrase.length``
-		— deterministic under live reload, ``form_jump``, and render, with
-		zero new state.  A pattern shorter than the phrase walks through it
-		cycle by cycle; deliberately mismatched lengths are phase drift
-		(polymeter against the phrase).  When the cycle window crosses the
-		phrase's end, the phrase loops.
-
-		Patterns that should own the phrase's length call
-		``p.set_length(phrase.length)`` once instead.
-
-		Parameters:
-			value: A Phrase (or any value with ``.length``/``.slice``; a
-				Motif places its window directly).
-			root: Register anchor for degree resolution (see ``motif()``).
-			velocity: Optional override applied to every note.
-			fit: Passed through to ``motif()`` (active with the melody
-				engine stage).
-			resolution: Control-ramp pulse density (see ``motif()``).
-			align: ``"pattern"`` (default) counts pattern cycles;
-				``"section"`` uses the bar within the current form section,
-				so the phrase restarts when the section does.
-			offset: Beats added to the computed position (a phase shift).
-
-		Example:
-			```python
-			@comp.pattern(channel=4, bars=2)
-			def lead (p):
-				p.phrase(lead_line, root=72)
-			```
-		"""
-
-		length = getattr(value, "length", None)
-
-		if length is None or not hasattr(value, "slice"):
-			raise TypeError(f"phrase() places Phrase-like values (.length/.slice) — got {type(value).__name__}")
-		if length <= 0:
-			raise ValueError("cannot place an empty phrase")
-
-		if align == "pattern":
-			position = (self.cycle * float(self._pattern.length) + offset) % length
-		elif align == "section":
-			if self.section is None:
-				raise ValueError('phrase(align="section") needs a form — call composition.form(...)')
-			position = (self.section.bar * float(self.time_signature[0]) + offset) % length
-		else:
-			raise ValueError(f'align must be "pattern" or "section" — got {align!r}')
-
-		window_beats = float(self._pattern.length)
-		placed = 0.0
-
-		while placed < window_beats - 1e-9:
-
-			take = min(window_beats - placed, length - position)
-			piece = value.slice(position, position + take)
-			fragment = piece.flatten() if hasattr(piece, "flatten") else piece
-
-			self.motif(fragment, beat=placed, root=root, velocity=velocity, fit=fit, resolution=resolution)
-
-			placed += take
-			position = 0.0	# crossed the phrase end — loop to its start
-
-		return self
-
-	def section_motif (self, part: typing.Optional[str] = None) -> typing.Optional[typing.Any]:
-
-		"""The Motif/Phrase bound to the current section (and part), or ``None``.
-
-		Reads the ``composition.section_motifs()`` registry for the section
-		currently playing.  A section with no binding returns ``None`` —
-		bind material or rest; no fallback guessing::
-
-			@comp.pattern(channel=4, bars=2)
-			def lead (p):
-				line = p.section_motif("lead")
-				if line is not None:
-					p.phrase(line, root=72)
-		"""
-
-		if self.section is None or self._section_motifs is None:
-			return None
-
-		return self._section_motifs.get((self.section.name, part))
-
-	def capture (self, beat: float = 0.0, span: float = 4.0) -> "subsequence.motifs.Motif":
-
-		"""
-		Read the notes placed so far back out as a :class:`~subsequence.motifs.Motif`.
-
-		The captured motif is **absolute MIDI and lossy by design**: relative
-		specs (degrees, chord tones) do not survive resolution, timing is
-		pulse-truncated, probabilities have already rolled, and control
-		gestures are not captured.  The round trip is generate → place →
-		capture → hand-edit → rebind.
-
-		Parameters:
-			beat: Window start within the pattern.
-			span: Window length in beats (also the captured motif's length).
-		"""
-
-		ppq = subsequence.constants.MIDI_QUARTER_NOTE
-		lo, hi = int(beat * ppq), int((beat + span) * ppq)
-		events = []
-
-		for pulse in sorted(self._pattern.steps):
-
-			if not lo <= pulse < hi:
-				continue
-
-			for placed in self._pattern.steps[pulse].notes:
-				events.append(subsequence.motifs.MotifEvent(
-					beat = pulse / ppq - beat,
-					pitch = placed.pitch,
-					velocity = placed.velocity,
-					duration = max(placed.duration, 1) / ppq,
-				))
-
-		return subsequence.motifs.Motif(events=tuple(events), length=span)
-
-	def sequence (self, steps: typing.List[int], pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[int] = None, probability: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
-
-		"""
-		A multi-parameter step sequencer.
-
-		Define which grid steps fire, and then provide a list of pitches,
-		velocities, and durations. If you provide a list for any parameter,
-		Subsequence will step through it as it places each note.
-
-		Parameters:
-			steps: List of grid indices to trigger. An empty list is a
-				no-op — no notes are placed and the builder is returned
-				unchanged (handy when probabilistic gating rejects every step).
-			pitches: Pitch or list of pitches.
-			velocities: Velocity (default 100), ``(low, high)`` tuple for
-				a fresh random draw per step, or a list of velocities
-				matched to the steps one-to-one (a short list repeats its
-				final value, a long list is truncated — both warn).
-			durations: Duration or list of durations (default 0.1).
-			grid: Grid resolution. Defaults to the pattern's
-				``default_grid`` (derived from the decorator's ``beats``/``steps``
-				and ``unit``).
-			probability: Chance (0.0 to 1.0) that each step will play.
-			seed: Fix the probability gating for this call (an int); omit to
-				use the pattern's RNG.
-			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
-		"""
-
-		if not steps:
-			return self
-
-		rng = self._rng_from(seed, rng)
-
-		if grid is None:
-			grid = self._default_grid
-
-		if grid <= 0:
-			return self
-
-		n = len(steps)
-		pitches_list = _expand_sequence_param("pitches", pitches, n)
-		# Treat a (low, high) tuple as a single random-range descriptor
-		# rather than a 2-element list to cycle through.
-		if isinstance(velocities, tuple):
-			velocities_list = [velocities] * n
-		else:
-			velocities_list = _expand_sequence_param("velocities", velocities, n)
-		durations_list = _expand_sequence_param("durations", durations, n)
-
-		step_duration = self._pattern.length / grid
-
-		for i, step_idx in enumerate(steps):
-
-			if probability < 1.0 and rng.random() >= probability:
-				continue
-
-			beat = step_idx * step_duration
-			self.note(pitch=pitches_list[i], beat=beat, velocity=velocities_list[i], duration=durations_list[i])
-		return self
-
-	def seq (self, notation: str, pitch: typing.Union[str, int, None] = None, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
-
-		"""
-		Build a pattern using an expressive string-based 'mini-notation'.
-
-		The notation distributes events evenly across the current pattern length.
-
-		**Syntax:**
-
-		- ``x y z``: Items separated by spaces are distributed across the bar.
-		- ``[a b]``: Groups items into a single subdivided step.
-		- ``~`` or ``.``: A rest.
-		- ``_``: Extends the previous note (sustain).
-		- ``x?0.6``: Probability suffix — fires with the given probability (0.0–1.0).
-
-		Parameters:
-			notation: The mini-notation string.
-			pitch: If provided, all symbols in the string are triggers for
-				this specific pitch. If ``None``, symbols are interpreted as
-				pitches (e.g., "60" or "kick").
-			velocity: MIDI velocity (default 100), or a ``(low, high)``
-				tuple for a fresh random draw per event.
-			seed: Fix the ``?`` probability gating for this call (an int);
-				omit to use the pattern's RNG.
-			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
-
-		Example:
-			```python
-			# Simple kick rhythm
-			p.seq("kick . [kick kick] .")
-
-			# Subdivided melody
-			p.seq("60 [62 64] 67 60")
-
-			# Ghost snare: snare on 2 and 4, ghost note 50% of the time
-			p.seq(". snare?0.5 . snare")
-			```
-		"""
-
-		rng = self._rng_from(seed, rng)
-
-		events = subsequence.mini_notation.parse(notation, total_duration=float(self._pattern.length))
-
-		for event in events:
-
-			# Apply probability before placing the note.
-			if event.probability < 1.0 and rng.random() >= event.probability:
-				continue
-
-			current_pitch = pitch
-
-			# If no global pitch provided, use the symbol as the pitch
-			if current_pitch is None:
-				# Try converting to int if it looks like a number
-				if event.symbol.isdigit():
-					current_pitch = int(event.symbol)
-				else:
-					current_pitch = event.symbol
-
-			self.note(
-				pitch = current_pitch,
-				beat = event.time,
-				duration = event.duration,
-				velocity = velocity
-			)
-		return self
-
-	def repeat (self, pitch: typing.Union[int, str], spacing: float, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
-
-		"""
-		Repeat a note at a fixed beat interval for the whole pattern.
-
-		The classic 'Note Repeat' of MPC, Push, and Maschine fame: one
-		pitch firing at a steady rate — running hi-hats, a pulsing bass
-		note, a metronome click.
-
-		Parameters:
-			pitch: MIDI note number or drum name.
-			spacing: Time between each note in beats (0.25 = sixteenth notes).
-			velocity: MIDI velocity (default 100), or a ``(low, high)``
-				tuple for a fresh random draw per note.
-			duration: Note duration in beats.
-
-		Example:
-			```python
-			p.repeat("hh", spacing=0.25)                       # sixteenth notes
-			p.repeat("hh", spacing=0.25, velocity=(40, 80))    # humanised
-			```
-		"""
-
-		if spacing <= 0:
-			raise ValueError("Spacing must be positive")
-
-		beat = 0.0
-
-		while beat < self._pattern.length:
-			self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
-			beat += spacing
-		return self
-
-	def arpeggio (
-		self,
-		notes: typing.Any,
-		root: typing.Optional[int] = None,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
-		count: typing.Optional[int] = None,
-		inversion: int = 0,
-		beat: float = 0.0,
-		span: typing.Optional[float] = None,
-		spacing: float = 0.25,
-		duration: typing.Optional[float] = None,
-		direction: str = "up",
-		seed: typing.Optional[int] = None,
-		rng: typing.Optional[random.Random] = None
-	) -> "PatternBuilder":
-
-		"""
-		Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time
-		at regular beat intervals.
-
-		Like ``chord()`` and ``strum()``, the first argument can be a chord — the
-		``chord`` passed to your pattern function, or any chord from
-		``p.progression()`` — and ``root`` / ``count`` / ``inversion`` voice it
-		exactly as they do.  So "play this as a chord, a strum, or an arpeggio" is a
-		one-word verb swap::
-
-			for chord, start, length in p.progression("phrygian_minor", harmonic_rhythm=...):
-				p.arpeggio(chord, root=48, beat=start, span=length, spacing=0.25, count=4)
-
-		Pass a list of pitches instead to arpeggiate something that isn't a chord (a
-		scale fragment, a custom voicing).  Unlike a held ``chord()``, an arpeggio is
-		a stream of single notes, so it has no ``sustain`` / ``legato`` / ``detached``
-		— use ``duration`` for how long each note rings and ``span`` for how much of
-		the bar the figure fills.
-
-		An empty pitch list rests (places nothing), so a live arpeggiator over
-		``p.held_notes()`` is simply silent when no keys are held::
-
-			p.arpeggio(p.held_notes(), direction="up")
-
-		Parameters:
-			notes: A chord to arpeggiate (anything with a ``.tones()`` method — the
-				pattern's ``chord``, or a chord from ``p.progression()``), or a list
-				of MIDI note numbers (e.g. ``60``) / drum-name strings when the
-				pattern has a ``drum_note_map``.  For pitched note *names* use the
-				integer constants in ``subsequence.constants.midi_notes`` (e.g.
-				``notes.C4``).  In the list form, a drum name the map lacks is
-				dropped (warned once); a string with no map at all still raises.
-			root: MIDI root note for the chord form (e.g. 48), exactly as ``chord()``.
-				Required for a chord; not used for a plain pitch list.
-			velocity: MIDI velocity for all notes (default 100 — arpeggios sit in the
-				melodic-line velocity bucket, not the softened-chord bucket; pass
-				``velocity=90`` to match ``chord()``), or a ``(low, high)`` tuple for
-				a fresh random draw per note.
-			count: Number of voices for the chord form (cycles tones into higher
-				octaves if larger than the chord's natural size).  Chord form only.
-			inversion: Chord inversion for the chord form (ignored when voice leading
-				is on).  Chord form only.
-			beat: Beat to start the figure at (default 0.0 = the start of the
-				pattern).  Use it to place an arpeggio over one progression chord.
-			span: How many beats the figure fills, starting at ``beat`` (default: to
-				the end of the pattern).  Pass the chord's ``length`` from a
-				progression loop to confine the arpeggio to its slot.
-			spacing: Time between each note in beats (default 0.25 = 16th note).
-			duration: Note duration in beats.  Defaults to ``spacing`` (each note
-				fills its slot exactly).
-			direction: Order in which the notes are cycled:
-
-				- ``"up"`` — lowest to highest, then wrap (default).
-				- ``"down"`` — highest to lowest, then wrap.
-				- ``"up_down"`` — ascend then descend (ping-pong), cycling.
-				- ``"random"`` — shuffled once per call using *rng*.
-
-			seed: Fix the ``direction="random"`` shuffle for this call (an
-				int); omit to use the pattern's RNG.
-			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
-
-		Example:
-			```python
-			# Arpeggiate the pattern's current chord, four voices ascending
-			p.arpeggio(chord, root=60, count=4, spacing=0.25)
-
-			# A plain list of pitches — ping-pong: C E G E C E G E ...
-			p.arpeggio([60, 64, 67], spacing=0.25, direction="up_down")
-
-			# One chord of a progression, confined to its slot, humanised
-			p.arpeggio(chord, root=48, beat=start, span=length, velocity=(60, 95))
-			```
-		"""
-
-		if beat < 0:
-			raise ValueError("arpeggio beat must be >= 0 — use a positive start within the pattern")
-
-		if spacing <= 0:
-			raise ValueError("Spacing must be positive")
-
-		# Resolve the first argument into a concrete pitch list.  A chord-like object
-		# (it has .tones()) is voiced via root/count/inversion exactly as chord() does;
-		# anything else is treated as an explicit list of pitches (today's behaviour).
-		resolved: typing.List[int]
-
-		if hasattr(notes, "tones"):
-			if root is None:
-				raise ValueError("arpeggio(<chord>, …) needs a root — e.g. arpeggio(chord, root=48); pass a root MIDI note, or hand a list of pitches instead")
-			resolved = notes.tones(root=root, inversion=inversion, count=count)
-		else:
-			if root is not None or count is not None or inversion != 0:
-				raise ValueError("arpeggio root=, count=, and inversion= only apply to the chord form — arpeggio(chord, root=48, count=4); with a plain pitch list, drop them")
-			if not notes:
-				return self	# nothing held (e.g. p.arpeggio(p.held_notes()) with no keys down) — rest
-			resolved = [r for r in (self._resolve_pitch_lenient(p) for p in notes) if r is not None]
-			if not resolved:
-				return self	# every named voice was dropped (this device lacks them all)
-
-		if direction == "up":
-			pass  # already in ascending order as supplied
-		elif direction == "down":
-			resolved = list(reversed(resolved))
-		elif direction == "up_down":
-			if len(resolved) > 1:
-				resolved = resolved + list(reversed(resolved[1:-1]))
-		elif direction == "random":
-			rng = self._rng_from(seed, rng)
-			resolved = list(resolved)
-			rng.shuffle(resolved)
-		else:
-			raise ValueError(f"direction must be 'up', 'down', 'up_down', or 'random', got '{direction}'")
-
-		if duration is None:
-			duration = spacing
-
-		# Window the figure to [beat, beat + span), clamped to the pattern end so a
-		# positioned arpeggio (e.g. one chord of a progression) stays in its slot.
-		pattern_length = float(self._pattern.length)
-
-		if span is None:
-			end = pattern_length
-		else:
-			if span <= 0:
-				raise ValueError(f"span must be positive, got {span:g}")
-			end = beat + span
-
-		end = min(end, pattern_length)
-
-		# Place notes one at a time via self.note() so a (low, high)
-		# velocity tuple produces a fresh random draw per arp note.
-		position = beat
-		i = 0
-		while position < end:
-			self.note(
-				pitch = resolved[i % len(resolved)],
-				beat = position,
-				velocity = velocity,
-				duration = duration,
-			)
-			position += spacing
-			i += 1
-		return self
-
-	def _warn_positioned_articulation (self, method: str, beat: float) -> None:
-
-		"""Warn (once per pattern) that ``sustain``/``detached`` ring from the pattern
-		length, not from ``beat``.
-
-		``chord``/``strum`` size ``sustain``/``detached`` against the whole pattern (the
-		one-chord-fills-the-bar model).  With a non-zero ``beat`` — e.g. placing several
-		chords across a progression — that almost always rings the chord far past its
-		slot, so we flag it.  Deduped on the pattern so a hot-reloading builder warns once.
-		"""
-
-		if self._pattern._warned_positioned_articulation:
-			return
-		self._pattern._warned_positioned_articulation = True
-		logger.warning(
-			"%s(beat=%g, …) was called with sustain= or detached= set — those size the ring "
-			"from the pattern length, not from beat, so the chord can sustain past its slot.  "
-			"For a positioned chord (e.g. over a progression) set duration= explicitly instead.",
-			method, beat,
-		)
-
-	def chord (self, chord_obj: typing.Any, root: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
-
-		"""
-		Place a chord at ``beat`` (the start of the pattern by default).
-
-		Note: If the pattern was registered with ``voice_leading=True``,
-		this method automatically chooses the best inversion.
-
-		Parameters:
-			chord_obj: The chord to play (usually the ``chord`` parameter
-				passed to your pattern function).
-			root: MIDI root note (e.g., 60 for Middle C).
-			velocity: MIDI velocity (default 90), or a ``(low, high)``
-				tuple for a fresh random draw per chord tone (each
-				voice gets a slightly different velocity — useful for
-				humanising the "fingers" feel).
-			sustain: If True, the notes last for the entire pattern duration.
-				Mutually exclusive with ``legato`` and ``detached``.
-			duration: Note duration in beats (default 1.0). Ignored when
-				``legato`` or ``detached`` is set, since those recalculate
-				durations.
-			inversion: Specific chord inversion (ignored if voice leading is on).
-			count: Number of notes to play (cycles tones if higher than
-				the chord's natural size).
-			legato: If given, calls ``p.legato(ratio)`` after placing the
-				chord, stretching each note to fill ``ratio`` of the gap to
-				the next note. Mutually exclusive with ``sustain`` and
-				``detached``.
-			detached: If given, the chord rings until ``detached`` beats
-				before the next cycle — equivalent to setting
-				``duration = pattern.length - detached``.  Use this for a
-				declarative polyphony-safety margin so the chord always
-				releases before the next chord begins.  Mutually exclusive
-				with ``sustain`` and ``legato``.
-			beat: Beat offset to place the chord at (default 0.0 = the start of the
-				pattern).  ``sustain`` and ``detached`` still measure their ring from the
-				pattern length, not from ``beat`` — when placing several positioned chords
-				(e.g. over a progression) set ``duration`` explicitly instead.
-
-		Example::
-
-			# Shorthand for: p.chord(...) then p.legato(0.9)
-			p.chord(chord, root=root, velocity=85, count=4, legato=0.9)
-
-			# Hold the chord almost the full cycle, releasing 0.25 beats
-			# before the next chord begins.
-			p.chord(chord, root=root, velocity=85, count=5, detached=0.25)
-		"""
-
-		set_count = (1 if sustain else 0) + (1 if legato is not None else 0) + (1 if detached is not None else 0)
-		if set_count > 1:
-			raise ValueError("sustain=, legato=, and detached= are mutually exclusive — use one or the other")
-
-		if beat != 0.0 and (sustain or detached is not None):
-			self._warn_positioned_articulation("chord", beat)
-
-		pitches = chord_obj.tones(root=root, inversion=inversion, count=count)
-
-		if sustain:
-			duration = float(self._pattern.length)
-		elif detached is not None:
-			duration = float(self._pattern.length) - detached
-			if duration <= 0:
-				raise ValueError(f"detached ({detached}) must be less than the pattern length ({self._pattern.length:g} beats) so the chord keeps a positive duration")
-
-		for pitch in pitches:
-			self._pattern.add_note_beats(
-				beat_position = beat,
-				pitch = pitch,
-				velocity = self._resolve_velocity(velocity),
-				duration_beats = duration
-			)
-
-		if legato is not None:
-			self.legato(legato)
-		return self
-
-	def strum (self, chord_obj: typing.Any, root: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, spacing: float = 0.05, direction: str = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
-
-		"""
-		Play a chord with a small time offset between each note (strum effect).
-
-		Works exactly like ``chord()`` but staggers the notes instead of
-		playing them simultaneously. The first note lands on ``beat`` (0 by default);
-		subsequent notes are delayed by ``spacing`` beats each.
-
-		Parameters:
-			chord_obj: The chord to play (usually the ``chord`` parameter
-				passed to your pattern function).
-			root: MIDI root note (e.g., 60 for Middle C).
-			velocity: MIDI velocity (default 90), or a ``(low, high)``
-				tuple for a fresh random draw per strum note.
-			sustain: If True, the notes last for the entire pattern duration.
-				Mutually exclusive with ``legato`` and ``detached``.
-			duration: Note duration in beats (default 1.0). Ignored when
-				``legato`` or ``detached`` is set, since those recalculate
-				durations.
-			inversion: Specific chord inversion (ignored if voice leading is on).
-			count: Number of notes to play (cycles tones if higher than
-				the chord's natural size).
-			spacing: Time in beats between each note onset (default 0.05).
-			direction: ``"up"`` for low-to-high, ``"down"`` for high-to-low.
-			beat: Beat offset for the first note (default 0.0); the stagger is added
-				on top.  ``sustain``/``detached`` ring from the pattern length, not from
-				``beat`` — set ``duration`` explicitly when placing positioned strums.
-			legato: If given, calls ``p.legato(ratio)`` after placing the
-				chord, stretching each note to fill ``ratio`` of the gap to
-				the next note. Mutually exclusive with ``sustain`` and
-				``detached``.
-			detached: If given, every strum note rings with a uniform
-				duration of ``pattern.length - detached - (count - 1) * spacing``.
-				The last note ends exactly ``detached`` beats before the
-				next cycle; earlier notes end proportionally sooner, so
-				releases are staggered in the same shape as the placements
-				(the hand lifts the way it landed).  Polyphony-safe:
-				guarantees nothing from this strum is still sounding when
-				the next chord begins.  Mutually exclusive with ``sustain``
-				and ``legato``.
-
-		Example::
-
-			# Gentle upward strum with legato
-			p.strum(chord, root=52, velocity=85, spacing=0.06, legato=0.95)
-
-			# Fast downward strum
-			p.strum(chord, root=52, direction="down", spacing=0.03)
-
-			# Five-voice strum with a 0.25-beat safety gap before the
-			# next chord — won't exhaust polyphony on a 5-voice synth.
-			p.strum(chord, root=48, count=5, spacing=0.1, detached=0.25)
-		"""
-
-		set_count = (1 if sustain else 0) + (1 if legato is not None else 0) + (1 if detached is not None else 0)
-		if set_count > 1:
-			raise ValueError("sustain=, legato=, and detached= are mutually exclusive — use one or the other")
-
-		if beat != 0.0 and (sustain or detached is not None):
-			self._warn_positioned_articulation("strum", beat)
-
-		if spacing <= 0:
-			raise ValueError("spacing must be positive")
-
-		if direction not in ("up", "down"):
-			raise ValueError(f"direction must be 'up' or 'down', got '{direction}'")
-
-		pitches = chord_obj.tones(root=root, inversion=inversion, count=count)
-
-		if direction == "down":
-			pitches = list(reversed(pitches))
-
-		if sustain:
-			duration = float(self._pattern.length)
-		elif detached is not None:
-			duration = float(self._pattern.length) - detached - (len(pitches) - 1) * spacing
-			if duration <= 0:
-				raise ValueError(f"detached ({detached}) plus the strum stagger exceeds the pattern length ({self._pattern.length:g} beats) — reduce detached, spacing, or count")
-
-		for i, pitch in enumerate(pitches):
-			self.note(pitch=pitch, beat=beat + i * spacing, velocity=velocity, duration=duration)
-
-		if legato is not None:
-			self.legato(legato)
-		return self
-
-	def progression (self, source: subsequence.progressions.ProgressionSource, harmonic_rhythm: subsequence.progressions.HarmonicRhythmSpec, key: typing.Optional[str] = None, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> subsequence.progressions.Progression:
-
-		"""Realise a chord progression across the pattern, returning it to place yourself.
-
-		Returns a freshly realised :class:`~subsequence.progressions.Progression`
-		— an iterable of ``(chord, start, length)`` events laying a progression
-		end-to-end across the pattern's length, each chord given a length drawn
-		from *harmonic_rhythm* (the musical term for how often the chords
-		change).  You loop over it and play each chord however you like —
-		block, strummed, or arpeggiated::
-
-			for chord, start, length in p.progression("phrygian_minor",
-					harmonic_rhythm=between(WHOLE, 3 * WHOLE, step=WHOLE), seed=7):
-				p.strum(chord, root=48, beat=start, duration=length - 0.25, spacing=0.04, count=4)
-
-		This is the **part-level** progression seam: it re-realises a fresh
-		value each rebuild (the breathing behaviour), runs entirely outside
-		the global harmonic clock — so a part can inhabit its own harmonic
-		world (polytonality) or move faster than the clock's span floor —
-		and never advances engine state.
-
-		For a one-call block-chord part with no loop, use ``composition.chords()``.
-
-		Parameters:
-			source: A built-in chord-graph style name (e.g. ``"phrygian_minor"``) to
-				*generate* a progression; an explicit element list — ints where
-				diatonic, name or roman strings (``["Cm7", 6, "bVII"]``), ``Chord``
-				objects — cycled to fill the pattern; or a
-				:class:`~subsequence.progressions.Progression` value (its spans
-				cycled, decoration preserved).
-			harmonic_rhythm: How long each chord lasts, in beats.  One of: a single
-				number (static); a list of lengths (a shaped rhythm such as
-				``[WHOLE, HALF, HALF]``, cycled per chord); or ``between(low, high,
-				step=...)`` for a bounded, optionally-quantised random length.
-			key: Key for styles and key-relative elements (degrees/romans);
-				defaults to the composition's key.
-			seed: If given, the progression is realised from a fresh ``Random(seed)``
-				so it is identical on every cycle (a fixed phrase).  When omitted, the
-				pattern's own RNG is used, so it can vary per cycle (still reproducible
-				under a composition seed).
-			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
-
-		Returns:
-			A ``Progression`` you can iterate as ``(chord, start, length)`` tuples
-			(or read via ``.events()`` / ``print()``).
-		"""
-
-		rng = self._rng_from(seed, rng)
-		resolved_key = key if key is not None else self.key
-		return subsequence.progressions.realize(
-			source = source,
-			harmonic_rhythm = harmonic_rhythm,
-			key = resolved_key,
-			length = float(self._pattern.length),
-			rng = rng,
-			scale = self.scale or "ionian",
-		)
-
-	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0, beat: float = 0.0, span: typing.Optional[float] = None) -> "PatternBuilder":
-
-		"""
-		Play a chord as an arpeggio in a specific or random order.
-
-		This generates the chord tones and maps them according to the provided
-		``order`` list of indices, then delegates to ``arpeggio()``. It is ideal
-		for broken chords or random chord-tone melodies.
-
-		Because the order is a list of node indices, the number of generated tones
-		is automatically set to ``max(order) + 1`` to ensure all indices are valid.
-		Higher indices will cycle into the next octave.
-
-		Parameters:
-			chord_obj: The chord to play (usually from ``p.section.chord``).
-			root: MIDI root note (e.g., 60 for Middle C).
-			order: List of indices into the chord tones array, dictating playback order.
-			spacing: Time between each note in beats (default 0.25 = 16th note).
-			velocity: MIDI velocity for all notes (default 90 — broken_chord is a
-				chord voice, so it sits in the softer chord velocity bucket like
-				``chord()`` and ``strum()``), or a ``(low, high)`` tuple for a
-				fresh random draw per note.
-			duration: Note duration in beats. Defaults to ``spacing``.
-			inversion: Specific chord inversion (ignored if voice leading is on).
-			beat: Beat to start the broken chord at (default 0.0).
-			span: How many beats to fill from ``beat`` (default: to the end of the
-				pattern).  Like ``arpeggio()``, use it to place a broken chord over
-				one chord of a progression.
-
-		Example::
-
-			# A 5-note broken chord using a predefined pattern
-			p.broken_chord(chord, root=60, order=[4, 0, 2, 1, 3], spacing=0.25)
-
-			# A fully random broken chord using the pattern's deterministic RNG
-			order = list(range(5))
-			p.rng.shuffle(order)
-			p.broken_chord(chord, root=60, order=order)
-		"""
-
-		if not order:
-			raise ValueError("order list cannot be empty")
-
-		for idx in order:
-			if not isinstance(idx, int) or idx < 0:
-				raise ValueError("order must contain only non-negative integers")
-
-		required_count = max(order) + 1
-		tones = chord_obj.tones(root=root, inversion=inversion, count=required_count)
-		pitches = [tones[i] for i in order]
-
-		self.arpeggio(notes=pitches, spacing=spacing, velocity=velocity, duration=duration, direction="up", beat=beat, span=span)
-		return self
-
-	def swing (self, percent: float = 57.0, grid: float = 0.25, strength: float = 1.0) -> "PatternBuilder":
-
-		"""
-		Apply swing feel to all notes in the pattern.
-
-		A shortcut for ``p.groove(Groove.swing(percent, grid), strength)``. Swing is a
-		groove where every other grid note is delayed - the simplest way to
-		give a mechanical pattern a pushed, human feel.
-
-		50% is perfectly straight (no swing). 57% is the Ableton default
-		(a gentle shuffle). 67% is classic triplet swing.
-
-		Parameters:
-			percent: Swing amount as a percentage (50-75 is the useful range).
-				50 = straight, 57 = moderate shuffle, 67 ≈ triplet swing.
-			grid: Grid size in beats (0.25 = 16th notes, 0.5 = 8th notes).
-			strength: How much swing to apply (0.0-1.0). 0.0 = no effect,
-				1.0 = full swing at the given percent. Useful for dialling
-				back the feel without changing the swing percentage.
-
-		Example::
-
-			p.hit_steps("hh", range(16), velocity=80)
-			p.swing(57)                # gentle 16th-note shuffle
-			p.swing(57, strength=0.5)  # half-strength — subtler feel
-		"""
-
-		self.groove(subsequence.groove.Groove.swing(percent=percent, grid=grid), strength=strength)
-		return self
-
-
-	def groove (self, template: subsequence.groove.Groove, strength: float = 1.0) -> "PatternBuilder":
-
-		"""
-		Apply a groove template to all notes in the pattern.
-
-		A groove is a repeating pattern of per-step timing offsets and
-		optional velocity adjustments. It gives a pattern its characteristic
-		rhythmic feel - swing, shuffle, MPC pocket, or any custom shape.
-
-		Construct a groove with one of the factory methods:
-
-		- ``Groove.swing(percent)`` - simple swing by percentage
-		  (or use the ``p.swing()`` shortcut for common cases)
-		- ``Groove.from_agr(path)`` - import timing from an Ableton .agr file
-		- ``Groove(offsets=[...], grid=0.25, velocities=[...])`` - fully custom
-
-		``p.groove()`` is a post-build transform - call it after all notes
-		have been placed. It pairs well with ``p.randomize()`` for
-		structured feel plus organic micro-variation.
-
-		Parameters:
-			template: A ``Groove`` instance defining the timing/velocity template.
-			strength: How much of the groove to apply (0.0-1.0). 0.0 = no
-				effect, 1.0 = full groove. Blends timing offsets and velocity
-				deviation proportionally - equivalent to Ableton's
-				TimingAmount and VelocityAmount dials.
-
-		Example::
-
-			groove = subsequence.Groove.swing(percent=57)
-
-			@composition.pattern(channel=10, beats=4)
-			def drums (p):
-				p.hit_steps("kick", [0, 8], velocity=100)
-				p.hit_steps("hh", range(16), velocity=80)
-				p.groove(groove)               # full strength
-				p.groove(groove, strength=0.5) # half-strength blend
-		"""
-
-		self._pattern.steps = subsequence.groove.apply_groove(
-			self._pattern.steps, template, strength=strength
-		)
-		return self
-
-	# These methods transform existing notes after they have been placed.
-	# Call them at the end of your builder function, after all notes are
-	# in position. They operate on self._pattern.steps (the pulse-position
-	# dict) and can be chained in any order.
-
-	def dropout (self, probability: float, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
-
-		"""
-		Randomly remove notes from the pattern.
-
-		This operates on all notes currently placed in the builder.
-
-		Parameters:
-			probability: The chance (0.0 to 1.0) of each pulse POSITION being
-				removed — all notes sharing that position (a chord's voices,
-				layered drums) live or die together.
-			seed: Fix the dropout for this call (an int); omit to use the
-				pattern's RNG.
-			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
-		"""
-
-		rng = self._rng_from(seed, rng)
-
-		positions_to_remove = []
-
-		for position in list(self._pattern.steps.keys()):
-
-			if rng.random() < probability:
-				positions_to_remove.append(position)
-
-		for position in positions_to_remove:
-			del self._pattern.steps[position]
-		return self
-
-	def velocity_shape (self, low: int = subsequence.constants.velocity.VELOCITY_SHAPE_LOW, high: int = subsequence.constants.velocity.VELOCITY_SHAPE_HIGH) -> "PatternBuilder":
-
-
-		"""
-		Apply organic velocity variation to all notes in the pattern.
-
-		Uses a van der Corput sequence to distribute velocities evenly
-		across the specified range, which often sounds more 'human' than
-		purely random velocity variation.
-
-		Parameters:
-			low: Minimum velocity (default 64).
-			high: Maximum velocity (default 127).
-		"""
-
-		positions = sorted(self._pattern.steps.keys())
-
-		if not positions:
-			return self
-
-		vdc_values = subsequence.sequence_utils.generate_van_der_corput_sequence(len(positions))
-
-		for position, vdc_value in zip(positions, vdc_values):
-
-			step = self._pattern.steps[position]
-
-			for note in step.notes:
-				note.velocity = int(low + (high - low) * vdc_value)
-		return self
-
-	def duck_map (
-		self,
-		steps: typing.Iterable[int],
-		floor: float = 0.0,
-		grid: typing.Optional[int] = None,
-	) -> typing.List[float]:
-
-		"""
-		Build a per-step velocity multiplier list for sidechain-style ducking.
-
-		Returns a list of floats, one per grid step: ``floor`` at each trigger
-		step in ``steps``, ``1.0`` everywhere else. Pass the result to
-		``p.data`` for another pattern to read, then apply with
-		``p.scale_velocities()``.
-
-		Parameters:
-			steps: Grid indices that trigger ducking (e.g. kick hit positions).
-			floor: Multiplier written at trigger steps. ``0.0`` = full silence,
-				``1.0`` = no effect. Values in between give partial ducking.
-			grid: Grid resolution (defaults to ``p.grid``).
-
-		Returns:
-			``List[float]`` of length ``grid``.
-
-		Example::
-
-			# Full duck on kick hits
-			p.data["kick_sc"] = p.duck_map(kick_steps)
-
-			# Softer duck
-			p.data["kick_sc"] = p.duck_map(kick_steps, floor=0.3)
-
-			# Velocity-proportional: deeper duck for harder kicks
-			p.data["kick_sc"] = p.duck_map(kick_steps, floor=1.0 - (velocity / 127))
-		"""
-
-		if grid is None:
-			grid = self._default_grid
-
-		trigger = set(steps)
-		return [floor if s in trigger else 1.0 for s in range(grid)]
-
-	def build_velocity_ramp (
-		self,
-		low: int,
-		high: int,
-		shape: str = "linear",
-		grid: typing.Optional[int] = None,
-	) -> typing.List[int]:
-
-		"""
-		Build a per-step velocity list that ramps from *low* to *high*.
-
-		A musician-friendly shortcut for the common pattern of generating
-		a fixed-length velocity sweep using an easing curve. Returns
-		``List[int]`` ready to pass directly to ``velocities=`` parameters.
-
-		Parameters:
-			low: Velocity at the first step (0–127).
-			high: Velocity at the last step (0–127).
-			shape: Easing curve name (see ``subsequence.easing``). Common
-				values: ``"linear"``, ``"ease_in"``, ``"ease_out"``,
-				``"ease_in_out"``. Defaults to ``"linear"``.
-			grid: Number of steps (defaults to ``p.grid``).
-
-		Returns:
-			``List[int]`` of length ``grid``, values clamped to 0–127.
-
-		Example::
-
-			# Snare roll that swells into a downbeat
-			p.sequence(
-				steps=range(16),
-				pitches="snare_1",
-				durations=0.1,
-				velocities=p.build_velocity_ramp(25, 100, "ease_in"),
-			)
-
-			# Fade-out ghost fill
-			p.ghost_fill("snare_1", 1,
-				velocity=p.build_velocity_ramp(80, 20, "ease_out"),
-				bias="sixteenths", no_overlap=True)
-		"""
-
-		if grid is None:
-			grid = self._default_grid
-
-		return [
-			max(0, min(127, int(v)))
-			for v in subsequence.easing.ramp(grid, float(low), float(high), shape)
-		]
-
-	def scale_velocities (
-		self,
-		factors: typing.Sequence[float],
-		grid: typing.Optional[int] = None,
-	) -> "PatternBuilder":
-
-		"""
-		Scale note velocities by a per-step multiplier list.
-
-		Each note's velocity is multiplied by the factor at the corresponding
-		grid step index. A factor of ``1.0`` leaves the velocity unchanged;
-		``0.0`` silences the note; ``0.5`` halves it.
-
-		Parameters:
-			factors: Per-step multipliers, one float per grid step.
-				Values outside ``[0.0, 1.0]`` are valid — result is clamped to
-				``[0, 127]`` after scaling.
-			grid: Grid resolution (defaults to ``p.grid``). Must match the
-				length of ``factors``.
-
-		Returns:
-			``self`` for fluent chaining.
-
-		Example::
-
-			# Sidechain ducking: silence bass on kick steps, full volume elsewhere.
-			kick_steps = {0, 4, 8, 12}
-			p.data["kick_sc"] = [0.0 if s in kick_steps else 1.0 for s in range(p.grid)]
-
-			# In the bass pattern:
-			p.scale_velocities(p.data.get("kick_sc", [1.0] * p.grid))
-		"""
-
-		if grid is None:
-			grid = self._default_grid
-
-		if grid <= 0:
-			return self
-
-		step_duration = self._pattern.length / grid
-		pulses_per_step = step_duration * subsequence.constants.MIDI_QUARTER_NOTE
-
-		for pulse, step in self._pattern.steps.items():
-			# A note in the last half-step rounds up to idx == grid, which is
-			# really the wrap back to step 0 of the next cycle (patterns are
-			# cyclic) — wrap it so a note pushed late by swing/randomize scales
-			# by factors[0] rather than silently keeping its velocity.
-			idx = int(round(pulse / pulses_per_step)) % grid
-
-			if 0 <= idx < len(factors):
-				for note in step.notes:
-					note.velocity = max(0, min(127, int(note.velocity * factors[idx])))
-
-		return self
-
-	def randomize (
-		self,
-		timing: float = 0.03,
-		velocity: float = 0.0,
-		seed: typing.Optional[int] = None,
-		rng: typing.Optional[random.Random] = None
-	) -> "PatternBuilder":
-
-		"""
-		Add random variations to note timing and velocity.
-
-		Introduces small imperfections — the micro-variations that distinguish
-		a played performance from a perfectly quantized sequence.
-
-		Called with no arguments, only timing variation is applied
-		(velocity defaults to 0.0 — no change). Pass a velocity value
-		to also randomise dynamics:
-
-		    # Timing only (default)
-		    p.randomize()
-
-		    # Both axes
-		    p.randomize(timing=0.04, velocity=0.08)
-
-		    # Stronger feel
-		    p.randomize(timing=0.08, velocity=0.15)
-
-		Resolution note: the sequencer runs at 24 PPQN. At 120 BPM, one
-		pulse ≈ 20ms. Timing shifts smaller than roughly 0.04 beats may
-		have no audible effect because they round to zero pulses.
-		Recommended range: timing=0.02–0.08, velocity=0.05–0.15.
-
-		When the composition has a seed set, ``p.rng`` is deterministic,
-		so ``p.randomize()`` produces the same result on every run.
-
-		Parameters:
-			timing: Maximum timing offset in beats (e.g. 0.05 = ±1.2
-				pulses at 24 PPQN). Notes shift by a random amount
-				within ``[-timing, +timing]`` beats. Clamped to
-				pulse 0 at the lower bound.
-			velocity: Maximum velocity scale factor (0.0 to 1.0). Each
-				note's velocity is multiplied by a random value in
-				``[1 - velocity, 1 + velocity]``, clamped to 1–127.
-			seed: Fix the variations for this call (an int); omit to use the
-				pattern's RNG (seeded when the composition has a seed).
-			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
-		"""
-
-		rng = self._rng_from(seed, rng)
-
-		max_timing_pulses = timing * subsequence.constants.MIDI_QUARTER_NOTE
-		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
-
-		for pulse, step in self._pattern.steps.items():
-
-			if timing != 0.0:
-				offset = rng.uniform(-max_timing_pulses, max_timing_pulses)
-				new_pulse = max(0, int(round(pulse + offset)))
-			else:
-				new_pulse = pulse
-
-			if new_pulse not in new_steps:
-				new_steps[new_pulse] = subsequence.pattern.Step()
-
-			# Process notes: randomise velocity once per note, then place in new bucket.
-			for note in step.notes:
-				if velocity != 0.0:
-					scale = rng.uniform(1.0 - velocity, 1.0 + velocity)
-					note.velocity = max(1, min(127, int(round(note.velocity * scale))))
-
-				new_steps[new_pulse].notes.append(note)
-
-		self._pattern.steps = new_steps
-		return self
-
-	def legato (self, ratio: float = 1.0) -> "PatternBuilder":
-
-		"""
-		Adjust note durations to fill the gap until the next note.
-
-		Parameters:
-			ratio: How much of the gap to fill (0.0 to 1.0).
-				1.0 is full legato, < 1.0 is staccato.
-		"""
-
-		if not self._pattern.steps:
-			return self
-
-		sorted_positions = sorted(self._pattern.steps.keys())
-		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
-
-		for i, position in enumerate(sorted_positions):
-
-			# Calculate gap to next note
-			if i < len(sorted_positions) - 1:
-				gap = sorted_positions[i + 1] - position
-			else:
-				# Wrap around: gap is distance to end + distance to first note
-				gap = (total_pulses - position) + sorted_positions[0]
-
-			# Apply ratio and enforce minimum duration
-			new_duration = max(1, int(gap * ratio))
-
-			step = self._pattern.steps[position]
-			for note in step.notes:
-				note.duration = new_duration
-		return self
-
-	def duration (self, beats: float) -> "PatternBuilder":
-
-		"""
-		Set every note's duration to a fixed length in beats.
-
-		This overrides any existing note durations, acting as a global
-		'gate time' relative to the beat (1.0 = a quarter note).  Short
-		values clip notes tight; long values let them ring.  For a
-		guaranteed gap before each next onset regardless of note spacing,
-		use :meth:`detached`; for a classic staccato articulation, either
-		a short fixed value (``p.duration(0.1)``) or ``p.detached()`` works.
-
-		Parameters:
-			beats: Fixed note duration in beats (relative to a quarter note).
-				0.5 = eighth-note length, 0.25 = sixteenth-note length.  Must be positive.
-		"""
-
-		if beats <= 0:
-			raise ValueError("Note duration (beats) must be positive")
-
-		duration_pulses = int(beats * subsequence.constants.MIDI_QUARTER_NOTE)
-		duration_pulses = max(1, duration_pulses)
-
-		for step in self._pattern.steps.values():
-			for note in step.notes:
-				note.duration = duration_pulses
-		return self
-
-	def detached (self, beats: float = 0.05) -> "PatternBuilder":
-
-		"""
-		Shorten note durations so a guaranteed silence precedes the next onset.
-
-		The complement of :meth:`legato`.  For every placed note, the duration
-		is shrunk so that at least ``beats`` beats of silence remain before
-		the next note begins (wrapping around to the first note for the last
-		one).  Use this when you want a clean detached articulation, or as a
-		polyphony-safety margin between chord transitions on a monophonic or
-		voice-limited synth.
-
-		Parameters:
-			beats: Minimum gap in beats before the next onset (default 0.05
-				— roughly 25 ms at 120 BPM).  Must be positive.
-
-		Example::
-
-			# Bassline on a mono synth: each 16th note ends 0.05 beats
-			# before the next, so the synth never retriggers mid-note.
-			p.arpeggio(chord.tones(36, count=4), spacing=0.25).detached()
-
-			# Explicit larger gap for a longer release tail.
-			p.melody(state, spacing=0.25).detached(0.1)
-		"""
-
-		if beats <= 0:
-			raise ValueError("detached beats must be positive")
-
-		if not self._pattern.steps:
-			return self
-
-		sorted_positions = sorted(self._pattern.steps.keys())
-		total_pulses    = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
-		detached_pulses = int(beats * subsequence.constants.MIDI_QUARTER_NOTE)
-
-		for i, position in enumerate(sorted_positions):
-
-			# Calculate gap to next note (wrap-around for the last one)
-			if i < len(sorted_positions) - 1:
-				gap = sorted_positions[i + 1] - position
-			else:
-				gap = (total_pulses - position) + sorted_positions[0]
-
-			new_duration = max(1, gap - detached_pulses)
-
-			for note in self._pattern.steps[position].notes:
-				note.duration = new_duration
-		return self
-
-	def snap_to_scale (self, key: str, mode: str = "ionian", strength: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
-
-		"""
-		Snap all notes in the pattern to the nearest pitch in a scale.
-
-		Useful after generative or sensor-driven pitch work (random walks,
-		mapping data values to note numbers, etc.) to ensure every note lands
-		on a musically valid scale degree.  The snap is applied in
-		place; notes already on a scale degree are left unchanged.
-
-		When a note falls equidistant between two scale tones, the upward
-		direction is preferred.
-
-		Parameters:
-			key: Root note name (e.g. ``"C"``, ``"F#"``, ``"Bb"``).
-			mode: Scale mode.  Any key in :data:`subsequence.intervals.DIATONIC_MODE_MAP`
-			      is accepted: ``"ionian"`` (default), ``"dorian"``, ``"minor"``,
-			      ``"harmonic_minor"``, etc.
-			strength: Probability that each note is snapped (0.0–1.0).
-			      At 1.0 (default), every note snaps to the scale.
-			      At 0.0, no notes are affected.
-			      Values in between create melodies that are mostly in key
-			      with occasional chromatic passing tones.  Uses the
-			      pattern's seeded RNG for reproducibility.
-			seed: Fix the partial-strength snapping for this call (an int);
-			      omit to use the pattern's RNG.
-			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
-
-		Example:
-			```python
-			@composition.pattern(channel=1, beats=4)
-			def melody (p):
-			    for beat in range(16):
-			        pitch = 60 + random.randint(-5, 5)
-			        p.note(pitch, beat=beat * 0.25)
-			    p.snap_to_scale("G", "dorian", strength=0.8)
-			```
-		"""
-
-		rng = self._rng_from(seed, rng)
-
-		key_pc = subsequence.chords.key_name_to_pc(key)
-		scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)
-
-		for step in self._pattern.steps.values():
-			for note in step.notes:
-				if strength >= 1.0 or rng.random() < strength:
-					note.pitch = subsequence.intervals.quantize_pitch(note.pitch, scale_pcs)
-		return self
-
-	def apply_tuning (
-		self,
-		tuning: "subsequence.tuning.Tuning",
-		bend_range: float = 2.0,
-		channels: typing.Optional[typing.List[int]] = None,
-		reference_note: int = 60,
-	) -> "PatternBuilder":
-
-		"""Apply a microtonal tuning to this pattern via pitch bend injection.
-
-		For each note in the pattern, the nearest 12-TET MIDI pitch is
-		computed and a pitchwheel ``CcEvent`` is injected at the note's onset
-		to shift the synthesiser to the exact tuned frequency.  Existing pitch
-		bend events (from ``p.portamento()``, ``p.slide()``, etc.) are shifted
-		additively so they still work correctly within the tuned pitch space.
-
-		For polyphonic patterns, supply a ``channels`` pool.  Notes will be
-		spread across those channels so each can carry an independent pitch
-		bend.  For monophonic patterns, leave ``channels=None``.
-
-		The synthesiser's pitch-bend range must match ``bend_range``.  Most
-		synths default to ±2 semitones.  For tunings that deviate more than
-		one semitone from 12-TET, increase ``bend_range`` (e.g., 12 or 24)
-		and configure the synth to match.
-
-		Parameters:
-			tuning: The :class:`~subsequence.tuning.Tuning` to apply.
-			bend_range: Synth pitch-bend range in semitones (default ±2).
-			channels: Channel pool for polyphonic rotation.  ``None`` keeps
-			    all notes on the pattern's own channel.
-			reference_note: MIDI note number that maps to scale degree 0.
-			    Default 60 (middle C).
-
-		Example:
-			```python
-			from subsequence import Tuning
-
-			meantone = Tuning.from_scl("meanquar.scl")
-
-			@composition.pattern(channel=1, beats=4)
-			def melody (p):
-			    p.seq("x x x x", pitch=60)
-			    p.apply_tuning(meantone, bend_range=2.0)
-			```
-		"""
-		import subsequence.tuning
-		subsequence.tuning.apply_tuning_to_pattern(
-			self._pattern,
-			tuning,
-			bend_range=bend_range,
-			channels=channels,
-			reference_note=reference_note,
-		)
-		self._tuning_applied = True
-		return self
-
-	def reverse (self) -> "PatternBuilder":
-
-		"""
-		Flip the pattern backwards in time (retrograde).
-		"""
-
-		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
-		old_steps = self._pattern.steps
-		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
-
-		for position, step in old_steps.items():
-			# Reflect around the bar so onsets stay on the grid and the downbeat
-			# is fixed — a true retrograde reverses the inter-onset intervals
-			# (e.g. [0, 24] → [0, 72] in a 96-pulse bar, not the off-grid
-			# [71, 95] the old (total-1)-position produced).
-			new_position = (total_pulses - position) % total_pulses
-
-			if new_position not in new_steps:
-				new_steps[new_position] = subsequence.pattern.Step()
-
-			new_steps[new_position].notes.extend(step.notes)
-
-		self._pattern.steps = new_steps
-		return self
-
-	def stretch (self, factor: float) -> "PatternBuilder":
-
-		"""
-		Stretch the pattern in time, scaling note positions and durations.
-
-		``stretch(2.0)`` makes everything twice as long (half speed) — what
-		theorists call *augmentation*; ``stretch(0.5)`` squeezes the pattern
-		into half the time (double speed) — *diminution*.  Any positive
-		factor works: ``stretch(2/3)`` compresses a dotted feel into
-		straight time, for example.
-
-		Notes whose start lands past the end of the pattern are dropped,
-		and compression leaves the freed space empty — the pattern is not
-		tiled to fill it.  Durations scale without clipping, so a stretched
-		note may ring past the pattern's end exactly like a legato note,
-		and ``stretch(1.0)`` is a true no-op.  Positions and durations
-		truncate to the pulse grid (matching ``note()``'s beat-to-pulse
-		truncation).
-
-		Parameters:
-			factor: Time multiplier.  Greater than 1.0 slows the pattern
-				down, less than 1.0 speeds it up.  Must be positive.
-		"""
-
-		if factor <= 0:
-			raise ValueError("Stretch factor must be positive")
-
-		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
-		old_steps = self._pattern.steps
-		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
-
-		for position, step in old_steps.items():
-			new_position = int(position * factor)
-
-			if new_position >= total_pulses:
-				continue
-
-			if new_position not in new_steps:
-				new_steps[new_position] = subsequence.pattern.Step()
-
-			new_steps[new_position].notes.extend(
-				dataclasses.replace(
-					note,
-					duration = max(1, int(note.duration * factor)),
-				)
-				for note in step.notes
-			)
-
-		self._pattern.steps = new_steps
-		return self
-
-	def rotate (self, steps: int, grid: typing.Optional[int] = None) -> "PatternBuilder":
-
-		"""
-		Rotate the pattern by a number of grid steps, wrapping around.
-
-		Notes pushed past the end of the pattern re-enter at the start
-		(and vice versa for negative values) — the step-sequencer rotation
-		familiar from Euclidean rhythm tools.
-
-		Parameters:
-			steps: Positive values rotate later in time, negative values earlier.
-			grid: The grid resolution. Defaults to the pattern's
-				``default_grid`` (derived from the decorator's ``beats``/``steps``
-				and ``step_duration``).
-		"""
-
-		if grid is None:
-			grid = self._default_grid
-
-		if grid <= 0:
-			return self
-
-		total_pulses = int(self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE)
-		pulses_per_step = total_pulses / grid
-		shift_pulses = int(steps * pulses_per_step)
-
-		old_steps = self._pattern.steps
-		new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
-
-		for position, step in old_steps.items():
-			new_position = (position + shift_pulses) % total_pulses
-
-			if new_position not in new_steps:
-				new_steps[new_position] = subsequence.pattern.Step()
-
-			new_steps[new_position].notes.extend(step.notes)
-
-		self._pattern.steps = new_steps
-		return self
-
-	def transpose (self, semitones: int) -> "PatternBuilder":
-
-		"""
-		Shift all note pitches up or down.
-
-		Parameters:
-			semitones: Positive for up, negative for down.
-		"""
-
-		for step in self._pattern.steps.values():
-
-			for note in step.notes:
-				note.pitch = max(0, min(127, note.pitch + semitones))
-		return self
-
-	def invert (self, pivot: int = 60) -> "PatternBuilder":
-
-		"""
-		Invert all pitches around a pivot note.
-		"""
-
-		for step in self._pattern.steps.values():
-
-			for note in step.notes:
-				note.pitch = max(0, min(127, pivot + (pivot - note.pitch)))
-		return self
-
-	def every (self, n: int, fn: typing.Callable[["PatternBuilder"], None]) -> "PatternBuilder":
-
-		"""
-		Apply a transformation every Nth cycle.
-
-		Parameters:
-			n: The cycle frequency (e.g., 4 = every 4th bar).
-			fn: A function (often a lambda) that receives the builder and
-				calls further methods.
-
-		Example:
-			```python
-			# Reverse every 4th bar
-			p.every(4, lambda p: p.reverse())
-			```
-		"""
-
-		if n < 1:
-			raise ValueError(f"every() cycle length must be at least 1 bar — got {n} (every(1, ...) applies the change every bar)")
-
-		if self.cycle % n == 0:
-			fn(self)
-		return self
-
-	def bar_cycle (self, length: int) -> BarCycle:
-
-		"""Return the current bar's position within a repeating cycle of bars.
-
-		A thin wrapper around ``p.bar % length`` that replaces opaque modulo
-		arithmetic with readable, musician-friendly properties.
-
-		Parameters:
-			length: The cycle length in bars (e.g., 4, 8, 16).
-
-		Returns:
-			A :class:`BarCycle` with ``.bar``, ``.first``, ``.last``,
-			and ``.progress`` properties.
-
-		Example:
-			```python
-			# Every 4 bars (replaces: if p.bar % 4 == 0)
-			if p.bar_cycle(4).first:
-			    p.hit_steps("snare_1", [0, 8], velocity=110)
-
-			# Last bar of every 16-bar cycle (replaces: if p.bar % 16 == 15)
-			if p.bar_cycle(16).last:
-			    p.euclidean("hi_hat_open", 3)
-
-			# Build intensity over an 8-bar arc
-			intensity = p.bar_cycle(8).progress   # 0.0 → 0.875
-			p.velocity_shape(low=int(40 + 40 * intensity), high=100)
-			```
-		"""
-
-		if length < 1:
-			raise ValueError(f"bar_cycle() cycle length must be at least 1 bar — got {length}")
-
-		return BarCycle(bar=self.bar % length, length=length)
+    """
+    The musician's 'palette' for creating musical content.
+
+    A ``PatternBuilder`` instance (commonly named ``p``) is passed to every
+    pattern function. It provides methods for placing notes, generating rhythms,
+    and transforming the resulting sequence (e.g., swinging, reversing, or transposing).
+
+    Rhythm in Subsequence is typically expressed in **beats** (where 1.0 is a
+    quarter note) or **steps** (subdivisions of a pattern).
+    """
+
+    def __init__(
+        self,
+        pattern: subsequence.pattern.Pattern,
+        cycle: int,
+        conductor: typing.Optional[subsequence.conductor.Conductor] = None,
+        drum_note_map: typing.Optional[typing.Dict[str, int]] = None,
+        cc_name_map: typing.Optional[typing.Dict[str, int]] = None,
+        nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None,
+        section: typing.Any = None,
+        bar: int = 0,
+        rng: typing.Optional[random.Random] = None,
+        tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None,
+        default_grid: int = 16,
+        data: typing.Optional[typing.Dict[str, typing.Any]] = None,
+        key: typing.Optional[str] = None,
+        scale: typing.Optional[str] = None,
+        time_signature: typing.Tuple[int, int] = (4, 4),
+        held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None,
+        harmony: typing.Optional[typing.Any] = None,
+        section_motifs: typing.Optional[
+            typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]
+        ] = None,
+        energy: float = 0.5,
+    ) -> None:
+        """Initialize the builder with pattern context, cycle count, and optional section info.
+
+        Parameters:
+                pattern: The ``Pattern`` instance this builder populates.
+                cycle: Zero-based rebuild counter.
+                conductor: Optional ``Conductor`` for time-varying signals.
+                drum_note_map: Optional mapping of drum names to MIDI notes.
+                cc_name_map: Optional mapping of CC names to MIDI CC numbers.
+                nrpn_name_map: Optional mapping of NRPN parameter names to 14-bit
+                        parameter numbers (0–16383).  Used by ``p.nrpn()`` and
+                        ``p.nrpn_ramp()`` for symbolic access — typically a
+                        device-specific dictionary (e.g. Sequential Take 5's
+                        ``Osc1FreqFine`` → 9).
+                section: Current ``SectionInfo`` (or ``None``).
+                bar: Global bar count.
+                rng: Optional seeded ``Random`` for reproducibility.
+                tweaks: Per-pattern overrides set via ``composition.tweak()``.
+                default_grid: Number of grid slots used by ``hit_steps()``,
+                        ``sequence()``, and ``rotate()`` when no explicit ``grid``
+                        is passed.  Normally set automatically from the decorator's
+                        ``beats``/``bars``/``steps`` and ``step_duration`` parameters.
+                data: Shared state dict from the parent ``Composition``
+                        (same object as ``composition.data``).  Read and write
+                        via ``p.data`` for cross-pattern communication and
+                        external data access.  Patterns rebuild in definition
+                        order; when two patterns share the same ``length``,
+                        a writer defined earlier in source is guaranteed to
+                        run before a reader defined later in the same cycle.
+                key: The composition's key (e.g. ``"C"``), used by ``p.progression()``
+                        to generate chords from a graph style and by ``p.motif()`` to
+                        resolve scale degrees.  ``None`` when the composition has no
+                        key set.
+                scale: The composition's scale/mode name (e.g. ``"minor"``),
+                        read via ``p.scale`` and used to resolve scale degrees in
+                        ``p.motif()``.  ``None`` means ionian/major.
+                time_signature: The composition's time signature, read via
+                        ``p.time_signature``; powers the metric-weight table.
+                section_motifs: Optional reference to the composition's
+                        section-motif registry, read by ``p.section_motif()``.
+                harmony: Optional read-only harmony window view for this cycle
+                        (``p.harmony``) — ``p.harmony.chord``, ``chord_at(beat)``,
+                        ``next_chord``, ``until_change``.  ``None`` until the
+                        harmonic clock has published a window.
+                held_notes: Optional live held-note tracker from ``composition.note_input()``.
+                        Read via ``p.held_notes()``.  ``None`` when no note input was declared
+                        (and when rendering headlessly), so the accessor returns an empty list.
+                energy: The current section's energy level (0.0–1.0), read via
+                        ``p.energy`` — the arranging dial.  0.5 when no energy source
+                        is configured.
+        """
+
+        self._pattern = pattern
+        self.cycle = cycle
+        self.conductor = conductor
+        self._drum_note_map = drum_note_map
+        self._cc_name_map = cc_name_map
+        self._nrpn_name_map = nrpn_name_map
+        self.section = section
+        self.bar = bar
+        self.rng: random.Random = rng or random.Random()
+        self._tweaks: typing.Dict[str, typing.Any] = tweaks or {}
+        self._default_grid: int = default_grid
+        self.data: typing.Dict[str, typing.Any] = data if data is not None else {}
+        self.key: typing.Optional[str] = (
+            key  # composition key, for p.progression() chord generation
+        )
+        self.scale: typing.Optional[str] = (
+            scale  # composition scale/mode, for degree resolution
+        )
+        self.time_signature: typing.Tuple[int, int] = time_signature
+        self.harmony: typing.Optional[typing.Any] = (
+            harmony  # HarmonyView for this cycle, or None
+        )
+        self.energy: float = energy  # current section's energy (the arranging dial)
+        self._section_motifs: typing.Optional[
+            typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]
+        ] = section_motifs
+        self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = held_notes
+        self._tuning_applied: bool = (
+            False  # set by apply_tuning() to prevent double-apply
+        )
+
+    @property
+    def grid(self) -> int:
+        """Number of grid slots in this pattern (e.g. 16 for a 4-beat sixteenth-note pattern)."""
+        return self._default_grid
+
+    def _has_pitch_at_beat(self, pitch: typing.Union[int, str], beat: float) -> bool:
+        """Helper to check if a pitch is already sounding at a specific beat.
+
+        Tolerant of unmappable drum names: a name absent from this pattern's
+        ``drum_note_map`` can't already be sounding here, so it returns False
+        (the placement itself handles the drop/warn) rather than raising."""
+        if isinstance(pitch, str):
+            if self._drum_note_map is None or pitch not in self._drum_note_map:
+                return False
+            midi_pitch = self._drum_note_map[pitch]
+        else:
+            midi_pitch = pitch
+        pulse = int(beat * subsequence.constants.MIDI_QUARTER_NOTE)
+        if pulse in self._pattern.steps:
+            return any(n.pitch == midi_pitch for n in self._pattern.steps[pulse].notes)
+        return False
+
+    @property
+    def c(self) -> typing.Optional[subsequence.conductor.Conductor]:
+        """Alias for self.conductor."""
+
+        return self.conductor
+
+    def signal(self, name: str) -> float:
+        """Read a conductor signal at the current bar.
+
+        Shorthand for ``p.c.get(name, p.bar * beats_per_bar)``, where
+        ``beats_per_bar`` comes from the composition's time signature —
+        so the signal is read at the beat this bar actually starts on,
+        in any metre.  Returns 0.0 if no conductor is attached or the
+        signal is not defined.
+        """
+
+        if self.conductor is None:
+            return 0.0
+
+        return self.conductor.get(name, self.bar * float(self.time_signature[0]))
+
+    def held_notes(self) -> typing.List[int]:
+        """Return the MIDI notes currently held on the ``note_input`` keyboard.
+
+        The notes are sorted ascending.  Pass the result straight to
+        ``p.arpeggio()`` to arpeggiate whatever the player is holding —
+        ``p.arpeggio(p.held_notes())`` rests when no keys are down.  Returns
+        an empty list when no ``note_input()`` source was declared and when
+        rendering headlessly (so seeded output stays deterministic).
+
+        The set is sampled once per rebuild; ``note_input(release_ms=…)``
+        smooths the gap during hand-position changes so the arp does not drop
+        out, and ``note_input(latch=True)`` holds the chord until you play a
+        new one.
+        """
+
+        if self._held_notes is None:
+            return []
+
+        return self._held_notes.snapshot(time.perf_counter())
+
+    def param(self, name: str, default: typing.Any = None) -> typing.Any:
+        """Read a tweakable parameter for this pattern.
+
+        Returns the value set via ``composition.tweak()`` if one
+        exists, otherwise returns ``default``.
+
+        Parameters:
+                name: The parameter name.
+                default: The value to return if no tweak is active.
+
+        Example::
+
+                @composition.pattern(channel=1, beats=4)
+                def bass (p):
+                        pitches = p.param("pitches", [60, 64, 67, 72])
+                        p.sequence(steps=[0, 4, 8, 12], pitches=pitches)
+        """
+
+        return self._tweaks.get(name, default)
+
+    def set_length(self, length: float) -> "PatternBuilder":
+        """
+        Dynamically change the length of the pattern.
+
+        The new length takes effect immediately for any subsequent notes
+        placed in the current builder call, and will be used by the
+        sequencer for next cycle's scheduling.
+
+        Parameters:
+                length: New pattern length in beats (e.g., 4.0 for a bar).
+
+        Returns ``self`` for fluent chaining.
+        """
+
+        if length <= 0:
+            raise ValueError("Pattern length must be positive")
+
+        self._pattern.length = length
+        return self
+
+    def _resolve_pitch(self, pitch: typing.Union[int, str]) -> int:
+        """
+        Resolve a pitch value to a MIDI note number (strict).
+
+        Raises on an unknown drum name — the strict counterpart of
+        :meth:`_resolve_pitch_lenient`.  Note-placement and transform methods use
+        the lenient variant, so a device may legitimately lack a voice others
+        have; this strict primitive is retained for parity with the sibling
+        ``_resolve_cc`` / ``_resolve_nrpn`` / ``_resolve_rpn`` name resolvers,
+        where an unknown name is always a configuration error.
+        """
+
+        if isinstance(pitch, int):
+            return pitch
+
+        if self._drum_note_map is None:
+            raise ValueError(
+                f"String pitch '{pitch}' requires a drum_note_map, but none was provided"
+            )
+
+        if pitch not in self._drum_note_map:
+            raise ValueError(
+                f"Unknown drum name '{pitch}' - not found in drum_note_map"
+            )
+
+        return self._drum_note_map[pitch]
+
+    def _resolve_hit_pitch(
+        self, pitch: typing.Union[int, str]
+    ) -> typing.Optional[typing.Tuple[int, typing.Optional[str], bool]]:
+        """Resolve a step-note pitch for placement, leniently for named drums.
+
+        Returns ``(midi_pitch, origin, primary_unmapped)``, or ``None`` to drop
+        the hit entirely.
+
+        Unlike :meth:`_resolve_pitch`, an unknown drum *name* does not raise:
+        faithful-core device maps legitimately lack voices other devices have,
+        so a name a device can't voice is dropped rather than crashing the
+        pattern.  The cases:
+
+        - Integer pitch → ``(pitch, None, False)``.
+        - String in this pattern's ``drum_note_map`` → ``(note, name, False)``.
+        - String absent here but present in a mirror's map →
+          ``(placeholder, name, True)``: the primary can't voice it, but a
+          symbolic mirror can (the placeholder pitch is used only by transforms
+          and display, never for playback — see ``Note.primary_unmapped``).
+        - String absent everywhere → warn once and return ``None`` (drop).
+        - String with **no** ``drum_note_map`` at all → still a configuration
+          error; raises (you forgot the map, this is not a capability gap).
+        """
+
+        if isinstance(pitch, int):
+            return (pitch, None, False)
+
+        if self._drum_note_map is None:
+            raise ValueError(
+                f"String pitch '{pitch}' requires a drum_note_map, but none was provided"
+            )
+
+        if pitch in self._drum_note_map:
+            return (self._drum_note_map[pitch], pitch, False)
+
+        mirror_pitch = self._first_mirror_pitch(pitch)
+        if mirror_pitch is not None:
+            return (mirror_pitch, pitch, True)
+
+        self._warn_unknown_drum(pitch)
+        return None
+
+    def _first_mirror_pitch(self, name: str) -> typing.Optional[int]:
+        """Return the first mirror ``drum_note_map`` value for *name*, or None.
+
+        Lets a named hit absent from the primary map still be placed (as a
+        ``primary_unmapped`` Note) when a symbolic (3-tuple) mirror can voice it.
+        """
+
+        for entry in getattr(self._pattern, "mirrors", []):
+            if len(entry) == 3 and entry[2] is not None and name in entry[2]:
+                return typing.cast(int, entry[2][name])
+        return None
+
+    def _warn_unknown_drum(self, name: str, include_mirrors: bool = True) -> None:
+        """Warn once (per pattern, per name) that a drum name maps to nothing.
+
+        Deduplicated via the Pattern's ``_warned_drum_names`` set so the per-bar
+        rebuild does not spam; a hot-reload builds a fresh Pattern and
+        re-surfaces the warning.
+
+        ``include_mirrors`` tailors the wording: step-note placement checks the
+        mirror maps too (the name maps to *no* device), whereas the methods that
+        resolve against the primary map only — drones, ``arpeggio``, ``evolve``,
+        ``branch``, and the ``thin``/``ratchet`` pitch filter — report just this
+        device.
+        """
+
+        warned = getattr(self._pattern, "_warned_drum_names", None)
+        if warned is not None:
+            if name in warned:
+                return
+            warned.add(name)
+
+        fn = getattr(self._pattern, "_builder_fn", None)
+        label = getattr(fn, "__name__", None)
+        where = (
+            f"pattern '{label}'"
+            if label
+            else f"device {self._pattern.device} channel {self._pattern.channel}"
+        )
+        if include_mirrors:
+            scope = f"the drum_note_map for {where} or any of its mirror destinations"
+            reason = "no device maps this voice"
+        else:
+            scope = f"the drum_note_map for {where}"
+            reason = "this device has no such voice"
+        logger.warning(
+            f"Drum name '{name}' is not in {scope} — the note is dropped ({reason}). Check the spelling, or add it to a map."
+        )
+
+    def _resolve_pitch_lenient(
+        self, pitch: typing.Union[int, str]
+    ) -> typing.Optional[int]:
+        """Resolve a pitch against this pattern's own ``drum_note_map``, leniently.
+
+        Like :meth:`_resolve_pitch`, but an unknown drum *name* (a map is present
+        yet lacks the voice) is **dropped** — warned once, returns ``None`` —
+        instead of raising, so a device may legitimately lack a voice that other
+        devices have.  Used by the methods that do NOT carry the drum name to
+        mirror destinations (``note_on``/``note_off``/``drone``, ``arpeggio``,
+        ``evolve``, ``branch``, and the ``thin``/``ratchet`` pitch filter), so
+        resolution is against the primary map only.  A string with **no**
+        ``drum_note_map`` at all is still a configuration error and raises.
+        """
+
+        if isinstance(pitch, int):
+            return pitch
+
+        if self._drum_note_map is None:
+            raise ValueError(
+                f"String pitch '{pitch}' requires a drum_note_map, but none was provided"
+            )
+
+        if pitch in self._drum_note_map:
+            return self._drum_note_map[pitch]
+
+        self._warn_unknown_drum(pitch, include_mirrors=False)
+        return None
+
+    def _resolve_cc(self, control: typing.Union[int, str]) -> int:
+        """Resolve a CC name or number to a MIDI CC number."""
+
+        if isinstance(control, int):
+            return control
+
+        if self._cc_name_map is None:
+            raise ValueError(
+                f"String CC name '{control}' requires a cc_name_map, but none was provided"
+            )
+
+        if control not in self._cc_name_map:
+            raise ValueError(f"Unknown CC name '{control}' - not found in cc_name_map")
+
+        return self._cc_name_map[control]
+
+    def _resolve_nrpn(self, parameter: typing.Union[int, str]) -> int:
+        """Resolve an NRPN parameter name or number to a 14-bit parameter number.
+
+        Strings require an ``nrpn_name_map`` on the pattern decorator —
+        NRPN parameter numbers are vendor-specific, so subsequence does not
+        ship a default mapping.  Integer parameters must be in the 14-bit
+        range 0–16383.
+        """
+
+        if isinstance(parameter, int):
+            if not 0 <= parameter <= 16383:
+                raise ValueError(
+                    f"NRPN parameter number must be 0–16383, got {parameter}"
+                )
+            return parameter
+
+        if self._nrpn_name_map is None:
+            raise ValueError(
+                f"String NRPN name '{parameter}' requires an nrpn_name_map, but none was provided"
+            )
+
+        if parameter not in self._nrpn_name_map:
+            raise ValueError(
+                f"Unknown NRPN name '{parameter}' - not found in nrpn_name_map"
+            )
+
+        return self._nrpn_name_map[parameter]
+
+    def _resolve_rpn(self, parameter: typing.Union[int, str]) -> int:
+        """Resolve an RPN parameter name or number to a 14-bit parameter number.
+
+        Strings fall back to ``pymididefs.rpn.RPN_MAP`` — the standardised
+        set of MIDI Registered Parameter Numbers (``pitch_bend_sensitivity``,
+        ``channel_fine_tuning``, ...).  No per-pattern map needed.  Integer
+        parameters must be in the 14-bit range 0–16383.
+        """
+
+        if isinstance(parameter, int):
+            if not 0 <= parameter <= 16383:
+                raise ValueError(
+                    f"RPN parameter number must be 0–16383, got {parameter}"
+                )
+            return parameter
+
+        if parameter not in pymididefs.rpn.RPN_MAP:
+            raise ValueError(
+                f"Unknown RPN name '{parameter}' - not a standard Registered Parameter Number"
+            )
+
+        return pymididefs.rpn.RPN_MAP[parameter]
+
+    def note(
+        self,
+        pitch: typing.Union[int, str],
+        beat: float,
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+        duration: float = 0.25,
+    ) -> "PatternBuilder":
+        """
+        Place a single MIDI note at a specific beat position.
+
+        A drum name is carried through to the mirror fan-out so each device can
+        re-resolve it through its own ``drum_note_map``.  A name no destination
+        maps (not in the pattern's own map nor any mirror's) is dropped and
+        warned once — it does not raise — so device maps can legitimately lack
+        voices others have.  (A string pitch with **no** ``drum_note_map`` at all
+        is still a configuration error and raises.)
+
+        Parameters:
+                pitch: MIDI note number (0-127) or a drum name string from
+                        the pattern's ``drum_note_map``.
+                beat: The beat position (0.0 is the start). Negative values
+                        wrap from the end (e.g., -1.0 is one beat before the end).
+                velocity: MIDI velocity (0-127, default 100), or a
+                        ``(low, high)`` tuple for a single random draw.
+                duration: Note duration in beats (default 0.25).
+
+        Example:
+                ```python
+                p.note(60, beat=0, velocity=110)      # Middle C on beat 1
+                p.note("kick", beat=1.0)               # Kick on beat 2
+                p.note(67, beat=-0.5, duration=0.5)  # G on the 'and' of the last beat
+                ```
+        """
+
+        # Resolve leniently: a named drum the target can't voice is dropped (and
+        # warned once) rather than raising, and the drum name is carried so each
+        # destination can re-resolve it through its own drum_note_map.
+        resolution = self._resolve_hit_pitch(pitch)
+        if resolution is None:
+            return self  # unknown drum name, mapped by no destination — dropped
+        midi_pitch, origin, primary_unmapped = resolution
+
+        resolved_velocity = self._resolve_velocity(velocity)
+
+        # Negative beat values wrap to the end of the pattern.
+        if beat < 0:
+            beat = beat % self._pattern.length  # wrap from the end (any magnitude)
+
+        self._pattern.add_note_beats(
+            beat_position=beat,
+            pitch=midi_pitch,
+            velocity=resolved_velocity,
+            duration_beats=duration,
+            origin=origin,
+            primary_unmapped=primary_unmapped,
+        )
+        return self
+
+    def note_on(
+        self,
+        pitch: typing.Union[int, str],
+        beat: float,
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+    ) -> "PatternBuilder":
+        """
+        Place an explicit Note On event without a duration.
+        Useful for drones or infinite sustains. Must be paired with
+        a ``note_off()`` later to silence the note.
+
+        Parameters:
+                pitch: MIDI note number (0-127) or a drum name string.
+                beat: The beat position (0.0 is the start).
+                velocity: MIDI velocity (0-127, default 100), or a
+                        ``(low, high)`` tuple for a single random draw.
+
+        A drum name this device's ``drum_note_map`` lacks is dropped (warned
+        once) rather than raising — consistent with the step-note methods.  A
+        string pitch with no ``drum_note_map`` at all is still a configuration
+        error and raises.
+        """
+
+        midi_pitch = self._resolve_pitch_lenient(pitch)
+        if midi_pitch is None:
+            return self  # drum name this device can't voice — dropped (warned once)
+        resolved_velocity = self._resolve_velocity(velocity)
+        if beat < 0:
+            beat = beat % self._pattern.length  # wrap from the end (any magnitude)
+
+        self._pattern.add_raw_note_beats(
+            message_type="note_on",
+            beat_position=beat,
+            pitch=midi_pitch,
+            velocity=resolved_velocity,
+            origin=pitch if isinstance(pitch, str) else None,
+        )
+        return self
+
+    def note_off(self, pitch: typing.Union[int, str], beat: float) -> "PatternBuilder":
+        """
+        Place an explicit Note Off event to silence a drone.
+
+        Parameters:
+                pitch: MIDI note number (0-127) or a drum name string.
+                beat: The beat position (0.0 is the start).
+
+        A drum name this device's ``drum_note_map`` lacks is dropped (warned
+        once) rather than raising; with no ``drum_note_map`` at all it raises.
+        """
+
+        midi_pitch = self._resolve_pitch_lenient(pitch)
+        if midi_pitch is None:
+            return self  # nothing to silence — this device can't voice the name
+        if beat < 0:
+            beat = beat % self._pattern.length  # wrap from the end (any magnitude)
+
+        self._pattern.add_raw_note_beats(
+            message_type="note_off",
+            beat_position=beat,
+            pitch=midi_pitch,
+            velocity=0,
+            origin=pitch if isinstance(pitch, str) else None,
+        )
+        return self
+
+    def drone(
+        self,
+        pitch: typing.Union[int, str],
+        beat: float = 0.0,
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+    ) -> "PatternBuilder":
+        """
+        A musical alias for ``note_on``. Places a raw Note On event without a duration,
+        typically used for sustained notes that span multiple cycles.
+        Must be silenced later using ``drone_off()``.
+
+        Parameters:
+                pitch: MIDI note number (0-127) or a drum name string.
+                beat: The beat position (0.0 is the start).
+                velocity: MIDI velocity (0-127, default 100), or a
+                        ``(low, high)`` tuple for a single random draw.
+        """
+
+        self.note_on(pitch, beat=beat, velocity=velocity)
+        return self
+
+    def drone_off(self, pitch: typing.Union[int, str]) -> "PatternBuilder":
+        """
+        A musical alias for ``note_off``. Places a raw Note Off event at beat 0.0.
+        Used to stop a sequence started by ``drone()``.
+
+        Parameters:
+                pitch: MIDI note number (0-127) or a drum name string.
+        """
+
+        self.note_off(pitch, beat=0.0)
+        return self
+
+    def silence(self, beat: float = 0.0) -> "PatternBuilder":
+        """
+        Sends an 'All Notes Off' (CC 123) and 'All Sound Off' (CC 120) message
+        on the pattern's channel to immediately silence any ringing notes or drones.
+
+        Parameters:
+                beat: The beat position (0.0 is the start).
+        """
+
+        self.cc(control=123, value=0, beat=beat)
+        self.cc(control=120, value=0, beat=beat)
+        return self
+
+    def hit(
+        self,
+        pitch: typing.Union[int, str],
+        beats: typing.List[float],
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+        duration: float = 0.1,
+    ) -> "PatternBuilder":
+        """
+        Place multiple short 'hits' at a list of beat positions.
+
+        Parameters:
+                pitch: MIDI note number or drum name.
+                beats: List of beat positions.
+                velocity: MIDI velocity (0-127), or a ``(low, high)`` tuple
+                        for a fresh random draw per hit.
+                duration: Note duration in beats.
+
+        Example:
+                ```python
+                p.hit("snare", [1, 3])                      # Standard backbeat
+                p.hit("snare", [1, 3], velocity=(80, 110))  # Human velocity range
+                ```
+        """
+
+        for beat in beats:
+            self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
+        return self
+
+    def hit_steps(
+        self,
+        pitch: typing.Union[int, str],
+        steps: typing.List[int],
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+        duration: float = 0.1,
+        grid: typing.Optional[int] = None,
+        probability: float = 1.0,
+        seed: typing.Optional[int] = None,
+        rng: typing.Optional[random.Random] = None,
+    ) -> "PatternBuilder":
+        """
+        Place short hits at specific step (grid) positions.
+
+        Parameters:
+                pitch: MIDI note number or drum name.
+                steps: A list of grid indices (0 to ``grid - 1``).
+                velocity: MIDI velocity (0-127), or a ``(low, high)`` tuple
+                        for a fresh random draw per step.
+                duration: Note duration in beats.
+                grid: How many grid slots the pattern is divided into.
+                        Defaults to the pattern's ``default_grid`` (set from the
+                        decorator's ``steps``/``step_duration``, or sixteenth-note
+                        resolution when ``unit`` is omitted).
+                probability: Chance (0.0 to 1.0) that each hit will play.
+                seed: Fix the probability gating for this call (an int); omit to
+                        use the pattern's RNG.
+                rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
+
+        Example:
+                ```python
+                # Typical sixteenth-note hi-hats with some probability variation
+                p.hit_steps("hh", range(16), velocity=70, probability=0.8)
+
+                # Humanised hi-hats — each step gets a fresh random velocity.
+                p.hit_steps("hh", range(16), velocity=(40, 90))
+                ```
+        """
+
+        rng = self._rng_from(seed, rng)
+
+        if grid is None:
+            grid = self._default_grid
+
+        if grid <= 0:
+            return self
+
+        step_duration = self._pattern.length / grid
+
+        for i in steps:
+            if probability < 1.0 and rng.random() >= probability:
+                continue
+
+            beat = i * step_duration
+            self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
+        return self
+
+    def motif(
+        self,
+        m: "subsequence.motifs.Motif",
+        beat: float = 0.0,
+        span: typing.Optional[float] = None,
+        root: int = 60,
+        velocity: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
+        fit: typing.Optional[float] = None,
+        fit_weights: typing.Optional[typing.List[float]] = None,
+        resolution: typing.Optional[int] = None,
+    ) -> "PatternBuilder":
+        """
+        Place an immutable :class:`~subsequence.motifs.Motif` onto the pattern.
+
+        Note events route through the universal ``note()`` funnel (drum names,
+        mirrors, velocity tuples all work); control gestures emit through the
+        same machinery as ``cc()`` / ``cc_ramp()`` / ``pitch_bend()`` /
+        ``nrpn()`` / ``osc()``.  Pitch specs resolve here, late: ints are MIDI,
+        strings are drum names, scale degrees resolve against the composition
+        key + scale anchored near ``root=``.  Per-event probabilities roll
+        fresh each cycle against the pattern's seeded stream.
+
+        Parameters:
+                m: The motif value (anything exposing ``.events`` / ``.length``
+                        places; ``.controls`` is read when present).
+                beat: Where the motif starts within the pattern.
+                span: Clamp — events whose onset falls at or beyond *span* beats
+                        into the motif are dropped (the ``arpeggio()`` convention).
+                root: Register anchor for scale-degree resolution: the tonic
+                        lands at its nearest instance to this MIDI note (ties resolve
+                        upward) and the melody keeps its written contour from there.
+                velocity: Optional override applied to every note (otherwise each
+                        event's own velocity is used).
+                fit: The chord-tones-on-strong-beats dial, 0.0–1.0: resolved
+                        Degree/int pitches landing on strong beats (metric weight
+                        >= 0.5) snap to the nearest chord tone with this
+                        probability.  Defaults to the motif's own ``fit`` (0.7 on
+                        generated motifs, none on hand-written ones — typed degrees
+                        are sacred); inactive without a chord context.  ChordTone
+                        and Approach events never snap — their harmony reading is
+                        inherent (an Approach's chromaticism is the point).
+                fit_weights: Custom per-step metric weight list (the
+                        ``build_ghost_bias`` precedent) for additive or
+                        non-isochronous meters; defaults to the time signature's
+                        table.
+                resolution: Pulses between control-ramp messages (defaults to
+                        each control verb's own default).  Kept out of the value by
+                        design: beats and shapes are music, traffic density is wire.
+        """
+
+        events = getattr(m, "events", None)
+
+        if events is None or not hasattr(m, "length"):
+            raise TypeError(
+                f"motif() places Motif-like values (.events/.length) — got {type(m).__name__}"
+            )
+
+        effective_fit = fit if fit is not None else getattr(m, "fit", None)
+        fit_table: typing.Optional[typing.List[float]] = None
+        snap_probability = 0.0
+
+        if effective_fit:
+            snap_probability = float(effective_fit)
+            fit_table = (
+                list(fit_weights)
+                if fit_weights is not None
+                else subsequence.sequence_utils.build_metric_weights(
+                    self.time_signature, grid=self._default_grid
+                )
+            )
+
+        for event in events:
+            if span is not None and event.beat >= span:
+                continue
+            if event.probability < 1.0 and self.rng.random() >= event.probability:
+                continue
+
+            resolved = self._resolve_motif_pitch(event.pitch, root, beat + event.beat)
+
+            # The fit dial reads only Degree/int content: drums have no
+            # pitch to snap, ChordTones already are chord tones, and an
+            # Approach's chromaticism is the point.
+            if (
+                fit_table is not None
+                and isinstance(resolved, int)
+                and isinstance(event.pitch, (int, subsequence.motifs.Degree))
+            ):
+                resolved = self._fit_snap(
+                    resolved, beat + event.beat, snap_probability, fit_table
+                )
+
+            self.note(
+                pitch=resolved,
+                beat=beat + event.beat,
+                velocity=velocity if velocity is not None else event.velocity,
+                duration=event.duration,
+            )
+
+        for control in getattr(m, "controls", ()):
+            if span is not None and control.beat >= span:
+                continue
+            if control.probability < 1.0 and self.rng.random() >= control.probability:
+                continue
+
+            self._emit_control(control, beat, resolution)
+
+        return self
+
+    def _resolve_motif_pitch(
+        self, pitch: typing.Any, root: int, event_beat: float = 0.0
+    ) -> typing.Union[int, str]:
+        """Resolve one stored pitch spec to a MIDI int or drum name, late.
+
+        ``event_beat`` is the event's position within this cycle — chord-
+        relative specs resolve against the chord sounding *under the event*
+        (``p.harmony.chord_at``), not the cycle-start snapshot.
+        """
+
+        if pitch is None:
+            raise ValueError(
+                "This motif is a rhythm skeleton (pitches stripped) — "
+                "re-pitch it with .pitched() before placing"
+            )
+
+        if isinstance(pitch, (int, str)):
+            return pitch
+
+        if isinstance(pitch, subsequence.motifs.Degree):
+            return self._resolve_degree_pitch(pitch, root)
+
+        if isinstance(pitch, subsequence.motifs.ChordTone):
+            return self._resolve_chord_tone_pitch(pitch, root, event_beat)
+
+        if isinstance(pitch, subsequence.motifs.Approach):
+            return self._resolve_approach_pitch(pitch, root, event_beat)
+
+        raise TypeError(f"Unknown pitch spec: {type(pitch).__name__}")
+
+    def _resolve_approach_pitch(
+        self, approach: "subsequence.motifs.Approach", root: int, event_beat: float
+    ) -> int:
+        """Resolve an Approach: one semitone below its target's pitch.
+
+        A ``ChordTone`` target reads the chord at the NEXT boundary after the
+        event (the harmony window's anticipation data) — the approach is the
+        tension, the target is where the harmony lands.  When the window
+        holds no committed next chord (the live mode horizon's edge), the
+        sounding chord stands in.  ``Degree``/``int`` targets resolve as
+        usual (no harmony needed).
+        """
+
+        target = approach.target
+
+        if isinstance(target, subsequence.motifs.ChordTone):
+            if self.harmony is None:
+                raise ValueError(
+                    "an Approach at a chord tone needs the harmonic clock — "
+                    "call composition.harmony(...) (a style or a bound progression)"
+                )
+
+            chord = self.harmony.next_chord_at(event_beat)
+
+            if chord is None:
+                chord = self.harmony.chord_at(event_beat)
+            if chord is None:
+                raise ValueError(
+                    f"No chord is known around beat {event_beat:g} of this cycle — "
+                    "the harmony window does not cover it"
+                )
+
+            tones = chord.tones(root, count=target.index)
+            resolved = int(tones[target.index - 1]) + 12 * target.octave
+
+        elif isinstance(target, subsequence.motifs.Degree):
+            resolved = self._resolve_degree_pitch(target, root)
+
+        elif isinstance(target, int):
+            resolved = target
+
+        else:
+            raise TypeError(f"cannot approach {type(target).__name__} content")
+
+        pitch = resolved - 1
+
+        if not 0 <= pitch <= 127:
+            raise ValueError(
+                f"Approach resolves to MIDI {pitch}, outside 0–127 — adjust root= or the target's octave"
+            )
+
+        return pitch
+
+    def _fit_snap(
+        self, pitch: int, event_beat: float, fit: float, weights: typing.List[float]
+    ) -> int:
+        """The fit dial: snap a strong-beat pitch to the nearest chord tone, with probability *fit*.
+
+        Strong beats are the metric-weight table's >= 0.5 positions
+        (downbeats and beats); off-grid events take the nearest grid
+        position's weight.  Inactive without a chord context.
+        """
+
+        if self.harmony is None:
+            return pitch
+
+        bar_beats = float(self.time_signature[0])
+        grid = len(weights)
+        step = (event_beat % bar_beats) * grid / bar_beats
+        weight = weights[int(round(step)) % grid]
+
+        if weight < 0.5:
+            return pitch
+        if self.rng.random() >= fit:
+            return pitch
+
+        chord = self.harmony.chord_at(event_beat)
+
+        if chord is None:
+            return pitch
+
+        chord_pcs = {tone % 12 for tone in chord.tones(pitch)}
+
+        if pitch % 12 in chord_pcs:
+            return pitch
+
+        # Nearest chord tone, ties upward.
+        for delta in (1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6):
+            if (pitch + delta) % 12 in chord_pcs and 0 <= pitch + delta <= 127:
+                return pitch + delta
+
+        return pitch
+
+    def _resolve_chord_tone_pitch(
+        self, tone: "subsequence.motifs.ChordTone", root: int, event_beat: float
+    ) -> int:
+        """Resolve a 1-based chord-tone index against the chord under the event.
+
+        Reads the harmony window (``p.harmony.chord_at(event_beat)``): indices
+        walk the sounding chord's tones nearest ``root``, cycling into higher
+        octaves past the chord's natural size, plus whole-octave shifts.
+        """
+
+        if self.harmony is None:
+            raise ValueError(
+                "ChordTone pitches resolve against the harmonic clock — "
+                "call composition.harmony(...) (a style or a bound progression)"
+            )
+
+        chord = self.harmony.chord_at(event_beat)
+
+        if chord is None:
+            raise ValueError(
+                f"No chord is known at beat {event_beat:g} of this cycle — "
+                "the harmony window does not cover it"
+            )
+
+        tones = chord.tones(root, count=tone.index)
+        midi = int(tones[tone.index - 1]) + 12 * tone.octave
+
+        if not 0 <= midi <= 127:
+            raise ValueError(
+                f"Chord tone {tone.index} resolves to MIDI {midi}, outside 0–127 — "
+                "adjust root= or the tone's octaves"
+            )
+
+        return midi
+
+    def _resolve_degree_pitch(
+        self, degree: "subsequence.motifs.Degree", root: int
+    ) -> int:
+        """
+        Resolve a 1-based scale degree against the composition key + scale.
+
+        The tonic anchors at its nearest instance to ``root`` (ties resolve
+        upward); the degree then builds from the anchored tonic, so a written
+        melody keeps its contour.  Steps beyond the scale length carry into
+        higher octaves (8 = tonic an octave up in seven-note scales).
+        """
+
+        if self.key is None:
+            raise ValueError(
+                "Scale degrees resolve against a key — set Composition(key=...)"
+            )
+
+        mode = self.scale or "ionian"
+        pcs = subsequence.intervals.scale_pitch_classes(
+            subsequence.chords.key_name_to_pc(self.key), mode
+        )
+
+        idx = (degree.step - 1) % len(pcs)
+        carry = (degree.step - 1) // len(pcs)
+
+        diff = (pcs[0] - root) % 12
+        tonic = root + diff if diff <= 6 else root + diff - 12
+        offset = (pcs[idx] - pcs[0]) % 12
+
+        midi = tonic + offset + 12 * (carry + degree.octave) + degree.chroma
+
+        if not 0 <= midi <= 127:
+            raise ValueError(
+                f"Degree {degree.step} resolves to MIDI {midi}, outside 0–127 — "
+                f"adjust root= or the degree's octaves"
+            )
+
+        return midi
+
+    def _emit_control(
+        self,
+        control: "subsequence.motifs.ControlEvent",
+        beat: float,
+        resolution: typing.Optional[int],
+    ) -> None:
+        """Emit one stored control gesture through the matching builder verb."""
+
+        signal = control.signal
+        onset = beat + control.beat
+        extra: typing.Dict[str, typing.Any] = (
+            {} if resolution is None else {"resolution": resolution}
+        )
+
+        if isinstance(signal, subsequence.motifs.CC):
+            if control.end is None:
+                self.cc(signal.control, int(round(control.start)), beat=onset)
+            else:
+                self.cc_ramp(
+                    signal.control,
+                    int(round(control.start)),
+                    int(round(control.end)),
+                    beat_start=onset,
+                    beat_end=onset + control.span,
+                    shape=control.shape,
+                    **extra,
+                )
+
+        elif isinstance(signal, subsequence.motifs.PitchBend):
+            if control.end is None:
+                self.pitch_bend(control.start, beat=onset)
+            else:
+                self.pitch_bend_ramp(
+                    control.start,
+                    control.end,
+                    beat_start=onset,
+                    beat_end=onset + control.span,
+                    shape=control.shape,
+                    **extra,
+                )
+
+        elif isinstance(signal, subsequence.motifs.NRPN):
+            if control.end is None:
+                self.nrpn(
+                    signal.parameter,
+                    int(round(control.start)),
+                    beat=onset,
+                    fine=signal.fine,
+                    null_reset=signal.null_reset,
+                )
+            else:
+                self.nrpn_ramp(
+                    signal.parameter,
+                    int(round(control.start)),
+                    int(round(control.end)),
+                    beat_start=onset,
+                    beat_end=onset + control.span,
+                    shape=control.shape,
+                    fine=signal.fine,
+                    null_reset=signal.null_reset,
+                    **extra,
+                )
+
+        elif isinstance(signal, subsequence.motifs.RPN):
+            if control.end is None:
+                self.rpn(
+                    signal.parameter,
+                    int(round(control.start)),
+                    beat=onset,
+                    fine=signal.fine,
+                    null_reset=signal.null_reset,
+                )
+            else:
+                self.rpn_ramp(
+                    signal.parameter,
+                    int(round(control.start)),
+                    int(round(control.end)),
+                    beat_start=onset,
+                    beat_end=onset + control.span,
+                    shape=control.shape,
+                    fine=signal.fine,
+                    null_reset=signal.null_reset,
+                    **extra,
+                )
+
+        elif isinstance(signal, subsequence.motifs.OSC):
+            if control.end is None:
+                self.osc(signal.address, control.start, beat=onset)
+            else:
+                self.osc_ramp(
+                    signal.address,
+                    control.start,
+                    control.end,
+                    beat_start=onset,
+                    beat_end=onset + control.span,
+                    shape=control.shape,
+                    **extra,
+                )
+
+        else:
+            raise TypeError(f"Unknown control signal: {type(signal).__name__}")
+
+    def phrase(
+        self,
+        value: typing.Any,
+        root: int = 60,
+        velocity: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
+        fit: typing.Optional[float] = None,
+        resolution: typing.Optional[int] = None,
+        align: str = "pattern",
+        offset: float = 0.0,
+    ) -> "PatternBuilder":
+        """Place this cycle's window of a Phrase — position computed, never stored.
+
+        The playback position is stateless arithmetic over the engine's own
+        counters: ``pos = (p.cycle * pattern_length + offset) % phrase.length``
+        — deterministic under live reload, ``form_jump``, and render, with
+        zero new state.  A pattern shorter than the phrase walks through it
+        cycle by cycle; deliberately mismatched lengths are phase drift
+        (polymeter against the phrase).  When the cycle window crosses the
+        phrase's end, the phrase loops.
+
+        Patterns that should own the phrase's length call
+        ``p.set_length(phrase.length)`` once instead.
+
+        Parameters:
+                value: A Phrase (or any value with ``.length``/``.slice``; a
+                        Motif places its window directly).
+                root: Register anchor for degree resolution (see ``motif()``).
+                velocity: Optional override applied to every note.
+                fit: Passed through to ``motif()`` (active with the melody
+                        engine stage).
+                resolution: Control-ramp pulse density (see ``motif()``).
+                align: ``"pattern"`` (default) counts pattern cycles;
+                        ``"section"`` uses the bar within the current form section,
+                        so the phrase restarts when the section does.
+                offset: Beats added to the computed position (a phase shift).
+
+        Example:
+                ```python
+                @comp.pattern(channel=4, bars=2)
+                def lead (p):
+                        p.phrase(lead_line, root=72)
+                ```
+        """
+
+        length = getattr(value, "length", None)
+
+        if length is None or not hasattr(value, "slice"):
+            raise TypeError(
+                f"phrase() places Phrase-like values (.length/.slice) — got {type(value).__name__}"
+            )
+        if length <= 0:
+            raise ValueError("cannot place an empty phrase")
+
+        if align == "pattern":
+            position = (self.cycle * float(self._pattern.length) + offset) % length
+        elif align == "section":
+            if self.section is None:
+                raise ValueError(
+                    'phrase(align="section") needs a form — call composition.form(...)'
+                )
+            position = (
+                self.section.bar * float(self.time_signature[0]) + offset
+            ) % length
+        else:
+            raise ValueError(f'align must be "pattern" or "section" — got {align!r}')
+
+        window_beats = float(self._pattern.length)
+        placed = 0.0
+
+        while placed < window_beats - 1e-9:
+            take = min(window_beats - placed, length - position)
+            piece = value.slice(position, position + take)
+            fragment = piece.flatten() if hasattr(piece, "flatten") else piece
+
+            self.motif(
+                fragment,
+                beat=placed,
+                root=root,
+                velocity=velocity,
+                fit=fit,
+                resolution=resolution,
+            )
+
+            placed += take
+            position = 0.0  # crossed the phrase end — loop to its start
+
+        return self
+
+    def section_motif(
+        self, part: typing.Optional[str] = None
+    ) -> typing.Optional[typing.Any]:
+        """The Motif/Phrase bound to the current section (and part), or ``None``.
+
+        Reads the ``composition.section_motifs()`` registry for the section
+        currently playing.  A section with no binding returns ``None`` —
+        bind material or rest; no fallback guessing::
+
+                @comp.pattern(channel=4, bars=2)
+                def lead (p):
+                        line = p.section_motif("lead")
+                        if line is not None:
+                                p.phrase(line, root=72)
+        """
+
+        if self.section is None or self._section_motifs is None:
+            return None
+
+        return self._section_motifs.get((self.section.name, part))
+
+    def capture(
+        self, beat: float = 0.0, span: float = 4.0
+    ) -> "subsequence.motifs.Motif":
+        """
+        Read the notes placed so far back out as a :class:`~subsequence.motifs.Motif`.
+
+        The captured motif is **absolute MIDI and lossy by design**: relative
+        specs (degrees, chord tones) do not survive resolution, timing is
+        pulse-truncated, probabilities have already rolled, and control
+        gestures are not captured.  The round trip is generate → place →
+        capture → hand-edit → rebind.
+
+        Parameters:
+                beat: Window start within the pattern.
+                span: Window length in beats (also the captured motif's length).
+        """
+
+        ppq = subsequence.constants.MIDI_QUARTER_NOTE
+        lo, hi = int(beat * ppq), int((beat + span) * ppq)
+        events = []
+
+        for pulse in sorted(self._pattern.steps):
+            if not lo <= pulse < hi:
+                continue
+
+            for placed in self._pattern.steps[pulse].notes:
+                events.append(
+                    subsequence.motifs.MotifEvent(
+                        beat=pulse / ppq - beat,
+                        pitch=placed.pitch,
+                        velocity=placed.velocity,
+                        duration=max(placed.duration, 1) / ppq,
+                    )
+                )
+
+        return subsequence.motifs.Motif(events=tuple(events), length=span)
+
+    def sequence(
+        self,
+        steps: typing.List[int],
+        pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]],
+        velocities: typing.Union[
+            int, typing.Tuple[int, int], typing.List[int]
+        ] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+        durations: typing.Union[float, typing.List[float]] = 0.1,
+        grid: typing.Optional[int] = None,
+        probability: float = 1.0,
+        seed: typing.Optional[int] = None,
+        rng: typing.Optional[random.Random] = None,
+    ) -> "PatternBuilder":
+        """
+        A multi-parameter step sequencer.
+
+        Define which grid steps fire, and then provide a list of pitches,
+        velocities, and durations. If you provide a list for any parameter,
+        Subsequence will step through it as it places each note.
+
+        Parameters:
+                steps: List of grid indices to trigger. An empty list is a
+                        no-op — no notes are placed and the builder is returned
+                        unchanged (handy when probabilistic gating rejects every step).
+                pitches: Pitch or list of pitches.
+                velocities: Velocity (default 100), ``(low, high)`` tuple for
+                        a fresh random draw per step, or a list of velocities
+                        matched to the steps one-to-one (a short list repeats its
+                        final value, a long list is truncated — both warn).
+                durations: Duration or list of durations (default 0.1).
+                grid: Grid resolution. Defaults to the pattern's
+                        ``default_grid`` (derived from the decorator's ``beats``/``steps``
+                        and ``unit``).
+                probability: Chance (0.0 to 1.0) that each step will play.
+                seed: Fix the probability gating for this call (an int); omit to
+                        use the pattern's RNG.
+                rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
+        """
+
+        if not steps:
+            return self
+
+        rng = self._rng_from(seed, rng)
+
+        if grid is None:
+            grid = self._default_grid
+
+        if grid <= 0:
+            return self
+
+        n = len(steps)
+        pitches_list = _expand_sequence_param("pitches", pitches, n)
+        # Treat a (low, high) tuple as a single random-range descriptor
+        # rather than a 2-element list to cycle through.
+        if isinstance(velocities, tuple):
+            velocities_list = [velocities] * n
+        else:
+            velocities_list = _expand_sequence_param("velocities", velocities, n)
+        durations_list = _expand_sequence_param("durations", durations, n)
+
+        step_duration = self._pattern.length / grid
+
+        for i, step_idx in enumerate(steps):
+            if probability < 1.0 and rng.random() >= probability:
+                continue
+
+            beat = step_idx * step_duration
+            self.note(
+                pitch=pitches_list[i],
+                beat=beat,
+                velocity=velocities_list[i],
+                duration=durations_list[i],
+            )
+        return self
+
+    def seq(
+        self,
+        notation: str,
+        pitch: typing.Union[str, int, None] = None,
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+        seed: typing.Optional[int] = None,
+        rng: typing.Optional[random.Random] = None,
+    ) -> "PatternBuilder":
+        """
+        Build a pattern using an expressive string-based 'mini-notation'.
+
+        The notation distributes events evenly across the current pattern length.
+
+        **Syntax:**
+
+        - ``x y z``: Items separated by spaces are distributed across the bar.
+        - ``[a b]``: Groups items into a single subdivided step.
+        - ``~`` or ``.``: A rest.
+        - ``_``: Extends the previous note (sustain).
+        - ``x?0.6``: Probability suffix — fires with the given probability (0.0–1.0).
+
+        Parameters:
+                notation: The mini-notation string.
+                pitch: If provided, all symbols in the string are triggers for
+                        this specific pitch. If ``None``, symbols are interpreted as
+                        pitches (e.g., "60" or "kick").
+                velocity: MIDI velocity (default 100), or a ``(low, high)``
+                        tuple for a fresh random draw per event.
+                seed: Fix the ``?`` probability gating for this call (an int);
+                        omit to use the pattern's RNG.
+                rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
+
+        Example:
+                ```python
+                # Simple kick rhythm
+                p.seq("kick . [kick kick] .")
+
+                # Subdivided melody
+                p.seq("60 [62 64] 67 60")
+
+                # Ghost snare: snare on 2 and 4, ghost note 50% of the time
+                p.seq(". snare?0.5 . snare")
+                ```
+        """
+
+        rng = self._rng_from(seed, rng)
+
+        events = subsequence.mini_notation.parse(
+            notation, total_duration=float(self._pattern.length)
+        )
+
+        for event in events:
+            # Apply probability before placing the note.
+            if event.probability < 1.0 and rng.random() >= event.probability:
+                continue
+
+            current_pitch = pitch
+
+            # If no global pitch provided, use the symbol as the pitch
+            if current_pitch is None:
+                # Try converting to int if it looks like a number
+                if event.symbol.isdigit():
+                    current_pitch = int(event.symbol)
+                else:
+                    current_pitch = event.symbol
+
+            self.note(
+                pitch=current_pitch,
+                beat=event.time,
+                duration=event.duration,
+                velocity=velocity,
+            )
+        return self
+
+    def repeat(
+        self,
+        pitch: typing.Union[int, str],
+        spacing: float,
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+        duration: float = 0.25,
+    ) -> "PatternBuilder":
+        """
+        Repeat a note at a fixed beat interval for the whole pattern.
+
+        The classic 'Note Repeat' of MPC, Push, and Maschine fame: one
+        pitch firing at a steady rate — running hi-hats, a pulsing bass
+        note, a metronome click.
+
+        Parameters:
+                pitch: MIDI note number or drum name.
+                spacing: Time between each note in beats (0.25 = sixteenth notes).
+                velocity: MIDI velocity (default 100), or a ``(low, high)``
+                        tuple for a fresh random draw per note.
+                duration: Note duration in beats.
+
+        Example:
+                ```python
+                p.repeat("hh", spacing=0.25)                       # sixteenth notes
+                p.repeat("hh", spacing=0.25, velocity=(40, 80))    # humanised
+                ```
+        """
+
+        if spacing <= 0:
+            raise ValueError("Spacing must be positive")
+
+        beat = 0.0
+
+        while beat < self._pattern.length:
+            self.note(pitch=pitch, beat=beat, velocity=velocity, duration=duration)
+            beat += spacing
+        return self
+
+    def arpeggio(
+        self,
+        notes: typing.Any,
+        root: typing.Optional[int] = None,
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+        count: typing.Optional[int] = None,
+        inversion: int = 0,
+        beat: float = 0.0,
+        span: typing.Optional[float] = None,
+        spacing: float = 0.25,
+        duration: typing.Optional[float] = None,
+        direction: str = "up",
+        seed: typing.Optional[int] = None,
+        rng: typing.Optional[random.Random] = None,
+    ) -> "PatternBuilder":
+        """
+        Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time
+        at regular beat intervals.
+
+        Like ``chord()`` and ``strum()``, the first argument can be a chord — the
+        ``chord`` passed to your pattern function, or any chord from
+        ``p.progression()`` — and ``root`` / ``count`` / ``inversion`` voice it
+        exactly as they do.  So "play this as a chord, a strum, or an arpeggio" is a
+        one-word verb swap::
+
+                for chord, start, length in p.progression("phrygian_minor", harmonic_rhythm=...):
+                        p.arpeggio(chord, root=48, beat=start, span=length, spacing=0.25, count=4)
+
+        Pass a list of pitches instead to arpeggiate something that isn't a chord (a
+        scale fragment, a custom voicing).  Unlike a held ``chord()``, an arpeggio is
+        a stream of single notes, so it has no ``sustain`` / ``legato`` / ``detached``
+        — use ``duration`` for how long each note rings and ``span`` for how much of
+        the bar the figure fills.
+
+        An empty pitch list rests (places nothing), so a live arpeggiator over
+        ``p.held_notes()`` is simply silent when no keys are held::
+
+                p.arpeggio(p.held_notes(), direction="up")
+
+        Parameters:
+                notes: A chord to arpeggiate (anything with a ``.tones()`` method — the
+                        pattern's ``chord``, or a chord from ``p.progression()``), or a list
+                        of MIDI note numbers (e.g. ``60``) / drum-name strings when the
+                        pattern has a ``drum_note_map``.  For pitched note *names* use the
+                        integer constants in ``subsequence.constants.midi_notes`` (e.g.
+                        ``notes.C4``).  In the list form, a drum name the map lacks is
+                        dropped (warned once); a string with no map at all still raises.
+                root: MIDI root note for the chord form (e.g. 48), exactly as ``chord()``.
+                        Required for a chord; not used for a plain pitch list.
+                velocity: MIDI velocity for all notes (default 100 — arpeggios sit in the
+                        melodic-line velocity bucket, not the softened-chord bucket; pass
+                        ``velocity=90`` to match ``chord()``), or a ``(low, high)`` tuple for
+                        a fresh random draw per note.
+                count: Number of voices for the chord form (cycles tones into higher
+                        octaves if larger than the chord's natural size).  Chord form only.
+                inversion: Chord inversion for the chord form (ignored when voice leading
+                        is on).  Chord form only.
+                beat: Beat to start the figure at (default 0.0 = the start of the
+                        pattern).  Use it to place an arpeggio over one progression chord.
+                span: How many beats the figure fills, starting at ``beat`` (default: to
+                        the end of the pattern).  Pass the chord's ``length`` from a
+                        progression loop to confine the arpeggio to its slot.
+                spacing: Time between each note in beats (default 0.25 = 16th note).
+                duration: Note duration in beats.  Defaults to ``spacing`` (each note
+                        fills its slot exactly).
+                direction: Order in which the notes are cycled:
+
+                        - ``"up"`` — lowest to highest, then wrap (default).
+                        - ``"down"`` — highest to lowest, then wrap.
+                        - ``"up_down"`` — ascend then descend (ping-pong), cycling.
+                        - ``"random"`` — shuffled once per call using *rng*.
+
+                seed: Fix the ``direction="random"`` shuffle for this call (an
+                        int); omit to use the pattern's RNG.
+                rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
+
+        Example:
+                ```python
+                # Arpeggiate the pattern's current chord, four voices ascending
+                p.arpeggio(chord, root=60, count=4, spacing=0.25)
+
+                # A plain list of pitches — ping-pong: C E G E C E G E ...
+                p.arpeggio([60, 64, 67], spacing=0.25, direction="up_down")
+
+                # One chord of a progression, confined to its slot, humanised
+                p.arpeggio(chord, root=48, beat=start, span=length, velocity=(60, 95))
+                ```
+        """
+
+        if beat < 0:
+            raise ValueError(
+                "arpeggio beat must be >= 0 — use a positive start within the pattern"
+            )
+
+        if spacing <= 0:
+            raise ValueError("Spacing must be positive")
+
+        # Resolve the first argument into a concrete pitch list.  A chord-like object
+        # (it has .tones()) is voiced via root/count/inversion exactly as chord() does;
+        # anything else is treated as an explicit list of pitches (today's behaviour).
+        resolved: typing.List[int]
+
+        if hasattr(notes, "tones"):
+            if root is None:
+                raise ValueError(
+                    "arpeggio(<chord>, …) needs a root — e.g. arpeggio(chord, root=48); pass a root MIDI note, or hand a list of pitches instead"
+                )
+            resolved = notes.tones(root=root, inversion=inversion, count=count)
+        else:
+            if root is not None or count is not None or inversion != 0:
+                raise ValueError(
+                    "arpeggio root=, count=, and inversion= only apply to the chord form — arpeggio(chord, root=48, count=4); with a plain pitch list, drop them"
+                )
+            if not notes:
+                return self  # nothing held (e.g. p.arpeggio(p.held_notes()) with no keys down) — rest
+            resolved = [
+                r
+                for r in (self._resolve_pitch_lenient(p) for p in notes)
+                if r is not None
+            ]
+            if not resolved:
+                return (
+                    self  # every named voice was dropped (this device lacks them all)
+                )
+
+        if direction == "up":
+            pass  # already in ascending order as supplied
+        elif direction == "down":
+            resolved = list(reversed(resolved))
+        elif direction == "up_down":
+            if len(resolved) > 1:
+                resolved = resolved + list(reversed(resolved[1:-1]))
+        elif direction == "random":
+            rng = self._rng_from(seed, rng)
+            resolved = list(resolved)
+            rng.shuffle(resolved)
+        else:
+            raise ValueError(
+                f"direction must be 'up', 'down', 'up_down', or 'random', got '{direction}'"
+            )
+
+        if duration is None:
+            duration = spacing
+
+        # Window the figure to [beat, beat + span), clamped to the pattern end so a
+        # positioned arpeggio (e.g. one chord of a progression) stays in its slot.
+        pattern_length = float(self._pattern.length)
+
+        if span is None:
+            end = pattern_length
+        else:
+            if span <= 0:
+                raise ValueError(f"span must be positive, got {span:g}")
+            end = beat + span
+
+        end = min(end, pattern_length)
+
+        # Place notes one at a time via self.note() so a (low, high)
+        # velocity tuple produces a fresh random draw per arp note.
+        position = beat
+        i = 0
+        while position < end:
+            self.note(
+                pitch=resolved[i % len(resolved)],
+                beat=position,
+                velocity=velocity,
+                duration=duration,
+            )
+            position += spacing
+            i += 1
+        return self
+
+    def _warn_positioned_articulation(self, method: str, beat: float) -> None:
+        """Warn (once per pattern) that ``sustain``/``detached`` ring from the pattern
+        length, not from ``beat``.
+
+        ``chord``/``strum`` size ``sustain``/``detached`` against the whole pattern (the
+        one-chord-fills-the-bar model).  With a non-zero ``beat`` — e.g. placing several
+        chords across a progression — that almost always rings the chord far past its
+        slot, so we flag it.  Deduped on the pattern so a hot-reloading builder warns once.
+        """
+
+        if self._pattern._warned_positioned_articulation:
+            return
+        self._pattern._warned_positioned_articulation = True
+        logger.warning(
+            "%s(beat=%g, …) was called with sustain= or detached= set — those size the ring "
+            "from the pattern length, not from beat, so the chord can sustain past its slot.  "
+            "For a positioned chord (e.g. over a progression) set duration= explicitly instead.",
+            method,
+            beat,
+        )
+
+    def chord(
+        self,
+        chord_obj: typing.Any,
+        root: int,
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
+        sustain: bool = False,
+        duration: float = 1.0,
+        inversion: int = 0,
+        count: typing.Optional[int] = None,
+        legato: typing.Optional[float] = None,
+        detached: typing.Optional[float] = None,
+        beat: float = 0.0,
+    ) -> "PatternBuilder":
+        """
+        Place a chord at ``beat`` (the start of the pattern by default).
+
+        Note: If the pattern was registered with ``voice_leading=True``,
+        this method automatically chooses the best inversion.
+
+        Parameters:
+                chord_obj: The chord to play (usually the ``chord`` parameter
+                        passed to your pattern function).
+                root: MIDI root note (e.g., 60 for Middle C).
+                velocity: MIDI velocity (default 90), or a ``(low, high)``
+                        tuple for a fresh random draw per chord tone (each
+                        voice gets a slightly different velocity — useful for
+                        humanising the "fingers" feel).
+                sustain: If True, the notes last for the entire pattern duration.
+                        Mutually exclusive with ``legato`` and ``detached``.
+                duration: Note duration in beats (default 1.0). Ignored when
+                        ``legato`` or ``detached`` is set, since those recalculate
+                        durations.
+                inversion: Specific chord inversion (ignored if voice leading is on).
+                count: Number of notes to play (cycles tones if higher than
+                        the chord's natural size).
+                legato: If given, calls ``p.legato(ratio)`` after placing the
+                        chord, stretching each note to fill ``ratio`` of the gap to
+                        the next note. Mutually exclusive with ``sustain`` and
+                        ``detached``.
+                detached: If given, the chord rings until ``detached`` beats
+                        before the next cycle — equivalent to setting
+                        ``duration = pattern.length - detached``.  Use this for a
+                        declarative polyphony-safety margin so the chord always
+                        releases before the next chord begins.  Mutually exclusive
+                        with ``sustain`` and ``legato``.
+                beat: Beat offset to place the chord at (default 0.0 = the start of the
+                        pattern).  ``sustain`` and ``detached`` still measure their ring from the
+                        pattern length, not from ``beat`` — when placing several positioned chords
+                        (e.g. over a progression) set ``duration`` explicitly instead.
+
+        Example::
+
+                # Shorthand for: p.chord(...) then p.legato(0.9)
+                p.chord(chord, root=root, velocity=85, count=4, legato=0.9)
+
+                # Hold the chord almost the full cycle, releasing 0.25 beats
+                # before the next chord begins.
+                p.chord(chord, root=root, velocity=85, count=5, detached=0.25)
+        """
+
+        set_count = (
+            (1 if sustain else 0)
+            + (1 if legato is not None else 0)
+            + (1 if detached is not None else 0)
+        )
+        if set_count > 1:
+            raise ValueError(
+                "sustain=, legato=, and detached= are mutually exclusive — use one or the other"
+            )
+
+        if beat != 0.0 and (sustain or detached is not None):
+            self._warn_positioned_articulation("chord", beat)
+
+        pitches = chord_obj.tones(root=root, inversion=inversion, count=count)
+
+        if sustain:
+            duration = float(self._pattern.length)
+        elif detached is not None:
+            duration = float(self._pattern.length) - detached
+            if duration <= 0:
+                raise ValueError(
+                    f"detached ({detached}) must be less than the pattern length ({self._pattern.length:g} beats) so the chord keeps a positive duration"
+                )
+
+        for pitch in pitches:
+            self._pattern.add_note_beats(
+                beat_position=beat,
+                pitch=pitch,
+                velocity=self._resolve_velocity(velocity),
+                duration_beats=duration,
+            )
+
+        if legato is not None:
+            self.legato(legato)
+        return self
+
+    def strum(
+        self,
+        chord_obj: typing.Any,
+        root: int,
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
+        sustain: bool = False,
+        duration: float = 1.0,
+        inversion: int = 0,
+        count: typing.Optional[int] = None,
+        spacing: float = 0.05,
+        direction: str = "up",
+        legato: typing.Optional[float] = None,
+        detached: typing.Optional[float] = None,
+        beat: float = 0.0,
+    ) -> "PatternBuilder":
+        """
+        Play a chord with a small time offset between each note (strum effect).
+
+        Works exactly like ``chord()`` but staggers the notes instead of
+        playing them simultaneously. The first note lands on ``beat`` (0 by default);
+        subsequent notes are delayed by ``spacing`` beats each.
+
+        Parameters:
+                chord_obj: The chord to play (usually the ``chord`` parameter
+                        passed to your pattern function).
+                root: MIDI root note (e.g., 60 for Middle C).
+                velocity: MIDI velocity (default 90), or a ``(low, high)``
+                        tuple for a fresh random draw per strum note.
+                sustain: If True, the notes last for the entire pattern duration.
+                        Mutually exclusive with ``legato`` and ``detached``.
+                duration: Note duration in beats (default 1.0). Ignored when
+                        ``legato`` or ``detached`` is set, since those recalculate
+                        durations.
+                inversion: Specific chord inversion (ignored if voice leading is on).
+                count: Number of notes to play (cycles tones if higher than
+                        the chord's natural size).
+                spacing: Time in beats between each note onset (default 0.05).
+                direction: ``"up"`` for low-to-high, ``"down"`` for high-to-low.
+                beat: Beat offset for the first note (default 0.0); the stagger is added
+                        on top.  ``sustain``/``detached`` ring from the pattern length, not from
+                        ``beat`` — set ``duration`` explicitly when placing positioned strums.
+                legato: If given, calls ``p.legato(ratio)`` after placing the
+                        chord, stretching each note to fill ``ratio`` of the gap to
+                        the next note. Mutually exclusive with ``sustain`` and
+                        ``detached``.
+                detached: If given, every strum note rings with a uniform
+                        duration of ``pattern.length - detached - (count - 1) * spacing``.
+                        The last note ends exactly ``detached`` beats before the
+                        next cycle; earlier notes end proportionally sooner, so
+                        releases are staggered in the same shape as the placements
+                        (the hand lifts the way it landed).  Polyphony-safe:
+                        guarantees nothing from this strum is still sounding when
+                        the next chord begins.  Mutually exclusive with ``sustain``
+                        and ``legato``.
+
+        Example::
+
+                # Gentle upward strum with legato
+                p.strum(chord, root=52, velocity=85, spacing=0.06, legato=0.95)
+
+                # Fast downward strum
+                p.strum(chord, root=52, direction="down", spacing=0.03)
+
+                # Five-voice strum with a 0.25-beat safety gap before the
+                # next chord — won't exhaust polyphony on a 5-voice synth.
+                p.strum(chord, root=48, count=5, spacing=0.1, detached=0.25)
+        """
+
+        set_count = (
+            (1 if sustain else 0)
+            + (1 if legato is not None else 0)
+            + (1 if detached is not None else 0)
+        )
+        if set_count > 1:
+            raise ValueError(
+                "sustain=, legato=, and detached= are mutually exclusive — use one or the other"
+            )
+
+        if beat != 0.0 and (sustain or detached is not None):
+            self._warn_positioned_articulation("strum", beat)
+
+        if spacing <= 0:
+            raise ValueError("spacing must be positive")
+
+        if direction not in ("up", "down"):
+            raise ValueError(f"direction must be 'up' or 'down', got '{direction}'")
+
+        pitches = chord_obj.tones(root=root, inversion=inversion, count=count)
+
+        if direction == "down":
+            pitches = list(reversed(pitches))
+
+        if sustain:
+            duration = float(self._pattern.length)
+        elif detached is not None:
+            duration = (
+                float(self._pattern.length) - detached - (len(pitches) - 1) * spacing
+            )
+            if duration <= 0:
+                raise ValueError(
+                    f"detached ({detached}) plus the strum stagger exceeds the pattern length ({self._pattern.length:g} beats) — reduce detached, spacing, or count"
+                )
+
+        for i, pitch in enumerate(pitches):
+            self.note(
+                pitch=pitch,
+                beat=beat + i * spacing,
+                velocity=velocity,
+                duration=duration,
+            )
+
+        if legato is not None:
+            self.legato(legato)
+        return self
+
+    def progression(
+        self,
+        source: subsequence.progressions.ProgressionSource,
+        harmonic_rhythm: subsequence.progressions.HarmonicRhythmSpec,
+        key: typing.Optional[str] = None,
+        seed: typing.Optional[int] = None,
+        rng: typing.Optional[random.Random] = None,
+    ) -> subsequence.progressions.Progression:
+        """Realise a chord progression across the pattern, returning it to place yourself.
+
+        Returns a freshly realised :class:`~subsequence.progressions.Progression`
+        — an iterable of ``(chord, start, length)`` events laying a progression
+        end-to-end across the pattern's length, each chord given a length drawn
+        from *harmonic_rhythm* (the musical term for how often the chords
+        change).  You loop over it and play each chord however you like —
+        block, strummed, or arpeggiated::
+
+                for chord, start, length in p.progression("phrygian_minor",
+                                harmonic_rhythm=between(WHOLE, 3 * WHOLE, step=WHOLE), seed=7):
+                        p.strum(chord, root=48, beat=start, duration=length - 0.25, spacing=0.04, count=4)
+
+        This is the **part-level** progression seam: it re-realises a fresh
+        value each rebuild (the breathing behaviour), runs entirely outside
+        the global harmonic clock — so a part can inhabit its own harmonic
+        world (polytonality) or move faster than the clock's span floor —
+        and never advances engine state.
+
+        For a one-call block-chord part with no loop, use ``composition.chords()``.
+
+        Parameters:
+                source: A built-in chord-graph style name (e.g. ``"phrygian_minor"``) to
+                        *generate* a progression; an explicit element list — ints where
+                        diatonic, name or roman strings (``["Cm7", 6, "bVII"]``), ``Chord``
+                        objects — cycled to fill the pattern; or a
+                        :class:`~subsequence.progressions.Progression` value (its spans
+                        cycled, decoration preserved).
+                harmonic_rhythm: How long each chord lasts, in beats.  One of: a single
+                        number (static); a list of lengths (a shaped rhythm such as
+                        ``[WHOLE, HALF, HALF]``, cycled per chord); or ``between(low, high,
+                        step=...)`` for a bounded, optionally-quantised random length.
+                key: Key for styles and key-relative elements (degrees/romans);
+                        defaults to the composition's key.
+                seed: If given, the progression is realised from a fresh ``Random(seed)``
+                        so it is identical on every cycle (a fixed phrase).  When omitted, the
+                        pattern's own RNG is used, so it can vary per cycle (still reproducible
+                        under a composition seed).
+                rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
+
+        Returns:
+                A ``Progression`` you can iterate as ``(chord, start, length)`` tuples
+                (or read via ``.events()`` / ``print()``).
+        """
+
+        rng = self._rng_from(seed, rng)
+        resolved_key = key if key is not None else self.key
+        return subsequence.progressions.realize(
+            source=source,
+            harmonic_rhythm=harmonic_rhythm,
+            key=resolved_key,
+            length=float(self._pattern.length),
+            rng=rng,
+            scale=self.scale or "ionian",
+        )
+
+    def broken_chord(
+        self,
+        chord_obj: typing.Any,
+        root: int,
+        order: typing.List[int],
+        spacing: float = 0.25,
+        velocity: typing.Union[
+            int, typing.Tuple[int, int]
+        ] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
+        duration: typing.Optional[float] = None,
+        inversion: int = 0,
+        beat: float = 0.0,
+        span: typing.Optional[float] = None,
+    ) -> "PatternBuilder":
+        """
+        Play a chord as an arpeggio in a specific or random order.
+
+        This generates the chord tones and maps them according to the provided
+        ``order`` list of indices, then delegates to ``arpeggio()``. It is ideal
+        for broken chords or random chord-tone melodies.
+
+        Because the order is a list of node indices, the number of generated tones
+        is automatically set to ``max(order) + 1`` to ensure all indices are valid.
+        Higher indices will cycle into the next octave.
+
+        Parameters:
+                chord_obj: The chord to play (usually from ``p.section.chord``).
+                root: MIDI root note (e.g., 60 for Middle C).
+                order: List of indices into the chord tones array, dictating playback order.
+                spacing: Time between each note in beats (default 0.25 = 16th note).
+                velocity: MIDI velocity for all notes (default 90 — broken_chord is a
+                        chord voice, so it sits in the softer chord velocity bucket like
+                        ``chord()`` and ``strum()``), or a ``(low, high)`` tuple for a
+                        fresh random draw per note.
+                duration: Note duration in beats. Defaults to ``spacing``.
+                inversion: Specific chord inversion (ignored if voice leading is on).
+                beat: Beat to start the broken chord at (default 0.0).
+                span: How many beats to fill from ``beat`` (default: to the end of the
+                        pattern).  Like ``arpeggio()``, use it to place a broken chord over
+                        one chord of a progression.
+
+        Example::
+
+                # A 5-note broken chord using a predefined pattern
+                p.broken_chord(chord, root=60, order=[4, 0, 2, 1, 3], spacing=0.25)
+
+                # A fully random broken chord using the pattern's deterministic RNG
+                order = list(range(5))
+                p.rng.shuffle(order)
+                p.broken_chord(chord, root=60, order=order)
+        """
+
+        if not order:
+            raise ValueError("order list cannot be empty")
+
+        for idx in order:
+            if not isinstance(idx, int) or idx < 0:
+                raise ValueError("order must contain only non-negative integers")
+
+        required_count = max(order) + 1
+        tones = chord_obj.tones(root=root, inversion=inversion, count=required_count)
+        pitches = [tones[i] for i in order]
+
+        self.arpeggio(
+            notes=pitches,
+            spacing=spacing,
+            velocity=velocity,
+            duration=duration,
+            direction="up",
+            beat=beat,
+            span=span,
+        )
+        return self
+
+    def swing(
+        self, percent: float = 57.0, grid: float = 0.25, strength: float = 1.0
+    ) -> "PatternBuilder":
+        """
+        Apply swing feel to all notes in the pattern.
+
+        A shortcut for ``p.groove(Groove.swing(percent, grid), strength)``. Swing is a
+        groove where every other grid note is delayed - the simplest way to
+        give a mechanical pattern a pushed, human feel.
+
+        50% is perfectly straight (no swing). 57% is the Ableton default
+        (a gentle shuffle). 67% is classic triplet swing.
+
+        Parameters:
+                percent: Swing amount as a percentage (50-75 is the useful range).
+                        50 = straight, 57 = moderate shuffle, 67 ≈ triplet swing.
+                grid: Grid size in beats (0.25 = 16th notes, 0.5 = 8th notes).
+                strength: How much swing to apply (0.0-1.0). 0.0 = no effect,
+                        1.0 = full swing at the given percent. Useful for dialling
+                        back the feel without changing the swing percentage.
+
+        Example::
+
+                p.hit_steps("hh", range(16), velocity=80)
+                p.swing(57)                # gentle 16th-note shuffle
+                p.swing(57, strength=0.5)  # half-strength — subtler feel
+        """
+
+        self.groove(
+            subsequence.groove.Groove.swing(percent=percent, grid=grid),
+            strength=strength,
+        )
+        return self
+
+    def groove(
+        self, template: subsequence.groove.Groove, strength: float = 1.0
+    ) -> "PatternBuilder":
+        """
+        Apply a groove template to all notes in the pattern.
+
+        A groove is a repeating pattern of per-step timing offsets and
+        optional velocity adjustments. It gives a pattern its characteristic
+        rhythmic feel - swing, shuffle, MPC pocket, or any custom shape.
+
+        Construct a groove with one of the factory methods:
+
+        - ``Groove.swing(percent)`` - simple swing by percentage
+          (or use the ``p.swing()`` shortcut for common cases)
+        - ``Groove.from_agr(path)`` - import timing from an Ableton .agr file
+        - ``Groove(offsets=[...], grid=0.25, velocities=[...])`` - fully custom
+
+        ``p.groove()`` is a post-build transform - call it after all notes
+        have been placed. It pairs well with ``p.randomize()`` for
+        structured feel plus organic micro-variation.
+
+        Parameters:
+                template: A ``Groove`` instance defining the timing/velocity template.
+                strength: How much of the groove to apply (0.0-1.0). 0.0 = no
+                        effect, 1.0 = full groove. Blends timing offsets and velocity
+                        deviation proportionally - equivalent to Ableton's
+                        TimingAmount and VelocityAmount dials.
+
+        Example::
+
+                groove = subsequence.Groove.swing(percent=57)
+
+                @composition.pattern(channel=10, beats=4)
+                def drums (p):
+                        p.hit_steps("kick", [0, 8], velocity=100)
+                        p.hit_steps("hh", range(16), velocity=80)
+                        p.groove(groove)               # full strength
+                        p.groove(groove, strength=0.5) # half-strength blend
+        """
+
+        self._pattern.steps = subsequence.groove.apply_groove(
+            self._pattern.steps, template, strength=strength
+        )
+        return self
+
+    # These methods transform existing notes after they have been placed.
+    # Call them at the end of your builder function, after all notes are
+    # in position. They operate on self._pattern.steps (the pulse-position
+    # dict) and can be chained in any order.
+
+    def dropout(
+        self,
+        probability: float,
+        seed: typing.Optional[int] = None,
+        rng: typing.Optional[random.Random] = None,
+    ) -> "PatternBuilder":
+        """
+        Randomly remove notes from the pattern.
+
+        This operates on all notes currently placed in the builder.
+
+        Parameters:
+                probability: The chance (0.0 to 1.0) of each pulse POSITION being
+                        removed — all notes sharing that position (a chord's voices,
+                        layered drums) live or die together.
+                seed: Fix the dropout for this call (an int); omit to use the
+                        pattern's RNG.
+                rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
+        """
+
+        rng = self._rng_from(seed, rng)
+
+        positions_to_remove = []
+
+        for position in list(self._pattern.steps.keys()):
+            if rng.random() < probability:
+                positions_to_remove.append(position)
+
+        for position in positions_to_remove:
+            del self._pattern.steps[position]
+        return self
+
+    def velocity_shape(
+        self,
+        low: int = subsequence.constants.velocity.VELOCITY_SHAPE_LOW,
+        high: int = subsequence.constants.velocity.VELOCITY_SHAPE_HIGH,
+    ) -> "PatternBuilder":
+        """
+        Apply organic velocity variation to all notes in the pattern.
+
+        Uses a van der Corput sequence to distribute velocities evenly
+        across the specified range, which often sounds more 'human' than
+        purely random velocity variation.
+
+        Parameters:
+                low: Minimum velocity (default 64).
+                high: Maximum velocity (default 127).
+        """
+
+        positions = sorted(self._pattern.steps.keys())
+
+        if not positions:
+            return self
+
+        vdc_values = subsequence.sequence_utils.generate_van_der_corput_sequence(
+            len(positions)
+        )
+
+        for position, vdc_value in zip(positions, vdc_values):
+            step = self._pattern.steps[position]
+
+            for note in step.notes:
+                note.velocity = int(low + (high - low) * vdc_value)
+        return self
+
+    def duck_map(
+        self,
+        steps: typing.Iterable[int],
+        floor: float = 0.0,
+        grid: typing.Optional[int] = None,
+    ) -> typing.List[float]:
+        """
+        Build a per-step velocity multiplier list for sidechain-style ducking.
+
+        Returns a list of floats, one per grid step: ``floor`` at each trigger
+        step in ``steps``, ``1.0`` everywhere else. Pass the result to
+        ``p.data`` for another pattern to read, then apply with
+        ``p.scale_velocities()``.
+
+        Parameters:
+                steps: Grid indices that trigger ducking (e.g. kick hit positions).
+                floor: Multiplier written at trigger steps. ``0.0`` = full silence,
+                        ``1.0`` = no effect. Values in between give partial ducking.
+                grid: Grid resolution (defaults to ``p.grid``).
+
+        Returns:
+                ``List[float]`` of length ``grid``.
+
+        Example::
+
+                # Full duck on kick hits
+                p.data["kick_sc"] = p.duck_map(kick_steps)
+
+                # Softer duck
+                p.data["kick_sc"] = p.duck_map(kick_steps, floor=0.3)
+
+                # Velocity-proportional: deeper duck for harder kicks
+                p.data["kick_sc"] = p.duck_map(kick_steps, floor=1.0 - (velocity / 127))
+        """
+
+        if grid is None:
+            grid = self._default_grid
+
+        trigger = set(steps)
+        return [floor if s in trigger else 1.0 for s in range(grid)]
+
+    def build_velocity_ramp(
+        self,
+        low: int,
+        high: int,
+        shape: str = "linear",
+        grid: typing.Optional[int] = None,
+    ) -> typing.List[int]:
+        """
+        Build a per-step velocity list that ramps from *low* to *high*.
+
+        A musician-friendly shortcut for the common pattern of generating
+        a fixed-length velocity sweep using an easing curve. Returns
+        ``List[int]`` ready to pass directly to ``velocities=`` parameters.
+
+        Parameters:
+                low: Velocity at the first step (0–127).
+                high: Velocity at the last step (0–127).
+                shape: Easing curve name (see ``subsequence.easing``). Common
+                        values: ``"linear"``, ``"ease_in"``, ``"ease_out"``,
+                        ``"ease_in_out"``. Defaults to ``"linear"``.
+                grid: Number of steps (defaults to ``p.grid``).
+
+        Returns:
+                ``List[int]`` of length ``grid``, values clamped to 0–127.
+
+        Example::
+
+                # Snare roll that swells into a downbeat
+                p.sequence(
+                        steps=range(16),
+                        pitches="snare_1",
+                        durations=0.1,
+                        velocities=p.build_velocity_ramp(25, 100, "ease_in"),
+                )
+
+                # Fade-out ghost fill
+                p.ghost_fill("snare_1", 1,
+                        velocity=p.build_velocity_ramp(80, 20, "ease_out"),
+                        bias="sixteenths", no_overlap=True)
+        """
+
+        if grid is None:
+            grid = self._default_grid
+
+        return [
+            max(0, min(127, int(v)))
+            for v in subsequence.easing.ramp(grid, float(low), float(high), shape)
+        ]
+
+    def scale_velocities(
+        self,
+        factors: typing.Sequence[float],
+        grid: typing.Optional[int] = None,
+    ) -> "PatternBuilder":
+        """
+        Scale note velocities by a per-step multiplier list.
+
+        Each note's velocity is multiplied by the factor at the corresponding
+        grid step index. A factor of ``1.0`` leaves the velocity unchanged;
+        ``0.0`` silences the note; ``0.5`` halves it.
+
+        Parameters:
+                factors: Per-step multipliers, one float per grid step.
+                        Values outside ``[0.0, 1.0]`` are valid — result is clamped to
+                        ``[0, 127]`` after scaling.
+                grid: Grid resolution (defaults to ``p.grid``). Must match the
+                        length of ``factors``.
+
+        Returns:
+                ``self`` for fluent chaining.
+
+        Example::
+
+                # Sidechain ducking: silence bass on kick steps, full volume elsewhere.
+                kick_steps = {0, 4, 8, 12}
+                p.data["kick_sc"] = [0.0 if s in kick_steps else 1.0 for s in range(p.grid)]
+
+                # In the bass pattern:
+                p.scale_velocities(p.data.get("kick_sc", [1.0] * p.grid))
+        """
+
+        if grid is None:
+            grid = self._default_grid
+
+        if grid <= 0:
+            return self
+
+        step_duration = self._pattern.length / grid
+        pulses_per_step = step_duration * subsequence.constants.MIDI_QUARTER_NOTE
+
+        for pulse, step in self._pattern.steps.items():
+            # A note in the last half-step rounds up to idx == grid, which is
+            # really the wrap back to step 0 of the next cycle (patterns are
+            # cyclic) — wrap it so a note pushed late by swing/randomize scales
+            # by factors[0] rather than silently keeping its velocity.
+            idx = int(round(pulse / pulses_per_step)) % grid
+
+            if 0 <= idx < len(factors):
+                for note in step.notes:
+                    note.velocity = max(0, min(127, int(note.velocity * factors[idx])))
+
+        return self
+
+    def randomize(
+        self,
+        timing: float = 0.03,
+        velocity: float = 0.0,
+        seed: typing.Optional[int] = None,
+        rng: typing.Optional[random.Random] = None,
+    ) -> "PatternBuilder":
+        """
+        Add random variations to note timing and velocity.
+
+        Introduces small imperfections — the micro-variations that distinguish
+        a played performance from a perfectly quantized sequence.
+
+        Called with no arguments, only timing variation is applied
+        (velocity defaults to 0.0 — no change). Pass a velocity value
+        to also randomise dynamics:
+
+            # Timing only (default)
+            p.randomize()
+
+            # Both axes
+            p.randomize(timing=0.04, velocity=0.08)
+
+            # Stronger feel
+            p.randomize(timing=0.08, velocity=0.15)
+
+        Resolution note: the sequencer runs at 24 PPQN. At 120 BPM, one
+        pulse ≈ 20ms. Timing shifts smaller than roughly 0.04 beats may
+        have no audible effect because they round to zero pulses.
+        Recommended range: timing=0.02–0.08, velocity=0.05–0.15.
+
+        When the composition has a seed set, ``p.rng`` is deterministic,
+        so ``p.randomize()`` produces the same result on every run.
+
+        Parameters:
+                timing: Maximum timing offset in beats (e.g. 0.05 = ±1.2
+                        pulses at 24 PPQN). Notes shift by a random amount
+                        within ``[-timing, +timing]`` beats. Clamped to
+                        pulse 0 at the lower bound.
+                velocity: Maximum velocity scale factor (0.0 to 1.0). Each
+                        note's velocity is multiplied by a random value in
+                        ``[1 - velocity, 1 + velocity]``, clamped to 1–127.
+                seed: Fix the variations for this call (an int); omit to use the
+                        pattern's RNG (seeded when the composition has a seed).
+                rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
+        """
+
+        rng = self._rng_from(seed, rng)
+
+        max_timing_pulses = timing * subsequence.constants.MIDI_QUARTER_NOTE
+        new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
+
+        for pulse, step in self._pattern.steps.items():
+            if timing != 0.0:
+                offset = rng.uniform(-max_timing_pulses, max_timing_pulses)
+                new_pulse = max(0, int(round(pulse + offset)))
+            else:
+                new_pulse = pulse
+
+            if new_pulse not in new_steps:
+                new_steps[new_pulse] = subsequence.pattern.Step()
+
+            # Process notes: randomise velocity once per note, then place in new bucket.
+            for note in step.notes:
+                if velocity != 0.0:
+                    scale = rng.uniform(1.0 - velocity, 1.0 + velocity)
+                    note.velocity = max(1, min(127, int(round(note.velocity * scale))))
+
+                new_steps[new_pulse].notes.append(note)
+
+        self._pattern.steps = new_steps
+        return self
+
+    def legato(self, ratio: float = 1.0) -> "PatternBuilder":
+        """
+        Adjust note durations to fill the gap until the next note.
+
+        Parameters:
+                ratio: How much of the gap to fill (0.0 to 1.0).
+                        1.0 is full legato, < 1.0 is staccato.
+        """
+
+        if not self._pattern.steps:
+            return self
+
+        sorted_positions = sorted(self._pattern.steps.keys())
+        total_pulses = int(
+            self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE
+        )
+
+        for i, position in enumerate(sorted_positions):
+            # Calculate gap to next note
+            if i < len(sorted_positions) - 1:
+                gap = sorted_positions[i + 1] - position
+            else:
+                # Wrap around: gap is distance to end + distance to first note
+                gap = (total_pulses - position) + sorted_positions[0]
+
+            # Apply ratio and enforce minimum duration
+            new_duration = max(1, int(gap * ratio))
+
+            step = self._pattern.steps[position]
+            for note in step.notes:
+                note.duration = new_duration
+        return self
+
+    def duration(self, beats: float) -> "PatternBuilder":
+        """
+        Set every note's duration to a fixed length in beats.
+
+        This overrides any existing note durations, acting as a global
+        'gate time' relative to the beat (1.0 = a quarter note).  Short
+        values clip notes tight; long values let them ring.  For a
+        guaranteed gap before each next onset regardless of note spacing,
+        use :meth:`detached`; for a classic staccato articulation, either
+        a short fixed value (``p.duration(0.1)``) or ``p.detached()`` works.
+
+        Parameters:
+                beats: Fixed note duration in beats (relative to a quarter note).
+                        0.5 = eighth-note length, 0.25 = sixteenth-note length.  Must be positive.
+        """
+
+        if beats <= 0:
+            raise ValueError("Note duration (beats) must be positive")
+
+        duration_pulses = int(beats * subsequence.constants.MIDI_QUARTER_NOTE)
+        duration_pulses = max(1, duration_pulses)
+
+        for step in self._pattern.steps.values():
+            for note in step.notes:
+                note.duration = duration_pulses
+        return self
+
+    def detached(self, beats: float = 0.05) -> "PatternBuilder":
+        """
+        Shorten note durations so a guaranteed silence precedes the next onset.
+
+        The complement of :meth:`legato`.  For every placed note, the duration
+        is shrunk so that at least ``beats`` beats of silence remain before
+        the next note begins (wrapping around to the first note for the last
+        one).  Use this when you want a clean detached articulation, or as a
+        polyphony-safety margin between chord transitions on a monophonic or
+        voice-limited synth.
+
+        Parameters:
+                beats: Minimum gap in beats before the next onset (default 0.05
+                        — roughly 25 ms at 120 BPM).  Must be positive.
+
+        Example::
+
+                # Bassline on a mono synth: each 16th note ends 0.05 beats
+                # before the next, so the synth never retriggers mid-note.
+                p.arpeggio(chord.tones(36, count=4), spacing=0.25).detached()
+
+                # Explicit larger gap for a longer release tail.
+                p.melody(state, spacing=0.25).detached(0.1)
+        """
+
+        if beats <= 0:
+            raise ValueError("detached beats must be positive")
+
+        if not self._pattern.steps:
+            return self
+
+        sorted_positions = sorted(self._pattern.steps.keys())
+        total_pulses = int(
+            self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE
+        )
+        detached_pulses = int(beats * subsequence.constants.MIDI_QUARTER_NOTE)
+
+        for i, position in enumerate(sorted_positions):
+            # Calculate gap to next note (wrap-around for the last one)
+            if i < len(sorted_positions) - 1:
+                gap = sorted_positions[i + 1] - position
+            else:
+                gap = (total_pulses - position) + sorted_positions[0]
+
+            new_duration = max(1, gap - detached_pulses)
+
+            for note in self._pattern.steps[position].notes:
+                note.duration = new_duration
+        return self
+
+    def snap_to_scale(
+        self,
+        key: str,
+        mode: str = "ionian",
+        strength: float = 1.0,
+        seed: typing.Optional[int] = None,
+        rng: typing.Optional[random.Random] = None,
+    ) -> "PatternBuilder":
+        """
+        Snap all notes in the pattern to the nearest pitch in a scale.
+
+        Useful after generative or sensor-driven pitch work (random walks,
+        mapping data values to note numbers, etc.) to ensure every note lands
+        on a musically valid scale degree.  The snap is applied in
+        place; notes already on a scale degree are left unchanged.
+
+        When a note falls equidistant between two scale tones, the upward
+        direction is preferred.
+
+        Parameters:
+                key: Root note name (e.g. ``"C"``, ``"F#"``, ``"Bb"``).
+                mode: Scale mode.  Any key in :data:`subsequence.intervals.DIATONIC_MODE_MAP`
+                      is accepted: ``"ionian"`` (default), ``"dorian"``, ``"minor"``,
+                      ``"harmonic_minor"``, etc.
+                strength: Probability that each note is snapped (0.0–1.0).
+                      At 1.0 (default), every note snaps to the scale.
+                      At 0.0, no notes are affected.
+                      Values in between create melodies that are mostly in key
+                      with occasional chromatic passing tones.  Uses the
+                      pattern's seeded RNG for reproducibility.
+                seed: Fix the partial-strength snapping for this call (an int);
+                      omit to use the pattern's RNG.
+                rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
+
+        Example:
+                ```python
+                @composition.pattern(channel=1, beats=4)
+                def melody (p):
+                    for beat in range(16):
+                        pitch = 60 + random.randint(-5, 5)
+                        p.note(pitch, beat=beat * 0.25)
+                    p.snap_to_scale("G", "dorian", strength=0.8)
+                ```
+        """
+
+        rng = self._rng_from(seed, rng)
+
+        key_pc = subsequence.chords.key_name_to_pc(key)
+        scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)
+
+        for step in self._pattern.steps.values():
+            for note in step.notes:
+                if strength >= 1.0 or rng.random() < strength:
+                    note.pitch = subsequence.intervals.quantize_pitch(
+                        note.pitch, scale_pcs
+                    )
+        return self
+
+    def apply_tuning(
+        self,
+        tuning: "subsequence.tuning.Tuning",
+        bend_range: float = 2.0,
+        channels: typing.Optional[typing.List[int]] = None,
+        reference_note: int = 60,
+    ) -> "PatternBuilder":
+        """Apply a microtonal tuning to this pattern via pitch bend injection.
+
+        For each note in the pattern, the nearest 12-TET MIDI pitch is
+        computed and a pitchwheel ``CcEvent`` is injected at the note's onset
+        to shift the synthesiser to the exact tuned frequency.  Existing pitch
+        bend events (from ``p.portamento()``, ``p.slide()``, etc.) are shifted
+        additively so they still work correctly within the tuned pitch space.
+
+        For polyphonic patterns, supply a ``channels`` pool.  Notes will be
+        spread across those channels so each can carry an independent pitch
+        bend.  For monophonic patterns, leave ``channels=None``.
+
+        The synthesiser's pitch-bend range must match ``bend_range``.  Most
+        synths default to ±2 semitones.  For tunings that deviate more than
+        one semitone from 12-TET, increase ``bend_range`` (e.g., 12 or 24)
+        and configure the synth to match.
+
+        Parameters:
+                tuning: The :class:`~subsequence.tuning.Tuning` to apply.
+                bend_range: Synth pitch-bend range in semitones (default ±2).
+                channels: Channel pool for polyphonic rotation.  ``None`` keeps
+                    all notes on the pattern's own channel.
+                reference_note: MIDI note number that maps to scale degree 0.
+                    Default 60 (middle C).
+
+        Example:
+                ```python
+                from subsequence import Tuning
+
+                meantone = Tuning.from_scl("meanquar.scl")
+
+                @composition.pattern(channel=1, beats=4)
+                def melody (p):
+                    p.seq("x x x x", pitch=60)
+                    p.apply_tuning(meantone, bend_range=2.0)
+                ```
+        """
+        import subsequence.tuning
+
+        subsequence.tuning.apply_tuning_to_pattern(
+            self._pattern,
+            tuning,
+            bend_range=bend_range,
+            channels=channels,
+            reference_note=reference_note,
+        )
+        self._tuning_applied = True
+        return self
+
+    def reverse(self) -> "PatternBuilder":
+        """
+        Flip the pattern backwards in time (retrograde).
+        """
+
+        total_pulses = int(
+            self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE
+        )
+        old_steps = self._pattern.steps
+        new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
+
+        for position, step in old_steps.items():
+            # Reflect around the bar so onsets stay on the grid and the downbeat
+            # is fixed — a true retrograde reverses the inter-onset intervals
+            # (e.g. [0, 24] → [0, 72] in a 96-pulse bar, not the off-grid
+            # [71, 95] the old (total-1)-position produced).
+            new_position = (total_pulses - position) % total_pulses
+
+            if new_position not in new_steps:
+                new_steps[new_position] = subsequence.pattern.Step()
+
+            new_steps[new_position].notes.extend(step.notes)
+
+        self._pattern.steps = new_steps
+        return self
+
+    def stretch(self, factor: float) -> "PatternBuilder":
+        """
+        Stretch the pattern in time, scaling note positions and durations.
+
+        ``stretch(2.0)`` makes everything twice as long (half speed) — what
+        theorists call *augmentation*; ``stretch(0.5)`` squeezes the pattern
+        into half the time (double speed) — *diminution*.  Any positive
+        factor works: ``stretch(2/3)`` compresses a dotted feel into
+        straight time, for example.
+
+        Notes whose start lands past the end of the pattern are dropped,
+        and compression leaves the freed space empty — the pattern is not
+        tiled to fill it.  Durations scale without clipping, so a stretched
+        note may ring past the pattern's end exactly like a legato note,
+        and ``stretch(1.0)`` is a true no-op.  Positions and durations
+        truncate to the pulse grid (matching ``note()``'s beat-to-pulse
+        truncation).
+
+        Parameters:
+                factor: Time multiplier.  Greater than 1.0 slows the pattern
+                        down, less than 1.0 speeds it up.  Must be positive.
+        """
+
+        if factor <= 0:
+            raise ValueError("Stretch factor must be positive")
+
+        total_pulses = int(
+            self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE
+        )
+        old_steps = self._pattern.steps
+        new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
+
+        for position, step in old_steps.items():
+            new_position = int(position * factor)
+
+            if new_position >= total_pulses:
+                continue
+
+            if new_position not in new_steps:
+                new_steps[new_position] = subsequence.pattern.Step()
+
+            new_steps[new_position].notes.extend(
+                dataclasses.replace(
+                    note,
+                    duration=max(1, int(note.duration * factor)),
+                )
+                for note in step.notes
+            )
+
+        self._pattern.steps = new_steps
+        return self
+
+    def rotate(self, steps: int, grid: typing.Optional[int] = None) -> "PatternBuilder":
+        """
+        Rotate the pattern by a number of grid steps, wrapping around.
+
+        Notes pushed past the end of the pattern re-enter at the start
+        (and vice versa for negative values) — the step-sequencer rotation
+        familiar from Euclidean rhythm tools.
+
+        Parameters:
+                steps: Positive values rotate later in time, negative values earlier.
+                grid: The grid resolution. Defaults to the pattern's
+                        ``default_grid`` (derived from the decorator's ``beats``/``steps``
+                        and ``step_duration``).
+        """
+
+        if grid is None:
+            grid = self._default_grid
+
+        if grid <= 0:
+            return self
+
+        total_pulses = int(
+            self._pattern.length * subsequence.constants.MIDI_QUARTER_NOTE
+        )
+        pulses_per_step = total_pulses / grid
+        shift_pulses = int(steps * pulses_per_step)
+
+        old_steps = self._pattern.steps
+        new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
+
+        for position, step in old_steps.items():
+            new_position = (position + shift_pulses) % total_pulses
+
+            if new_position not in new_steps:
+                new_steps[new_position] = subsequence.pattern.Step()
+
+            new_steps[new_position].notes.extend(step.notes)
+
+        self._pattern.steps = new_steps
+        return self
+
+    def transpose(self, semitones: int) -> "PatternBuilder":
+        """
+        Shift all note pitches up or down.
+
+        Parameters:
+                semitones: Positive for up, negative for down.
+        """
+
+        for step in self._pattern.steps.values():
+            for note in step.notes:
+                note.pitch = max(0, min(127, note.pitch + semitones))
+        return self
+
+    def invert(self, pivot: int = 60) -> "PatternBuilder":
+        """
+        Invert all pitches around a pivot note.
+        """
+
+        for step in self._pattern.steps.values():
+            for note in step.notes:
+                note.pitch = max(0, min(127, pivot + (pivot - note.pitch)))
+        return self
+
+    def every(
+        self, n: int, fn: typing.Callable[["PatternBuilder"], None]
+    ) -> "PatternBuilder":
+        """
+        Apply a transformation every Nth cycle.
+
+        Parameters:
+                n: The cycle frequency (e.g., 4 = every 4th bar).
+                fn: A function (often a lambda) that receives the builder and
+                        calls further methods.
+
+        Example:
+                ```python
+                # Reverse every 4th bar
+                p.every(4, lambda p: p.reverse())
+                ```
+        """
+
+        if n < 1:
+            raise ValueError(
+                f"every() cycle length must be at least 1 bar — got {n} (every(1, ...) applies the change every bar)"
+            )
+
+        if self.cycle % n == 0:
+            fn(self)
+        return self
+
+    def bar_cycle(self, length: int) -> BarCycle:
+        """Return the current bar's position within a repeating cycle of bars.
+
+        A thin wrapper around ``p.bar % length`` that replaces opaque modulo
+        arithmetic with readable, musician-friendly properties.
+
+        Parameters:
+                length: The cycle length in bars (e.g., 4, 8, 16).
+
+        Returns:
+                A :class:`BarCycle` with ``.bar``, ``.first``, ``.last``,
+                and ``.progress`` properties.
+
+        Example:
+                ```python
+                # Every 4 bars (replaces: if p.bar % 4 == 0)
+                if p.bar_cycle(4).first:
+                    p.hit_steps("snare_1", [0, 8], velocity=110)
+
+                # Last bar of every 16-bar cycle (replaces: if p.bar % 16 == 15)
+                if p.bar_cycle(16).last:
+                    p.euclidean("hi_hat_open", 3)
+
+                # Build intensity over an 8-bar arc
+                intensity = p.bar_cycle(8).progress   # 0.0 → 0.875
+                p.velocity_shape(low=int(40 + 40 * intensity), high=100)
+                ```
+        """
+
+        if length < 1:
+            raise ValueError(
+                f"bar_cycle() cycle length must be at least 1 bar — got {length}"
+            )
+
+        return BarCycle(bar=self.bar % length, length=length)

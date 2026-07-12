@@ -13,86 +13,110 @@ WEIGHT_WEAK = subsequence.chord_graphs.WEIGHT_WEAK
 WEIGHT_MIXOLYDIAN = 5
 
 
-class Mixolydian (subsequence.chord_graphs.ChordGraph):
+class Mixolydian(subsequence.chord_graphs.ChordGraph):
+    """Major-mode chord graph with a flat seventh degree.
 
-	"""Major-mode chord graph with a flat seventh degree.
+    Scale: 1, 2, 3, 4, 5, 6, b7.
+    Chords: I (major), ii (minor), iii° (diminished), IV (major),
+    v (minor), vi (minor), bVII (major).
 
-	Scale: 1, 2, 3, 4, 5, 6, b7.
-	Chords: I (major), ii (minor), iii° (diminished), IV (major),
-	v (minor), vi (minor), bVII (major).
+    The I ↔ bVII shuttle is the defining colour. The minor v avoids
+    dominant function, keeping progressions open and unresolved.
+    Common in EDM, synthwave, and rock-influenced electronic music.
+    """
 
-	The I ↔ bVII shuttle is the defining colour. The minor v avoids
-	dominant function, keeping progressions open and unresolved.
-	Common in EDM, synthwave, and rock-influenced electronic music.
-	"""
+    def build(
+        self, key_name: str
+    ) -> typing.Tuple[
+        subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord],
+        subsequence.chords.Chord,
+    ]:
+        """Build a Mixolydian mode graph."""
 
-	def build (self, key_name: str) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		"""Build a Mixolydian mode graph."""
+        tonic = subsequence.chords.Chord(root_pc=key_pc, quality="major")
+        supertonic = subsequence.chords.Chord(
+            root_pc=(key_pc + 2) % 12, quality="minor"
+        )
+        mediant = subsequence.chords.Chord(
+            root_pc=(key_pc + 4) % 12, quality="diminished"
+        )
+        subdominant = subsequence.chords.Chord(
+            root_pc=(key_pc + 5) % 12, quality="major"
+        )
+        minor_dominant = subsequence.chords.Chord(
+            root_pc=(key_pc + 7) % 12, quality="minor"
+        )
+        submediant = subsequence.chords.Chord(
+            root_pc=(key_pc + 9) % 12, quality="minor"
+        )
+        flat_seven = subsequence.chords.Chord(
+            root_pc=(key_pc + 10) % 12, quality="major"
+        )
 
-		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
+        graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = (
+            subsequence.weighted_graph.WeightedGraph()
+        )
 
-		tonic = subsequence.chords.Chord(root_pc=key_pc, quality="major")
-		supertonic = subsequence.chords.Chord(root_pc=(key_pc + 2) % 12, quality="minor")
-		mediant = subsequence.chords.Chord(root_pc=(key_pc + 4) % 12, quality="diminished")
-		subdominant = subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="major")
-		minor_dominant = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="minor")
-		submediant = subsequence.chords.Chord(root_pc=(key_pc + 9) % 12, quality="minor")
-		flat_seven = subsequence.chords.Chord(root_pc=(key_pc + 10) % 12, quality="major")
+        # --- I ↔ bVII: the Mixolydian shuttle ---
+        graph.add_transition(tonic, flat_seven, WEIGHT_MIXOLYDIAN)
+        graph.add_transition(flat_seven, tonic, WEIGHT_MIXOLYDIAN)
 
-		graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = subsequence.weighted_graph.WeightedGraph()
+        # --- Plagal motion ---
+        graph.add_transition(subdominant, tonic, WEIGHT_STRONG)
+        graph.add_transition(tonic, subdominant, WEIGHT_MEDIUM)
 
-		# --- I ↔ bVII: the Mixolydian shuttle ---
-		graph.add_transition(tonic, flat_seven, WEIGHT_MIXOLYDIAN)
-		graph.add_transition(flat_seven, tonic, WEIGHT_MIXOLYDIAN)
+        # --- bVII ↔ IV: common EDM chain ---
+        graph.add_transition(flat_seven, subdominant, WEIGHT_MEDIUM)
+        graph.add_transition(subdominant, flat_seven, WEIGHT_COMMON)
 
-		# --- Plagal motion ---
-		graph.add_transition(subdominant, tonic, WEIGHT_STRONG)
-		graph.add_transition(tonic, subdominant, WEIGHT_MEDIUM)
+        # --- Minor dominant ---
+        graph.add_transition(minor_dominant, tonic, WEIGHT_MEDIUM)
+        graph.add_transition(tonic, minor_dominant, WEIGHT_COMMON)
 
-		# --- bVII ↔ IV: common EDM chain ---
-		graph.add_transition(flat_seven, subdominant, WEIGHT_MEDIUM)
-		graph.add_transition(subdominant, flat_seven, WEIGHT_COMMON)
+        # --- Supertonic ---
+        graph.add_transition(supertonic, minor_dominant, WEIGHT_COMMON)
+        graph.add_transition(supertonic, subdominant, WEIGHT_COMMON)
+        graph.add_transition(tonic, supertonic, WEIGHT_WEAK)
 
-		# --- Minor dominant ---
-		graph.add_transition(minor_dominant, tonic, WEIGHT_MEDIUM)
-		graph.add_transition(tonic, minor_dominant, WEIGHT_COMMON)
+        # --- Submediant ---
+        graph.add_transition(submediant, flat_seven, WEIGHT_COMMON)
+        graph.add_transition(submediant, subdominant, WEIGHT_WEAK)
+        graph.add_transition(tonic, submediant, WEIGHT_WEAK)
+        graph.add_transition(minor_dominant, submediant, WEIGHT_WEAK)
 
-		# --- Supertonic ---
-		graph.add_transition(supertonic, minor_dominant, WEIGHT_COMMON)
-		graph.add_transition(supertonic, subdominant, WEIGHT_COMMON)
-		graph.add_transition(tonic, supertonic, WEIGHT_WEAK)
+        # --- Mediant (diminished - rare, colour) ---
+        graph.add_transition(mediant, subdominant, WEIGHT_WEAK)
+        graph.add_transition(mediant, tonic, WEIGHT_WEAK)
+        graph.add_transition(supertonic, mediant, WEIGHT_WEAK)
 
-		# --- Submediant ---
-		graph.add_transition(submediant, flat_seven, WEIGHT_COMMON)
-		graph.add_transition(submediant, subdominant, WEIGHT_WEAK)
-		graph.add_transition(tonic, submediant, WEIGHT_WEAK)
-		graph.add_transition(minor_dominant, submediant, WEIGHT_WEAK)
+        return graph, tonic
 
-		# --- Mediant (diminished - rare, colour) ---
-		graph.add_transition(mediant, subdominant, WEIGHT_WEAK)
-		graph.add_transition(mediant, tonic, WEIGHT_WEAK)
-		graph.add_transition(supertonic, mediant, WEIGHT_WEAK)
+    def gravity_sets(
+        self, key_name: str
+    ) -> typing.Tuple[
+        typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]
+    ]:
+        """Return Mixolydian diatonic and functional chord sets."""
 
-		return graph, tonic
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-	def gravity_sets (self, key_name: str) -> typing.Tuple[typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]]:
+        diatonic: typing.Set[subsequence.chords.Chord] = set(
+            subsequence.chord_graphs.build_diatonic_chords(
+                subsequence.intervals.scale_pitch_classes(key_pc, "mixolydian"),
+                subsequence.intervals.MIXOLYDIAN_QUALITIES,
+            )
+        )
 
-		"""Return Mixolydian diatonic and functional chord sets."""
+        # Functional: I, IV, bVII (the primary colour chords).
+        functional: typing.Set[subsequence.chords.Chord] = set()
+        functional.add(subsequence.chords.Chord(root_pc=key_pc, quality="major"))
+        functional.add(
+            subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="major")
+        )
+        functional.add(
+            subsequence.chords.Chord(root_pc=(key_pc + 10) % 12, quality="major")
+        )
 
-		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
-
-		diatonic: typing.Set[subsequence.chords.Chord] = set(
-			subsequence.chord_graphs.build_diatonic_chords(
-				subsequence.intervals.scale_pitch_classes(key_pc, "mixolydian"),
-				subsequence.intervals.MIXOLYDIAN_QUALITIES
-			)
-		)
-
-		# Functional: I, IV, bVII (the primary colour chords).
-		functional: typing.Set[subsequence.chords.Chord] = set()
-		functional.add(subsequence.chords.Chord(root_pc=key_pc, quality="major"))
-		functional.add(subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="major"))
-		functional.add(subsequence.chords.Chord(root_pc=(key_pc + 10) % 12, quality="major"))
-
-		return diatonic, functional
+        return diatonic, functional

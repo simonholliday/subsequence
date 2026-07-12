@@ -17,142 +17,169 @@ WEIGHT_PHRYGIAN = 5
 WEIGHT_PLAGAL = 4
 
 
-class AeolianMinor (subsequence.chord_graphs.ChordGraph):
+class AeolianMinor(subsequence.chord_graphs.ChordGraph):
+    """Natural minor (Aeolian) graph with Phrygian and harmonic minor elements.
 
-	"""Natural minor (Aeolian) graph with Phrygian and harmonic minor elements.
+    Focuses on the interplay between the natural minor scale and its
+    common variations:
 
-	Focuses on the interplay between the natural minor scale and its
-	common variations:
+    - Aeolian (i, iv, v, bVI, bVII)
+    - Harmonic Minor (V, vii°) for stronger cadences
+    - Phrygian (bII) for tension
 
-	- Aeolian (i, iv, v, bVI, bVII)
-	- Harmonic Minor (V, vii°) for stronger cadences
-	- Phrygian (bII) for tension
+    Suitable for a wide range of minor-key styles.
+    """
 
-	Suitable for a wide range of minor-key styles.
-	"""
+    def __init__(self, include_dominant_7th: bool = True) -> None:
+        """Configure whether to include dominant seventh chords."""
 
-	def __init__ (self, include_dominant_7th: bool = True) -> None:
+        self.include_dominant_7th = include_dominant_7th
 
-		"""Configure whether to include dominant seventh chords."""
+    def build(
+        self, key_name: str
+    ) -> typing.Tuple[
+        subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord],
+        subsequence.chords.Chord,
+    ]:
+        """Build an Aeolian minor-key graph."""
 
-		self.include_dominant_7th = include_dominant_7th
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-	def build (self, key_name: str) -> typing.Tuple[subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord], subsequence.chords.Chord]:
+        # Natural minor scale: 0, 2, 3, 5, 7, 8, 10
+        tonic = subsequence.chords.Chord(root_pc=key_pc, quality="minor")
+        supertonic_dim = subsequence.chords.Chord(
+            root_pc=(key_pc + 2) % 12, quality="diminished"
+        )
+        mediant = subsequence.chords.Chord(root_pc=(key_pc + 3) % 12, quality="major")
+        subdominant = subsequence.chords.Chord(
+            root_pc=(key_pc + 5) % 12, quality="minor"
+        )
+        natural_dominant = subsequence.chords.Chord(
+            root_pc=(key_pc + 7) % 12, quality="minor"
+        )
+        submediant = subsequence.chords.Chord(
+            root_pc=(key_pc + 8) % 12, quality="major"
+        )
+        subtonic = subsequence.chords.Chord(root_pc=(key_pc + 10) % 12, quality="major")
 
-		"""Build an Aeolian minor-key graph."""
+        # Harmonic minor additions.
+        dominant = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="major")
+        leading_dim = subsequence.chords.Chord(
+            root_pc=(key_pc + 11) % 12, quality="diminished"
+        )
 
-		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
+        # Phrygian/Neapolitan flat-two.
+        flat_two = subsequence.chords.Chord(root_pc=(key_pc + 1) % 12, quality="major")
 
-		# Natural minor scale: 0, 2, 3, 5, 7, 8, 10
-		tonic = subsequence.chords.Chord(root_pc=key_pc, quality="minor")
-		supertonic_dim = subsequence.chords.Chord(root_pc=(key_pc + 2) % 12, quality="diminished")
-		mediant = subsequence.chords.Chord(root_pc=(key_pc + 3) % 12, quality="major")
-		subdominant = subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="minor")
-		natural_dominant = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="minor")
-		submediant = subsequence.chords.Chord(root_pc=(key_pc + 8) % 12, quality="major")
-		subtonic = subsequence.chords.Chord(root_pc=(key_pc + 10) % 12, quality="major")
+        graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = (
+            subsequence.weighted_graph.WeightedGraph()
+        )
 
-		# Harmonic minor additions.
-		dominant = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="major")
-		leading_dim = subsequence.chords.Chord(root_pc=(key_pc + 11) % 12, quality="diminished")
+        # --- Tonic departures ---
+        graph.add_transition(tonic, subdominant, WEIGHT_PLAGAL)
+        graph.add_transition(tonic, submediant, WEIGHT_COMMON)
+        graph.add_transition(tonic, subtonic, WEIGHT_COMMON)
+        graph.add_transition(tonic, flat_two, WEIGHT_WEAK)
+        graph.add_transition(tonic, natural_dominant, WEIGHT_COMMON)
 
-		# Phrygian/Neapolitan flat-two.
-		flat_two = subsequence.chords.Chord(root_pc=(key_pc + 1) % 12, quality="major")
+        # --- Natural dominant (v) departures ---
+        graph.add_transition(natural_dominant, submediant, WEIGHT_COMMON)
+        graph.add_transition(natural_dominant, subdominant, WEIGHT_COMMON)
+        graph.add_transition(natural_dominant, tonic, WEIGHT_WEAK)
 
-		graph: subsequence.weighted_graph.WeightedGraph[subsequence.chords.Chord] = subsequence.weighted_graph.WeightedGraph()
+        # --- Minor plagal ---
+        graph.add_transition(subdominant, tonic, WEIGHT_PLAGAL, label="soft")
+        graph.add_transition(subdominant, dominant, WEIGHT_MEDIUM, label="open")
+        graph.add_transition(subdominant, submediant, WEIGHT_WEAK)
 
-		# --- Tonic departures ---
-		graph.add_transition(tonic, subdominant, WEIGHT_PLAGAL)
-		graph.add_transition(tonic, submediant, WEIGHT_COMMON)
-		graph.add_transition(tonic, subtonic, WEIGHT_COMMON)
-		graph.add_transition(tonic, flat_two, WEIGHT_WEAK)
-		graph.add_transition(tonic, natural_dominant, WEIGHT_COMMON)
+        # --- Aeolian cycle: i -> bVI -> bVII -> i ---
+        graph.add_transition(submediant, subtonic, WEIGHT_MEDIUM)
+        graph.add_transition(subtonic, tonic, WEIGHT_MEDIUM)
 
-		# --- Natural dominant (v) departures ---
-		graph.add_transition(natural_dominant, submediant, WEIGHT_COMMON)
-		graph.add_transition(natural_dominant, subdominant, WEIGHT_COMMON)
-		graph.add_transition(natural_dominant, tonic, WEIGHT_WEAK)
+        # --- Andalusian descent: i -> bVII -> bVI -> V ---
+        graph.add_transition(subtonic, submediant, WEIGHT_COMMON)
+        graph.add_transition(submediant, dominant, WEIGHT_MEDIUM)
 
-		# --- Minor plagal ---
-		graph.add_transition(subdominant, tonic, WEIGHT_PLAGAL, label="soft")
-		graph.add_transition(subdominant, dominant, WEIGHT_MEDIUM, label="open")
-		graph.add_transition(subdominant, submediant, WEIGHT_WEAK)
+        # --- Phrygian cadence: bII -> i ---
+        graph.add_transition(flat_two, tonic, WEIGHT_PHRYGIAN)
+        graph.add_transition(flat_two, dominant, WEIGHT_COMMON)
 
-		# --- Aeolian cycle: i -> bVI -> bVII -> i ---
-		graph.add_transition(submediant, subtonic, WEIGHT_MEDIUM)
-		graph.add_transition(subtonic, tonic, WEIGHT_MEDIUM)
+        # --- Harmonic minor cadence: V -> i ---
+        graph.add_transition(dominant, tonic, WEIGHT_STRONG, label="strong")
+        graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE, label="fakeout")
 
-		# --- Andalusian descent: i -> bVII -> bVI -> V ---
-		graph.add_transition(subtonic, submediant, WEIGHT_COMMON)
-		graph.add_transition(submediant, dominant, WEIGHT_MEDIUM)
+        # --- Chromatic connectors ---
+        graph.add_transition(supertonic_dim, dominant, WEIGHT_MEDIUM)
+        graph.add_transition(leading_dim, tonic, WEIGHT_STRONG)
+        graph.add_transition(mediant, submediant, WEIGHT_COMMON)
+        graph.add_transition(mediant, subdominant, WEIGHT_WEAK)
 
-		# --- Phrygian cadence: bII -> i ---
-		graph.add_transition(flat_two, tonic, WEIGHT_PHRYGIAN)
-		graph.add_transition(flat_two, dominant, WEIGHT_COMMON)
+        # Reach the diatonic chords that previously had only outgoing edges, as
+        # occasional colour:
+        #   i  → bIII — the relative major, a staple minor-key move.
+        #   iv → ii°  — predominant into the supertonic dim (which then goes to V).
+        #   iv → vii° — predominant into the harmonic-minor leading-tone triad (→ i).
+        graph.add_transition(tonic, mediant, WEIGHT_WEAK)
+        graph.add_transition(subdominant, supertonic_dim, WEIGHT_WEAK)
+        graph.add_transition(subdominant, leading_dim, WEIGHT_WEAK)
 
-		# --- Harmonic minor cadence: V -> i ---
-		graph.add_transition(dominant, tonic, WEIGHT_STRONG, label="strong")
-		graph.add_transition(dominant, submediant, WEIGHT_DECEPTIVE, label="fakeout")
+        # --- Optional dominant seventh ---
+        if self.include_dominant_7th:
+            dominant_7th = subsequence.chords.Chord(
+                root_pc=(key_pc + 7) % 12, quality="dominant_7th"
+            )
 
-		# --- Chromatic connectors ---
-		graph.add_transition(supertonic_dim, dominant, WEIGHT_MEDIUM)
-		graph.add_transition(leading_dim, tonic, WEIGHT_STRONG)
-		graph.add_transition(mediant, submediant, WEIGHT_COMMON)
-		graph.add_transition(mediant, subdominant, WEIGHT_WEAK)
+            graph.add_transition(dominant, dominant_7th, WEIGHT_WEAK)
+            graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG, label="strong")
+            graph.add_transition(
+                dominant_7th, submediant, WEIGHT_DECEPTIVE, label="fakeout"
+            )
 
-		# Reach the diatonic chords that previously had only outgoing edges, as
-		# occasional colour:
-		#   i  → bIII — the relative major, a staple minor-key move.
-		#   iv → ii°  — predominant into the supertonic dim (which then goes to V).
-		#   iv → vii° — predominant into the harmonic-minor leading-tone triad (→ i).
-		graph.add_transition(tonic, mediant, WEIGHT_WEAK)
-		graph.add_transition(subdominant, supertonic_dim, WEIGHT_WEAK)
-		graph.add_transition(subdominant, leading_dim, WEIGHT_WEAK)
+        return graph, tonic
 
-		# --- Optional dominant seventh ---
-		if self.include_dominant_7th:
-			dominant_7th = subsequence.chords.Chord(root_pc=(key_pc + 7) % 12, quality="dominant_7th")
+    def gravity_sets(
+        self, key_name: str
+    ) -> typing.Tuple[
+        typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]
+    ]:
+        """Return minor-key diatonic and functional chord sets."""
 
-			graph.add_transition(dominant, dominant_7th, WEIGHT_WEAK)
-			graph.add_transition(dominant_7th, tonic, WEIGHT_STRONG, label="strong")
-			graph.add_transition(dominant_7th, submediant, WEIGHT_DECEPTIVE, label="fakeout")
+        key_pc = subsequence.chord_graphs.validate_key_name(key_name)
 
-		return graph, tonic
+        diatonic: typing.Set[subsequence.chords.Chord] = set(
+            subsequence.chord_graphs.build_diatonic_chords(
+                subsequence.intervals.scale_pitch_classes(key_pc, "aeolian"),
+                subsequence.intervals.AEOLIAN_QUALITIES,
+            )
+        )
 
-	def gravity_sets (self, key_name: str) -> typing.Tuple[typing.Set[subsequence.chords.Chord], typing.Set[subsequence.chords.Chord]]:
+        # Harmonic minor V (major) and bII (Phrygian).
+        dominant_pc = (key_pc + 7) % 12
+        flat_two_pc = (key_pc + 1) % 12
 
-		"""Return minor-key diatonic and functional chord sets."""
+        diatonic.add(subsequence.chords.Chord(root_pc=dominant_pc, quality="major"))
+        diatonic.add(subsequence.chords.Chord(root_pc=flat_two_pc, quality="major"))
 
-		key_pc = subsequence.chord_graphs.validate_key_name(key_name)
+        # Harmonic-minor leading-tone triad vii° — now reachable in the graph, so
+        # list it as a diatonic candidate for gravity weighting too.
+        diatonic.add(
+            subsequence.chords.Chord(root_pc=(key_pc + 11) % 12, quality="diminished")
+        )
 
-		diatonic: typing.Set[subsequence.chords.Chord] = set(
-			subsequence.chord_graphs.build_diatonic_chords(
-				subsequence.intervals.scale_pitch_classes(key_pc, "aeolian"),
-				subsequence.intervals.AEOLIAN_QUALITIES
-			)
-		)
+        dominant_7th = subsequence.chords.Chord(
+            root_pc=dominant_pc, quality="dominant_7th"
+        )
+        diatonic.add(dominant_7th)
 
-		# Harmonic minor V (major) and bII (Phrygian).
-		dominant_pc = (key_pc + 7) % 12
-		flat_two_pc = (key_pc + 1) % 12
+        # Functional set: i, iv, V(/V7), bII.
+        functional: typing.Set[subsequence.chords.Chord] = set()
 
-		diatonic.add(subsequence.chords.Chord(root_pc=dominant_pc, quality="major"))
-		diatonic.add(subsequence.chords.Chord(root_pc=flat_two_pc, quality="major"))
+        functional.add(subsequence.chords.Chord(root_pc=key_pc, quality="minor"))
+        functional.add(
+            subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="minor")
+        )
+        functional.add(subsequence.chords.Chord(root_pc=dominant_pc, quality="major"))
+        functional.add(subsequence.chords.Chord(root_pc=flat_two_pc, quality="major"))
+        functional.add(dominant_7th)
 
-		# Harmonic-minor leading-tone triad vii° — now reachable in the graph, so
-		# list it as a diatonic candidate for gravity weighting too.
-		diatonic.add(subsequence.chords.Chord(root_pc=(key_pc + 11) % 12, quality="diminished"))
-
-		dominant_7th = subsequence.chords.Chord(root_pc=dominant_pc, quality="dominant_7th")
-		diatonic.add(dominant_7th)
-
-		# Functional set: i, iv, V(/V7), bII.
-		functional: typing.Set[subsequence.chords.Chord] = set()
-
-		functional.add(subsequence.chords.Chord(root_pc=key_pc, quality="minor"))
-		functional.add(subsequence.chords.Chord(root_pc=(key_pc + 5) % 12, quality="minor"))
-		functional.add(subsequence.chords.Chord(root_pc=dominant_pc, quality="major"))
-		functional.add(subsequence.chords.Chord(root_pc=flat_two_pc, quality="major"))
-		functional.add(dominant_7th)
-
-		return diatonic, functional
+        return diatonic, functional

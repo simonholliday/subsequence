@@ -9,272 +9,270 @@ import subsequence.chords
 import subsequence.harmonic_state
 
 
-def test_aeolian_minor_phrygian_cadence () -> None:
+def test_aeolian_minor_phrygian_cadence() -> None:
+    """The aeolian minor graph should include a bII to i (Phrygian cadence) edge."""
 
-	"""The aeolian minor graph should include a bII to i (Phrygian cadence) edge."""
+    graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor()
+    graph, tonic = graph_obj.build("A")
 
-	graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor()
-	graph, tonic = graph_obj.build("A")
+    # bII of A minor is Bb major (root_pc=10+1=11? No: A=9, bII = 9+1=10 = Bb)
+    flat_two = subsequence.chords.Chord(root_pc=10, quality="major")
 
-	# bII of A minor is Bb major (root_pc=10+1=11? No: A=9, bII = 9+1=10 = Bb)
-	flat_two = subsequence.chords.Chord(root_pc=10, quality="major")
+    transitions = graph.get_transitions(flat_two)
 
-	transitions = graph.get_transitions(flat_two)
+    assert any(chord == tonic for chord, _ in transitions)
 
-	assert any(chord == tonic for chord, _ in transitions)
 
+def test_aeolian_minor_authentic_cadence() -> None:
+    """The aeolian minor graph should include a V to i edge."""
 
-def test_aeolian_minor_authentic_cadence () -> None:
+    graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor()
+    graph, tonic = graph_obj.build("A")
 
-	"""The aeolian minor graph should include a V to i edge."""
+    # V of A minor is E major (root_pc=4)
+    dominant = subsequence.chords.Chord(root_pc=4, quality="major")
 
-	graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor()
-	graph, tonic = graph_obj.build("A")
+    transitions = graph.get_transitions(dominant)
 
-	# V of A minor is E major (root_pc=4)
-	dominant = subsequence.chords.Chord(root_pc=4, quality="major")
+    assert any(chord == tonic for chord, _ in transitions)
 
-	transitions = graph.get_transitions(dominant)
 
-	assert any(chord == tonic for chord, _ in transitions)
+def test_aeolian_minor_plagal() -> None:
+    """The aeolian minor graph should include an iv to i edge."""
 
+    graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor()
+    graph, tonic = graph_obj.build("A")
 
-def test_aeolian_minor_plagal () -> None:
+    # iv of A minor is D minor (root_pc=2)
+    subdominant = subsequence.chords.Chord(root_pc=2, quality="minor")
 
-	"""The aeolian minor graph should include an iv to i edge."""
+    transitions = graph.get_transitions(subdominant)
 
-	graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor()
-	graph, tonic = graph_obj.build("A")
+    assert any(chord == tonic for chord, _ in transitions)
 
-	# iv of A minor is D minor (root_pc=2)
-	subdominant = subsequence.chords.Chord(root_pc=2, quality="minor")
 
-	transitions = graph.get_transitions(subdominant)
+def test_aeolian_minor_tonic_is_minor() -> None:
+    """The aeolian minor tonic should be a minor chord."""
 
-	assert any(chord == tonic for chord, _ in transitions)
+    graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor()
+    _, tonic = graph_obj.build("A")
 
+    assert tonic.quality == "minor"
+    assert tonic.root_pc == 9
 
-def test_aeolian_minor_tonic_is_minor () -> None:
 
-	"""The aeolian minor tonic should be a minor chord."""
+def test_aeolian_minor_gravity_sets() -> None:
+    """The aeolian minor gravity sets should include minor-key chords."""
 
-	graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor()
-	_, tonic = graph_obj.build("A")
+    graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor()
+    diatonic, functional = graph_obj.gravity_sets("A")
 
-	assert tonic.quality == "minor"
-	assert tonic.root_pc == 9
+    # Tonic (Am) should be in both sets.
+    tonic = subsequence.chords.Chord(root_pc=9, quality="minor")
 
+    assert tonic in diatonic
+    assert tonic in functional
 
-def test_aeolian_minor_gravity_sets () -> None:
+    # bII (Bb major) should be in functional set.
+    flat_two = subsequence.chords.Chord(root_pc=10, quality="major")
 
-	"""The aeolian minor gravity sets should include minor-key chords."""
+    assert flat_two in functional
 
-	graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor()
-	diatonic, functional = graph_obj.gravity_sets("A")
+    # V (E major) should be in functional set.
+    dominant = subsequence.chords.Chord(root_pc=4, quality="major")
 
-	# Tonic (Am) should be in both sets.
-	tonic = subsequence.chords.Chord(root_pc=9, quality="minor")
+    assert dominant in functional
 
-	assert tonic in diatonic
-	assert tonic in functional
 
-	# bII (Bb major) should be in functional set.
-	flat_two = subsequence.chords.Chord(root_pc=10, quality="major")
+def test_aeolian_minor_no_dead_ends() -> None:
+    """Every chord reachable in the aeolian minor graph should have at least one outgoing transition."""
 
-	assert flat_two in functional
+    graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor(
+        include_dominant_7th=True
+    )
+    graph, tonic = graph_obj.build("A")
 
-	# V (E major) should be in functional set.
-	dominant = subsequence.chords.Chord(root_pc=4, quality="major")
+    # Walk every reachable chord via BFS from tonic.
+    visited = set()
+    queue = [tonic]
 
-	assert dominant in functional
+    while queue:
+        current = queue.pop(0)
 
+        if current in visited:
+            continue
 
-def test_aeolian_minor_no_dead_ends () -> None:
+        visited.add(current)
 
-	"""Every chord reachable in the aeolian minor graph should have at least one outgoing transition."""
+        transitions = graph.get_transitions(current)
 
-	graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor(include_dominant_7th=True)
-	graph, tonic = graph_obj.build("A")
+        assert len(transitions) > 0, f"Dead end: {current} has no outgoing transitions"
 
-	# Walk every reachable chord via BFS from tonic.
-	visited = set()
-	queue = [tonic]
+        for target, _ in transitions:
+            if target not in visited:
+                queue.append(target)
 
-	while queue:
-		current = queue.pop(0)
 
-		if current in visited:
-			continue
+def test_harmonic_state_accepts_chord_graph_instance() -> None:
+    """HarmonicState should accept a ChordGraph instance directly."""
 
-		visited.add(current)
+    graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor(
+        include_dominant_7th=True
+    )
 
-		transitions = graph.get_transitions(current)
+    state = subsequence.harmonic_state.HarmonicState(
+        key_name="E", graph_style=graph_obj, key_gravity_blend=0.8
+    )
 
-		assert len(transitions) > 0, f"Dead end: {current} has no outgoing transitions"
+    assert state.current_chord.quality == "minor"
+    assert state.key_name == "E"
 
-		for target, _ in transitions:
 
-			if target not in visited:
-				queue.append(target)
+def test_harmonic_state_new_string_names() -> None:
+    """HarmonicState should accept the new canonical string names."""
 
+    state_diatonic = subsequence.harmonic_state.HarmonicState(
+        key_name="C", graph_style="diatonic_major"
+    )
 
-def test_harmonic_state_accepts_chord_graph_instance () -> None:
+    assert state_diatonic.current_chord.quality == "major"
 
-	"""HarmonicState should accept a ChordGraph instance directly."""
+    state_turnaround = subsequence.harmonic_state.HarmonicState(
+        key_name="C", graph_style="turnaround"
+    )
 
-	graph_obj = subsequence.chord_graphs.aeolian_minor.AeolianMinor(include_dominant_7th=True)
+    assert state_turnaround.current_chord.quality == "major"
 
-	state = subsequence.harmonic_state.HarmonicState(
-		key_name = "E",
-		graph_style = graph_obj,
-		key_gravity_blend = 0.8
-	)
+    state_aeolian = subsequence.harmonic_state.HarmonicState(
+        key_name="C", graph_style="aeolian_minor"
+    )
 
-	assert state.current_chord.quality == "minor"
-	assert state.key_name == "E"
+    assert state_aeolian.current_chord.quality == "minor"
 
+    state_phrygian = subsequence.harmonic_state.HarmonicState(
+        key_name="C", graph_style="phrygian_minor"
+    )
 
-def test_harmonic_state_new_string_names () -> None:
+    assert state_phrygian.current_chord.quality == "minor"
 
-	"""HarmonicState should accept the new canonical string names."""
 
-	state_diatonic = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="diatonic_major")
+def test_phrygian_minor_all_chords_are_minor() -> None:
+    """Every chord in the phrygian_minor graph must be minor quality."""
 
-	assert state_diatonic.current_chord.quality == "major"
+    graph_obj = subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
+    graph, tonic = graph_obj.build("E")
 
-	state_turnaround = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="turnaround")
+    # Walk every reachable chord and verify quality.
+    visited = set()
+    queue = [tonic]
 
-	assert state_turnaround.current_chord.quality == "major"
+    while queue:
+        current = queue.pop(0)
 
-	state_aeolian = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="aeolian_minor")
+        if current in visited:
+            continue
 
-	assert state_aeolian.current_chord.quality == "minor"
+        visited.add(current)
 
-	state_phrygian = subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="phrygian_minor")
+        assert current.quality == "minor", (
+            f"{current} is {current.quality}, expected minor"
+        )
 
-	assert state_phrygian.current_chord.quality == "minor"
+        for target, _ in graph.get_transitions(current):
+            if target not in visited:
+                queue.append(target)
 
+    assert len(visited) == 4
 
-def test_phrygian_minor_all_chords_are_minor () -> None:
 
-	"""Every chord in the phrygian_minor graph must be minor quality."""
+def test_phrygian_minor_tonic() -> None:
+    """The phrygian_minor tonic should be a minor chord on the key root."""
 
-	graph_obj = subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
-	graph, tonic = graph_obj.build("E")
+    graph_obj = subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
+    _, tonic = graph_obj.build("E")
 
-	# Walk every reachable chord and verify quality.
-	visited = set()
-	queue = [tonic]
+    assert tonic.quality == "minor"
+    assert tonic.root_pc == 4
 
-	while queue:
-		current = queue.pop(0)
 
-		if current in visited:
-			continue
+def test_phrygian_minor_phrygian_cadence() -> None:
+    """The phrygian_minor graph should include a bii to i Phrygian cadence."""
 
-		visited.add(current)
+    graph_obj = subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
+    graph, tonic = graph_obj.build("E")
 
-		assert current.quality == "minor", f"{current} is {current.quality}, expected minor"
+    # bii of E minor is F minor (root_pc=5).
+    flat_two = subsequence.chords.Chord(root_pc=5, quality="minor")
 
-		for target, _ in graph.get_transitions(current):
+    transitions = graph.get_transitions(flat_two)
 
-			if target not in visited:
-				queue.append(target)
+    assert any(chord == tonic for chord, _ in transitions)
 
-	assert len(visited) == 4
 
+def test_phrygian_minor_gravity_sets() -> None:
+    """Gravity sets should contain only minor chords."""
 
-def test_phrygian_minor_tonic () -> None:
+    graph_obj = subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
+    diatonic, functional = graph_obj.gravity_sets("E")
 
-	"""The phrygian_minor tonic should be a minor chord on the key root."""
+    for chord in diatonic:
+        assert chord.quality == "minor"
 
-	graph_obj = subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
-	_, tonic = graph_obj.build("E")
+    for chord in functional:
+        assert chord.quality == "minor"
 
-	assert tonic.quality == "minor"
-	assert tonic.root_pc == 4
+    # Tonic should be in both.
+    tonic = subsequence.chords.Chord(root_pc=4, quality="minor")
 
+    assert tonic in diatonic
+    assert tonic in functional
 
-def test_phrygian_minor_phrygian_cadence () -> None:
+    # bii should be in functional.
+    flat_two = subsequence.chords.Chord(root_pc=5, quality="minor")
 
-	"""The phrygian_minor graph should include a bii to i Phrygian cadence."""
+    assert flat_two in functional
 
-	graph_obj = subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
-	graph, tonic = graph_obj.build("E")
 
-	# bii of E minor is F minor (root_pc=5).
-	flat_two = subsequence.chords.Chord(root_pc=5, quality="minor")
+def test_phrygian_minor_no_dead_ends() -> None:
+    """Every chord in the phrygian_minor graph should have outgoing transitions."""
 
-	transitions = graph.get_transitions(flat_two)
+    graph_obj = subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
+    graph, tonic = graph_obj.build("E")
 
-	assert any(chord == tonic for chord, _ in transitions)
+    visited = set()
+    queue = [tonic]
 
+    while queue:
+        current = queue.pop(0)
 
-def test_phrygian_minor_gravity_sets () -> None:
+        if current in visited:
+            continue
 
-	"""Gravity sets should contain only minor chords."""
+        visited.add(current)
 
-	graph_obj = subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
-	diatonic, functional = graph_obj.gravity_sets("E")
+        transitions = graph.get_transitions(current)
 
-	for chord in diatonic:
-		assert chord.quality == "minor"
+        assert len(transitions) > 0, f"Dead end: {current} has no outgoing transitions"
 
-	for chord in functional:
-		assert chord.quality == "minor"
+        for target, _ in transitions:
+            if target not in visited:
+                queue.append(target)
 
-	# Tonic should be in both.
-	tonic = subsequence.chords.Chord(root_pc=4, quality="minor")
 
-	assert tonic in diatonic
-	assert tonic in functional
+def test_phrygian_minor_string_name() -> None:
+    """HarmonicState should accept 'phrygian_minor' as a style string."""
 
-	# bii should be in functional.
-	flat_two = subsequence.chords.Chord(root_pc=5, quality="minor")
+    state = subsequence.harmonic_state.HarmonicState(
+        key_name="E", graph_style="phrygian_minor"
+    )
 
-	assert flat_two in functional
+    assert state.current_chord.quality == "minor"
 
 
-def test_phrygian_minor_no_dead_ends () -> None:
+def test_unknown_string_raises() -> None:
+    """An unknown graph style string should raise ValueError."""
 
-	"""Every chord in the phrygian_minor graph should have outgoing transitions."""
-
-	graph_obj = subsequence.chord_graphs.phrygian_minor.PhrygianMinor()
-	graph, tonic = graph_obj.build("E")
-
-	visited = set()
-	queue = [tonic]
-
-	while queue:
-		current = queue.pop(0)
-
-		if current in visited:
-			continue
-
-		visited.add(current)
-
-		transitions = graph.get_transitions(current)
-
-		assert len(transitions) > 0, f"Dead end: {current} has no outgoing transitions"
-
-		for target, _ in transitions:
-
-			if target not in visited:
-				queue.append(target)
-
-
-def test_phrygian_minor_string_name () -> None:
-
-	"""HarmonicState should accept 'phrygian_minor' as a style string."""
-
-	state = subsequence.harmonic_state.HarmonicState(key_name="E", graph_style="phrygian_minor")
-
-	assert state.current_chord.quality == "minor"
-
-
-def test_unknown_string_raises () -> None:
-
-	"""An unknown graph style string should raise ValueError."""
-
-	with pytest.raises(ValueError, match="Unknown graph style"):
-		subsequence.harmonic_state.HarmonicState(key_name="C", graph_style="nonexistent")
+    with pytest.raises(ValueError, match="Unknown graph style"):
+        subsequence.harmonic_state.HarmonicState(
+            key_name="C", graph_style="nonexistent"
+        )

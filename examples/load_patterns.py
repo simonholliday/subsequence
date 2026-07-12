@@ -51,4 +51,4 @@ composition.load_patterns(SOURCE, source_label="initial_patterns")
 
 
 if __name__ == "__main__":
-	composition.play()
+    composition.play()

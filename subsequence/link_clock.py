@@ -21,108 +21,111 @@ import math
 import typing
 
 
-def _require_aalink () -> typing.Any:
-	"""Import aalink or raise a helpful RuntimeError."""
-	try:
-		import aalink  # type: ignore
-		return aalink
-	except ImportError:
-		raise RuntimeError(
-			"Ableton Link support requires the 'aalink' package.\n"
-			"Install it with:  pip install subsequence[link]"
-		) from None
+def _require_aalink() -> typing.Any:
+    """Import aalink or raise a helpful RuntimeError."""
+    try:
+        import aalink  # type: ignore
+
+        return aalink
+    except ImportError:
+        raise RuntimeError(
+            "Ableton Link support requires the 'aalink' package.\n"
+            "Install it with:  pip install subsequence[link]"
+        ) from None
 
 
 class LinkClock:
+    """
+    Thin wrapper around ``aalink.Link`` for Subsequence's pulse-based clock.
 
-	"""
-	Thin wrapper around ``aalink.Link`` for Subsequence's pulse-based clock.
+    Parameters:
+            bpm: Initial tempo in BPM (proposed to the Link session).
+            quantum: Beat cycle length — 4.0 means one bar in 4/4 time.
+            loop: The running asyncio event loop (required by aalink).
+    """
 
-	Parameters:
-		bpm: Initial tempo in BPM (proposed to the Link session).
-		quantum: Beat cycle length — 4.0 means one bar in 4/4 time.
-		loop: The running asyncio event loop (required by aalink).
-	"""
+    def __init__(
+        self, bpm: float, quantum: float, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        """
+        Join the Link session immediately, proposing *bpm* and setting the bar length to *quantum* beats.
+        """
 
-	def __init__ (self, bpm: float, quantum: float, loop: asyncio.AbstractEventLoop) -> None:
+        aalink = _require_aalink()
+        self._link = aalink.Link(bpm, loop)
+        self._link.enabled = True
+        self._link.quantum = float(quantum)
 
-		"""
-		Join the Link session immediately, proposing *bpm* and setting the bar length to *quantum* beats.
-		"""
+    # ------------------------------------------------------------------
+    # Properties that mirror the Link session state
+    # ------------------------------------------------------------------
 
-		aalink = _require_aalink()
-		self._link = aalink.Link(bpm, loop)
-		self._link.enabled = True
-		self._link.quantum = float(quantum)
+    @property
+    def beat(self) -> float:
+        """Current absolute beat position in the Link session timeline."""
+        return float(self._link.beat)
 
-	# ------------------------------------------------------------------
-	# Properties that mirror the Link session state
-	# ------------------------------------------------------------------
+    @property
+    def tempo(self) -> float:
+        """Current session tempo in BPM (authoritative from the Link network)."""
+        return float(self._link.tempo)
 
-	@property
-	def beat (self) -> float:
-		"""Current absolute beat position in the Link session timeline."""
-		return float(self._link.beat)
+    @property
+    def quantum(self) -> float:
+        """Beat cycle length (e.g. 4.0 for one bar in 4/4)."""
+        return float(self._link.quantum)
 
-	@property
-	def tempo (self) -> float:
-		"""Current session tempo in BPM (authoritative from the Link network)."""
-		return float(self._link.tempo)
+    @property
+    def num_peers(self) -> int:
+        """Number of connected Link peers (not counting self)."""
+        return int(self._link.num_peers)
 
-	@property
-	def quantum (self) -> float:
-		"""Beat cycle length (e.g. 4.0 for one bar in 4/4)."""
-		return float(self._link.quantum)
+    @property
+    def playing(self) -> bool:
+        """Whether the Link session transport is playing."""
+        return bool(self._link.playing)
 
-	@property
-	def num_peers (self) -> int:
-		"""Number of connected Link peers (not counting self)."""
-		return int(self._link.num_peers)
+    # ------------------------------------------------------------------
+    # Sync / control
+    # ------------------------------------------------------------------
 
-	@property
-	def playing (self) -> bool:
-		"""Whether the Link session transport is playing."""
-		return bool(self._link.playing)
+    async def sync(self, beat: float) -> float:
+        """Wait until the Link session beat reaches *beat*, then return *beat*.
 
-	# ------------------------------------------------------------------
-	# Sync / control
-	# ------------------------------------------------------------------
+        This is the primary timing primitive used by the sequencer loop.
+        Calling ``await link_clock.sync(beat_origin + pulse / PPQN)`` for each
+        successive pulse gives accurate, Link-synchronised timing.
+        """
+        return float(await self._link.sync(beat))
 
-	async def sync (self, beat: float) -> float:
-		"""Wait until the Link session beat reaches *beat*, then return *beat*.
+    async def wait_for_bar(self) -> float:
+        """Wait for the next quantum boundary (bar start) and return it.
 
-		This is the primary timing primitive used by the sequencer loop.
-		Calling ``await link_clock.sync(beat_origin + pulse / PPQN)`` for each
-		successive pulse gives accurate, Link-synchronised timing.
-		"""
-		return float(await self._link.sync(beat))
+        Use this to start the sequencer at a musically clean position that is
+        phase-aligned with all other Link participants.
 
-	async def wait_for_bar (self) -> float:
-		"""Wait for the next quantum boundary (bar start) and return it.
+        Returns the beat value at which playback should begin (``beat_origin``).
+        """
+        current = self._link.beat
+        # Next quantum boundary strictly after the current beat
+        # math.floor, not int(): Link beats can be negative before transport
+        # zero, and int() truncates toward zero - skipping the boundary at 0.0
+        # and delaying the start by a full extra quantum.
+        next_boundary = (
+            math.floor(current / self._link.quantum) + 1
+        ) * self._link.quantum
+        result = await self._link.sync(next_boundary)
+        return float(result)
 
-		Use this to start the sequencer at a musically clean position that is
-		phase-aligned with all other Link participants.
+    def request_tempo(self, bpm: float) -> None:
+        """Propose a new tempo to the Link session.
 
-		Returns the beat value at which playback should begin (``beat_origin``).
-		"""
-		current = self._link.beat
-		# Next quantum boundary strictly after the current beat
-		# math.floor, not int(): Link beats can be negative before transport
-		# zero, and int() truncates toward zero - skipping the boundary at 0.0
-		# and delaying the start by a full extra quantum.
-		next_boundary = (math.floor(current / self._link.quantum) + 1) * self._link.quantum
-		result = await self._link.sync(next_boundary)
-		return float(result)
+        Other peers may accept or reject the change depending on their own
+        session rules.  Subsequence's sequencer will pick up the network-
+        authoritative tempo on the next pulse.
+        """
+        self._link.tempo = float(bpm)
 
-	def request_tempo (self, bpm: float) -> None:
-		"""Propose a new tempo to the Link session.
-
-		Other peers may accept or reject the change depending on their own
-		session rules.  Subsequence's sequencer will pick up the network-
-		authoritative tempo on the next pulse.
-		"""
-		self._link.tempo = float(bpm)
-
-	def disable (self) -> None:
-		"""Disconnect from the Link session."""
-		self._link.enabled = False
+    def disable(self) -> None:
+        """Disconnect from the Link session."""
+        self._link.enabled = False
