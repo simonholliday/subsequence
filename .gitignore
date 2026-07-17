@@ -18,8 +18,11 @@ docs/html/
 docs/*.html
 
 # Project metadata and instructions
-CLAUDE.md
 README-AGENTS.md
 AGENT-INSTRUCTIONS.md
 DESIGN-COMPOSITION.md
 .vscode/
+
+# Claude Code — local only, never commit
+CLAUDE.local.md
+.claude/

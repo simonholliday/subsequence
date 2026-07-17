@@ -118,6 +118,10 @@ Integration:
   extra ``(device, channel)`` destinations; an entry can carry its own
   ``drum_note_map`` so one named drum hit re-resolves to the right voice
   on each device — a DRM1 and a General MIDI sampler alike.
+- **Shared project definitions.** ``load_definitions("project.yaml")``
+  reads a small per-project YAML file naming notes, CCs, channels,
+  programs, and NRPNs — the same file the Subsample sampler reads — so
+  both tools use identical names and a renumber is a single edit.
 - **Hardware control.** CC input mapping from knobs/faders to
   ``composition.data``; patterns read and write the same dict via
   ``p.data`` for both external data access and cross-pattern
@@ -172,7 +176,7 @@ Community and Feedback:
 - **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
 - **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
 
-Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``sentence``, ``period``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``Cadence``, ``Section``, ``Form``, ``roles``, ``sieve``, ``residual_class``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``.
+Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``sentence``, ``period``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``Cadence``, ``Section``, ``Form``, ``roles``, ``sieve``, ``residual_class``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``, ``Definitions``, ``load_definitions``.
 """
 
 import subsequence.cadences
@@ -180,6 +184,7 @@ import subsequence.chords
 import subsequence.forms
 import subsequence.roles
 import subsequence.composition
+import subsequence.definitions
 import subsequence.groove
 import subsequence.harmonic_rhythm
 import subsequence.intervals
@@ -219,6 +224,8 @@ register_chord_quality = subsequence.chords.register_chord_quality
 register_scale = subsequence.intervals.register_scale
 scale_notes = subsequence.intervals.scale_notes
 bank_select = subsequence.midi_utils.bank_select
+Definitions = subsequence.definitions.Definitions
+load_definitions = subsequence.definitions.load_definitions
 roles = subsequence.roles
 sieve = subsequence.sequence_utils.sieve
 residual_class = subsequence.sequence_utils.residual_class

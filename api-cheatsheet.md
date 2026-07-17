@@ -15,6 +15,7 @@ Everything importable as `subsequence.X`:
 | `ChordTone` | class | An index into the current chord's tones — 1-based, resolved at placement. |
 | `Composition` | class | The top-level controller for a musical piece. |
 | `ControlEvent` | class | One timed control gesture inside a Motif: a discrete write or a shaped ramp. |
+| `Definitions` | class | The name-to-number tables read from a project definitions file. |
 | `Degree` | class | A scale degree — 1-based, resolved against key + scale at placement. |
 | `Form` | class | A frozen sequence of Sections — the editable, bindable form value. |
 | `Groove` | class | A timing/velocity template applied to quantized grid positions. |
@@ -28,6 +29,7 @@ Everything importable as `subsequence.X`:
 | `Tuning` | class | A microtonal tuning system expressed as cent offsets from the unison. |
 | `bank_select` | function | Convert a 14-bit MIDI bank number to (MSB, LSB) for use with ``p.program_change()``. |
 | `between` | function | A harmonic rhythm that varies *between* two lengths (in beats). |
+| `load_definitions` | function | Load and validate a project definitions file. |
 | `motif` | function | The lowercase shortcut: a melody as 1-based scale degrees. |
 | `parse_chord` | function | Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a :class:`Chord`. |
 | `period` | function | The classical period, as a thin combinator — question, then answer. |
@@ -408,6 +410,15 @@ A frozen sequence of Sections — the editable, bindable form value.
 | `with_energy(energies) -> Form` | Set the energy payload on named sections — ``{"chorus": 0.9}``. |
 
 
+## `Definitions`
+
+The name-to-number tables read from a project definitions file.
+
+| Method | Description |
+|---|---|
+| `__init__(notes, cc, channels, programs, nrpn) -> None` |  |
+
+
 ## Global Functions
 
 
@@ -416,6 +427,7 @@ A frozen sequence of Sections — the editable, bindable form value.
 | `register_scale(name, intervals, qualities) -> None` | Register a custom scale for use with ``p.snap_to_scale()`` and ``scale_pitch_classes()``. |
 | `scale_notes(key, mode, low, high, count) -> List[int]` | Return MIDI note numbers for a scale within a pitch range. |
 | `bank_select(bank) -> Tuple[int, int]` | Convert a 14-bit MIDI bank number to (MSB, LSB) for use with ``p.program_change()``. |
+| `load_definitions(path) -> subsequence.definitions.Definitions` | Load and validate a project definitions file. |
 | `between(low, high, step) -> subsequence.harmonic_rhythm.HarmonicRhythm` | A harmonic rhythm that varies *between* two lengths (in beats). |
 | `parse_chord(name) -> subsequence.chords.Chord` | Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a :class:`Chord`. |
 | `register_chord_quality(name, intervals, suffix) -> None` | Register a custom chord quality for use everywhere chords are used. |

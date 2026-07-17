@@ -18,6 +18,7 @@ import subsequence
 import subsequence.chords
 import subsequence.composition
 import subsequence.cadences
+import subsequence.definitions
 import subsequence.forms
 import subsequence.groove
 import subsequence.harmonic_rhythm
@@ -44,12 +45,14 @@ classes_to_document: typing.List[typing.Type] = [
 	subsequence.motifs.Phrase,
 	subsequence.forms.Section,
 	subsequence.forms.Form,
+	subsequence.definitions.Definitions,
 ]
 
 functions_to_document: typing.List[typing.Callable] = [
 	subsequence.intervals.register_scale,
 	subsequence.intervals.scale_notes,
 	subsequence.midi_utils.bank_select,
+	subsequence.definitions.load_definitions,
 	subsequence.harmonic_rhythm.between,
 	subsequence.chords.parse_chord,
 	subsequence.chords.register_chord_quality,

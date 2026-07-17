@@ -19,6 +19,7 @@ dependencies = [
     "python-rtmidi",
     "python-osc",
     "websockets",
+    "pyyaml",
     "pymididefs @ git+https://github.com/simonholliday/PyMidiDefs.git@v0.2.3",
 ]
 
@@ -72,6 +73,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "rtmidi.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "yaml.*"
 ignore_missing_imports = true
 
 [tool.setuptools_scm]
