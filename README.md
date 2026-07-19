@@ -46,13 +46,16 @@ composition.play()
 
 Subsequence needs **Python 3.10+** and a MIDI destination — a hardware synth or drum machine, or a virtual MIDI port into your DAW or software instrument. It generates MIDI only; it makes no sound itself.
 
-```bash
-git clone https://github.com/simonholliday/subsequence
-cd subsequence
-pip install -e .
+Install it into your project's virtual environment (no clone needed):
 
-pip install -e ".[link]"   # optional: Ableton Link tempo sync
+```bash
+pip install git+https://github.com/simonholliday/subsequence.git
+
+# optional: Ableton Link tempo sync
+pip install "subsequence[link] @ git+https://github.com/simonholliday/subsequence.git"
 ```
+
+Pin a piece to an exact release by appending a tag — `...subsequence.git@v0.6.2` — so it renders identically forever, whatever the library does next.
 
 **Linux:** the ALSA backend needs your user in the `audio` group. If you hit `open /dev/snd/seq failed: Permission denied`:
 
@@ -60,13 +63,7 @@ pip install -e ".[link]"   # optional: Ableton Link tempo sync
 sudo usermod -a -G audio $USER   # then log out and back in
 ```
 
-Then hear it:
-
-```bash
-python examples/demo.py
-```
-
-New to Subsequence? The Cookbook's **[Chapter 0 ↗](https://subsequence.live/cookbook/00-setup.html)** walks through installation, creating a virtual MIDI port on macOS / Windows / Linux, and your first sound, step by step.
+New to Subsequence? The Cookbook's **[Chapter 0 ↗](https://subsequence.live/cookbook/00-setup.html)** walks through installation, creating a virtual MIDI port on macOS / Windows / Linux, and your first sound, step by step. (Working from a clone instead? `pip install -e .` and hear it with `python examples/demo.py`.)
 
 ## Documentation
 

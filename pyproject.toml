@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
+requires = ["setuptools>=77.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,18 +8,20 @@ dynamic = ["version"]
 description = "A generative MIDI sequencer"
 readme = "README.md"
 authors = [{ name = "Simon Holliday", email = "simon.holliday@protonmail.com" }]
-license = { text = "AGPL-3.0-or-later" }
+# SPDX expression (PEP 639).  The old table form and the License:: classifier
+# are deprecated by setuptools and slated for removal; the classifier is dropped
+# because the SPDX string is now the license's single source of truth.
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 ]
 dependencies = [
-    "mido",
-    "python-rtmidi",
-    "python-osc",
-    "websockets",
-    "pyyaml",
+    "mido>=1.3",
+    "python-rtmidi>=1.5",
+    "python-osc>=1.8",
+    "websockets>=12.0",
+    "pyyaml>=6.0",
     "pymididefs @ git+https://github.com/simonholliday/PyMidiDefs.git@v0.2.3",
 ]
 
@@ -49,7 +51,7 @@ subsequence = "subsequence.__main__:main"
 include = ["subsequence*"]
 
 [tool.setuptools.package-data]
-subsequence = ["py.typed"]
+subsequence = ["py.typed", "assets/web/*.html"]
 
 [tool.mypy]
 python_version = "3.10"

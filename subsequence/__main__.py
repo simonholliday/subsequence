@@ -1,5 +1,5 @@
 """
-Entry point for ``python -m subsequence`` — confirms the install and points to the demo.
+Entry point for ``python -m subsequence`` — confirms the install and points to the docs.
 """
 
 import logging
@@ -17,7 +17,7 @@ def main () -> None:
 	"""
 
 	logger.info("Subsequence module loaded.")
-	logger.info("To run the demo, execute: python examples/demo.py")
+	logger.info("To make your first sound, follow the Cookbook: https://subsequence.live/cookbook/00-setup.html")
 
 
 if __name__ == "__main__":
