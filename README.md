@@ -46,16 +46,16 @@ composition.play()
 
 Subsequence needs **Python 3.10+** and a MIDI destination — a hardware synth or drum machine, or a virtual MIDI port into your DAW or software instrument. It generates MIDI only; it makes no sound itself.
 
-Install it into your project's virtual environment (no clone needed):
+Install it into your project's virtual environment:
 
 ```bash
-pip install git+https://github.com/simonholliday/subsequence.git
+pip install subsequence
 
 # optional: Ableton Link tempo sync
-pip install "subsequence[link] @ git+https://github.com/simonholliday/subsequence.git"
+pip install "subsequence[link]"
 ```
 
-Pin a piece to an exact release by appending a tag — `...subsequence.git@v0.6.2` — so it renders identically forever, whatever the library does next.
+Pin a piece to an exact release — `pip install subsequence==0.6.5` — so it renders identically forever, whatever the library does next.
 
 **Linux:** the ALSA backend needs your user in the `audio` group. If you hit `open /dev/snd/seq failed: Permission denied`:
 
