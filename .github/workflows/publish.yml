@@ -1,0 +1,46 @@
+name: Publish to PyPI
+
+# Publishes a release whenever a version tag is pushed. Versioning is driven by
+# git tags via setuptools-scm, so `git tag v0.7.0 && git push --tags` is the
+# whole release flow. Uses PyPI Trusted Publishing (OIDC) — no API token is
+# stored. Action versions matter: older majors run on a retired Node runtime
+# and GitHub fails the job (same fix as PyMidiDefs' publish workflow).
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # full history + tags so setuptools-scm can derive the version
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        run: pipx run build
+      - name: Check metadata
+        run: pipx run twine check dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # required for Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
