@@ -1,11 +1,14 @@
 import random
 
+import pytest
+
 import subsequence.sequence_utils
 
 
 F = subsequence.sequence_utils.flip
 C = subsequence.sequence_utils.clamp
 TH = subsequence.sequence_utils.threshold
+FOLD = subsequence.sequence_utils.fold
 TOL = 1e-9
 
 
@@ -186,3 +189,123 @@ def test_threshold_pairs_with_indices () -> None:
 
 	gate = TH([0.9, 0.1, 0.6, 0.4])
 	assert subsequence.sequence_utils.sequence_to_indices(gate) == [0, 2]
+
+
+# --- fold ---
+
+
+def test_fold_leaves_in_range_values_alone () -> None:
+
+	"""Values already inside the range pass through untouched, in both modes."""
+
+	inside = [0, 1, 5, 11]
+	assert FOLD(inside, 0, 12) == inside
+	assert FOLD(inside, 0, 12, mode="reflect") == inside
+
+
+def test_fold_wrap_is_modulo () -> None:
+
+	"""Wrapping reappears at the opposite end — the octave-style modulo."""
+
+	assert FOLD([12, 13, 24, 25], 0, 12) == [0, 1, 0, 1]
+
+
+def test_fold_reflect_turns_around_at_the_boundary () -> None:
+
+	"""Reflecting reverses direction at the wall instead of jumping."""
+
+	assert FOLD([11, 12, 13, 14], 0, 12, mode="reflect") == [11, 12, 11, 10]
+
+
+def test_fold_wrap_excludes_high_reflect_includes_it () -> None:
+
+	"""The documented range asymmetry: high is reachable only under reflect."""
+
+	assert FOLD([12], 0, 12) == [0]
+	assert FOLD([12], 0, 12, mode="reflect") == [12]
+
+
+def test_fold_handles_negatives () -> None:
+
+	"""Values below the range fold back up, not down into nonsense."""
+
+	assert FOLD([-1, -12], 0, 12) == [11, 0]
+	assert FOLD([-1, -2], 0, 12, mode="reflect") == [1, 2]
+
+
+def test_fold_respects_a_non_zero_low () -> None:
+
+	"""The range need not start at zero."""
+
+	assert all(60 <= v <= 72 for v in FOLD([0, 59, 100, 200], 60, 72, mode="reflect"))
+	assert all(60 <= v < 72 for v in FOLD([0, 59, 100, 200], 60, 72))
+
+
+def test_fold_is_idempotent () -> None:
+
+	"""Folding an already-folded sequence changes nothing further."""
+
+	raw = [0, 5, 13, 40, -7, 99]
+
+	for mode in ("wrap", "reflect"):
+		once = FOLD(raw, 0, 12, mode=mode)
+		assert FOLD(once, 0, 12, mode=mode) == once
+
+
+def test_fold_wrap_period_and_reflect_period () -> None:
+
+	"""Wrap repeats every span; reflect repeats every two spans (there and back)."""
+
+	rng = random.Random(0)
+
+	for _ in range(200):
+		v = rng.randint(-100, 100)
+		assert FOLD([v], 0, 12) == FOLD([v + 12], 0, 12)
+		assert FOLD([v], 0, 12, mode="reflect") == FOLD([v + 24], 0, 12, mode="reflect")
+
+
+def test_fold_empty () -> None:
+
+	"""An empty sequence yields an empty list."""
+
+	assert FOLD([], 0, 12) == []
+
+
+def test_fold_preserves_length () -> None:
+
+	"""Folding never adds or drops steps."""
+
+	raw = [0, 13, -4, 77, 12]
+	assert len(FOLD(raw, 0, 7)) == len(raw)
+
+
+def test_fold_needs_a_real_range () -> None:
+
+	"""A zero-width or inverted range is an error, not a divide-by-zero."""
+
+	with pytest.raises(ValueError) as exc:
+		FOLD([1], 5, 5)
+	assert "must be above" in str(exc.value)
+
+	with pytest.raises(ValueError):
+		FOLD([1], 12, 0)
+
+
+def test_fold_unknown_mode_lists_the_valid_names () -> None:
+
+	"""An unknown mode names what it should have been."""
+
+	with pytest.raises(ValueError) as exc:
+		FOLD([1], 0, 12, mode="bounce")
+	assert "reflect" in str(exc.value) and "wrap" in str(exc.value)
+
+
+def test_fold_reflect_stays_inside_where_flip_does_not () -> None:
+
+	"""fold(reflect) is flip applied until it lands: flip alone can leave the range."""
+
+	# 13 is one step past the top, so it bounces back to one below it.
+	assert FOLD([13], 0, 12, mode="reflect") == [11]
+
+	# flip mirrors once and does not clamp, so it falls outside the range entirely.
+	assert F(13, 0, 12) == -1

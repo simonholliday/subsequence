@@ -5293,36 +5293,324 @@ def test_de_bruijn_pitches_from_list () -> None:
 	assert placed.issubset(set(pitches))
 
 
-# --- fibonacci ---
+# --- golden ---
 
 
-def test_fibonacci_places_notes () -> None:
+def test_golden_places_notes () -> None:
 
-	"""fibonacci places the requested number of notes."""
+	"""golden places the requested number of notes."""
 
 	pattern, builder = _make_builder(length=4)
-	builder.fibonacci(60, count=8, velocity=80)
+	builder.golden(60, count=8, velocity=80)
 	assert len(pattern.steps) == 8
 
 
-def test_fibonacci_correct_count () -> None:
+def test_golden_correct_count () -> None:
 
-	"""Total placed notes equals steps parameter."""
+	"""Total placed notes equals the count parameter."""
 
 	pattern, builder = _make_builder(length=4)
-	builder.fibonacci(60, count=11)
-	assert len(pattern.steps) == 11
+	builder.golden(60, count=11)
+	assert sum(len(s.notes) for s in pattern.steps.values()) == 11
 
 
-def test_fibonacci_velocity_tuple () -> None:
+def test_golden_velocity_tuple () -> None:
 
 	"""Velocity tuple produces velocities within the given range."""
 
 	pattern, builder = _make_builder(length=4)
 	builder.rng = random.Random(1)
-	builder.fibonacci(60, count=8, velocity=(60, 100))
+	builder.golden(60, count=8, velocity=(60, 100))
 	vels = [note.velocity for step in pattern.steps.values() for note in step.notes]
 	assert all(60 <= v <= 100 for v in vels)
+
+
+def test_golden_pool_cycles_in_time_order () -> None:
+
+	"""A pitch pool is walked in time order, repeating once exhausted."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.golden([60, 62, 64], count=6)
+	placed = [note.pitch for step in sorted(pattern.steps) for note in pattern.steps[step].notes]
+	assert placed == [60, 62, 64, 60, 62, 64]
+
+
+def test_golden_single_pitch_still_works () -> None:
+
+	"""A bare note number places every note on that pitch (the percussive form)."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.golden(60, count=5)
+	placed = {note.pitch for step in pattern.steps.values() for note in step.notes}
+	assert placed == {60}
+
+
+def test_golden_pool_does_not_move_positions () -> None:
+
+	"""Swapping a single pitch for a pool re-voices the rhythm without moving it."""
+
+	pattern_a, builder_a = _make_builder(length=4)
+	builder_a.golden(60, count=8)
+
+	pattern_b, builder_b = _make_builder(length=4)
+	builder_b.golden([60, 62, 64], count=8)
+
+	assert sorted(pattern_a.steps) == sorted(pattern_b.steps)
+
+
+def test_golden_empty_pool_raises () -> None:
+
+	"""An empty pitch pool is a musical error, not a silent no-op."""
+
+	_, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError) as exc:
+		builder.golden([], count=8)
+	assert "pitches list cannot be empty" in str(exc.value)
+
+
+def test_golden_bool_pitch_raises () -> None:
+
+	"""A bool is an int to Python — golden() rejects it rather than playing pitch 1."""
+
+	_, builder = _make_builder(length=4)
+
+	with pytest.raises(TypeError):
+		builder.golden(True, count=4)
+
+
+# --- recaman ---
+
+
+def _pitches_in_time_order (pattern: subsequence.pattern.Pattern) -> list:
+
+	"""Every placed pitch, in time order."""
+
+	return [note.pitch for step in sorted(pattern.steps) for note in pattern.steps[step].notes]
+
+
+def test_recaman_defaults_to_the_pattern_grid () -> None:
+
+	"""Called bare it fills the grid, since the sequence itself is endless."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.recaman([60, 62, 64, 65, 67, 69, 71])
+	assert sum(len(s.notes) for s in pattern.steps.values()) == builder._default_grid
+
+
+def test_recaman_maps_degree_and_octave () -> None:
+
+	"""Values become a scale degree plus a register, which is what widens the line."""
+
+	pattern, builder = _make_builder(length=4)
+	pool = [60, 62, 64, 65, 67, 69, 71]
+	builder.recaman(pool, count=8, spacing=0.25)
+
+	placed = _pitches_in_time_order(pattern)
+	# Recaman(8) from 0 is [0, 1, 3, 6, 2, 7, 13, 20]; degree = v % 7, octave = v // 7.
+	# So 13 -> degree 6 an octave up, and 20 -> degree 6 two octaves up.
+	assert placed == [60, 62, 65, 71, 64, 60 + 12, 71 + 12, 71 + 24]
+
+
+def test_recaman_octave_span_zero_stays_in_one_octave () -> None:
+
+	"""octave_span=0 collapses the register, leaving only the pool's own pitches."""
+
+	pattern, builder = _make_builder(length=4)
+	pool = [60, 62, 64, 65, 67, 69, 71]
+	builder.recaman(pool, count=16, spacing=0.25, octave_span=0)
+	assert set(_pitches_in_time_order(pattern)).issubset(set(pool))
+
+
+def test_recaman_octave_reflects_rather_than_pinning () -> None:
+
+	"""The register turns around at the top instead of sticking there.
+
+	Clamping would flatten the wedge — the top octave would swallow most of the
+	line.  Reflecting keeps it moving, so no single octave dominates.
+	"""
+
+	pattern, builder = _make_builder(length=8)
+	pool = [60, 62, 64, 65, 67, 69, 71]
+	builder.recaman(pool, count=24, spacing=0.25, octave_span=2)
+
+	octaves = [(p - 60) // 12 for p in _pitches_in_time_order(pattern)]
+	top = sum(1 for o in octaves if o == 2)
+	assert top < len(octaves) / 2
+
+
+def test_recaman_start_zero_and_one_sound_the_same () -> None:
+
+	"""The documented gotcha, at the verb level: step start= by more than one."""
+
+	pattern_a, builder_a = _make_builder(length=4)
+	builder_a.recaman([60, 62, 64, 65, 67], count=12, spacing=0.25, start=0)
+
+	pattern_b, builder_b = _make_builder(length=4)
+	builder_b.recaman([60, 62, 64, 65, 67], count=12, spacing=0.25, start=1)
+
+	assert _pitches_in_time_order(pattern_a) == _pitches_in_time_order(pattern_b)
+
+
+def test_recaman_start_changes_the_line () -> None:
+
+	"""From 2 upward, start= gives genuinely different material."""
+
+	pattern_a, builder_a = _make_builder(length=4)
+	builder_a.recaman([60, 62, 64, 65, 67], count=12, spacing=0.25, start=0)
+
+	pattern_b, builder_b = _make_builder(length=4)
+	builder_b.recaman([60, 62, 64, 65, 67], count=12, spacing=0.25, start=7)
+
+	assert _pitches_in_time_order(pattern_a) != _pitches_in_time_order(pattern_b)
+
+
+def test_recaman_skip_slides_the_window_smoothly () -> None:
+
+	"""Rebasing on the window minimum keeps skip= from jumping the register."""
+
+	lows = []
+
+	for skip in (0, 1, 2, 8, 32):
+		pattern, builder = _make_builder(length=4)
+		builder.recaman([60, 62, 64, 65, 67], count=12, spacing=0.25, skip=skip)
+		lows.append(min(_pitches_in_time_order(pattern)))
+
+	# Every window starts from the pool's own bottom note, wherever it sits.
+	assert all(low == 60 for low in lows)
+
+
+def test_recaman_mapping_overrides_placement () -> None:
+
+	"""A mapping callback takes full control, and None is a rest."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.recaman(
+		[60, 62, 64],
+		count=8,
+		spacing=0.25,
+		mapping=lambda value, index: (36, 100, 0.1) if index % 2 == 0 else None,
+	)
+	notes = [n for step in pattern.steps.values() for n in step.notes]
+	assert len(notes) == 4
+	assert all(n.pitch == 36 for n in notes)
+
+
+def test_recaman_empty_pool_raises () -> None:
+
+	"""An empty pool is a musical error."""
+
+	_, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError) as exc:
+		builder.recaman([])
+	assert "pitches list cannot be empty" in str(exc.value)
+
+
+def test_recaman_deterministic_pitches () -> None:
+
+	"""Pitches and timing carry no randomness."""
+
+	pattern_a, builder_a = _make_builder(length=4)
+	builder_a.recaman([60, 62, 64, 65, 67], count=16, spacing=0.25)
+
+	pattern_b, builder_b = _make_builder(length=4)
+	builder_b.recaman([60, 62, 64, 65, 67], count=16, spacing=0.25)
+
+	assert _pitches_in_time_order(pattern_a) == _pitches_in_time_order(pattern_b)
+
+
+# --- fibonacci ---
+
+
+def test_fibonacci_plays_one_full_cycle_by_default () -> None:
+
+	"""Called bare, it places exactly one Pisano cycle — 16 steps for a 7-note pool."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.fibonacci([60, 62, 64, 65, 67, 69, 71])
+	assert sum(len(s.notes) for s in pattern.steps.values()) == 16
+
+
+def test_fibonacci_pool_size_chooses_the_phrase_length () -> None:
+
+	"""The musical claim: pool size decides cycle length."""
+
+	expected = {3: 8, 5: 20, 7: 16, 8: 12, 12: 24}
+
+	for size, cycle in expected.items():
+		pattern, builder = _make_builder(length=4)
+		builder.fibonacci(list(range(60, 60 + size)))
+		assert sum(len(s.notes) for s in pattern.steps.values()) == cycle
+
+
+def test_fibonacci_pitches_come_from_the_pool () -> None:
+
+	"""Every placed pitch is drawn from the given pool."""
+
+	pattern, builder = _make_builder(length=4)
+	pool = [60, 62, 64, 65, 67]
+	builder.fibonacci(pool)
+	placed = {note.pitch for step in pattern.steps.values() for note in step.notes}
+	assert placed.issubset(set(pool))
+
+
+def test_fibonacci_single_pitch_pool_does_not_hang () -> None:
+
+	"""A one-note pool means modulus 1 — it must terminate, not spin."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.fibonacci([60])
+	assert sum(len(s.notes) for s in pattern.steps.values()) == 1
+
+
+def test_fibonacci_count_truncates () -> None:
+
+	"""An explicit count overrides the natural cycle length."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.fibonacci([60, 62, 64, 65, 67, 69, 71], count=5)
+	assert sum(len(s.notes) for s in pattern.steps.values()) == 5
+
+
+def test_fibonacci_mapping_overrides_placement () -> None:
+
+	"""A mapping callback takes full control, and None is a rest."""
+
+	pattern, builder = _make_builder(length=4)
+	builder.fibonacci(
+		[60, 62, 64, 65, 67, 69, 71],
+		mapping=lambda value, index: (36, 100, 0.1) if index % 2 == 0 else None,
+	)
+	notes = [n for step in pattern.steps.values() for n in step.notes]
+	assert notes and all(n.pitch == 36 and n.velocity == 100 for n in notes)
+	assert len(notes) == 8	# half of the 16-step cycle
+
+
+def test_fibonacci_empty_pool_raises () -> None:
+
+	"""An empty pool reports the musical problem, not a ZeroDivisionError."""
+
+	_, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError) as exc:
+		builder.fibonacci([])
+	assert "pitches list cannot be empty" in str(exc.value)
+
+
+def test_fibonacci_deterministic_pitches () -> None:
+
+	"""Pitches and timing carry no randomness — two calls agree exactly."""
+
+	pattern_a, builder_a = _make_builder(length=4)
+	builder_a.fibonacci([60, 62, 64, 65, 67])
+
+	pattern_b, builder_b = _make_builder(length=4)
+	builder_b.fibonacci([60, 62, 64, 65, 67])
+
+	pitches_a = [n.pitch for s in sorted(pattern_a.steps) for n in pattern_a.steps[s].notes]
+	pitches_b = [n.pitch for s in sorted(pattern_b.steps) for n in pattern_b.steps[s].notes]
+	assert pitches_a == pitches_b
 
 
 # --- lorenz ---

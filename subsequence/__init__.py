@@ -51,7 +51,9 @@ Composition tools:
   deterministic chaos sequences (``logistic_map()``), pink 1/f noise
   (``pink_noise()``), L-system string rewriting (``p.lsystem()``),
   Markov-chain generation (``p.markov()``), aperiodic binary rhythms
-  (``p.thue_morse()``), golden-ratio beat placement (``p.fibonacci()``),
+  (``p.thue_morse()``), golden-ratio beat placement (``p.golden()``),
+  Fibonacci cycles whose length the pitch pool chooses (``p.fibonacci()``),
+  never-repeating two-voice wedges from Recamán's sequence (``p.recaman()``),
   Gray-Scott reaction-diffusion patterns (``p.reaction_diffusion()``),
   Lorenz strange-attractor generation (``p.lorenz()``), exhaustive
   pitch-subsequence melodies (``p.de_bruijn()``), step-wise melodies

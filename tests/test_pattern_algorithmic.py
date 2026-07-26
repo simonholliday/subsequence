@@ -542,7 +542,7 @@ def test_ratchet_velocity_preserved_without_shaping () -> None:
 # raises, matching the other melodic-pool methods (de_bruijn / lorenz /
 # self_avoiding_walk / evolve / branch).  A zero RESOLUTION means "no steps to
 # place" and is a clean no-op, matching the rhythm family (euclidean / bresenham
-# / cellular_1d / fibonacci / reaction_diffusion).  These previously crashed with
+# / cellular_1d / golden / reaction_diffusion).  These previously crashed with
 # opaque IndexError / ZeroDivisionError.
 
 def test_cellular_2d_empty_pitches_raises () -> None:

@@ -120,6 +120,26 @@ def test_de_bruijn_zero_spacing_raises () -> None:
 		builder.de_bruijn([60, 62], spacing=0)
 
 
+def test_fibonacci_zero_spacing_raises () -> None:
+
+	"""fibonacci() names the spacing parameter instead of dividing by zero."""
+
+	builder, _ = make_builder()
+
+	with pytest.raises(ValueError, match="spacing"):
+		builder.fibonacci([60, 62, 64], spacing=0)
+
+
+def test_recaman_zero_spacing_raises () -> None:
+
+	"""recaman() names the spacing parameter instead of dividing by zero."""
+
+	builder, _ = make_builder()
+
+	with pytest.raises(ValueError, match="spacing"):
+		builder.recaman([60, 62, 64], spacing=0)
+
+
 def test_lorenz_zero_spacing_raises () -> None:
 
 	"""lorenz() names the spacing parameter instead of dividing by zero."""

@@ -131,8 +131,11 @@ class PatternAlgorithmicMixin:
 		``None`` (a silent step — no probability draw is consumed) or a
 		``(pitch, velocity, duration)`` event.  Surviving events pass the
 		probability gate and, when ``no_overlap`` is set, the same-pitch check,
-		then land via ``self.note()`` (which resolves ``(low, high)`` velocity
-		tuples per hit).
+		then land via ``self.note()``.
+
+		``(low, high)`` velocity tuples are resolved here, against the caller's
+		``rng`` — not left to ``self.note()``, which would draw from the pattern's
+		own RNG and silently ignore the ``seed=`` the caller passed.
 		"""
 
 		if not sequence:
@@ -155,7 +158,12 @@ class PatternAlgorithmicMixin:
 			if no_overlap and self._has_pitch_at_beat(pitch, i * step_duration):
 				continue
 
-			self.note(pitch=pitch, beat=i * step_duration, velocity=velocity, duration=duration)
+			self.note(
+				pitch=pitch,
+				beat=i * step_duration,
+				velocity=self._resolve_velocity(velocity, rng),
+				duration=duration,
+			)
 
 	def _place_rhythm_sequence (
 		self,
@@ -181,6 +189,43 @@ class PatternAlgorithmicMixin:
 			return (pitch, velocity, duration)
 
 		self._place_gated_sequence(sequence, _event, probability, rng, no_overlap=no_overlap)
+
+	def _fit_spacing (
+		self,
+		verb: str,
+		length: int,
+		spacing: typing.Optional[float],
+		noun: str = "notes",
+	) -> typing.Tuple[float, int]:
+
+		"""Resolve auto-fit or fixed spacing for a generated sequence (the shared core).
+
+		With ``spacing`` None the sequence is spread evenly across the whole pattern,
+		so every symbol is heard.  Given a spacing, events land that many beats apart
+		and the sequence is truncated to whatever fits in the bar.  Callers slice with
+		the returned count — ``sequence[:n_steps]`` — which is a no-op in the auto-fit
+		case, so one code path serves both.
+
+		Parameters:
+			verb: Calling method name, for the error message.
+			length: Number of symbols available to place.
+			spacing: Beats between events, or None to auto-fit.
+			noun: What the caller places, for the error message.
+
+		Returns:
+			A ``(step, n_steps)`` pair — beats between events, and how many to place.
+
+		Raises:
+			ValueError: If ``spacing`` is zero or negative.
+		"""
+
+		if spacing is None:
+			return self._pattern.length / length, length
+
+		if spacing <= 0:
+			raise ValueError(f"{verb}() spacing is the time between {noun} in beats — it must be positive, got {spacing}")
+
+		return spacing, int(self._pattern.length / spacing)
 
 	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: float = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
@@ -254,7 +299,8 @@ class PatternAlgorithmicMixin:
 		probability: float = 1.0,
 		no_overlap: bool = False,
 		seed: typing.Optional[int] = None,
-		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
+		rng: typing.Optional[random.Random] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Distribute multiple drum voices across the pattern using weighted Bresenham.
@@ -608,7 +654,8 @@ class PatternAlgorithmicMixin:
 		no_overlap: bool = False,
 		probability: float = 1.0,
 		seed: typing.Optional[int] = None,
-		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
+		rng: typing.Optional[random.Random] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate an evolving rhythm using a 1D cellular automaton.
 
@@ -667,7 +714,8 @@ class PatternAlgorithmicMixin:
 		initial_state: typing.Union[str, typing.List[typing.List[int]]] = "center",
 		density: float = 0.5,
 		seed: typing.Optional[int] = None,
-		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
+		rng: typing.Optional[random.Random] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate polyphonic patterns using a 2D Life-like cellular automaton.
 
@@ -963,9 +1011,11 @@ class PatternAlgorithmicMixin:
 		silent rests - they advance time but produce no note.
 
 		The defining musical property is self-similarity: patterns repeat
-		at different time scales.  The Fibonacci rule (``A → AB``,
-		``B → A``) places hits at golden-ratio spacings.  Koch and dragon
-		curve rules produce fractal melodic contours.
+		at different time scales.  The Fibonacci-word rule (``A → AB``,
+		``B → A``) spaces hits evenly but never quite repeats, so the pattern
+		keeps shifting against the bar.  Koch and dragon curve rules produce
+		fractal melodic contours.  (Hits land on the grid here — for events
+		placed *off* the grid by the golden ratio, see :meth:`golden`.)
 
 		With ``spacing=None`` (default) the entire expanded string is fitted
 		into the bar: each generation makes notes twice as dense while
@@ -992,7 +1042,7 @@ class PatternAlgorithmicMixin:
 
 		Example:
 			```python
-			# Fibonacci kick rhythm - self-similar hit spacing
+			# Fibonacci-word kick rhythm - self-similar hit spacing
 			p.lsystem(
 			    pitch_map={"A": "kick_1"},
 			    axiom="A",
@@ -1025,16 +1075,8 @@ class PatternAlgorithmicMixin:
 		if not expanded:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-		if spacing is None:
-			auto_step = self._pattern.length / len(expanded)
-			symbols = expanded
-		else:
-			if spacing <= 0:
-				raise ValueError(f"lsystem() spacing is the time between symbols in beats — it must be positive, got {spacing}")
-
-			auto_step = spacing
-			n_steps = int(self._pattern.length / spacing)
-			symbols = expanded[:n_steps]
+		auto_step, n_steps = self._fit_spacing("lsystem", len(expanded), spacing, noun="symbols")
+		symbols = expanded[:n_steps]
 
 		beat = 0.0
 
@@ -1060,7 +1102,8 @@ class PatternAlgorithmicMixin:
 		no_overlap: bool = False,
 		probability: float = 1.0,
 		seed: typing.Optional[int] = None,
-		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
+		rng: typing.Optional[random.Random] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Place notes using the Thue-Morse aperiodic binary sequence.
 
@@ -1180,16 +1223,8 @@ class PatternAlgorithmicMixin:
 		if not sequence:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-		if spacing is None:
-			auto_step = self._pattern.length / len(sequence)
-			symbols = sequence
-		else:
-			if spacing <= 0:
-				raise ValueError(f"de_bruijn() spacing is the time between notes in beats — it must be positive, got {spacing}")
-
-			auto_step = spacing
-			n_steps = int(self._pattern.length / spacing)
-			symbols = sequence[:n_steps]
+		auto_step, n_steps = self._fit_spacing("de_bruijn", len(sequence), spacing)
+		symbols = sequence[:n_steps]
 
 		beat = 0.0
 
@@ -1199,27 +1234,37 @@ class PatternAlgorithmicMixin:
 			beat += auto_step
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-	def fibonacci (
+	def golden (
 		self,
-		pitch: typing.Union[int, str],
+		pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]],
 		count: int,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		seed: typing.Optional[int] = None,
-		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
+		rng: typing.Optional[random.Random] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
 
-		"""Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing).
+		"""Place notes at golden-ratio-spaced beat positions.
 
 		Uses the golden angle method - ``position_i = frac(i × φ) × bar_length``,
 		where ``frac`` keeps only the fractional part - to distribute ``count``
 		events across the bar as a low-discrepancy (sunflower-seed) spread.
 		The result is sorted into ascending time order.  Unlike a Euclidean rhythm (maximally even
-		spacing on a fixed grid), Fibonacci timing is irrational and places
+		spacing on a fixed grid), golden-ratio timing is irrational and places
 		events off-grid in a way that sounds organic and avoids metronomic
 		repetition.
 
+		Give a single pitch (or drum name) for one voice, or a list to cycle a pool
+		through the placed notes in time order — the first note takes the first
+		pitch, and the pool repeats once exhausted.  The positions themselves never
+		change, so swapping one pitch for a pool re-voices a rhythm without moving it.
+
+		This shapes *time* only — the pool is walked in order, not chosen by the
+		golden ratio.  For the Fibonacci integer sequence as pitch material, see
+		:meth:`fibonacci`.
+
 		Parameters:
-			pitch: MIDI note number or drum name.
+			pitches: A MIDI note number or drum name, or a list of them to cycle.
 			count: Number of notes to place.
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
 			duration: Note duration in beats.
@@ -1227,20 +1272,275 @@ class PatternAlgorithmicMixin:
 				itself is deterministic; omit to use the pattern's RNG.
 			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
 
+		Raises:
+			ValueError: If ``pitches`` is an empty list.
+
 		Example:
 			```python
 			# 11 hi-hat hits with golden-ratio spacing
-			p.fibonacci("hi_hat_closed", count=11, velocity=(60, 90))
+			p.golden("hi_hat_closed", count=11, velocity=(60, 90))
+
+			# The same spread, cycling a pentatonic pool
+			p.golden([60, 62, 65, 67, 70], count=11)
 			```
 		"""
 
 		rng = self._rng_from(seed, rng)
 
-		beats = subsequence.sequence_utils.fibonacci_rhythm(count, self._pattern.length)
+		# A bool is an int to Python, so guard it explicitly — p.golden(True) would
+		# otherwise place pitch 1 rather than telling the caller what went wrong.
+		if isinstance(pitches, bool):
+			raise TypeError(f"golden() pitches must be a note number, drum name, or list of them — got {pitches!r}")
 
-		for beat in beats:
+		pool: typing.List[typing.Union[int, str]] = [pitches] if isinstance(pitches, (int, str)) else list(pitches)
+
+		if not pool:
+			raise ValueError("pitches list cannot be empty")
+
+		beats = subsequence.sequence_utils.golden_rhythm(count, self._pattern.length)
+
+		for i, beat in enumerate(beats):
 			vel = self._resolve_velocity(velocity, rng)
-			self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
+			self.note(pitch=pool[i % len(pool)], beat=beat, velocity=vel, duration=duration)
+		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
+
+	def recaman (
+		self,
+		pitches: typing.List[typing.Union[int, str]],
+		count: typing.Optional[int] = None,
+		spacing: typing.Optional[float] = None,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		duration: float = 0.2,
+		start: int = 0,
+		skip: int = 0,
+		octave_span: int = 2,
+		mapping: typing.Optional[
+			typing.Callable[
+				[int, int],
+				typing.Optional[typing.Tuple[typing.Union[int, str], int, float]],
+			]
+		] = None,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
+
+		"""Play Recamán's sequence — a melody that wanders off and never repeats.
+
+		The rule is *step back if you can, otherwise step forward*, by one at the first
+		note, two at the second, and so on.  Because the steps keep growing, the line
+		lurches ever wider, and the back-and-forth splits into **two voices**: alternate
+		notes sink while the ones between them climb, so a single line is heard as two
+		moving apart.  That wedge is the reason to reach for this — nothing else here
+		produces it, and it is deterministic, so the same call always gives it back.
+
+		It is at its best over one or two bars.  Left running much longer the sequence
+		spreads out and starts to sound like a random walk.
+
+		Because the numbers grow without limit, they are read as *scale degrees plus
+		register*: each value picks a note from the pool and how many octaves up to put
+		it, which is what turns the widening into an audible opening-out.  Give a pool
+		of **one octave** — the degrees of your scale.  A multi-octave pool works, but
+		it stacks octaves on octaves and the wedge gets very wide very fast.
+
+		The sister generator :meth:`fibonacci` always returns home; this one never does.
+
+		Parameters:
+			pitches: One octave of pitches — the degrees values are drawn from.
+			count: How many notes to place.  Defaults to the pattern's grid.
+			spacing: Beats between notes.  Omit to spread them across the bar.
+			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
+			duration: Note duration in beats.
+			start: The first value.  From 2 upward this is genuinely new material, and
+				the higher it is the longer the melody's opening descent.  ``0`` and
+				``1`` give the same shape, so step by more than one to hear a change —
+				``start=2 + p.cycle * 3`` evolves the line every cycle.
+			skip: Start further along the sequence, discarding this many values.
+			octave_span: How many octaves the line may climb before it turns back.
+				Set to 0 to keep everything in one octave.
+			mapping: ``f(value, index)`` returning ``(pitch, velocity, duration)`` to
+				place, or None for a rest — full control over how numbers become notes.
+			seed: Fix the velocity draws for this call (an int) — the pitches and
+				timing are deterministic; omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
+
+		Raises:
+			ValueError: If ``pitches`` is empty, ``spacing`` is not positive, or
+				``skip`` is negative.
+
+		Example:
+			```python
+			# The wedge, over one octave of C minor.
+			p.recaman(subsequence.intervals.scale_notes("C", "minor", low=60, high=71))
+
+			# A line that reinvents itself every cycle.
+			p.recaman([60, 62, 63, 65, 67, 68, 71], start=2 + p.cycle * 3)
+			```
+		"""
+
+		rng = self._rng_from(seed, rng)
+
+		if not pitches:
+			raise ValueError("pitches list cannot be empty")
+
+		resolved_opt = [self._resolve_pitch_lenient(p) if isinstance(p, str) else p for p in pitches]
+		resolved = [r for r in resolved_opt if r is not None]
+
+		if not resolved:
+			# Every name was a voice this device lacks (each warned once).
+			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
+
+		values = subsequence.sequence_utils.recaman(
+			count if count is not None else self._default_grid,
+			start=start,
+			skip=skip,
+		)
+
+		if not values:
+			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
+
+		# Always rebase on the window's own lowest value.  Later windows sit high up the
+		# sequence, and without this a slide of skip= would jump the register instead of
+		# moving smoothly along.  At skip=0, start=0 the offset is zero and nothing moves.
+		floor = min(values)
+		values = [value - floor for value in values]
+
+		degrees = [value % len(resolved) for value in values]
+		octaves = [value // len(resolved) for value in values]
+
+		# Turn the line around at the top of its range rather than pinning it there —
+		# clamping would flatten the wedge into a held note, which is the whole point.
+		if octave_span > 0:
+			octaves = subsequence.sequence_utils.fold(octaves, 0, octave_span, mode="reflect")
+		else:
+			octaves = [0] * len(octaves)
+
+		auto_step, n_steps = self._fit_spacing("recaman", len(values), spacing)
+
+		beat = 0.0
+
+		for index in range(min(n_steps, len(values))):
+
+			if mapping is not None:
+				result = mapping(values[index], index)
+				if result is not None:
+					m_pitch, m_velocity, m_duration = result
+					self.note(pitch=m_pitch, beat=beat, velocity=m_velocity, duration=m_duration)
+			else:
+				vel = self._resolve_velocity(velocity, rng)
+				self.note(
+					pitch=resolved[degrees[index]] + 12 * octaves[index],
+					beat=beat,
+					velocity=vel,
+					duration=duration,
+				)
+
+			beat += auto_step
+
+		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
+
+	def fibonacci (
+		self,
+		pitches: typing.List[typing.Union[int, str]],
+		modulus: typing.Optional[int] = None,
+		count: typing.Optional[int] = None,
+		spacing: typing.Optional[float] = None,
+		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		duration: float = 0.2,
+		a: int = 1,
+		b: int = 1,
+		mapping: typing.Optional[
+			typing.Callable[
+				[int, int],
+				typing.Optional[typing.Tuple[typing.Union[int, str], int, float]],
+			]
+		] = None,
+		seed: typing.Optional[int] = None,
+		rng: typing.Optional[random.Random] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
+
+		"""Play the Fibonacci sequence as a repeating melodic cycle.
+
+		Each number is the sum of the previous two, folded into your pitch pool.  The
+		musical trick is that folding makes the sequence *repeat*, and the length it
+		repeats after is decided by the size of the pool — so the number of notes you
+		hand it chooses the phrase length: a triad gives 8 steps, a pentatonic 20, a
+		seven-note scale 16, an octatonic 12, the full chromatic 24.  Called bare, it
+		plays exactly one complete cycle, so the phrase closes on itself.
+
+		Unlike :meth:`recaman`, which wanders off and never comes back, this always
+		returns home — pair them when you want one voice looping against one that
+		doesn't.  For golden-ratio *timing* (which has no Fibonacci numbers in it at
+		all), see :meth:`golden`.
+
+		Parameters:
+			pitches: Pitch pool.  Values index into it, so its size sets the cycle
+				length.  Ordered low-to-high it reads as a scale.
+			modulus: Fold values into ``[0, modulus)``.  Defaults to the pool size,
+				which is almost always what you want; set it larger than the pool to
+				make the line wrap through the pool more than once per cycle.
+			count: How many notes to place.  Omit for one complete cycle.
+			spacing: Beats between notes.  Omit to spread the whole cycle across the
+				bar, however long it is.  Setting a spacing fixes the note length
+				instead, so a cycle longer than the bar is cut off where the bar ends —
+				a 20-step cycle at ``spacing=0.25`` gets its first 16 notes.
+			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
+			duration: Note duration in beats.
+			a: The first number.  Defaults to 1.
+			b: The second number.  Defaults to 1.  ``(2, 1)`` gives the Lucas numbers,
+				a different cycle through the same pool.  Note many pairs are that same
+				cycle started elsewhere — ``(1, 3)`` is Lucas one step along.
+			mapping: ``f(value, index)`` returning ``(pitch, velocity, duration)`` to
+				place, or None for a rest — full control over how numbers become notes.
+			seed: Fix the velocity draws for this call (an int) — the pitches and
+				timing are deterministic; omit to use the pattern's RNG.
+			rng: Advanced determinism form — a ``random.Random`` (wins over ``seed=``).
+
+		Raises:
+			ValueError: If ``pitches`` is empty, or ``spacing`` is not positive.
+
+		Example:
+			```python
+			# One full 16-step cycle over a minor scale, spread across the bar.
+			p.fibonacci(subsequence.intervals.scale_notes("C", "minor", low=60, high=71))
+
+			# The Lucas variant, as steady eighth notes.
+			p.fibonacci([60, 62, 63, 65, 67], a=2, b=1, spacing=0.5)
+			```
+		"""
+
+		rng = self._rng_from(seed, rng)
+
+		# Guard the pool before it is used as the modulus, so an empty list reports
+		# the musical problem rather than a ZeroDivisionError from deep inside.
+		if not pitches:
+			raise ValueError("pitches list cannot be empty")
+
+		if modulus is None:
+			modulus = len(pitches)
+
+		sequence = subsequence.sequence_utils.fibonacci(count=count, a=a, b=b, modulus=modulus)
+
+		if not sequence:
+			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
+
+		auto_step, n_steps = self._fit_spacing("fibonacci", len(sequence), spacing)
+		symbols = sequence[:n_steps]
+
+		beat = 0.0
+
+		for index, value in enumerate(symbols):
+
+			if mapping is not None:
+				result = mapping(value, index)
+				if result is not None:
+					m_pitch, m_velocity, m_duration = result
+					self.note(pitch=m_pitch, beat=beat, velocity=m_velocity, duration=m_duration)
+			else:
+				vel = self._resolve_velocity(velocity, rng)
+				self.note(pitch=pitches[value % len(pitches)], beat=beat, velocity=vel, duration=duration)
+
+			beat += auto_step
+
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	def lorenz (
@@ -1348,7 +1648,8 @@ class PatternAlgorithmicMixin:
 		no_overlap: bool = False,
 		probability: float = 1.0,
 		seed: typing.Optional[int] = None,
-		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
+		rng: typing.Optional[random.Random] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation.
 
@@ -1829,7 +2130,8 @@ class PatternAlgorithmicMixin:
 		duration: float = 0.2,
 		spacing: float = 0.25,
 		seed: typing.Optional[int] = None,
-		rng: typing.Optional[random.Random] = None,	) -> "subsequence.pattern_builder.PatternBuilder":
+		rng: typing.Optional[random.Random] = None,
+	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""Loop a pitch sequence that gradually mutates each cycle.
 

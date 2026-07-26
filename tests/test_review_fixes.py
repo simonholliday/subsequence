@@ -57,10 +57,10 @@ def test_cc_clamps_out_of_range_value () -> None:
 	assert [e.value for e in pattern.cc_events] == [127, 0]
 
 
-# ── M3: fibonacci_rhythm spreads (golden angle), it doesn't cluster ──────────
+# ── M3: golden_rhythm spreads (golden angle), it doesn't cluster ──────────
 
-def test_fibonacci_rhythm_spreads_not_clusters () -> None:
-	positions = subsequence.sequence_utils.fibonacci_rhythm(8, length=4.0)
+def test_golden_rhythm_spreads_not_clusters () -> None:
+	positions = subsequence.sequence_utils.golden_rhythm(8, length=4.0)
 	gaps = [b - a for a, b in zip(positions, positions[1:])]
 
 	# The corrected frac(i·φ)·length form keeps a min gap ~0.36; the old

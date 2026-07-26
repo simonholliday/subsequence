@@ -1202,6 +1202,69 @@ def threshold (sequence: typing.List[float], cutoff: float = 0.5) -> typing.List
 	return [1 if value > cutoff else 0 for value in sequence]
 
 
+def fold (sequence: typing.Sequence[int], low: int, high: int, mode: str = "wrap") -> typing.List[int]:
+
+	"""Bring out-of-range whole numbers back into a range, keeping their movement.
+
+	Where :func:`clamp` flattens everything beyond the bounds onto the bounds, ``fold``
+	keeps travelling — so a line that runs off the top comes back in rather than
+	sticking.  That matters for generators whose values grow without limit (Recamán's
+	sequence, raw Fibonacci): clamping turns their shape into a held note, folding
+	preserves it.  Two ways to come back:
+
+		- ``"wrap"`` — reappear at the opposite end, the octave-style ``%`` most
+			musicians expect.  Yields ``[low, high)``: ``high`` itself lands on ``low``.
+		- ``"reflect"`` — turn around at the boundary and travel back, so movement
+			reverses instead of jumping.  Yields ``[low, high]`` inclusive, and is
+			:func:`flip` applied over and over rather than once.
+
+	Note the ranges differ: wrapping treats the bounds as the same point (as octaves
+	are), reflecting treats them as walls, so ``high`` is reachable only under
+	``"reflect"``.
+
+	Parameters:
+		sequence: The whole numbers to bring into range.
+		low: Lower bound (always reachable).
+		high: Upper bound — reachable under ``"reflect"``, excluded under ``"wrap"``.
+		mode: ``"wrap"`` or ``"reflect"`` (default ``"wrap"``).
+
+	Returns:
+		A new list the length of ``sequence``.  An empty sequence yields ``[]``.
+
+	Raises:
+		ValueError: If ``high`` is not above ``low``, or ``mode`` is unknown.
+
+	Example:
+		```python
+		# Keep a runaway melodic line inside one octave, bouncing at the edges.
+		degrees = subsequence.sequence_utils.recaman(16)
+		bounded = subsequence.sequence_utils.fold(degrees, 0, 12, mode="reflect")
+		```
+	"""
+
+	if high <= low:
+		raise ValueError(f"fold() needs a range to fold into — high ({high}) must be above low ({low})")
+
+	if mode not in ("wrap", "reflect"):
+		raise ValueError(f'Unknown fold mode {mode!r}. Available modes: "reflect", "wrap"')
+
+	span = high - low
+
+	if mode == "wrap":
+		return [low + (value - low) % span for value in sequence]
+
+	# Reflect: a full there-and-back cycle is twice the span, and the second half of
+	# each cycle is the first half travelling in reverse.
+	period = 2 * span
+	folded = []
+
+	for value in sequence:
+		offset = (value - low) % period
+		folded.append(low + offset if offset <= span else low + period - offset)
+
+	return folded
+
+
 def perlin_1d (x: float, seed: int = 0) -> float:
 
 	"""Generate smooth 1D noise at position *x*.
@@ -1570,7 +1633,7 @@ def lsystem_expand (
 
 	Example:
 		```python
-		# Fibonacci rhythm — hits distributed at golden-ratio spacing
+		# Fibonacci-word rhythm — evenly spaced hits that never quite repeat
 		expanded = subsequence.sequence_utils.lsystem_expand(
 		    axiom="A", rules={"A": "AB", "B": "A"}, generations=6
 		)
@@ -2068,10 +2131,166 @@ def de_bruijn (k: int, n: int) -> typing.List[int]:
 	return sequence
 
 
-def fibonacci_rhythm (steps: int, length: float = 4.0) -> typing.List[float]:
+def recaman (count: int, start: int = 0, skip: int = 0) -> typing.List[int]:
+
+	"""Generate Recamán's sequence — a line that never settles and never repeats.
+
+	The rule is simply *step back if you can, otherwise step forward*: at step *n*
+	move back by *n* if that lands on a positive number you have not already visited,
+	and forward by *n* if it does not.  The steps therefore grow — the gap between
+	consecutive values is always exactly *n* — which makes the line lurch further and
+	further as it goes.
+
+	Musically the interest is that the back-and-forth splits into **two voices**.  Take
+	terms 8 to 17 from the default start: ``12, 21, 11, 22, 10, 23, 9, 24, 8, 25`` — the
+	alternate values fall away (12, 11, 10, 9, 8) while the ones between them climb
+	(21, 22, 23, 24, 25).  One line of notes, heard as two — the wedge that Baroque solo
+	writing uses.  It is at its most characterful over roughly 16 to 32 values; much
+	beyond that it spreads out and starts to sound like a random walk.
+
+	The values grow without limit, so they are indices into a pitch space, not pitches.
+	Pair with :func:`fold` to bound them, and see :func:`fibonacci` for the counterpart
+	that does repeat.
+
+	Parameters:
+		count: How many values to return.
+		start: The first value.  Anything from 2 upward gives genuinely different
+			material, and the higher it is the longer the opening descent (40 opens
+			with eight falling steps).  Note ``0`` and ``1`` differ only by
+			transposition — they are the same shape.
+		skip: Discard this many leading values, to take a window further along the
+			sequence.  Later windows sit higher up, so normalise against the window's
+			own lowest value rather than assuming it starts near zero.
+
+	Returns:
+		A list of ``count`` whole numbers, or ``[]`` when ``count`` is not positive.
+
+	Raises:
+		ValueError: If ``skip`` is negative.
+
+	Example:
+		```python
+		# Sixteen values, then folded into a two-octave space.
+		values = subsequence.sequence_utils.recaman(16, start=2)
+		bounded = subsequence.sequence_utils.fold(values, 0, 24, mode="reflect")
+		```
+	"""
+
+	if skip < 0:
+		raise ValueError(f"recaman() skip is how many values to discard from the front — it cannot be negative, got {skip}")
+
+	if count <= 0:
+		return []
+
+	total = count + skip
+	seen = {start}
+	sequence = [start]
+	current = start
+
+	for n in range(1, total):
+		back = current - n
+		# The "not already visited" test guards only the backward step; a forward step
+		# is taken unconditionally, which is why some values recur (42 arrives twice).
+		current = back if (back > 0 and back not in seen) else current + n
+		sequence.append(current)
+		seen.add(current)
+
+	return sequence[skip:]
+
+
+def fibonacci (
+	count: typing.Optional[int] = None,
+	a: int = 1,
+	b: int = 1,
+	modulus: typing.Optional[int] = None,
+) -> typing.List[int]:
+
+	"""Generate Fibonacci numbers, optionally folded into a repeating pitch cycle.
+
+	Each number is the sum of the previous two.  Left unmodulated the values grow
+	exponentially and climb out of hearing almost at once — only eleven of the first
+	twenty fit inside MIDI's range — so as raw pitch this is a single rising gesture.
+
+	The musical form is ``modulus``.  Taken modulo *m* the sequence repeats, and the
+	length it repeats after (its Pisano period) is fixed by *m* alone — so the size of
+	the pitch space you fold into *chooses the phrase length for you*:
+
+		- 3 (a triad) — 8 steps
+		- 5 (pentatonic) — 20 steps
+		- 7 (a diatonic scale) — 16 steps
+		- 8 (octatonic) — 12 steps
+		- 12 (chromatic) — 24 steps
+
+	This is the counterpart to :func:`recaman`, which never repeats, and is unrelated
+	to :func:`golden_rhythm`, which places events in time via the golden ratio.
+
+	Parameters:
+		count: How many numbers to generate.  Omit to return exactly one full cycle,
+			which requires a ``modulus`` (an unmodulated sequence never repeats).
+		a: The first number.  Defaults to 1.
+		b: The second number.  Defaults to 1.  ``(2, 1)`` gives the Lucas numbers — a
+			genuinely different cycle through the same pool.  Many other pairs are the
+			same cycle entered at a different point: ``(1, 3)`` is Lucas one step along.
+		modulus: Fold the values into ``[0, modulus)``, making the sequence repeat.
+
+	Returns:
+		A list of whole numbers — the full sequence, or ``[]`` when ``count`` is zero
+		or negative.
+
+	Raises:
+		ValueError: If ``modulus`` is below 1, or if both ``count`` and ``modulus``
+			are omitted (nothing then bounds the sequence).
+
+	Example:
+		```python
+		# One complete cycle over a seven-note scale — 16 steps, chosen by the maths.
+		degrees = subsequence.sequence_utils.fibonacci(modulus=7)
+		```
+	"""
+
+	if modulus is not None and modulus < 1:
+		raise ValueError(f"fibonacci() modulus is the size of the space to fold into — it must be at least 1, got {modulus}")
+
+	if count is None and modulus is None:
+		raise ValueError("fibonacci() needs a count or a modulus — without a modulus the sequence never repeats, so there is no natural length")
+
+	if count is not None and count <= 0:
+		return []
+
+	sequence: typing.List[int] = []
+
+	if modulus is None:
+		assert count is not None	# guaranteed: the both-omitted case raised above
+		x, y = a, b
+		for _ in range(count):
+			sequence.append(x)
+			x, y = y, x + y
+		return sequence
+
+	# The map (x, y) -> (y, x + y) mod m is a bijection on a finite set of pairs, so
+	# every orbit is a pure loop.  Stopping when the *starting pair* comes back (rather
+	# than the textbook (0, 1)) means custom a/b report their own true cycle, and
+	# modulus=1 terminates instead of searching forever for a pair it never reaches.
+	start = (a % modulus, b % modulus)
+	x, y = start
+
+	while True:
+		sequence.append(x)
+		x, y = y, (x + y) % modulus
+
+		if count is not None:
+			if len(sequence) >= count:
+				break
+		elif (x, y) == start:
+			break
+
+	return sequence
+
+
+def golden_rhythm (count: int, length: float = 4.0) -> typing.List[float]:
 
 	"""
-	Generate beat positions spaced by the golden ratio (Fibonacci spiral).
+	Generate beat positions spaced by the golden ratio.
 
 	Uses the golden angle method: ``position_i = frac(i * φ) * length``, where
 	``φ = (1 + √5) / 2 ≈ 1.618``.  The result is sorted into ascending order.
@@ -2080,22 +2299,25 @@ def fibonacci_rhythm (steps: int, length: float = 4.0) -> typing.List[float]:
 	aesthetically pleasing timing distribution that is distinct from both
 	even grids (Euclidean) and pure randomness.
 
+	This places events in *time* only; it is unrelated to the Fibonacci integer
+	sequence, which :func:`fibonacci` generates as pitch material.
+
 	Parameters:
-		steps: Number of beat positions to generate.
+		count: Number of beat positions to generate.
 		length: Total span in beats to fill.  Defaults to 4.0 (one bar of 4/4).
 
 	Returns:
-		Sorted list of ``steps`` float beat positions in ``[0.0, length)``.
+		Sorted list of ``count`` float beat positions in ``[0.0, length)``.
 
 	Example:
 		```python
-		beats = subsequence.sequence_utils.fibonacci_rhythm(8, length=4.0)
+		beats = subsequence.sequence_utils.golden_rhythm(8, length=4.0)
 		for beat in beats:
 		    p.note(pitch=60, beat=beat, velocity=80, duration=0.2)
 		```
 	"""
 
-	if steps <= 0:
+	if count <= 0:
 		return []
 
 	phi = (1.0 + math.sqrt(5.0)) / 2.0
@@ -2104,7 +2326,7 @@ def fibonacci_rhythm (steps: int, length: float = 4.0) -> typing.List[float]:
 	# then scale to the span.  Applying ``% length`` directly to ``i·φ`` (φ ≈ 1.618,
 	# typically < length) does not equidistribute — it clusters two notes near the
 	# start — so the fractional part is what produces the documented sunflower spread.
-	positions = sorted(((i * phi) % 1.0) * length for i in range(steps))
+	positions = sorted(((i * phi) % 1.0) * length for i in range(count))
 	return positions
 
 

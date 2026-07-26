@@ -54,6 +54,10 @@ include = ["subsequence*"]
 subsequence = ["py.typed", "assets/web/*.html"]
 
 [tool.mypy]
+# Keep the cache off the project tree.  mypy's cache is a SQLite database, and
+# SQLite locking fails on network/shared mounts — on such a checkout every run
+# dies with "database is locked" (an INTERNAL ERROR, not a type error).
+cache_dir = "/tmp/mypy-cache-subsequence"
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true

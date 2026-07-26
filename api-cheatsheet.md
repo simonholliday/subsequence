@@ -55,7 +55,7 @@ The top-level controller for a musical piece.
 | `chords(channel, progression, harmonic_rhythm, bars, beats, voicing, velocity, detached, root, key, seed, device, mirrors) -> subsequence.progressions.Progression` | Declare a self-contained chord part: a progression at a chosen harmonic rhythm. |
 | `clear_tweak(name, *param_names) -> None` | Remove tweaked parameters from a running pattern. |
 | `clock_output(enabled) -> None` | Send MIDI timing clock to connected hardware. |
-| `current_chord() -> Optional[Any]` | The chord sounding at the playhead, or ``None`` without harmony. |
+| `current_chord() -> Any \| None` | The chord sounding at the playhead, or ``None`` without harmony. |
 | `display(enabled, grid, grid_scale) -> None` | Enable or disable the live terminal dashboard. |
 | `energy(energies) -> None` | Set per-section energy — the arranging dial, as one plain dict. |
 | `form(sections, loop, start, at_end, key, scale) -> None` | Define the structure (sections) of the composition. |
@@ -98,7 +98,7 @@ The top-level controller for a musical piece.
 | `section_chords(section_name, progression) -> None` | Bind a :class:`Progression` to a named form section. |
 | `section_motifs(section_name, value, part) -> None` | Bind a Motif or Phrase to a named form section (per optional part). |
 | `seed *(property)*` | The composition's random seed, or None when unseeded. |
-| `seed_for(name) -> Optional[int]` | Surface the effective derived seed for a named stream. |
+| `seed_for(name) -> int \| None` | Surface the effective derived seed for a named stream. |
 | `sequencer *(property)*` | The underlying ``Sequencer`` instance. |
 | `set_bpm(bpm) -> None` | Instantly change the tempo. |
 | `target_bpm(bpm, bars, shape) -> None` | Smoothly ramp the tempo to a target value over a number of bars. |
@@ -149,8 +149,9 @@ The musician's 'palette' for creating musical content.
 | `euclidean(pitch, pulses, velocity, duration, probability, no_overlap, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Generate a Euclidean rhythm. |
 | `every(n, fn) -> PatternBuilder` | Apply a transformation every Nth cycle. |
 | `evolve(pitches, length, drift, velocity, duration, spacing, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Loop a pitch sequence that gradually mutates each cycle. |
-| `fibonacci(pitch, count, velocity, duration, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Place notes at golden-ratio-spaced beat positions (Fibonacci spiral timing). |
+| `fibonacci(pitches, modulus, count, spacing, velocity, duration, a, b, mapping, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Play the Fibonacci sequence as a repeating melodic cycle. |
 | `ghost_fill(pitch, density, velocity, bias, no_overlap, grid, duration, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Fill the pattern with probability-biased ghost notes. |
+| `golden(pitches, count, velocity, duration, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Place notes at golden-ratio-spaced beat positions. |
 | `grid *(property)*` | Number of grid slots in this pattern (e.g. 16 for a 4-beat sixteenth-note pattern). |
 | `groove(template, strength) -> PatternBuilder` | Apply a groove template to all notes in the pattern. |
 | `held_notes() -> List[int]` | Return the MIDI notes currently held on the ``note_input`` keyboard. |
@@ -180,13 +181,14 @@ The musician's 'palette' for creating musical content.
 | `randomize(timing, velocity, seed, rng) -> PatternBuilder` | Add random variations to note timing and velocity. |
 | `ratchet(subdivisions, pitch, probability, velocity_start, velocity_end, shape, gate, steps, grid, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Subdivide existing notes into rapid repeated hits (rolls/ratchets). |
 | `reaction_diffusion(pitch, threshold, velocity, duration, feed_rate, kill_rate, steps, no_overlap, probability, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Generate a rhythm from a 1D Gray-Scott reaction-diffusion simulation. |
+| `recaman(pitches, count, spacing, velocity, duration, start, skip, octave_span, mapping, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Play Recamán's sequence — a melody that wanders off and never repeats. |
 | `repeat(pitch, spacing, velocity, duration) -> PatternBuilder` | Repeat a note at a fixed beat interval for the whole pattern. |
 | `reverse() -> PatternBuilder` | Flip the pattern backwards in time (retrograde). |
 | `rotate(steps, grid) -> PatternBuilder` | Rotate the pattern by a number of grid steps, wrapping around. |
 | `rpn(parameter, value, beat, fine, null_reset) -> subsequence.pattern_builder.PatternBuilder` | Send a single RPN parameter write at a beat position. |
 | `rpn_ramp(parameter, start, end, beat_start, beat_end, resolution, shape, fine, null_reset) -> subsequence.pattern_builder.PatternBuilder` | Interpolate an RPN value over a beat range. |
 | `scale_velocities(factors, grid) -> PatternBuilder` | Scale note velocities by a per-step multiplier list. |
-| `section_motif(part) -> Optional[Any]` | The Motif/Phrase bound to the current section (and part), or ``None``. |
+| `section_motif(part) -> Any \| None` | The Motif/Phrase bound to the current section (and part), or ``None``. |
 | `self_avoiding_walk(pitches, spacing, velocity, duration, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Generate a melody using a self-avoiding random walk. |
 | `seq(notation, pitch, velocity, seed, rng) -> PatternBuilder` | Build a pattern using an expressive string-based 'mini-notation'. |
 | `sequence(steps, pitches, velocities, durations, grid, probability, seed, rng) -> PatternBuilder` | A multi-parameter step sequencer. |
@@ -223,7 +225,7 @@ Persistent melodic context that applies NIR scoring to single-note lines.
 | Method | Description |
 |---|---|
 | `__init__(key, mode, low, high, nir_strength, chord_weight, rest_probability, pitch_diversity, tessitura_strength) -> None` | Initialise a melodic state for a given key, mode, and MIDI register. |
-| `choose_next(chord_tones, rng, beat, position, contour_target) -> Optional[int]` | Score all pitch-pool candidates and return the chosen pitch, or None for a rest. |
+| `choose_next(chord_tones, rng, beat, position, contour_target) -> int \| None` | Score all pitch-pool candidates and return the chosen pitch, or None for a rest. |
 | `clone() -> MelodicState` | An independent copy — settings, factors, pool, and history. |
 | `configure_defaults(key, mode) -> None` | Adopt the surrounding key/scale where this state left them unset. |
 | `record(pitch) -> None` | Append a pitch to the melodic history (capped at 4 entries). |
@@ -456,18 +458,19 @@ Functions for generating and transforming sequences.
 | `branch_sequence(pitches, depth, path, mutation, rng) -> List[int]` | Navigate a fractal tree of pitch-sequence transforms and return one variation. |
 | `build_metric_weights(time_signature, grid) -> List[float]` | Per-step metric weights for one bar — how "strong" each grid position is. |
 | `choke(sequence, against, steps, floor) -> List[~T]` | Suppress the steps where a selector is active, keeping the rest. |
-| `clamp(value, low, high) -> Union[float, List[float]]` | Bound a value (or list) to the range ``[low, high]``. |
-| `combine_densities(layers, strategy) -> Union[float, List[float]]` | Blend several density layers into one consensus density. |
+| `clamp(value, low, high) -> float \| List[float]` | Bound a value (or list) to the range ``[low, high]``. |
+| `combine_densities(layers, strategy) -> float \| List[float]` | Blend several density layers into one consensus density. |
 | `constrained_walk(graph, start, length, rng, pins, end, avoid, weight_modifier, before_choice, after_choice) -> List[~T]` | Walk a weighted graph under constraints — the shared hybrid kernel. |
 | `cseg(pitches) -> List[int]` | Contour segment: each pitch's rank within the line (Morris's CSEG). |
 | `csim(a, b) -> float` | Contour similarity between two equal-length lines (Marvin/Laprade CSIM). |
 | `de_bruijn(k, n) -> List[int]` | Generate a de Bruijn sequence B(k, n). |
-| `density_spread(value, amount, midpoint) -> Union[float, List[float]]` | Expand or contract a probability/density about a fixed anchor. |
+| `density_spread(value, amount, midpoint) -> float \| List[float]` | Expand or contract a probability/density about a fixed anchor. |
 | `density_to_steps(density, rng, length) -> List[int]` | Roll each step against its density and return the fired step indices. |
-| `density_warp(value, amount) -> Union[float, List[float]]` | Warp a probability/density by a single denser/sparser knob. |
+| `density_warp(value, amount) -> float \| List[float]` | Warp a probability/density by a single denser/sparser knob. |
 | `displace(sequence, amount) -> List[~T]` | Phase-shift a per-step pattern by a whole number of steps, wrapping. |
-| `fibonacci_rhythm(steps, length) -> List[float]` | Generate beat positions spaced by the golden ratio (Fibonacci spiral). |
-| `flip(value, low, high) -> Union[float, List[float]]` | Reflect a value within a range — its complement about the mid-point. |
+| `fibonacci(count, a, b, modulus) -> List[int]` | Generate Fibonacci numbers, optionally folded into a repeating pitch cycle. |
+| `flip(value, low, high) -> float \| List[float]` | Reflect a value within a range — its complement about the mid-point. |
+| `fold(sequence, low, high, mode) -> List[int]` | Bring out-of-range whole numbers back into a range, keeping their movement. |
 | `generate_bresenham_sequence(steps, pulses) -> List[int]` | Generate a rhythm using Bresenham's line algorithm. |
 | `generate_bresenham_sequence_weighted(steps, weights) -> List[int]` | Generate a sequence that distributes weighted indices across steps. |
 | `generate_cellular_automaton_1d(steps, rule, generation, seed) -> List[int]` | Generate a binary sequence using an elementary cellular automaton. |
@@ -475,6 +478,7 @@ Functions for generating and transforming sequences.
 | `generate_euclidean_sequence(steps, pulses) -> List[int]` | Generate a Euclidean rhythm using Bjorklund's algorithm. |
 | `generate_legato_durations(hits) -> List[int]` | Convert a hit list into per-step legato durations. |
 | `generate_van_der_corput_sequence(n, base) -> List[float]` | Generate a sequence of n numbers using the van der Corput sequence. |
+| `golden_rhythm(count, length) -> List[float]` | Generate beat positions spaced by the golden ratio. |
 | `logistic_map(r, steps, x0) -> List[float]` | Generate a deterministic chaos sequence using the logistic map. |
 | `lorenz_attractor(steps, dt, sigma, rho, beta, x0, y0, z0) -> List[Tuple[float, float, float]]` | Integrate the Lorenz attractor and return normalised (x, y, z) tuples. |
 | `lsystem_expand(axiom, rules, generations, rng) -> str` | Expand an L-system string by applying production rules. |
@@ -489,6 +493,7 @@ Functions for generating and transforming sequences.
 | `probability_gate(sequence, probability, rng) -> List[int]` | Filter a binary sequence by probability. |
 | `random_walk(n, low, high, step, rng, start) -> List[int]` | Generate values that drift by small steps within a range. |
 | `reaction_diffusion_1d(width, steps, feed_rate, kill_rate, du, dv) -> List[float]` | Simulate a 1D Gray-Scott reaction-diffusion system. |
+| `recaman(count, start, skip) -> List[int]` | Generate Recamán's sequence — a line that never settles and never repeats. |
 | `residual_class(modulus, residue) -> subsequence.sequence_utils.Sieve` | A single residual class ``{x : x % modulus == residue}`` as a :class:`Sieve`. |
 | `rhythmic_evenness(onsets, grid, normalize) -> float` | How evenly onsets are spread around the cycle (Toussaint's evenness). |
 | `rotate(indices, shift, length) -> List[int]` | Circularly rotate step indices by the specified amount, wrapping at *length*. |
@@ -502,5 +507,5 @@ Functions for generating and transforming sequences.
 | `thue_morse(n) -> List[int]` | Generate the Thue-Morse sequence. |
 | `tile(sequence, length) -> List[~T]` | Cycle a sequence to an exact length. |
 | `vl_distance(source, target, pitch_classes) -> int` | Voice-leading distance between two chords (Tymoczko's taxicab metric). |
-| `warp_stack(value, amounts) -> Union[float, List[float]]` | Apply several density knobs to ``value`` so they compound. |
+| `warp_stack(value, amounts) -> float \| List[float]` | Apply several density knobs to ``value`` so they compound. |
 | `weighted_choice(options, rng) -> ~T` | Pick one item from a list of (value, weight) pairs. |

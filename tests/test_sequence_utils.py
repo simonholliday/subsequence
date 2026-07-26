@@ -1284,54 +1284,54 @@ def test_de_bruijn_deterministic () -> None:
 	)
 
 
-# --- fibonacci_rhythm ---
+# --- golden_rhythm ---
 
 
-def test_fibonacci_rhythm_correct_length () -> None:
+def test_golden_rhythm_correct_length () -> None:
 
-	"""fibonacci_rhythm(n) returns a list of exactly n values."""
+	"""golden_rhythm(n) returns a list of exactly n values."""
 
-	assert len(subsequence.sequence_utils.fibonacci_rhythm(8)) == 8
-
-
-def test_fibonacci_rhythm_zero_returns_empty () -> None:
-
-	"""fibonacci_rhythm(0) returns an empty list."""
-
-	assert subsequence.sequence_utils.fibonacci_rhythm(0) == []
+	assert len(subsequence.sequence_utils.golden_rhythm(8)) == 8
 
 
-def test_fibonacci_rhythm_within_range () -> None:
+def test_golden_rhythm_zero_returns_empty () -> None:
+
+	"""golden_rhythm(0) returns an empty list."""
+
+	assert subsequence.sequence_utils.golden_rhythm(0) == []
+
+
+def test_golden_rhythm_within_range () -> None:
 
 	"""All positions are within [0.0, length)."""
 
-	result = subsequence.sequence_utils.fibonacci_rhythm(20, length=4.0)
+	result = subsequence.sequence_utils.golden_rhythm(20, length=4.0)
 	assert all(0.0 <= v < 4.0 for v in result)
 
 
-def test_fibonacci_rhythm_sorted () -> None:
+def test_golden_rhythm_sorted () -> None:
 
 	"""Output is sorted in ascending order."""
 
-	result = subsequence.sequence_utils.fibonacci_rhythm(16)
+	result = subsequence.sequence_utils.golden_rhythm(16)
 	assert result == sorted(result)
 
 
-def test_fibonacci_rhythm_deterministic () -> None:
+def test_golden_rhythm_deterministic () -> None:
 
 	"""Two calls with the same arguments produce identical results."""
 
 	assert (
-		subsequence.sequence_utils.fibonacci_rhythm(12)
-		== subsequence.sequence_utils.fibonacci_rhythm(12)
+		subsequence.sequence_utils.golden_rhythm(12)
+		== subsequence.sequence_utils.golden_rhythm(12)
 	)
 
 
-def test_fibonacci_rhythm_no_duplicates () -> None:
+def test_golden_rhythm_no_duplicates () -> None:
 
 	"""All positions are distinct for a reasonable step count."""
 
-	result = subsequence.sequence_utils.fibonacci_rhythm(16, length=4.0)
+	result = subsequence.sequence_utils.golden_rhythm(16, length=4.0)
 	assert len(result) == len(set(result))
 
 

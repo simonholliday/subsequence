@@ -3,7 +3,7 @@
 cellular_2d ``initial_state=``/``seed=`` split.
 
 The renames are hard breaks — there are no deprecation aliases — so the old keywords
-(``dropout=``, ``offset=``, ``amount=``, ``unit=``, ``steps=`` on evolve/fibonacci, and a
+(``dropout=``, ``offset=``, ``amount=``, ``unit=``, ``steps=`` on evolve/golden, and a
 grid/int ``seed=`` on cellular_2d) are plain ``TypeError``s now.  ``probability`` means the
 chance a note PLAYS, and the inverted generators must consume zero RNG draws at their
 default (1.0) so existing seeded compositions reproduce bit-for-bit.
@@ -100,7 +100,7 @@ def test_removed_alias_keywords_now_raise () -> None:
 		builder.swing(amount=60)                            # amount= → percent=
 
 	with pytest.raises(TypeError):
-		builder.fibonacci(36, steps=5)                      # steps= → count=
+		builder.golden(36, count=5, steps=5)                # steps= → count=
 
 	with pytest.raises(TypeError):
 		builder.evolve([60, 64], steps=4)                   # steps= → length=

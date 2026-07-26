@@ -31,6 +31,13 @@ def _make_builder (channel: int = 0, length: float = 4, drum_note_map: typing.Op
 	return pat, builder
 
 
+def _velocities (pattern: subsequence.pattern.Pattern) -> typing.List[int]:
+
+	"""Every placed velocity, in time order."""
+
+	return [note.velocity for step in sorted(pattern.steps) for note in pattern.steps[step].notes]
+
+
 # --- _resolve_velocity helper itself ---
 
 
@@ -268,6 +275,145 @@ def test_broken_chord_accepts_tuple_velocity () -> None:
 	all_notes = [n for step in pattern.steps.values() for n in step.notes]
 	velocities = [n.velocity for n in all_notes]
 	assert all(60 <= v <= 95 for v in velocities)
+
+
+def test_golden_accepts_tuple_velocity () -> None:
+
+	pattern, builder = _make_builder(seed=1)
+	builder.golden(60, count=8, velocity=(40, 80))
+	assert all(40 <= v <= 80 for v in _velocities(pattern))
+
+
+def test_de_bruijn_accepts_tuple_velocity () -> None:
+
+	pattern, builder = _make_builder(seed=1)
+	builder.de_bruijn([60, 62], window=2, velocity=(40, 80))
+	assert all(40 <= v <= 80 for v in _velocities(pattern))
+
+
+def test_lsystem_accepts_tuple_velocity () -> None:
+
+	pattern, builder = _make_builder(seed=1)
+	builder.lsystem(pitch_map={"A": 60, "B": 62}, axiom="A", rules={"A": "AB", "B": "A"}, generations=3, velocity=(40, 80))
+	assert all(40 <= v <= 80 for v in _velocities(pattern))
+
+
+def test_self_avoiding_walk_accepts_tuple_velocity () -> None:
+
+	pattern, builder = _make_builder(seed=1)
+	builder.self_avoiding_walk([60, 62, 64, 65, 67], velocity=(40, 80))
+	assert all(40 <= v <= 80 for v in _velocities(pattern))
+
+
+def test_evolve_accepts_tuple_velocity () -> None:
+
+	pattern, builder = _make_builder(seed=1)
+	builder.evolve([60, 62, 64], velocity=(40, 80))
+	assert all(40 <= v <= 80 for v in _velocities(pattern))
+
+
+def test_branch_accepts_tuple_velocity () -> None:
+
+	pattern, builder = _make_builder(seed=1)
+	builder.branch([60, 62, 64], velocity=(40, 80))
+	assert all(40 <= v <= 80 for v in _velocities(pattern))
+
+
+def test_reaction_diffusion_accepts_tuple_velocity () -> None:
+
+	pattern, builder = _make_builder(seed=1)
+	builder.reaction_diffusion(60, velocity=(40, 80))
+	assert all(40 <= v <= 80 for v in _velocities(pattern))
+
+
+def test_lorenz_accepts_tuple_velocity () -> None:
+
+	pattern, builder = _make_builder(seed=1)
+	builder.lorenz([60, 62, 64], velocity=(40, 80))
+	assert all(40 <= v <= 80 for v in _velocities(pattern))
+
+
+# --- A (low, high) draw is reproducible under seed=, whatever the pattern's own RNG ---
+
+
+# Every generator that RANDOMISES velocity from a (low, high) range.  lorenz and
+# reaction_diffusion are deliberately absent: they map the range across their own
+# field rather than drawing from it, so they are covered separately below.
+_SEEDED_VELOCITY_VERBS = [
+	("euclidean",         lambda b: b.euclidean(36, pulses=5, velocity=(60, 100), seed=7)),
+	("bresenham",         lambda b: b.bresenham(36, pulses=5, velocity=(60, 100), seed=7)),
+	("cellular_1d",       lambda b: b.cellular_1d(36, velocity=(60, 100), seed=7)),
+	# cellular_2d is deliberately absent — its seed= names the initial grid, not the
+	# velocity stream (it takes rng= for that).  Covered separately below.
+	("thue_morse",        lambda b: b.thue_morse(36, velocity=(60, 100), seed=7)),
+	("golden",            lambda b: b.golden(60, count=8, velocity=(60, 100), seed=7)),
+	("de_bruijn",         lambda b: b.de_bruijn([60, 62], window=2, velocity=(60, 100), seed=7)),
+	("self_avoiding_walk", lambda b: b.self_avoiding_walk([60, 62, 64, 65, 67], velocity=(60, 100), seed=7)),
+	("evolve",            lambda b: b.evolve([60, 62, 64], velocity=(60, 100), seed=7)),
+	("branch",            lambda b: b.branch([60, 62, 64], velocity=(60, 100), seed=7)),
+]
+
+
+@pytest.mark.parametrize("name,place", _SEEDED_VELOCITY_VERBS, ids=[n for n, _ in _SEEDED_VELOCITY_VERBS])
+def test_velocity_tuple_is_reproducible_under_seed (name: str, place: typing.Callable) -> None:
+
+	"""``seed=`` fixes the velocity draws for the call, whatever ``self.rng`` holds.
+
+	This is what every generator's ``seed:`` docstring promises.  It was false for
+	the verbs routed through ``_place_gated_sequence``, which handed the raw tuple
+	to ``note()`` and so drew from the pattern's RNG instead of the caller's.
+	"""
+
+	pattern_a, builder_a = _make_builder(seed=111)
+	place(builder_a)
+
+	pattern_b, builder_b = _make_builder(seed=999)
+	place(builder_b)
+
+	assert _velocities(pattern_a) == _velocities(pattern_b)
+
+
+def test_cellular_2d_velocity_follows_rng_not_seed () -> None:
+
+	"""cellular_2d is the exception: ``seed=`` picks the grid, ``rng=`` the velocities.
+
+	Its ``seed:`` is documented as the RNG seed for the ``"random"`` initial grid —
+	it never governs the velocity draw — so the reproducibility contract above is
+	expressed through ``rng=`` here instead.
+	"""
+
+	pattern_a, builder_a = _make_builder(seed=111)
+	builder_a.cellular_2d([36, 38, 42], velocity=(60, 100), rng=random.Random(7))
+
+	pattern_b, builder_b = _make_builder(seed=999)
+	builder_b.cellular_2d([36, 38, 42], velocity=(60, 100), rng=random.Random(7))
+
+	assert _velocities(pattern_a) == _velocities(pattern_b)
+
+
+def test_field_mapped_velocity_is_deterministic () -> None:
+
+	"""lorenz and reaction_diffusion map the range across their field, never draw from it.
+
+	A ``(low, high)`` here is a scale, not a randomisation — so the same call gives
+	the same velocities with no seed involved at all.
+	"""
+
+	pattern_a, builder_a = _make_builder(seed=111)
+	builder_a.lorenz([60, 62, 64], velocity=(60, 100))
+
+	pattern_b, builder_b = _make_builder(seed=999)
+	builder_b.lorenz([60, 62, 64], velocity=(60, 100))
+
+	assert _velocities(pattern_a) == _velocities(pattern_b)
+
+	pattern_c, builder_c = _make_builder(seed=111)
+	builder_c.reaction_diffusion(60, velocity=(60, 100))
+
+	pattern_d, builder_d = _make_builder(seed=999)
+	builder_d.reaction_diffusion(60, velocity=(60, 100))
+
+	assert _velocities(pattern_c) == _velocities(pattern_d)
 
 
 # --- Bad inputs surface at the builder, not later in the sequencer ---
