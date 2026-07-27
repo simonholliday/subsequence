@@ -1295,16 +1295,32 @@ class Composition:
 		Initialize a new composition.
 
 		Parameters:
-			output_device: The exact name of the MIDI output port to use,
-				as reported by ``mido.get_output_names()``. Matching is
-				strict — the string must equal an entry in that list
-				verbatim. On Linux/ALSA, names include the client and
-				port IDs (e.g.
-				``"Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"``); the
-				trailing ``:client:port`` digits are assigned in
-				connection order and can change between reboots or when
-				a virtual port is recreated. To look up the current
-				names::
+			output_device: Which MIDI output port to use, matched against
+				``mido.get_output_names()``.  The name is treated as a
+				pattern: ``*`` stands for any run of characters and ``?``
+				for exactly one, matching is case-insensitive, and a name
+				with no wildcards is simply a substring — so a plain
+				``"Scarlett"`` finds the port without typing the rest.
+				An exact name always wins outright.
+
+				Wildcards matter on Linux/ALSA, where names carry the
+				client and port ids (e.g.
+				``"Scarlett 2i4 USB:Scarlett 2i4 USB MIDI 1 16:0"``).  The
+				client id — ``16`` here — is handed out in connection order
+				and moves between reboots or when a virtual port is
+				recreated, while the port index after it (``0``) stays put.
+				Wildcard the one that moves and keep the one that does not::
+
+				    "*Scarlett 2i4 USB *:0"
+
+				Keep that trailing port index.  A multi-port interface
+				reports one name per port, so ``"*U6MIDI Pro*"`` matches
+				all three ports of a 3-port unit and asks which you meant
+				at every launch, while ``"*U6MIDI Pro *:0"`` names one for
+				good.  Prefer ``*`` to ``?`` — ``?`` matches a single
+				character, so a pattern written for ``16:0`` quietly stops
+				matching once ids reach three digits.  To look up the
+				current names::
 
 				    import mido
 				    for n in mido.get_output_names(): print(n)
@@ -2961,7 +2977,16 @@ class Composition:
 		have ``clock_follow=True``.
 
 		Parameters:
-			device: The name of the MIDI input port.
+			device: Which MIDI input port to use, matched against
+				``mido.get_input_names()``.  Treated as a pattern — ``*``
+				and ``?`` are wildcards, matching is case-insensitive, and a
+				name without wildcards is a substring.  See
+				``Composition.__init__`` for why a pattern like
+				``"*Launchpad *:0"`` survives an ALSA client id changing
+				between runs.  Because a wrong input would desynchronise or
+				mis-record a performance, a pattern matching nothing raises,
+				and one matching several asks which you meant rather than
+				guessing.
 			clock_follow: If True, Subsequence will slave its clock to incoming
 				MIDI Ticks. It will also follow MIDI Start/Stop/Continue
 				commands. Only one device can have this enabled at a time.
@@ -3003,11 +3028,13 @@ class Composition:
 		Each call to ``midi_output()`` adds the next device (1, 2, …).
 
 		Parameters:
-			device: The exact name of the MIDI output port, as reported
-				by ``mido.get_output_names()``. Matching is strict —
-				partial names and substrings are rejected. See
-				``Composition.__init__`` for the lookup snippet and a
-				note on ALSA name stability on Linux.
+			device: Which MIDI output port to add, matched against
+				``mido.get_output_names()``.  Treated as a pattern —
+				``*`` and ``?`` are wildcards, matching is
+				case-insensitive, and a name without wildcards is a
+				substring.  See ``Composition.__init__`` for the lookup
+				snippet and why a pattern like ``"*U6MIDI Pro *:0"``
+				survives an ALSA client id changing between runs.
 			name: Optional alias for use with ``pattern(device=…)``,
 				``cc_forward(output_device=…)``, etc.  When omitted, the raw
 				device name is used.

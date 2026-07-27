@@ -52,6 +52,7 @@ functions_to_document: typing.List[typing.Callable] = [
 	subsequence.intervals.register_scale,
 	subsequence.intervals.scale_notes,
 	subsequence.midi_utils.bank_select,
+	subsequence.midi_utils.match_device_names,
 	subsequence.definitions.load_definitions,
 	subsequence.harmonic_rhythm.between,
 	subsequence.chords.parse_chord,

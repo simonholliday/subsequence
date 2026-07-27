@@ -4,9 +4,15 @@ MIDI device plumbing — discovering, opening, and registering hardware ports.
 Provides interactive/automatic output and input device selection, the
 multi-device registry used by the sequencer, and the ``bank_select()``
 helper for addressing synth banks beyond the first 128 programs.
+
+Device names are matched as globs — see :func:`match_device_names`.  Most
+systems put a number in the name that moves between runs, so pinning the
+full name tends to break; a pattern like ``"*U6MIDI Pro *:0"`` survives.
 """
 
+import fnmatch
 import logging
+import sys
 import typing
 import mido
 
@@ -15,6 +21,17 @@ logger = logging.getLogger(__name__)
 
 # Type alias for device identifiers: index (int), name (str), or None (device 0).
 DeviceId = typing.Union[int, str, None]
+
+
+class DeviceSelectionError(RuntimeError):
+
+	"""A device pattern could not be resolved to exactly one device.
+
+	Kept distinct from the plain ``RuntimeError`` that a failed port open raises,
+	because the two want opposite handling: a port that will not open is logged
+	and playback continues without it, whereas an unresolved pattern must reach
+	the caller — it means the wrong instrument (or no instrument) would play.
+	"""
 
 
 class MidiDeviceRegistry:
@@ -204,17 +221,137 @@ def bank_select (bank: int) -> typing.Tuple[int, int]:
 	bank = max(0, min(16383, bank))
 	return bank >> 7, bank & 0x7F
 
+def match_device_names (pattern: str, names: typing.Sequence[str]) -> typing.List[int]:
+
+	"""Find every device whose name matches *pattern*, as indices into *names*.
+
+	Device names carry a number that moves.  On Linux,
+	``U6MIDI Pro:U6MIDI Pro Port 1 16:0`` puts the ALSA sequencer client id
+	(``16``) in the middle — handed out in registration order, so it differs
+	between runs — while the port index after the colon (``0``) stays put.
+	Virtual ports are the worst offenders, landing at 128 and upward in whatever
+	order things happened to start.  Wildcards let a pattern pin the part that
+	holds still and ignore the part that does not.
+
+	``*`` matches any run of characters and ``?`` exactly one; nothing else is
+	special.  Matching is case-insensitive with an implicit ``*`` at each end, so
+	a pattern containing no wildcards is simply a substring search.
+
+	An exact name wins outright: when the pattern names a device precisely, that
+	device is chosen even if the pattern also appears inside longer names.  This
+	is what lets a full device name stay unambiguous forever.
+
+	Prefer ``*`` to ``?`` — ``?`` matches a single character, so a pattern written
+	for ``16:0`` quietly stops matching once ids reach three digits.
+
+	Keep the trailing port index.  A multi-port interface reports one name per
+	port, so ``"*U6MIDI Pro*"`` matches all three ports of a 3-port unit and asks
+	which you meant at every launch, while ``"*U6MIDI Pro *:0"`` names one for good.
+
+	Parameters:
+		pattern: A device name, or a glob to match against the available names.
+		names: The available device names, in the order the backend reports them.
+
+	Returns:
+		The indices of every match, in order.  Empty when nothing matches.
+
+	Example:
+		```python
+		import mido
+
+		hits = subsequence.midi_utils.match_device_names("*U6MIDI Pro *:0", mido.get_output_names())
+		```
+	"""
+
+	lowered = pattern.lower()
+
+	# An exact name wins, so pinning a full device name cannot be made ambiguous
+	# by some longer name that happens to contain it.
+	exact = [index for index, name in enumerate(names) if name.lower() == lowered]
+
+	if exact:
+		return exact
+
+	# Escape ``[`` so a pasted name containing one is not read as a character
+	# class — fnmatch would take "[Pro]" as "any of P, r, o" and match almost
+	# everything, a false positive with no visible cause.  fnmatchcase (not
+	# fnmatch) because fnmatch applies os.path.normcase, which lowercases again
+	# on Windows and would make behaviour differ by platform.
+	compiled = f"*{lowered.replace('[', '[[]')}*"
+
+	return [index for index, name in enumerate(names) if fnmatch.fnmatchcase(name.lower(), compiled)]
+
+
+def _choose_device_interactively (
+	names: typing.Sequence[str],
+	indices: typing.Sequence[int],
+	noun: str,
+	reason: str,
+	hint: str,
+) -> int:
+
+	"""Ask which of *indices* to use, and return the chosen index.
+
+	Raises when there is no terminal to ask.  A menu printed into a service
+	manager, a scheduled job, or an SSH session without a TTY waits for an answer
+	that can never arrive — an indefinite hang with nothing in the log — so an
+	unattended run ends the call instead, carrying *hint* so the log says what to
+	pass next time.  Each caller decides whether that becomes a raise or its own
+	documented failure return.
+
+	Raises:
+		DeviceSelectionError: If the choice cannot be put to a human.
+	"""
+
+	candidates = [names[index] for index in indices]
+
+	# isatty() rather than waiting for EOF: a run whose stdin is an open but
+	# silent pipe never raises EOFError, it just blocks forever.
+	if not sys.stdin.isatty():
+		raise DeviceSelectionError(f"{reason}, and there is no terminal to choose from — {hint}")
+
+	print(f"\n{reason}:\n")
+
+	for position, index in enumerate(indices, 1):
+		print(f"  {position}. {names[index]}")
+
+	print()
+
+	while True:
+		try:
+			choice = int(input(f"Select a {noun} (1-{len(indices)}): "))
+			if 1 <= choice <= len(indices):
+				return indices[choice - 1]
+		except ValueError:
+			pass
+		except EOFError:
+			# stdin claimed to be a TTY but gave nothing — retrying would spin.
+			raise DeviceSelectionError(f"{reason}, and the prompt could not be read — {hint}") from None
+
+		print(f"Enter a number between 1 and {len(indices)}.")
+
+
 def select_output_device (device_name: typing.Optional[str] = None) -> typing.Tuple[typing.Optional[str], typing.Optional[typing.Any]]:
 
 	"""
 	Select and open a MIDI output device.
 
-	If ``device_name`` is provided, attempts to open that specific device.
+	``device_name`` is matched as a glob (see :func:`match_device_names`), so
+	``"*U6MIDI Pro *:0"`` survives the client id changing between runs.  A name
+	with no wildcards is a case-insensitive substring, and an exact name always
+	wins outright.  When a pattern matches several devices you are asked which
+	you meant; when it matches none, that is logged and no port is opened.
+
 	If ``device_name`` is None, auto-discovers available devices:
 
 	- If exactly one device exists, it is selected automatically.
 	- If multiple devices exist, prompts the user to choose one from the console.
 	- If no devices exist, logs an error and returns None.
+
+	Every failure — no match, no devices, or a choice that cannot be put to a
+	human on an unattended run — takes the same documented exit: log what went
+	wrong and how to fix it, then return ``(None, None)``.  Playback continues
+	without that port rather than raising.
 
 	Returns:
 		A tuple of (device_name, midi_out_object) or (None, None) on failure.
@@ -230,16 +367,30 @@ def select_output_device (device_name: typing.Optional[str] = None) -> typing.Tu
 
 		# Explicit device requested
 		if device_name is not None:
-			if device_name in outputs:
-				midi_out = mido.open_output(device_name)
-				logger.info(f"Opened MIDI output: {device_name}")
-				return device_name, midi_out
-			else:
+			matches = match_device_names(device_name, outputs)
+
+			if not matches:
 				logger.error(
 					f"MIDI output device '{device_name}' not found. "
 					f"Available devices: {outputs}"
 				)
 				return None, None
+
+			if len(matches) == 1:
+				selected_name = outputs[matches[0]]
+			else:
+				selected_name = outputs[_choose_device_interactively(
+					outputs,
+					matches,
+					"device",
+					f"'{device_name}' matches {len(matches)} MIDI outputs",
+					f"narrow output_device= to one of: {[outputs[i] for i in matches]} "
+					f"(a trailing port index such as ' *:0' usually names a single port)",
+				)]
+
+			midi_out = mido.open_output(selected_name)
+			logger.info(f"Opened MIDI output: {selected_name}")
+			return selected_name, midi_out
 
 		# Auto-discover: one device - use it
 		if len(outputs) == 1:
@@ -249,28 +400,14 @@ def select_output_device (device_name: typing.Optional[str] = None) -> typing.Tu
 			return selected_name, midi_out
 
 		# Auto-discover: multiple devices - prompt user
-		print("\nAvailable MIDI output devices:\n")
-		for i, name in enumerate(outputs, 1):
-			print(f"  {i}. {name}")
-		print()
+		selected_name = outputs[_choose_device_interactively(
+			outputs,
+			list(range(len(outputs))),
+			"device",
+			f"{len(outputs)} MIDI outputs are available",
+			f"pass output_device= with one of: {outputs}",
+		)]
 
-		while True:
-			try:
-				choice = int(input(f"Select a device (1-{len(outputs)}): "))
-				if 1 <= choice <= len(outputs):
-					break
-			except ValueError:
-				pass
-			except EOFError:
-				# stdin is closed (headless/redirected run) — the prompt can
-				# never be answered, so retrying would spin forever.
-				raise RuntimeError(
-					"No interactive terminal to choose between multiple MIDI outputs — "
-					f"pass output_device= with one of: {outputs}"
-				) from None
-			print(f"Enter a number between 1 and {len(outputs)}.")
-
-		selected_name = outputs[choice - 1]
 		midi_out = mido.open_output(selected_name)
 		logger.info(f"Opened MIDI output: {selected_name}")
 
@@ -280,6 +417,9 @@ def select_output_device (device_name: typing.Optional[str] = None) -> typing.Tu
 
 		return selected_name, midi_out
 
+	# DeviceSelectionError is a RuntimeError, so an unanswerable choice lands here
+	# and becomes this function's documented (None, None) return with the hint in
+	# the log — deliberately, so a headless run neither hangs nor raises.
 	except (OSError, RuntimeError) as e:
 		logger.error(f"Failed to open MIDI output: {e}")
 		return None, None
@@ -290,21 +430,30 @@ def select_input_device (device_name: typing.Optional[str] = None, callback: typ
 	"""
 	Select and open a MIDI input device.
 
-	If ``device_name`` is provided, attempts to open exactly that device.
+	``device_name`` is matched as a glob (see :func:`match_device_names`), so
+	``"*Launchpad *:0"`` survives the client id changing between runs.  A name
+	with no wildcards is a case-insensitive substring, and an exact name always
+	wins outright.
+
 	If ``device_name`` is None, returns None without prompting (input is optional/advanced).
 	To enforce input, the caller should check the return value.
 
-	A named device that is not present raises ValueError rather than falling
-	back to another input: MIDI input drives clock-follow and live note
-	capture, so silently listening to the wrong device would desynchronise
-	or mis-record a performance.
+	A pattern matching no device raises ValueError rather than falling back to
+	another input: MIDI input drives clock-follow and live note capture, so
+	silently listening to the wrong device would desynchronise or mis-record a
+	performance.  For the same reason a pattern matching several devices asks
+	which you meant rather than guessing — and says so plainly when there is no
+	terminal to ask.  The device actually opened is logged, so a pattern that
+	resolved to something unintended is visible in the session log.
 
 	Returns:
 		A tuple of (device_name, midi_in_object), or (None, None) when no
 		name was given or the device failed to open.
 
 	Raises:
-		ValueError: If *device_name* is not among the available inputs.
+		ValueError: If *device_name* matches none of the available inputs.
+		DeviceSelectionError: If it matches several and there is no terminal
+			to put the choice to.
 	"""
 
 	if device_name is None:
@@ -314,15 +463,34 @@ def select_input_device (device_name: typing.Optional[str] = None, callback: typ
 		inputs = mido.get_input_names()
 		logger.info(f"Available MIDI inputs: {inputs}")
 
-		if device_name not in inputs:
+		matches = match_device_names(device_name, inputs)
+
+		if not matches:
 			raise ValueError(
 				f"MIDI input device '{device_name}' not found. "
 				f"Available devices: {inputs}"
 			)
 
-		midi_in = mido.open_input(device_name, callback=callback)
-		logger.info(f"Opened MIDI input: {device_name}")
-		return device_name, midi_in
+		if len(matches) == 1:
+			selected_name = inputs[matches[0]]
+		else:
+			selected_name = inputs[_choose_device_interactively(
+				inputs,
+				matches,
+				"input",
+				f"'{device_name}' matches {len(matches)} MIDI inputs",
+				f"narrow the device pattern to one of: {[inputs[i] for i in matches]} "
+				f"(a trailing port index such as ' *:0' usually names a single port)",
+			)]
+
+		midi_in = mido.open_input(selected_name, callback=callback)
+		logger.info(f"Opened MIDI input: {selected_name}")
+		return selected_name, midi_in
+
+	except DeviceSelectionError:
+		# See the matching note in select_output_device — an unresolved pattern
+		# must not be downgraded into a silent "no input" run.
+		raise
 
 	except (OSError, RuntimeError) as e:
 		logger.error(f"Failed to open MIDI input: {e}")

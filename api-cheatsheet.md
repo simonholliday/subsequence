@@ -429,6 +429,7 @@ The name-to-number tables read from a project definitions file.
 | `register_scale(name, intervals, qualities) -> None` | Register a custom scale for use with ``p.snap_to_scale()`` and ``scale_pitch_classes()``. |
 | `scale_notes(key, mode, low, high, count) -> List[int]` | Return MIDI note numbers for a scale within a pitch range. |
 | `bank_select(bank) -> Tuple[int, int]` | Convert a 14-bit MIDI bank number to (MSB, LSB) for use with ``p.program_change()``. |
+| `match_device_names(pattern, names) -> List[int]` | Find every device whose name matches *pattern*, as indices into *names*. |
 | `load_definitions(path) -> subsequence.definitions.Definitions` | Load and validate a project definitions file. |
 | `between(low, high, step) -> subsequence.harmonic_rhythm.HarmonicRhythm` | A harmonic rhythm that varies *between* two lengths (in beats). |
 | `parse_chord(name) -> subsequence.chords.Chord` | Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a :class:`Chord`. |

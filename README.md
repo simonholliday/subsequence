@@ -63,6 +63,20 @@ Pin a piece to an exact release — `pip install subsequence==0.6.5` — so it r
 sudo usermod -a -G audio $USER   # then log out and back in
 ```
 
+### Naming your MIDI device
+
+Device names are matched as patterns, so you don't have to type them exactly. `*` stands for any run of characters, `?` for exactly one, matching ignores case, and a name with no wildcards is just a substring — so `output_device="Scarlett"` finds your interface without the rest of the name.
+
+Wildcards earn their keep on Linux, where a full name looks like `U6MIDI Pro:U6MIDI Pro Port 1 16:0`. That `16` is an id the system hands out in connection order, so it changes between reboots and a pinned name stops working. The `0` after it is the port on the interface and never moves. Wildcard the part that moves, keep the part that doesn't:
+
+```python
+composition = subsequence.Composition(output_device="*U6MIDI Pro *:0")
+```
+
+**Keep that trailing port number.** A multi-port interface reports one name per port, so `"*U6MIDI Pro*"` matches all three ports of a three-port unit and asks which you meant every time you start; `"*U6MIDI Pro *:0"` names one port for good. Prefer `*` to `?` — `?` matches a single character, so a pattern written for `16:0` silently stops matching once ids reach three digits.
+
+If a pattern matches nothing, Subsequence tells you and lists what it did find. If it matches several, it asks — unless there's no terminal to ask (a scheduled job, a service, an SSH session without a TTY), in which case it says so rather than waiting for an answer that can't come.
+
 New to Subsequence? The Cookbook's **[Chapter 0 ↗](https://subsequence.live/cookbook/00-setup.html)** walks through installation, creating a virtual MIDI port on macOS / Windows / Linux, and your first sound, step by step. (Working from a clone instead? `pip install -e .` and hear it with `python examples/demo.py`.)
 
 ## Documentation
