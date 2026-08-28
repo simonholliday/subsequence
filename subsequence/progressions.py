@@ -476,6 +476,18 @@ def _roman_from_chord (chord: subsequence.chords.Chord, tonic_pc: int) -> RomanC
 
 _EXTENSION_NAMES: typing.FrozenSet[str] = frozenset({"sus2", "sus4", "add9", "6"})
 _NUMERIC_EXTENSIONS: typing.FrozenSet[int] = frozenset({7, 9, 11, 13})
+
+# Triad shapes a stacked extension can be named against, keyed by (third, fifth).
+# Anything not here — a registered custom quality, a pitch set — keeps the plain
+# suffix, because naming a chord we cannot identify is worse than not naming it.
+_TRIAD_SHAPES: typing.Dict[typing.Tuple[int, int], str] = {
+	(4, 7): "major",
+	(3, 7): "minor",
+	(3, 6): "diminished",
+	(4, 8): "augmented",
+	(2, 7): "sus2",
+	(5, 7): "sus4",
+}
 _SPREAD_STYLES: typing.FrozenSet[str] = frozenset({"close", "open", "wide"})
 
 
@@ -587,20 +599,95 @@ class ChordSpan:
 				return text + self._decoration_suffix(resolved=False)
 			return self.resolve(key_pc, scale).label()
 
+		stacked_name = self._stacked_chord_name()
+
+		if stacked_name is not None:
+			return stacked_name + self._decoration_suffix(resolved=True, stacked=False)
+
 		base = str(self.chord.name())
 		return base + self._decoration_suffix(resolved=True)
 
-	def _decoration_suffix (self, resolved: bool) -> str:
+	def _stacked_chord_name (self) -> typing.Optional[str]:
 
-		"""The printable decoration tail (extensions and slash bass)."""
+		"""The chord's printed name when a stacked extension changes which chord it is.
+
+		``extend(7)`` deepens a chord in its own colour, so C major gains a
+		*major* seventh — and has to print ``Cmaj7``, because ``C7`` names a
+		dominant seventh, a different chord.  Naming the result rather than
+		gluing the number onto the triad also keeps the leading-tone chord
+		honest: its diatonic seventh is half-diminished (``Bm7b5``), not the
+		fully diminished ``Bdim7``.
+
+		Returns ``None`` for shapes this cannot identify — a registered custom
+		quality, a pitch set — so the caller falls back to the plain suffix
+		rather than inventing a name.
+		"""
+
+		if not isinstance(self.chord, subsequence.chords.Chord):
+			return None
+
+		stacked = [e for e in self.extensions if isinstance(e, int) and e in _NUMERIC_EXTENSIONS]
+
+		if not stacked:
+			return None
+
+		intervals = list(self.chord.intervals())
+
+		if len(intervals) < 3:
+			return None
+
+		# Mirror decorated_intervals(): a sus extension replaces the third, so
+		# the shape has to be read after that substitution, not before.
+		sus = [e for e in self.extensions if e in ("sus2", "sus4")]
+
+		if sus:
+			intervals[1] = 2 if sus[0] == "sus2" else 5
+
+		shape = _TRIAD_SHAPES.get((intervals[1], intervals[2]))
+
+		if shape is None:
+			return None
+
+		# 9 implies 7 (and so on up): the highest stacked extension names the chord.
+		top = max(stacked)
+		seventh = next((i for i in self.decorated_intervals() if i in (9, 10, 11)), None)
+		root_name = subsequence.chords.PC_TO_NOTE_NAME[self.chord.root_pc % 12]
+
+		if shape == "diminished":
+			tail = f"m{top}b5" if seventh == 10 else f"dim{top}"
+
+		elif shape == "minor":
+			tail = f"mMaj{top}" if seventh == 11 else f"m{top}"
+
+		elif shape == "augmented":
+			tail = f"+maj{top}" if seventh == 11 else f"+{top}"
+
+		elif shape == "major":
+			tail = f"maj{top}" if seventh == 11 else str(top)
+
+		else:
+			# Suspensions follow the number (C7sus4).  One that arrived as an
+			# extension is printed by the extension loop below, so only a
+			# suspended *quality* spells itself here.
+			tail = str(top) if sus else f"{top}{shape}"
+
+		return root_name + tail
+
+	def _decoration_suffix (self, resolved: bool, stacked: bool = True) -> str:
+
+		"""The printable decoration tail (extensions and slash bass).
+
+		``stacked=False`` leaves the numeric extension out, for when
+		:meth:`_stacked_chord_name` has already spelled it into the name.
+		"""
 
 		parts = ""
 		numeric = sorted(e for e in self.extensions if isinstance(e, int))
 
 		# 9 implies 7 (and so on up): print only the highest stacked extension.
-		stacked = [e for e in numeric if e in (7, 9, 11, 13)]
-		if stacked:
-			parts += str(stacked[-1])
+		stacked_extensions = [e for e in numeric if e in _NUMERIC_EXTENSIONS]
+		if stacked and stacked_extensions:
+			parts += str(stacked_extensions[-1])
 
 		for name in (e for e in self.extensions if isinstance(e, str)):
 			parts += name

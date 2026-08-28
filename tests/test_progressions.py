@@ -472,6 +472,80 @@ def test_extend_concrete_major_uses_its_own_colour () -> None:
 	assert value.spans[0].decorated_intervals() == [0, 4, 7, 11]
 
 
+def test_extend_names_the_seventh_it_actually_stacks () -> None:
+
+	"""A stacked extension prints the chord it made, not the number requested.
+
+	extend(7) deepens a chord in its own colour, so C major gains a MAJOR
+	seventh.  Printing "C7" would name a dominant — a different chord — and
+	the label is the only thing distinguishing them, since both are four
+	notes on the same root.
+	"""
+
+	major = subsequence.progressions.progression(["C"]).extend(7).spans[0]
+
+	assert major.decorated_intervals() == [0, 4, 7, 11]
+	assert major.label() == "Cmaj7"
+
+	minor = subsequence.progressions.progression(["Am"]).extend(7).spans[0]
+
+	assert minor.decorated_intervals() == [0, 3, 7, 10]
+	assert minor.label() == "Am7"
+
+
+def test_extend_diatonic_sevenths_are_each_named_for_their_own_quality () -> None:
+
+	"""Every degree in C major prints the seventh the scale gives it.
+
+	I and IV take major sevenths, V a dominant, ii/iii/vi minor, and vii the
+	half-diminished — six different chord symbols from one extend(7) call.
+	Naming them all "X7" made the tonic indistinguishable from the dominant.
+	"""
+
+	value = subsequence.progressions.progression([1, 2, 3, 4, 5, 6, 7]).extend(7).resolve("C")
+	labels = [span.label() for span in value.spans]
+
+	assert labels == ["Cmaj7", "Dm7", "Em7", "Fmaj7", "G7", "Am7", "Bm7b5"]
+
+
+def test_extend_on_the_leading_tone_is_half_diminished_not_diminished () -> None:
+
+	"""vii in a major key takes a MINOR seventh, so it is m7b5, never dim7.
+
+	Bdim7 (B D F Ab) is a different chord from Bm7b5 (B D F A) and the Ab is
+	not in C major.  A diminished triad written as such still stacks its own
+	diminished seventh.
+	"""
+
+	diatonic = subsequence.progressions.progression([7]).extend(7).resolve("C").spans[0]
+
+	assert diatonic.decorated_intervals() == [0, 3, 6, 10]
+	assert diatonic.label() == "Bm7b5"
+
+	spelled = subsequence.progressions.progression(["Cdim"]).extend(7).spans[0]
+
+	assert spelled.decorated_intervals() == [0, 3, 6, 9]
+	assert spelled.label() == "Cdim7"
+
+
+def test_extend_above_a_seventh_replaces_the_number_rather_than_appending () -> None:
+
+	"""Extending a chord that is already a seventh gives Cmaj9, not Cmaj79."""
+
+	assert subsequence.progressions.progression(["Cmaj7"]).extend(9).spans[0].label() == "Cmaj9"
+	assert subsequence.progressions.progression(["C7"]).extend(9).spans[0].label() == "C9"
+	assert subsequence.progressions.progression(["Am7"]).extend(9).spans[0].label() == "Am9"
+	assert subsequence.progressions.progression(["Cm7b5"]).extend(9).spans[0].label() == "Cm9b5"
+
+
+def test_extend_puts_the_suspension_after_the_number () -> None:
+
+	"""A suspended chord with a seventh is C7sus4 — "Csus47" is not a chord symbol."""
+
+	assert subsequence.progressions.progression(["Csus4"]).extend(7).spans[0].label() == "C7sus4"
+	assert subsequence.progressions.progression(["Csus2"]).extend(7).spans[0].label() == "C7sus2"
+
+
 def test_extend_only_restricts_slots () -> None:
 
 	"""only=[...] spices the named 1-based slots and leaves the rest bare."""

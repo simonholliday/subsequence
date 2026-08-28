@@ -10,6 +10,7 @@ default (1.0) so existing seeded compositions reproduce bit-for-bit.
 """
 
 import random
+import types
 import typing
 
 import pytest
@@ -20,6 +21,7 @@ import subsequence.constants.durations
 import subsequence.constants.velocity
 import subsequence.pattern
 import subsequence.pattern_builder
+import subsequence.sequence_utils
 
 
 def _make_builder (
@@ -193,3 +195,43 @@ def test_broken_chord_defaults_to_chord_velocity () -> None:
 	velocities = {velocity for _, _, velocity in _placements(pattern)}
 	assert velocities == {subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY}
 	assert subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY == 90
+
+
+def test_sequence_utils_all_matches_its_public_names () -> None:
+
+	"""``__all__`` lists exactly the module's own public names.
+
+	Kept as a test rather than a convention because the list is hand-held: a
+	kernel added without a line here would be missing from ``import *`` while
+	still importable by name, which is the kind of split nobody notices until
+	somebody's star-import stops seeing a function that plainly exists.
+	"""
+
+	module = subsequence.sequence_utils
+	public = {
+		name for name in dir(module)
+		if not name.startswith("_")
+		and name != "T"
+		and not isinstance(getattr(module, name), types.ModuleType)
+		and getattr(getattr(module, name), "__module__", None) == "subsequence.sequence_utils"
+	}
+
+	assert set(module.__all__) == public
+	assert len(module.__all__) == len(set(module.__all__)), "duplicate entry in __all__"
+
+
+def test_sequence_utils_star_import_brings_no_incidental_modules () -> None:
+
+	"""``import *`` must not re-export itertools, math, random or typing.
+
+	Those are the module's own imports; without ``__all__`` they ride along and
+	can shadow the same names in the importing module.
+	"""
+
+	namespace: typing.Dict[str, typing.Any] = {}
+	exec("from subsequence.sequence_utils import *", namespace)  # noqa: S102
+
+	assert not [
+		name for name in ("itertools", "math", "random", "typing", "subsequence", "T")
+		if name in namespace
+	]

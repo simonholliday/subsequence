@@ -15,6 +15,24 @@ import subsequence.weighted_graph
 
 T = typing.TypeVar("T")
 
+# The public surface, so ``from subsequence.sequence_utils import *`` brings the
+# kernels and nothing else — without this it also drags in itertools, math, random
+# and typing, which can then shadow the importer's own names.
+__all__ = [
+	"Sieve", "branch_sequence", "build_metric_weights", "choke", "clamp", "combine_densities",
+	"constrained_walk", "cseg", "csim", "de_bruijn", "density_spread", "density_to_steps",
+	"density_warp", "displace", "fibonacci", "flip", "fold", "generate_bresenham_sequence",
+	"generate_bresenham_sequence_weighted", "generate_cellular_automaton_1d",
+	"generate_cellular_automaton_2d", "generate_euclidean_sequence", "generate_legato_durations",
+	"generate_van_der_corput_sequence", "golden_rhythm", "logistic_map", "lorenz_attractor",
+	"lsystem_expand", "mask", "morse_code", "offbeatness", "perlin_1d", "perlin_1d_sequence",
+	"perlin_2d", "perlin_2d_grid", "pink_noise", "probability_gate", "random_walk",
+	"reaction_diffusion_1d", "recaman", "residual_class", "rhythmic_evenness", "rotate",
+	"scale_clamp", "self_avoiding_walk", "sequence_to_indices", "shuffled_choices", "sieve",
+	"syncopation", "threshold", "thue_morse", "tile", "vl_distance", "warp_stack",
+	"weighted_choice",
+]
+
 
 def generate_euclidean_sequence (steps: int, pulses: int) -> typing.List[int]:
 

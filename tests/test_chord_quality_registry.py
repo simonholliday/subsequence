@@ -3,6 +3,7 @@
 import pytest
 
 import subsequence.chords
+import subsequence.progressions
 
 
 @pytest.fixture(autouse=True)
@@ -141,3 +142,22 @@ def test_register_quality_rejects_ambiguous_suffix () -> None:
 		subsequence.chords.register_chord_quality("weird", [0, 1, 2], suffix="A1")
 	with pytest.raises(ValueError, match="ambiguous"):
 		subsequence.chords.register_chord_quality("weird", [0, 1, 2], suffix="9th")
+
+
+def test_extend_leaves_a_custom_quality_unnamed_rather_than_guessing () -> None:
+
+	"""A stacked extension on a registered quality keeps the plain suffix.
+
+	Seventh-chord naming reads the triad's third and fifth to pick a symbol
+	(Cmaj7, Bm7b5, C7sus4).  A custom quality's intervals mean nothing to that
+	table — a quartal stack's [0, 5, 10] would read as a suspended fourth —
+	so it falls back instead of inventing a name for a chord it cannot
+	identify.
+	"""
+
+	subsequence.chords.register_chord_quality("quartal_test", [0, 5, 10])
+
+	chord = subsequence.chords.Chord(root_pc=0, quality="quartal_test")
+	span = subsequence.progressions.ChordSpan(chord=chord, beats=4.0, extensions=(7,))
+
+	assert span.label() == "C(quartal_test)7"

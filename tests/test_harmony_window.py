@@ -375,7 +375,11 @@ def test_sketch_a_verse_by_hand_chorus_generated_under_a_constraint (tmp_path: p
 	# from the parallel major (VI of A major = F#m).
 	assert heard[0] == "Am9"
 	assert heard[1] == "F#m9"
-	assert heard[2] == "C9"
+	# III and VII are both major triads, and the mode decides which seventh
+	# each one stacks: C takes B (major, so Cmaj9) while G takes F natural
+	# (minor, so a genuine dominant G9).  Printing both as "C9"/"G9" would
+	# claim a Bb that A aeolian does not contain.
+	assert heard[2] == "Cmaj9"
 	assert heard[3] == "G9"
 
 	# Chorus: generated under the constraint — the last bar is the cadential
