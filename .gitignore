@@ -26,3 +26,9 @@ DESIGN-COMPOSITION.md
 # Claude Code — local only, never commit
 CLAUDE.local.md
 .claude/
+
+# Subroutine task-tracker marker — names which project work here belongs to.
+# Local only: it carries the connection name and instance-specific workspace and
+# project ids, which resolve to nothing outside this machine's setup. Anyone with
+# the subroutine CLI regenerates it with 'subroutine use --here --project <key>'.
+.subroutine
