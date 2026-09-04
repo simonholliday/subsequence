@@ -303,9 +303,15 @@ class Sequencer:
 	"""
 	The engine that drives Subsequence timing and MIDI output.
 	
-	The ``Sequencer`` maintains a stable clock (internal or external), 
+	The ``Sequencer`` maintains a stable clock (internal or external),
 	handles the scheduling of MIDI events, and triggers pattern rebuilds.
 	"""
+
+	# How often a paused clock loop checks whether it has been resumed.  Resume
+	# latency is bounded by this, and 5 ms is comfortably inside one pulse at any
+	# usable tempo (20.8 ms at 120 BPM, 24 PPQN) — so a resumed transport lands
+	# on the same pulse it would have without the polling.
+	_PAUSE_POLL_SECONDS: float = 0.005
 
 	def __init__ (
 		self,
@@ -412,6 +418,15 @@ class Sequencer:
 		self.current_bar: int = -1
 		self.current_beat: int = -1
 		self.active_notes: typing.Set[typing.Tuple[int, int, int]] = set()  # (device, channel, note)
+
+		# Transport pause.  ``pause()``/``resume()`` only flip _paused — a plain
+		# bool so they are safe to call from a UI or OSC thread — and the clock
+		# loop does the work when it notices, which is also what makes the
+		# "pause"/"resume" events report the transport's real state rather than
+		# that a button was pressed.  _paused_seconds accumulates the total held
+		# time for diagnostics; start_time is deliberately never shifted.
+		self._paused: bool = False
+		self._paused_seconds: float = 0.0
 
 		# Device latency compensation: cached max across all output devices, and
 		# the set of in-flight deferred sends (call_later handles) awaiting their
@@ -1377,8 +1392,121 @@ class Sequencer:
 		# just let it keep counting forever.
 
 		self.active_notes = set()
+		self._paused = False
 
 		await self.events.emit_async("stop")
+
+
+	def pause (self) -> None:
+
+		"""Hold the clock where it is, keeping the composition's place.
+
+		Playback stops advancing, sounding notes are released, and MIDI Stop
+		(0xFC) goes out when ``clock_output`` is on.  ``resume()`` continues
+		from the same pulse, beat and bar — unlike ``stop()``, which discards
+		the position.
+
+		Takes effect on the clock loop's next turn (within a few milliseconds),
+		not on return: the ``"pause"`` event fires when the transport has
+		actually stopped, so a UI following it shows the real state rather than
+		assuming its own button worked.  Safe to call from any thread, and
+		idempotent — pausing a paused sequencer does nothing.
+
+		**A note cut short by a pause is not re-struck on resume.**  Re-striking
+		would invent an articulation the composition never asked for; the
+		pattern's next cycle is where it returns.
+
+		Refused, with a log line rather than silently, when the pulse is not
+		ours to hold: under ``clock_follow`` the tempo comes from the cable, and
+		under Ableton Link the transport belongs to the session.  Render mode is
+		refused too — its clock is simulated, so there is nothing to hold.
+		"""
+
+		if not self.running or self._paused:
+			return
+
+		if self.render_mode:
+			logger.info("Render mode has no wall clock to hold — pause() ignored")
+			return
+
+		if self.clock_follow:
+			logger.info("Transport is controlled by external clock — pause() ignored")
+			return
+
+		if self._link_clock is not None:
+			logger.info("Transport belongs to the Ableton Link session — pause() ignored")
+			return
+
+		self._paused = True
+
+
+	def resume (self) -> None:
+
+		"""Continue playback from the pulse ``pause()`` held.
+
+		Sends MIDI Continue (0xFB) when ``clock_output`` is on — never Start
+		(0xFA), which would reset downstream hardware to the top of its own
+		pattern.  Idempotent: resuming a running sequencer does nothing.
+		"""
+
+		self._paused = False
+
+
+	@property
+	def paused (self) -> bool:
+
+		"""True while the transport is held by :meth:`pause`."""
+
+		return self._paused
+
+
+	async def _hold_while_paused (self, next_pulse_time: float) -> float:
+
+		"""Block until resumed, and return *next_pulse_time* rebased past the pause.
+
+		The clock loop's inner ``while current_time >= next_pulse_time`` catches
+		up every overdue pulse in one pass, so a pause that left the deadline
+		where it was would fire the whole held span as a burst on resume — 480
+		pulses for a ten-second pause at 120 BPM.  Shifting the deadline by the
+		measured hold carries the remainder of the interrupted pulse across it
+		and puts the next pulse a proper interval after the resume instant.
+
+		``start_time`` is deliberately not shifted: it is read in exactly one
+		place (to seed this deadline), so an accumulated offset here is the
+		whole of the bookkeeping.
+		"""
+
+		held_from = time.perf_counter()
+
+		# Release before announcing: a listener that reacts to "pause" should
+		# find the rig already quiet.  Routed through latency compensation so a
+		# note_on still deferred in _pending_sends cannot be overtaken by its
+		# own note_off — those sends are real notes already dispatched, so they
+		# are left to land rather than cancelled (stop() cancels; pause does not).
+		await self._stop_all_active_notes(compensated=True)
+
+		if self.clock_output:
+			self._send_clock_message("stop")
+
+		await self.events.emit_async("pause")
+
+		while self._paused and self.running:
+			await asyncio.sleep(self._PAUSE_POLL_SECONDS)
+
+		held_for = time.perf_counter() - held_from
+		self._paused_seconds += held_for
+
+		# A stop() during the pause ends the loop; it sends its own transport
+		# message and there is nothing to continue.
+		if not self.running:
+			return next_pulse_time + held_for
+
+		if self.clock_output:
+			self._send_clock_message("continue")
+
+		await self.events.emit_async("resume")
+
+		return next_pulse_time + held_for
 
 
 	async def _run_loop (self) -> None:
@@ -1498,6 +1626,19 @@ class Sequencer:
 		next_pulse_time = self.start_time
 
 		while self.running:
+
+			# Held between pulses, never mid-catch-up, so a pause cannot split
+			# the ordering within one pulse.  Returns the deadline rebased past
+			# the hold — without that the inner while below would fire every
+			# pulse the pause spanned, in one burst.
+			if self._paused:
+				next_pulse_time = await self._hold_while_paused(next_pulse_time)
+
+				if not self.running:
+					# Reachable: stop() while paused clears running, which is
+					# what releases the hold.  mypy narrows running from the
+					# while condition and cannot see across the await.
+					break  # type: ignore[unreachable]
 
 			# In render mode, simulate time advancing one pulse at a time so
 			# the inner loop always fires exactly once without spin-waiting.
@@ -1887,14 +2028,40 @@ class Sequencer:
 					)
 
 
-	async def _stop_all_active_notes (self) -> None:
+	async def _stop_all_active_notes (self, compensated: bool = False) -> None:
 
 		"""
 		Send note_off for all currently tracked active notes.
+
+		Parameters:
+			compensated: Route the note_offs through
+				:meth:`_dispatch_with_compensation` instead of sending them
+				straight to the port.  Needed whenever in-flight deferred sends
+				are being left to land — a note_on still waiting on its device
+				offset would otherwise be overtaken by its own note_off and ring
+				forever (the same hazard ``_stop_pattern_notes`` guards against).
+				``stop()`` leaves this False because it cancels the pending sends
+				first, which makes the immediate form safe and faster; ``pause()``
+				sets it because the rig keeps playing.
 		"""
 
 		async with self.queue_lock:
 			for dev, channel, note in list(self.active_notes):
+
+				if compensated:
+					try:
+						self._dispatch_with_compensation(MidiEvent(
+							pulse = self.pulse_count,
+							message_type = 'note_off',
+							channel = channel,
+							note = note,
+							velocity = 0,
+							device = dev,
+						))
+					except Exception:
+						logger.exception(f"Failed to send note_off during pause (dev={dev}, ch={channel}, note={note})")
+					continue
+
 				port = self._output_devices.get(dev)
 				if port is not None:
 					try:

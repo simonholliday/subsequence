@@ -70,6 +70,7 @@ The top-level controller for a musical piece.
 | `hotkey(key, action, quantize, label) -> None` | Register a single-key shortcut that fires during playback. |
 | `hotkeys(enabled) -> None` | Enable or disable the global hotkey listener. |
 | `is_clock_following *(property)*` | True if either the primary or any additional device is following external clock. |
+| `is_paused *(property)*` | True while playback is held by :meth:`pause`. |
 | `layer(*builder_fns, channel, beats, bars, steps, step_duration, drum_note_map, cc_name_map, nrpn_name_map, reschedule_lookahead, voice_leading, device, mirrors) -> None` | Combine multiple functions into a single MIDI pattern. |
 | `link(quantum) -> Composition` | Enable Ableton Link tempo and phase synchronisation. |
 | `live(port) -> None` | Enable the live coding eval server. |
@@ -86,12 +87,14 @@ The top-level controller for a musical piece.
 | `osc(receive_port, send_port, send_host, receive_host) -> None` | Enable bi-directional Open Sound Control (OSC). |
 | `osc_map(address, handler) -> None` | Register a custom OSC handler. |
 | `pattern(channel, beats, bars, steps, step_duration, drum_note_map, cc_name_map, nrpn_name_map, reschedule_lookahead, voice_leading, device, mirrors, min_energy) -> Callable` | Register a function as a repeating MIDI pattern. |
+| `pause() -> None` | Hold playback where it is, keeping the composition's place. |
 | `phrase_part(channel, part, root, bars, beats, velocity, fit, device, mirrors) -> None` | Declare a part that plays each section's bound Motif/Phrase. |
 | `pin_chord(bar, chord) -> None` | Force the chord sounding at a bar — fiat over live generation. |
 | `play() -> None` | Start the composition. |
 | `render(bars, filename, max_minutes) -> None` | Render the composition to a MIDI file without real-time playback. |
 | `request_cadence(cadence, bar) -> None` | Ask the live engine to approach a cadence arriving at a bar. |
 | `reroll(name) -> None` | Deal a named stream a fresh deterministic seed — try a new variation. |
+| `resume() -> None` | Continue playback from where :meth:`pause` held it. |
 | `running_patterns *(property)*` | The currently active patterns, keyed by name. |
 | `schedule(fn, cycle_beats, reschedule_lookahead, wait_for_initial, defer) -> None` | Register a custom function to run on a repeating beat-based cycle. |
 | `section_cadence(section_name, cadence) -> None` | Close every pass of a section with a cadence — the standing request. |

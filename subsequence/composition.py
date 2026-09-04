@@ -3914,6 +3914,46 @@ class Composition:
 			"data": self.data
 		}
 
+	def pause (self) -> None:
+
+		"""
+		Hold playback where it is, keeping the composition's place.
+
+		The clock stops advancing, sounding notes are released, and MIDI Stop
+		is sent to any hardware following the clock output.  :meth:`resume`
+		continues from the same pulse, beat and bar — where stopping and
+		playing again would start the piece over.
+
+		Bar and cycle counters hold too, so patterns resume mid-phrase rather
+		than jumping.  A note cut short by the pause is not re-struck on
+		resume; it returns on its pattern's next cycle.
+
+		Idempotent and safe to call from any thread.  Ignored, with a log line,
+		when the transport is not ours to hold — under ``clock_follow=True`` or
+		an active Ableton Link session.
+		"""
+
+		self._sequencer.pause()
+
+	def resume (self) -> None:
+
+		"""
+		Continue playback from where :meth:`pause` held it.
+
+		Sends MIDI Continue rather than Start, so downstream hardware picks up
+		where it left off instead of resetting to the top of its own pattern.
+		Idempotent.
+		"""
+
+		self._sequencer.resume()
+
+	@property
+	def is_paused (self) -> bool:
+
+		"""True while playback is held by :meth:`pause`."""
+
+		return self._sequencer.paused
+
 	def mute (self, name: str) -> None:
 
 		"""
