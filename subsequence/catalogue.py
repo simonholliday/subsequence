@@ -57,7 +57,9 @@ import subsequence.pattern_builder
 #   drone_off
 #   silence      a transport action (All Notes Off), not a generator.
 #
-# `build_ghost_bias` and `duck_map` are accessors: they return weight lists.
+# `build_ghost_bias`, `duck_map` and `section_motif` are accessors: they return
+# data rather than the builder.  A generator places notes and returns self for
+# chaining, which is the mechanical test — see test_catalogue.py.
 GENERATORS: typing.Tuple[str, ...] = (
 	# subsequence.pattern_algorithmic
 	"branch",
@@ -92,7 +94,6 @@ GENERATORS: typing.Tuple[str, ...] = (
 	"note",
 	"phrase",
 	"repeat",
-	"section_motif",
 	"sequence",
 	"strum",
 )

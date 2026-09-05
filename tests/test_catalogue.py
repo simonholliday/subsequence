@@ -5,11 +5,13 @@ repository's internals, so these tests pin the format as much as the content.
 A change that breaks one of them is a change somebody else has to hear about.
 """
 
+import inspect
 import typing
 
 import pytest
 
 import subsequence
+import subsequence.easing
 import subsequence.catalogue
 import subsequence.pattern_builder
 
@@ -74,8 +76,137 @@ def test_transforms_and_accessors_are_not_offered () -> None:
 	for name in ("rotate", "invert", "swing", "dropout", "stretch", "transpose"):
 		assert name not in subsequence.catalogue.GENERATORS, name
 
-	for name in ("bar_cycle", "signal", "param", "capture", "build_ghost_bias", "duck_map"):
+	for name in ("bar_cycle", "signal", "param", "capture", "build_ghost_bias", "duck_map", "section_motif"):
 		assert name not in subsequence.catalogue.GENERATORS, name
+
+
+def test_every_generator_returns_the_builder () -> None:
+
+	"""A generator places notes and returns self for chaining.
+
+	The mechanical form of "does it place notes": an accessor returns its data
+	instead, which is how ``section_motif`` reached the catalogue by mistake —
+	it returns the Motif bound to the current section and places nothing.
+	"""
+
+	for name in subsequence.catalogue.GENERATORS:
+		annotation = str(inspect.signature(
+			getattr(subsequence.pattern_builder.PatternBuilder, name),
+		).return_annotation)
+		assert "PatternBuilder" in annotation, f"{name} returns {annotation}"
+
+
+# Parameters knowingly left out of the catalogue, with the reason.  Every one
+# is genuinely unshaped — not merely missing an annotation.
+#
+# The distinction matters: a parameter that COULD carry a shape but lacks the
+# marker is dropped silently while its generator still reports complete, which
+# tells a consumer "fully offerable" about something it cannot fully drive.
+# That is how thin.pitch, ratchet.pitch and thue_morse.pitch_b were missed.
+KNOWINGLY_DROPPED: typing.FrozenSet[typing.Tuple[str, str]] = frozenset({
+	# Birth/Survival notation ("B3/S23", "B368/S245") — a grammar, not a
+	# vocabulary, so there is no finite option list to offer.
+	("cellular_2d", "rule"),
+	# Callables that map a raw sequence value onto a note.  No control shape
+	# maps to a function, and all three are optional.
+	("fibonacci", "mapping"),
+	("lorenz", "mapping"),
+	("recaman", "mapping"),
+	# A step list.  A surface could plausibly offer a step grid, but that
+	# would be a sixth kind and is not ours to invent alone.
+	("ratchet", "steps"),
+})
+
+
+def test_nothing_is_dropped_silently_from_a_generator_reported_complete () -> None:
+
+	"""Every omitted parameter is either machine-only, or knowingly unshaped.
+
+	This is the sweep that matters.  Three pitch parameters were annotated
+	``Optional[Union[int, str]]`` rather than ``Optional[Pitch]``, so the
+	deriver could not see them; because they were optional the generator was
+	not flagged partial either, and a consumer was told a generator was fully
+	offerable while a parameter it needed was silently absent.
+
+	A new parameter added without a marker lands here rather than in somebody
+	else's bug report.
+	"""
+
+	unexplained: typing.List[typing.Tuple[str, str, str]] = []
+
+	for entry in subsequence.generators():
+
+		# A generator already marked partial has told the consumer it cannot be
+		# fully driven, so anything missing from it is disclosed rather than
+		# hidden.  The dishonest pairing — and the whole point of this test — is
+		# "partial": false alongside a parameter that quietly is not there.
+		if entry["partial"]:
+			continue
+
+		function = getattr(subsequence.pattern_builder.PatternBuilder, entry["name"])
+		hints = typing.get_type_hints(function, include_extras=True)
+		offered = {parameter["name"] for parameter in entry["parameters"]}
+
+		for name, parameter in inspect.signature(function).parameters.items():
+
+			if name in subsequence.catalogue._NOT_FOR_PEOPLE or name in offered:
+				continue
+
+			if (entry["name"], name) in KNOWINGLY_DROPPED:
+				continue
+
+			unexplained.append((entry["name"], name, str(hints.get(name, parameter.annotation))))
+
+	assert not unexplained, (
+		"parameters dropped with no explanation — annotate them, or add them to "
+		f"KNOWINGLY_DROPPED with the reason: {unexplained}"
+	)
+
+
+def test_ratchet_shape_offers_the_easing_curves () -> None:
+
+	"""shape resolves through easing.get_easing(), which raises on an unknown name.
+
+	So the seven names are the whole vocabulary and belong in the annotation,
+	not only in prose — the Callable arm stays for callers passing their own.
+	"""
+
+	shape = _parameter("ratchet", "shape")
+
+	assert shape["kind"] == "choice"
+	assert {option["value"] for option in shape["options"]} == set(
+		subsequence.easing.EASING_FUNCTIONS
+	)
+
+
+def test_cellular_2d_offers_its_named_seeds_but_not_its_rule () -> None:
+
+	"""initial_state is a two-name vocabulary; rule is open notation.
+
+	"center" and "random" are the whole named set, so they are offerable. A
+	Birth/Survival rule string has no finite option list, so it is left out
+	rather than guessed at.
+	"""
+
+	initial_state = _parameter("cellular_2d", "initial_state")
+
+	assert initial_state["kind"] == "choice"
+	assert {option["value"] for option in initial_state["options"]} == {"center", "random"}
+
+	offered = {p["name"] for p in subsequence.describe_generator("cellular_2d")["parameters"]}
+	assert "rule" not in offered
+
+
+def test_optional_pitch_parameters_are_offered () -> None:
+
+	"""Targeting one voice is most of the point of thin() and ratchet().
+
+	Without the marker a surface could thin a whole kit but not just the
+	hi-hats, which is the ordinary musical request.
+	"""
+
+	for generator, name in (("thin", "pitch"), ("ratchet", "pitch"), ("thue_morse", "pitch_b")):
+		assert _parameter(generator, name)["kind"] == "pitch"
 
 
 # ---------------------------------------------------------------------------

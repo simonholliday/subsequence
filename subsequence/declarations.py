@@ -119,6 +119,22 @@ StrumDirection = typing.Literal["up", "down"]
 
 PhraseAlign = typing.Literal["pattern", "section"]
 
+# ratchet(shape=) resolves through easing.get_easing(), which raises on an
+# unknown name — so these seven are the whole vocabulary, and a Literal makes
+# mypy say so at the call site instead of at run time.
+EasingCurve = typing.Literal[
+	"linear",
+	"ease_in",
+	"ease_out",
+	"ease_in_out",
+	"exponential",
+	"logarithmic",
+	"s_curve",
+]
+
+# cellular_2d(initial_state=) takes one of these names or an explicit grid.
+CellularSeed = typing.Literal["center", "random"]
+
 
 # Which (function, parameter) pairs have already been warned about.  A rebuild
 # runs every bar, so warning per call would flood the log for the whole time a
