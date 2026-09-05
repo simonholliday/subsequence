@@ -182,6 +182,7 @@ Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``,
 """
 
 import subsequence.cadences
+import subsequence.catalogue
 import subsequence.chords
 import subsequence.forms
 import subsequence.roles
@@ -231,3 +232,8 @@ load_definitions = subsequence.definitions.load_definitions
 roles = subsequence.roles
 sieve = subsequence.sequence_utils.sieve
 residual_class = subsequence.sequence_utils.residual_class
+
+# The generator catalogue — what this package offers and what each one takes,
+# as plain data, so a control surface never holds its own list of parameters.
+generators = subsequence.catalogue.generators
+describe_generator = subsequence.catalogue.describe_generator

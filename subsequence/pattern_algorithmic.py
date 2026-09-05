@@ -7,6 +7,7 @@ is inherited by ``PatternBuilder`` in ``pattern_builder.py``.
 import random
 import typing
 import warnings
+import subsequence.declarations
 import subsequence.constants
 import subsequence.constants.velocity
 import subsequence.easing
@@ -42,14 +43,14 @@ class PatternAlgorithmicMixin:
 		import subsequence.pattern_builder  # noqa: F401 — type-checking only
 		def note (
 			self,
-			pitch: typing.Union[int, str],
+			pitch: subsequence.declarations.Pitch,
 			beat: float,
 			velocity: typing.Union[int, typing.Tuple[int, int]],
 			duration: float,
 		) -> "subsequence.pattern_builder.PatternBuilder": ...
-		def _resolve_pitch (self, pitch: typing.Union[int, str]) -> int: ...
-		def _resolve_pitch_lenient (self, pitch: typing.Union[int, str]) -> typing.Optional[int]: ...
-		def _has_pitch_at_beat (self, pitch: typing.Union[int, str], beat: float) -> bool: ...
+		def _resolve_pitch (self, pitch: subsequence.declarations.Pitch) -> int: ...
+		def _resolve_pitch_lenient (self, pitch: subsequence.declarations.Pitch) -> typing.Optional[int]: ...
+		def _has_pitch_at_beat (self, pitch: subsequence.declarations.Pitch, beat: float) -> bool: ...
 
 	def _rng_from (self, seed: typing.Optional[int], rng: typing.Optional[random.Random]) -> random.Random:
 
@@ -168,7 +169,7 @@ class PatternAlgorithmicMixin:
 	def _place_rhythm_sequence (
 		self,
 		sequence: typing.List[int],
-		pitch: typing.Union[int, str],
+		pitch: subsequence.declarations.Pitch,
 		velocity: typing.Union[int, typing.Tuple[int, int]],
 		duration: float,
 		probability: float,
@@ -227,7 +228,8 @@ class PatternAlgorithmicMixin:
 
 		return spacing, int(self._pattern.length / spacing)
 
-	def euclidean (self, pitch: typing.Union[int, str], pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: float = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
+	@subsequence.declarations.bounded
+	def euclidean (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Generate a Euclidean rhythm.
@@ -262,7 +264,8 @@ class PatternAlgorithmicMixin:
 		self._place_rhythm_sequence(sequence, pitch, velocity, duration, probability, rng, no_overlap=no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-	def bresenham (self, pitch: typing.Union[int, str], pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: float = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
+	@subsequence.declarations.bounded
+	def bresenham (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Generate a rhythm using the Bresenham line algorithm.
@@ -290,13 +293,14 @@ class PatternAlgorithmicMixin:
 		self._place_rhythm_sequence(sequence, pitch, velocity, duration, probability, rng, no_overlap=no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
+	@subsequence.declarations.bounded
 	def bresenham_poly (
 		self,
 		parts: typing.Dict[typing.Union[int, str], float],
 		velocity: typing.Union[int, typing.Dict[typing.Union[int, str], int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		duration: float = 0.1,
 		grid: typing.Optional[int] = None,
-		probability: float = 1.0,
+		probability: subsequence.declarations.UnitInterval = 1.0,
 		no_overlap: bool = False,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
@@ -521,17 +525,18 @@ class PatternAlgorithmicMixin:
 
 		return weights
 
+	@subsequence.declarations.bounded
 	def ghost_fill (
 		self,
-		pitch: typing.Union[int, str],
-		density: float = 0.3,
+		pitch: subsequence.declarations.Pitch,
+		density: subsequence.declarations.UnitInterval = 0.3,
 		velocity: typing.Union[
 			int,
 			typing.Tuple[int, int],
 			typing.Sequence[typing.Union[int, float]],
 			typing.Callable[[int], typing.Union[int, float]]
 		] = subsequence.constants.velocity.GHOST_FILL_VELOCITY,
-		bias: typing.Union[str, typing.List[float]] = "uniform",
+		bias: typing.Union[subsequence.declarations.BiasCurve, typing.List[float]] = "uniform",
 		no_overlap: bool = True,
 		grid: typing.Optional[int] = None,
 		duration: float = 0.1,
@@ -644,15 +649,16 @@ class PatternAlgorithmicMixin:
 			self.note(pitch=pitch, beat=i * step_duration, velocity=vel, duration=duration)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
+	@subsequence.declarations.bounded
 	def cellular_1d (
 		self,
-		pitch: typing.Union[int, str],
+		pitch: subsequence.declarations.Pitch,
 		rule: int = 30,
 		generation: typing.Optional[int] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
 		duration: float = 0.1,
 		no_overlap: bool = False,
-		probability: float = 1.0,
+		probability: subsequence.declarations.UnitInterval = 1.0,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -702,15 +708,16 @@ class PatternAlgorithmicMixin:
 		)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
+	@subsequence.declarations.bounded
 	def cellular_2d (
 		self,
-		pitches: typing.List[typing.Union[int, str]],
+		pitches: typing.List[subsequence.declarations.Pitch],
 		rule: str = "B368/S245",
 		generation: typing.Optional[int] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
 		duration: float = 0.1,
 		no_overlap: bool = False,
-		probability: float = 1.0,
+		probability: subsequence.declarations.UnitInterval = 1.0,
 		initial_state: typing.Union[str, typing.List[typing.List[int]]] = "center",
 		density: float = 0.5,
 		seed: typing.Optional[int] = None,
@@ -1092,15 +1099,16 @@ class PatternAlgorithmicMixin:
 			beat += auto_step
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
+	@subsequence.declarations.bounded
 	def thue_morse (
 		self,
-		pitch: typing.Union[int, str],
+		pitch: subsequence.declarations.Pitch,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		duration: float = 0.1,
 		pitch_b: typing.Optional[typing.Union[int, str]] = None,
 		velocity_b: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
 		no_overlap: bool = False,
-		probability: float = 1.0,
+		probability: subsequence.declarations.UnitInterval = 1.0,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -1171,7 +1179,7 @@ class PatternAlgorithmicMixin:
 
 	def de_bruijn (
 		self,
-		pitches: typing.List[typing.Union[int, str]],
+		pitches: typing.List[subsequence.declarations.Pitch],
 		window: int = 2,
 		spacing: typing.Optional[float] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
@@ -1236,7 +1244,7 @@ class PatternAlgorithmicMixin:
 
 	def golden (
 		self,
-		pitches: typing.Union[int, str, typing.List[typing.Union[int, str]]],
+		pitches: typing.Union[subsequence.declarations.Pitch, typing.List[subsequence.declarations.Pitch]],
 		count: int,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
@@ -1306,7 +1314,7 @@ class PatternAlgorithmicMixin:
 
 	def recaman (
 		self,
-		pitches: typing.List[typing.Union[int, str]],
+		pitches: typing.List[subsequence.declarations.Pitch],
 		count: typing.Optional[int] = None,
 		spacing: typing.Optional[float] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
@@ -1440,7 +1448,7 @@ class PatternAlgorithmicMixin:
 
 	def fibonacci (
 		self,
-		pitches: typing.List[typing.Union[int, str]],
+		pitches: typing.List[subsequence.declarations.Pitch],
 		modulus: typing.Optional[int] = None,
 		count: typing.Optional[int] = None,
 		spacing: typing.Optional[float] = None,
@@ -1545,7 +1553,7 @@ class PatternAlgorithmicMixin:
 
 	def lorenz (
 		self,
-		pitches: typing.List[typing.Union[int, str]],
+		pitches: typing.List[subsequence.declarations.Pitch],
 		spacing: float = 0.25,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
@@ -1636,9 +1644,10 @@ class PatternAlgorithmicMixin:
 			beat += spacing
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
+	@subsequence.declarations.bounded
 	def reaction_diffusion (
 		self,
-		pitch: typing.Union[int, str],
+		pitch: subsequence.declarations.Pitch,
 		threshold: float = 0.5,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.1,
@@ -1646,7 +1655,7 @@ class PatternAlgorithmicMixin:
 		kill_rate: float = 0.062,
 		steps: int = 1000,
 		no_overlap: bool = False,
-		probability: float = 1.0,
+		probability: subsequence.declarations.UnitInterval = 1.0,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -1723,7 +1732,7 @@ class PatternAlgorithmicMixin:
 
 	def self_avoiding_walk (
 		self,
-		pitches: typing.List[typing.Union[int, str]],
+		pitches: typing.List[subsequence.declarations.Pitch],
 		spacing: float = 0.25,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
@@ -1784,11 +1793,12 @@ class PatternAlgorithmicMixin:
 			beat += spacing
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
+	@subsequence.declarations.bounded
 	def thin (
 		self,
 		pitch: typing.Optional[typing.Union[int, str]] = None,
-		strategy: typing.Union[str, typing.List[float]] = "strength",
-		amount: float = 0.5,
+		strategy: typing.Union[subsequence.declarations.ThinStrategy, typing.List[float]] = "strength",
+		amount: subsequence.declarations.UnitInterval = 0.5,
 		grid: typing.Optional[int] = None,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
@@ -1942,15 +1952,16 @@ class PatternAlgorithmicMixin:
 			del self._pattern.steps[pulse]
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
+	@subsequence.declarations.bounded
 	def ratchet (
 		self,
 		subdivisions: int = 2,
 		pitch: typing.Optional[typing.Union[int, str]] = None,
-		probability: float = 1.0,
-		velocity_start: float = 1.0,
-		velocity_end: float = 1.0,
+		probability: subsequence.declarations.UnitInterval = 1.0,
+		velocity_start: subsequence.declarations.VelocityScale = 1.0,
+		velocity_end: subsequence.declarations.VelocityScale = 1.0,
 		shape: typing.Union[str, typing.Callable[[float], float]] = "linear",
-		gate: float = 0.5,
+		gate: subsequence.declarations.UnitInterval = 0.5,
 		steps: typing.Optional[typing.List[int]] = None,
 		grid: typing.Optional[int] = None,
 		seed: typing.Optional[int] = None,
@@ -2121,11 +2132,12 @@ class PatternAlgorithmicMixin:
 		self._pattern.steps = new_steps
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
+	@subsequence.declarations.bounded
 	def evolve (
 		self,
-		pitches: typing.List[typing.Union[int, str]],
+		pitches: typing.List[subsequence.declarations.Pitch],
 		length: typing.Optional[int] = None,
-		drift: float = 0.0,
+		drift: subsequence.declarations.UnitInterval = 0.0,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		spacing: float = 0.25,
@@ -2219,12 +2231,13 @@ class PatternAlgorithmicMixin:
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
+	@subsequence.declarations.bounded
 	def branch (
 		self,
-		pitches: typing.List[typing.Union[int, str]],
+		pitches: typing.List[subsequence.declarations.Pitch],
 		depth: int = 2,
 		path: int = 0,
-		mutation: float = 0.0,
+		mutation: subsequence.declarations.UnitInterval = 0.0,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		spacing: float = 0.25,

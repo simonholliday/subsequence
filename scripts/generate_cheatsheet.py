@@ -15,6 +15,7 @@ import typing
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import subsequence
+import subsequence.catalogue
 import subsequence.chords
 import subsequence.composition
 import subsequence.cadences
@@ -52,6 +53,8 @@ functions_to_document: typing.List[typing.Callable] = [
 	subsequence.intervals.register_scale,
 	subsequence.intervals.scale_notes,
 	subsequence.midi_utils.bank_select,
+	subsequence.catalogue.generators,
+	subsequence.catalogue.describe_generator,
 	subsequence.midi_utils.match_device_names,
 	subsequence.definitions.load_definitions,
 	subsequence.harmonic_rhythm.between,
