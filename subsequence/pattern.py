@@ -96,6 +96,41 @@ class Step:
 	notes: typing.List[Note] = dataclasses.field(default_factory=list)
 
 
+@dataclasses.dataclass (frozen=True)
+class PlacedNote:
+
+	"""
+	One note read back off a pattern being built — see ``PatternBuilder.placed()``.
+
+	A read-only copy rather than a view: a consumer diffing what a generator
+	added must not be able to reach through the answer and edit the pattern.
+	Frozen also makes it hashable, so ``set(after) - set(before)`` works.
+
+	Positions and durations are in **pulses**, the unit the pattern stores and
+	the one every grid classification already uses (``PatternBuilder.thin()``
+	documents that zone arithmetic).  Handing back beats would mean a float
+	divide and a rounding rule that could disagree with the caller's on a note
+	groove has nudged; a caller wanting beats divides by a constant and loses
+	nothing.
+
+	``duration`` is None for a drone, which has no end until a later
+	``drone_off()`` places one.
+
+	``index`` exists so two notes that are otherwise identical stay distinct:
+	nothing stops a hand-placed kick and a generated one landing on the same
+	pulse, and without it a set difference would report the second as already
+	present.  It is an identity token, not a count — treat it as opaque.
+	"""
+
+	position: int						# Pulse position within the pattern
+	pitch: int							# Resolved MIDI note number
+	origin: typing.Optional[str]		# Original drum-name string (same contract as Note.origin), None for numeric pitches
+	index: int							# Distinguishes notes sharing a position and pitch; opaque, stable only within one build
+	velocity: int
+	duration: typing.Optional[int]		# Pulses, or None for a drone (a raw Note On with no end)
+	primary_unmapped: bool = False		# True when this pitch is a placeholder that the primary device will not sound (see Note.primary_unmapped)
+
+
 class Pattern:
 
 	"""

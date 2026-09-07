@@ -178,7 +178,7 @@ Community and Feedback:
 - **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
 - **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
 
-Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``sentence``, ``period``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``Cadence``, ``Section``, ``Form``, ``roles``, ``sieve``, ``residual_class``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``, ``Definitions``, ``load_definitions``.
+Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``sentence``, ``period``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``Cadence``, ``Section``, ``Form``, ``roles``, ``sieve``, ``residual_class``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``, ``Definitions``, ``load_definitions``, ``PlacedNote``.
 """
 
 import subsequence.cadences
@@ -194,6 +194,7 @@ import subsequence.intervals
 import subsequence.melodic_state
 import subsequence.midi_utils
 import subsequence.motifs
+import subsequence.pattern
 import subsequence.progressions
 import subsequence.sequence_utils
 import subsequence.tuning
@@ -232,6 +233,10 @@ load_definitions = subsequence.definitions.load_definitions
 roles = subsequence.roles
 sieve = subsequence.sequence_utils.sieve
 residual_class = subsequence.sequence_utils.residual_class
+
+# One note read back off a pattern being built, so a caller can type
+# against what PatternBuilder.placed() returns.
+PlacedNote = subsequence.pattern.PlacedNote
 
 # The generator catalogue — what this package offers and what each one takes,
 # as plain data, so a control surface never holds its own list of parameters.

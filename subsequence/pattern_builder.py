@@ -1159,6 +1159,81 @@ class PatternBuilder(
 
 		return self._section_motifs.get((self.section.name, part))
 
+	def placed (self) -> typing.List[subsequence.pattern.PlacedNote]:
+
+		"""Read back every note placed on this pattern so far.
+
+		Answers "which notes did that generator put there" without reaching
+		into the pattern: call it either side of a verb and take the
+		difference.  A control surface uses it to draw a generated layer in a
+		different style from the steps somebody tapped by hand.
+
+		Returns a list of :class:`~subsequence.pattern.PlacedNote` — a frozen,
+		hashable copy of each note, carrying ``origin`` so a named drum voice
+		can be matched back to the panel row that asked for it.  Positions and
+		durations are in pulses; a drone's ``duration`` is None.
+
+		Only this cycle's placements are reported: the pattern is emptied at
+		the start of every rebuild, so a drone still sounding from an earlier
+		cycle is not here.  Note Offs are not reported either — ``note_off()``
+		and ``drone_off()`` end a note rather than placing one, and drawing a
+		release as a hit would show a step that never sounds.
+
+		Ordered by position, hand-placed notes before drones at the same
+		pulse.  The order is fixed only so two reads agree; nothing should
+		depend on it.
+
+		Example::
+
+			@composition.pattern(channel=10, beats=4)
+			def drums (p):
+				p.hit("kick", [0, 2])
+				before = set(p.placed())
+				p.euclidean("hihat_closed", pulses=7)
+				generated = set(p.placed()) - before
+		"""
+
+		found: typing.List[subsequence.pattern.PlacedNote] = []
+
+		for pulse in self._pattern.steps:
+
+			for index, note in enumerate(self._pattern.steps[pulse].notes):
+				found.append(subsequence.pattern.PlacedNote(
+					position = pulse,
+					pitch = note.pitch,
+					origin = note.origin,
+					index = index,
+					velocity = note.velocity,
+					duration = note.duration,
+					primary_unmapped = note.primary_unmapped,
+				))
+
+		# Drones live in a second collection and would otherwise report as
+		# having placed nothing — a layer that sounds and does not draw.  Their
+		# index counts within that collection, which is append-only for the
+		# life of the build exactly as a step's note list is, so a record made
+		# now still matches itself after more notes arrive.
+		for index, event in enumerate(self._pattern.raw_note_events):
+
+			if event.message_type != 'note_on':
+				continue
+
+			found.append(subsequence.pattern.PlacedNote(
+				position = event.pulse,
+				pitch = event.pitch,
+				origin = event.origin,
+				index = index,
+				velocity = event.velocity,
+				duration = None,
+				primary_unmapped = event.primary_unmapped,
+			))
+
+		# Stable, so the steps stay ahead of the drones sharing their pulse.
+		found.sort(key = lambda entry: entry.position)
+
+		return found
+
+
 	def capture (self, beat: float = 0.0, span: float = 4.0) -> "subsequence.motifs.Motif":
 
 		"""

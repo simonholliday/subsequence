@@ -24,6 +24,7 @@ Everything importable as `subsequence.X`:
 | `MotifEvent` | class | One timed note event inside a Motif. |
 | `Phrase` | class | A sequence of Motifs with segmentation preserved. |
 | `PitchSet` | class | A nameless sonority — a frozen set of absolute MIDI pitches. |
+| `PlacedNote` | class | One note read back off a pattern being built — see ``PatternBuilder.placed()``. |
 | `Progression` | class | A frozen sequence of :class:`ChordSpan` — the governing harmony value. |
 | `Section` | class | One section of a form — the payload home. |
 | `Tuning` | class | A microtonal tuning system expressed as cent offsets from the unison. |
@@ -180,6 +181,7 @@ The musician's 'palette' for creating musical content.
 | `phrase(value, root, velocity, fit, resolution, align, offset) -> PatternBuilder` | Place this cycle's window of a Phrase — position computed, never stored. |
 | `pitch_bend(value, beat) -> subsequence.pattern_builder.PatternBuilder` | Send a single pitch bend message at a beat position. |
 | `pitch_bend_ramp(start, end, beat_start, beat_end, resolution, shape) -> subsequence.pattern_builder.PatternBuilder` | Interpolate pitch bend over a beat range. |
+| `placed() -> List[subsequence.pattern.PlacedNote]` | Read back every note placed on this pattern so far. |
 | `portamento(time, shape, resolution, bend_range, wrap) -> subsequence.pattern_builder.PatternBuilder` | Glide between all consecutive notes using pitch bend. |
 | `program_change(program, beat, bank_msb, bank_lsb) -> subsequence.pattern_builder.PatternBuilder` | Send a Program Change message, optionally preceded by bank select. |
 | `progression(source, harmonic_rhythm, key, seed, rng) -> subsequence.progressions.Progression` | Realise a chord progression across the pattern, returning it to place yourself. |
