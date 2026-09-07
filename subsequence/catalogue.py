@@ -35,6 +35,7 @@ an existing pattern, accessors that return data, and MIDI plumbing are all out.
 See :data:`GENERATORS` for the list and the reasoning.
 """
 
+import collections.abc
 import inspect
 import typing
 
@@ -150,12 +151,33 @@ def _is_pitch (annotation: typing.Any) -> bool:
 	)
 
 
+# What "several pitches" can be spelled as.  ``Sequence`` sits beside ``list``
+# because ``list`` is invariant: a parameter annotated ``List[Pitch]`` rejects
+# the ``List[int]`` that ``held_notes()`` returns, and rejects any homogeneous
+# list a caller already holds.  A generator taking a pool the caller supplies
+# therefore wants the covariant spelling, and this has to recognise it or the
+# generator reads as unofferable (#2155).
+_POOL_ORIGINS: typing.Tuple[typing.Any, ...] = (list, collections.abc.Sequence)
+
+
+def _is_pitch_pool (annotation: typing.Any) -> bool:
+
+	"""True when *annotation* is a container of pitches rather than one pitch."""
+
+	if typing.get_origin(annotation) not in _POOL_ORIGINS:
+		return False
+
+	arguments = typing.get_args(annotation)
+
+	return bool(arguments) and _is_pitch(arguments[0])
+
+
 def _pitch_arity (annotation: typing.Any) -> typing.Optional[bool]:
 
 	"""Whether *annotation* is a pitch, and if so whether it takes several.
 
 	Returns None when it is not a pitch at all, False for exactly one, True
-	when a list of them is accepted.  Ten generators take a pitch *pool* rather
+	when several are accepted.  Eleven generators take a pitch *pool* rather
 	than a single pitch, so without this they would all report as unofferable
 	for a reason that is really about multiplicity, not about shape.
 	"""
@@ -163,13 +185,11 @@ def _pitch_arity (annotation: typing.Any) -> typing.Optional[bool]:
 	if _is_pitch(annotation):
 		return False
 
-	if typing.get_origin(annotation) is list:
-		arguments = typing.get_args(annotation)
-		if arguments and _is_pitch(arguments[0]):
-			return True
-		return None
+	if typing.get_origin(annotation) in _POOL_ORIGINS:
+		return True if _is_pitch_pool(annotation) else None
 
-	# Union[Pitch, List[Pitch]] — one or several, so offer several.
+	# Union[Pitch, List[Pitch]], or Union[Chord, Sequence[Pitch]] — one or
+	# several, so offer several.
 	takes_several = False
 	takes_one = False
 
@@ -177,10 +197,8 @@ def _pitch_arity (annotation: typing.Any) -> typing.Optional[bool]:
 
 		if _is_pitch(arm):
 			takes_one = True
-		elif typing.get_origin(arm) is list:
-			inner = typing.get_args(arm)
-			if inner and _is_pitch(inner[0]):
-				takes_several = True
+		elif _is_pitch_pool(arm):
+			takes_several = True
 
 	if takes_several:
 		return True
@@ -236,9 +254,10 @@ def _describe_parameter (
 
 	if several is not None:
 		entry["kind"] = "pitch"
-		# An addition to the agreed five kinds rather than a sixth kind: ten
-		# generators take a pitch POOL, and reporting those as unofferable
-		# would hide a third of the catalogue over a question of multiplicity.
+		# An addition to the agreed five kinds rather than a sixth kind:
+		# eleven generators take a pitch POOL, and reporting those as
+		# unofferable would hide a third of the catalogue over a question
+		# of multiplicity.
 		# A consumer that ignores this key still renders a usable single-pitch
 		# control, so it degrades rather than breaks.
 		if several:

@@ -628,6 +628,26 @@ def test_arpeggio_cycles_pitches () -> None:
 	assert pitches == expected_pitches
 
 
+def test_arpeggio_accepts_any_sequence_of_pitches () -> None:
+
+	"""The annotation promises ``Sequence``, so a tuple has to work (#2155).
+
+	``Sequence`` is what lets a caller pass a list they already hold — the
+	``List[int]`` from ``held_notes()`` or ``scale_notes()`` — past a type
+	checker.  Widening the annotation without the runtime honouring it would
+	be a promise the code does not keep.
+	"""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.arpeggio((60, 64, 67), spacing=0.5)
+
+	positions = sorted(pattern.steps.keys())
+	pitches = [pattern.steps[position].notes[0].pitch for position in positions]
+
+	assert pitches == [60, 64, 67, 60, 64, 67, 60, 64]
+
+
 def test_arpeggio_fills_pattern () -> None:
 
 	"""

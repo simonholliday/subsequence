@@ -5,12 +5,15 @@ repository's internals, so these tests pin the format as much as the content.
 A change that breaks one of them is a change somebody else has to hear about.
 """
 
+import collections.abc
 import inspect
 import typing
 
 import pytest
 
 import subsequence
+import subsequence.chords
+import subsequence.declarations
 import subsequence.easing
 import subsequence.catalogue
 import subsequence.pattern_builder
@@ -327,7 +330,7 @@ def test_a_pitch_carries_no_options () -> None:
 
 def test_a_pitch_pool_is_marked_as_taking_several () -> None:
 
-	"""Ten generators take a pool rather than one pitch.
+	"""Eleven generators take a pool rather than one pitch.
 
 	Without this they would all report as unofferable for a reason that is
 	really about multiplicity, not shape.
@@ -337,6 +340,74 @@ def test_a_pitch_pool_is_marked_as_taking_several () -> None:
 
 	assert pitches["kind"] == "pitch"
 	assert pitches["multiple"] is True
+
+
+def test_a_covariant_sequence_of_pitches_is_a_pool_too () -> None:
+
+	"""``Sequence[Pitch]`` has to read as a pool exactly as ``List[Pitch]`` does.
+
+	``list`` is invariant, so a parameter annotated ``List[Pitch]`` rejects the
+	``List[int]`` a caller already holds — ``held_notes()``, ``scale_notes()``.
+	``Sequence`` is the annotation that accepts those, so the catalogue has to
+	recognise it or the honest annotation costs the generator its controls.
+	"""
+
+	pitch = subsequence.declarations.Pitch
+
+	assert subsequence.catalogue._pitch_arity(typing.Sequence[pitch]) is True
+	assert subsequence.catalogue._pitch_arity(typing.List[pitch]) is True
+	assert subsequence.catalogue._pitch_arity(pitch) is False
+	assert subsequence.catalogue._pitch_arity(typing.Sequence[int]) is None
+
+
+def test_a_pool_sharing_a_union_with_a_chord_is_still_a_pool () -> None:
+
+	"""``arpeggio`` takes a chord OR a pool, and the pool is the offerable half."""
+
+	arity = subsequence.catalogue._pitch_arity(
+		typing.Union[
+			subsequence.chords.Chord,
+			typing.Sequence[subsequence.declarations.Pitch],
+		]
+	)
+
+	assert arity is True
+
+
+def test_arpeggio_offers_its_notes_rather_than_reporting_partial () -> None:
+
+	"""#2155: ``notes: typing.Any`` made a headline generator unofferable.
+
+	The type was never in doubt — the docstring said "a chord, or a list of
+	pitches" all along — it was simply unwritten, so the catalogue could see
+	nothing and a surface listed a generator it could not drive.
+	"""
+
+	arpeggio = subsequence.describe_generator("arpeggio")
+	notes = _parameter("arpeggio", "notes")
+
+	assert arpeggio["partial"] is False
+	assert notes["kind"] == "pitch"
+	assert notes["multiple"] is True
+
+
+def test_the_arpeggio_pool_annotation_stays_covariant () -> None:
+
+	"""Narrowing it to ``List`` would type-error the headline live-play idiom.
+
+	``p.arpeggio(p.held_notes())`` is printed in three places in this package,
+	and ``held_notes()`` returns ``List[int]``, which is not a ``List[Pitch]``
+	because ``list`` is invariant.  So this is not a stylistic preference and
+	it must not be tidied away.
+	"""
+
+	hints = typing.get_type_hints(
+		subsequence.pattern_builder.PatternBuilder.arpeggio, include_extras=True,
+	)
+	origins = {typing.get_origin(arm) for arm in typing.get_args(hints["notes"])}
+
+	assert collections.abc.Sequence in origins
+	assert list not in origins
 
 
 def test_a_velocity_range_reports_the_midi_bounds () -> None:

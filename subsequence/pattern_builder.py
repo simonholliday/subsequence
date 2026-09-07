@@ -1432,7 +1432,10 @@ class PatternBuilder(
 
 	def arpeggio (
 		self,
-		notes: typing.Any,
+		notes: typing.Union[
+			subsequence.chords.Chord,
+			typing.Sequence[subsequence.declarations.Pitch],
+		],
 		root: typing.Optional[int] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		count: typing.Optional[int] = None,
