@@ -628,6 +628,113 @@ def test_arpeggio_cycles_pitches () -> None:
 	assert pitches == expected_pitches
 
 
+def test_chord_places_a_plain_pitch_list_as_written () -> None:
+
+	"""#2240: a surface has the pitches already and no Chord to wrap them in.
+
+	The same first argument `arpeggio()` takes — voice a chord, or place the
+	pitches somebody has chosen.
+	"""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.chord([60, 64, 67], duration=1.0)
+
+	assert sum(len(step.notes) for step in pattern.steps.values()) == 3
+	assert sorted(note.pitch for note in pattern.steps[0].notes) == [60, 64, 67]
+
+
+def test_strum_places_a_plain_pitch_list_in_order () -> None:
+
+	"""And a strum spreads them, still lowest-first by default."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.strum([60, 64, 67], spacing=0.25)
+
+	positions = sorted(pattern.steps)
+	pitches = [pattern.steps[position].notes[0].pitch for position in positions]
+
+	assert pitches == [60, 64, 67]
+
+
+def test_strum_reverses_a_plain_pitch_list_when_asked () -> None:
+
+	"""direction is about the notes, not about where they came from."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.strum([60, 64, 67], spacing=0.25, direction="down")
+
+	positions = sorted(pattern.steps)
+	pitches = [pattern.steps[position].notes[0].pitch for position in positions]
+
+	assert pitches == [67, 64, 60]
+
+
+def test_chord_still_voices_a_chord_object () -> None:
+
+	"""The widening must not cost the form that was there first."""
+
+	pattern, builder = _make_builder(length=4)
+	chord = subsequence.chords.parse_chord("Cmaj7")
+
+	builder.chord(chord, root=60, duration=1.0)
+
+	assert sorted(note.pitch for note in pattern.steps[0].notes) == chord.tones(root=60)
+
+
+def test_a_chord_without_a_root_says_what_to_do () -> None:
+
+	"""root became optional so a pitch list could be passed; a chord still needs one.
+
+	The message has to name the fix, because the signature no longer does.
+	"""
+
+	_, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="needs a root"):
+		builder.chord(subsequence.chords.parse_chord("Cmaj7"))
+
+
+def test_voicing_a_list_that_is_already_voiced_is_refused () -> None:
+
+	"""root/inversion/count voice a chord and mean nothing for chosen pitches.
+
+	Ignoring them silently would look exactly like having applied them.
+	"""
+
+	_, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="only apply to the chord form"):
+		builder.chord([60, 64, 67], root=48)
+
+	with pytest.raises(ValueError, match="only apply to the chord form"):
+		builder.strum([60, 64, 67], inversion=1)
+
+
+def test_a_chord_of_drum_names_resolves_through_the_map () -> None:
+
+	"""Pitches means pitches — including named voices, resolved leniently."""
+
+	pattern, builder = _make_builder(length=4, drum_note_map={"kick": 36, "snare": 38})
+
+	builder.chord(["kick", "snare", "absent"], duration=1.0)
+
+	assert sorted(note.pitch for note in pattern.steps[0].notes) == [36, 38]
+
+
+def test_a_chord_of_nothing_rests () -> None:
+
+	"""An empty pool places nothing, as an empty arpeggio does."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.chord([])
+
+	assert pattern.steps == {}
+
+
 def test_arpeggio_accepts_any_sequence_of_pitches () -> None:
 
 	"""The annotation promises ``Sequence``, so a tuple has to work (#2155).

@@ -536,6 +536,39 @@ def test_a_fully_shaped_generator_is_not_partial () -> None:
 	assert subsequence.describe_generator("euclidean")["partial"] is False
 
 
+def test_chord_and_strum_offer_their_pitches () -> None:
+
+	"""#2240: both took a Chord only, so a surface saw a disabled button.
+
+	They now take the same first argument as `arpeggio()`, and the catalogue
+	already understood that shape — recognising `Sequence[Pitch]` as a pool was
+	the second half of the `arpeggio` fix (#2155), so this needed no change here.
+	"""
+
+	for name in ("chord", "strum"):
+		entry = subsequence.describe_generator(name)
+		assert entry["partial"] is False, name
+		assert entry["dropped"] == [], name
+		assert entry["parameters"][0]["kind"] == "pitch", name
+		assert entry["parameters"][0]["multiple"] is True, name
+
+
+def test_broken_chord_stays_partial_for_its_own_reason () -> None:
+
+	"""Its `order` is a step list, which maps to no control shape.
+
+	Left alone deliberately: widening its first argument would have meant
+	either reordering its parameters — breaking every positional caller — or
+	giving `order` a default it does not have, which would report the method
+	complete while dropping something it genuinely requires.
+	"""
+
+	entry = subsequence.describe_generator("broken_chord")
+
+	assert entry["partial"] is True
+	assert "order" in entry["dropped"]
+
+
 def test_an_optional_unshaped_parameter_does_not_make_it_partial () -> None:
 
 	"""Only a REQUIRED parameter with no shape blocks a generator.
