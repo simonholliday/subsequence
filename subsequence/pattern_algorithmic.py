@@ -17,6 +17,64 @@ import subsequence.sequence_utils
 import subsequence.weighted_graph
 
 
+import logging
+
+
+logger = logging.getLogger(__name__)
+
+
+# The most symbols a generator may build in one rebuild.
+#
+# de_bruijn's output is len(pitches) ** window, so its cost is combinatorial in
+# BOTH arguments — window=6 is 64 symbols on two pitches and 262,144 on eight.
+# A Span cannot say that: the safe maximum for one argument depends on the
+# other, so the bound has to be computed where both are known.
+#
+# With the default spacing=None every symbol is placed, so an unguarded call
+# does not merely take a quarter of a second — it puts a quarter of a million
+# notes in one bar and hands them to the scheduler.  The number is a runaway
+# guard rather than a musical judgement, and it is generous: 4096 notes is far
+# past what a MIDI port can carry in a bar, and de_bruijn's own docstring
+# already advises a window of 2 to 4 for practical bar lengths.
+_MAX_GENERATED_SYMBOLS = 4096
+
+# Which (verb, pitch-pool size, window) triples have already been warned about.
+# A rebuild runs every bar, so warning per call would fill the log for as long
+# as a control sat past the bound — the first one is the useful one, exactly as
+# in declarations.bounded.
+_warned_budgets: typing.Set[typing.Tuple[str, int, int]] = set()
+
+
+def _fit_to_budget (verb: str, alphabet: int, window: int) -> int:
+
+	"""Return *window*, reduced until ``alphabet ** window`` fits the budget.
+
+	Clamping rather than raising, for the reason the bounds elsewhere clamp: a
+	rebuild runs every bar and a failing one costs its pattern that cycle, so a
+	control nudged past the bound would silence a part mid-performance.  A
+	smaller window is still a complete de Bruijn sequence — just a shorter one —
+	so the generator keeps the property it promises.
+	"""
+
+	if alphabet < 2:
+		return window
+
+	fitted = window
+
+	while fitted > 1 and alphabet ** fitted > _MAX_GENERATED_SYMBOLS:
+		fitted -= 1
+
+	if fitted != window and (verb, alphabet, window) not in _warned_budgets:
+		_warned_budgets.add((verb, alphabet, window))
+		logger.warning(
+			f"{verb}(window={window}) over {alphabet} pitches would generate "
+			f"{alphabet ** window} notes; using window={fitted} "
+			f"({alphabet ** fitted} notes). Use fewer pitches for a longer window."
+		)
+
+	return fitted
+
+
 class PatternAlgorithmicMixin:
 
 	"""Algorithmic and generative note-placement methods for PatternBuilder.
@@ -1204,7 +1262,11 @@ class PatternAlgorithmicMixin:
 			pitches: List of MIDI note numbers or note strings.  The alphabet
 			    size ``k`` is ``len(pitches)``.
 			window: Subsequence length ``n``.  The output has ``len(pitches) ** window``
-			    notes.  Keep small (2–4) for practical bar lengths.
+			    notes.  Keep small (2–4) for practical bar lengths — the cost is
+			    combinatorial in both arguments, so a window that is modest over
+			    two pitches is enormous over eight.  A window whose output would
+			    exceed the generated-note budget is reduced (warned once) to the
+			    largest that fits, which is still a complete de Bruijn sequence.
 			spacing: Time between notes in beats.  ``None`` auto-fits the sequence
 			    into the bar; a float uses fixed spacing and truncates.
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
@@ -1226,7 +1288,7 @@ class PatternAlgorithmicMixin:
 			raise ValueError("pitches list cannot be empty")
 
 		k = len(pitches)
-		sequence = subsequence.sequence_utils.de_bruijn(k, window)
+		sequence = subsequence.sequence_utils.de_bruijn(k, _fit_to_budget("de_bruijn", k, window))
 
 		if not sequence:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)

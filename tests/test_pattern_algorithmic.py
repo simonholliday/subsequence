@@ -1,6 +1,7 @@
 """Tests for PatternAlgorithmicMixin — evolve() and branch() methods."""
 
 import random
+import logging
 import typing
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 import subsequence.constants
 import subsequence.constants.durations
 import subsequence.pattern
+import subsequence.pattern_algorithmic
 import subsequence.pattern_builder
 
 
@@ -590,3 +592,91 @@ def test_thue_morse_zero_resolution_is_noop () -> None:
 	assert builder.thue_morse(60) is builder                # single-pitch path (already no-op'd)
 	assert builder.thue_morse(60, pitch_b=62) is builder    # two-pitch path (the fixed crash)
 	assert pattern.steps == {}
+
+
+# ---------------------------------------------------------------------------
+# The generated-symbol budget (#2244)
+# ---------------------------------------------------------------------------
+
+def test_de_bruijn_clamps_a_window_that_would_flood_the_bar () -> None:
+
+	"""Its cost is combinatorial in BOTH arguments, which no Span can express.
+
+	``window=7`` is 128 notes over two pitches and 2,097,152 over eight — the
+	same value, and with the default ``spacing=None`` every symbol is placed,
+	so an unguarded call puts two million notes in one bar and hands them to
+	the scheduler.
+	"""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.de_bruijn(pitches=list(range(60, 68)), window=7)
+
+	placed = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert placed <= subsequence.pattern_algorithmic._MAX_GENERATED_SYMBOLS
+
+
+def test_the_budget_reduces_the_window_rather_than_truncating_the_sequence () -> None:
+
+	"""A shorter window is still a *complete* de Bruijn sequence.
+
+	Truncating the symbols instead would hand back a prefix that no longer
+	contains every n-gram exactly once — the one property the generator
+	promises.
+	"""
+
+	fitted = subsequence.pattern_algorithmic._fit_to_budget("de_bruijn", 8, 7)
+
+	assert fitted == 4
+	assert 8 ** fitted <= subsequence.pattern_algorithmic._MAX_GENERATED_SYMBOLS
+	assert 8 ** (fitted + 1) > subsequence.pattern_algorithmic._MAX_GENERATED_SYMBOLS
+
+
+def test_an_ordinary_de_bruijn_is_left_alone () -> None:
+
+	"""The guard is for runaways; the documented range must be untouched.
+
+	Its docstring advises a window of 2 to 4 for practical bar lengths, and
+	those have to behave exactly as before.
+	"""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.de_bruijn(pitches=[60, 64], window=3)
+
+	assert sum(len(step.notes) for step in pattern.steps.values()) == 8
+	assert subsequence.pattern_algorithmic._fit_to_budget("de_bruijn", 5, 4) == 4
+
+
+def test_the_budget_warns_once_not_every_bar () -> None:
+
+	"""A pattern rebuilds every bar; the first warning is the useful one."""
+
+	subsequence.pattern_algorithmic._warned_budgets.clear()
+
+	records = []
+	logger = logging.getLogger("subsequence.pattern_algorithmic")
+
+	class _Handler (logging.Handler):
+
+		def emit (self, record: logging.LogRecord) -> None:
+
+			if record.levelno >= logging.WARNING:
+				records.append(record.getMessage())
+
+	handler = _Handler()
+	logger.addHandler(handler)
+	previous = logger.level
+	logger.setLevel(logging.WARNING)
+
+	try:
+		for _ in range(3):
+			_, builder = _make_builder(length=4)
+			builder.de_bruijn(pitches=list(range(60, 68)), window=6)
+	finally:
+		logger.removeHandler(handler)
+		logger.setLevel(previous)
+
+	assert len(records) == 1
+	assert "window=6" in records[0] and "window=4" in records[0]
