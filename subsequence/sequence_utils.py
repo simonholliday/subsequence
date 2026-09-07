@@ -1607,12 +1607,13 @@ def pink_noise (steps: int, sources: int = 16, seed: int = 0) -> typing.List[flo
 	return result
 
 
-def lsystem_expand (
+def _lsystem_expand_reporting (
 	axiom: str,
 	rules: typing.Dict[str, typing.Union[str, typing.List[typing.Tuple[str, float]]]],
 	generations: int,
 	rng: typing.Optional[random.Random] = None,
-) -> str:
+	max_length: typing.Optional[int] = None,
+) -> typing.Tuple[str, int]:
 
 	"""Expand an L-system string by applying production rules.
 
@@ -1642,9 +1643,16 @@ def lsystem_expand (
 		generations: Number of rewriting iterations.
 		rng: Random number generator.  Required when any rule is stochastic;
 			ignored for fully deterministic rule sets.
+		max_length: Stop early rather than produce a string longer than this.
+			The result is then the last *whole* generation that fits, which is
+			still a well-formed L-system string — a truncated one would not be.
+			None (the default) expands exactly ``generations`` times.
 
 	Returns:
-		Expanded string after ``generations`` iterations.
+		The expanded string, and how many generations were actually applied —
+		fewer than asked when ``max_length`` stopped it.  A caller that wants
+		to say so needs to be told; deriving it from the length would mean
+		knowing the rules' growth rate, which stochastic rules do not have.
 
 	Raises:
 		ValueError: If stochastic rules are present but ``rng`` is ``None``.
@@ -1677,6 +1685,7 @@ def lsystem_expand (
 			break
 
 	current = axiom
+	done = 0
 
 	for _ in range(generations):
 		parts: typing.List[str] = []
@@ -1695,9 +1704,36 @@ def lsystem_expand (
 				chosen = weighted_choice(production, rng)  # type: ignore[arg-type]
 				parts.append(chosen)
 
-		current = "".join(parts)
+		expanded = "".join(parts)
 
-	return current
+		# Stop before the overshoot rather than after it: with a doubling rule
+		# the generation that exceeds the budget is roughly twice it, so
+		# keeping the previous whole generation is both smaller and better
+		# formed than any truncation of this one.
+		if max_length is not None and len(expanded) > max_length:
+			return current, done
+
+		current = expanded
+		done += 1
+
+	return current, done
+
+
+def lsystem_expand (
+	axiom: str,
+	rules: typing.Dict[str, typing.Union[str, typing.List[typing.Tuple[str, float]]]],
+	generations: int,
+	rng: typing.Optional[random.Random] = None,
+	max_length: typing.Optional[int] = None,
+) -> str:
+
+	"""Expand an L-system string by applying production rules.
+
+	See :func:`_lsystem_expand_reporting`, which this wraps — identical, but
+	returning only the string, which is what a caller usually wants.
+	"""
+
+	return _lsystem_expand_reporting(axiom, rules, generations, rng, max_length)[0]
 
 
 _ca_1d_cache: typing.Dict[typing.Tuple[int, int, int], typing.Tuple[int, typing.List[int]]] = {}

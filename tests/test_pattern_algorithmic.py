@@ -10,6 +10,7 @@ import subsequence.constants
 import subsequence.constants.durations
 import subsequence.pattern
 import subsequence.pattern_algorithmic
+import subsequence.sequence_utils
 import subsequence.pattern_builder
 
 
@@ -680,3 +681,82 @@ def test_the_budget_warns_once_not_every_bar () -> None:
 
 	assert len(records) == 1
 	assert "window=6" in records[0] and "window=4" in records[0]
+
+
+def test_lsystem_stops_growing_at_the_budget () -> None:
+
+	"""Its length is exponential in generations, and every symbol is placed.
+
+	A doubling rule at 20 generations is 1,048,576 notes in one bar — measured
+	at 924 ms before the guard.  Like de_bruijn, the growth rate depends on the
+	*rules* as well as the count, so no Span on generations could express it.
+	"""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.lsystem(
+		axiom = "a",
+		rules = {"a": "ab", "b": "ba"},
+		generations = 20,
+		pitch_map = {"a": 60, "b": 64},
+	)
+
+	placed = sum(len(step.notes) for step in pattern.steps.values())
+
+	assert placed <= subsequence.pattern_algorithmic._MAX_GENERATED_SYMBOLS
+
+
+def test_lsystem_keeps_a_whole_generation_rather_than_a_truncation () -> None:
+
+	"""A partial rewrite is not an L-system string; a shorter one still is."""
+
+	whole, applied = subsequence.sequence_utils._lsystem_expand_reporting(
+		axiom = "a",
+		rules = {"a": "ab", "b": "ba"},
+		generations = 20,
+		max_length = 4096,
+	)
+
+	assert applied == 12
+	assert len(whole) == 2 ** applied
+
+
+def test_an_lsystem_that_fits_exactly_is_not_warned_about () -> None:
+
+	"""The warning has to mean "you got less than you asked for".
+
+	12 generations of a doubling rule is exactly the budget and completes in
+	full, so saying it stopped early would be false — which an earlier
+	length-based guess got wrong.
+	"""
+
+	subsequence.pattern_algorithmic._warned_budgets.clear()
+	records: typing.List[str] = []
+	logger = logging.getLogger("subsequence.pattern_algorithmic")
+
+	class _Handler (logging.Handler):
+
+		def emit (self, record: logging.LogRecord) -> None:
+
+			if record.levelno >= logging.WARNING:
+				records.append(record.getMessage())
+
+	handler = _Handler()
+	logger.addHandler(handler)
+	previous = logger.level
+	logger.setLevel(logging.WARNING)
+
+	try:
+		_, builder = _make_builder(length=4)
+		builder.lsystem(axiom="a", rules={"a": "ab", "b": "ba"}, generations=12,
+		                pitch_map={"a": 60, "b": 64})
+		assert records == []
+
+		_, builder = _make_builder(length=4)
+		builder.lsystem(axiom="a", rules={"a": "ab", "b": "ba"}, generations=13,
+		                pitch_map={"a": 60, "b": 64})
+		assert len(records) == 1
+		assert "generation 12" in records[0]
+	finally:
+		logger.removeHandler(handler)
+		logger.setLevel(previous)

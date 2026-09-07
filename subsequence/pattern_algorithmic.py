@@ -1130,12 +1130,26 @@ class PatternAlgorithmicMixin:
 
 		rng = self._rng_from(seed, rng)
 
-		expanded = subsequence.sequence_utils.lsystem_expand(
-			axiom=axiom,
-			rules=rules,
-			generations=generations,
-			rng=rng,
+		# The kernel stops at the last whole generation that fits and reports
+		# how many it applied, so a runaway rule set is bounded without the
+		# kernel knowing anything about budgets or logging.
+		expanded, applied = subsequence.sequence_utils._lsystem_expand_reporting(
+			axiom = axiom,
+			rules = rules,
+			generations = generations,
+			rng = rng,
+			max_length = _MAX_GENERATED_SYMBOLS,
 		)
+
+		if applied < generations:
+			key = ("lsystem", len(rules), generations)
+			if key not in _warned_budgets:
+				_warned_budgets.add(key)
+				logger.warning(
+					f"lsystem(generations={generations}) grows past the {_MAX_GENERATED_SYMBOLS}-note "
+					f"budget; stopped at generation {applied} ({len(expanded)} notes). "
+					"Use fewer generations, or a rule set that grows more slowly."
+				)
 
 		if not expanded:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
