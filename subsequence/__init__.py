@@ -178,7 +178,7 @@ Community and Feedback:
 - **Discussions:** Chat and ask questions at https://github.com/simonholliday/subsequence/discussions
 - **Issues:** Report bugs and request features at https://github.com/simonholliday/subsequence/issues
 
-Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``sentence``, ``period``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``Cadence``, ``Section``, ``Form``, ``roles``, ``sieve``, ``residual_class``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``, ``Definitions``, ``load_definitions``, ``PlacedNote``.
+Package-level exports: ``Composition``, ``Chord``, ``Groove``, ``MelodicState``, ``Tuning``, ``Motif``, ``Phrase``, ``motif``, ``sentence``, ``period``, ``Degree``, ``ChordTone``, ``Approach``, ``MotifEvent``, ``ControlEvent``, ``Progression``, ``ChordSpan``, ``PitchSet``, ``progression``, ``Cadence``, ``Section``, ``Form``, ``roles``, ``sieve``, ``residual_class``, ``between``, ``parse_chord``, ``register_chord_quality``, ``register_scale``, ``scale_notes``, ``bank_select``, ``Definitions``, ``load_definitions``, ``PlacedNote``, ``generators``, ``describe_generator``, ``transforms``, ``describe_transform``.
 """
 
 import subsequence.cadences
@@ -242,3 +242,8 @@ PlacedNote = subsequence.pattern.PlacedNote
 # as plain data, so a control surface never holds its own list of parameters.
 generators = subsequence.catalogue.generators
 describe_generator = subsequence.catalogue.describe_generator
+
+# The transform catalogue — the same self-description for the verbs that
+# reshape notes already placed, so a surface never holds its own list.
+transforms = subsequence.catalogue.transforms
+describe_transform = subsequence.catalogue.describe_transform

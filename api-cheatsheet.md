@@ -31,6 +31,7 @@ Everything importable as `subsequence.X`:
 | `bank_select` | function | Convert a 14-bit MIDI bank number to (MSB, LSB) for use with ``p.program_change()``. |
 | `between` | function | A harmonic rhythm that varies *between* two lengths (in beats). |
 | `describe_generator` | function | Describe one generator's parameters as plain data. |
+| `describe_transform` | function | Describe one transform's parameters as plain data. |
 | `generators` | function | Describe every generator Subsequence offers, as plain data. |
 | `load_definitions` | function | Load and validate a project definitions file. |
 | `motif` | function | The lowercase shortcut: a melody as 1-based scale degrees. |
@@ -43,6 +44,7 @@ Everything importable as `subsequence.X`:
 | `scale_notes` | function | Return MIDI note numbers for a scale within a pitch range. |
 | `sentence` | function | The classical sentence, as a thin combinator — idea, idea, drive, close. |
 | `sieve` | function | Xenakis sieve: the sorted integers in ``[lo, hi)`` in any of the classes. |
+| `transforms` | function | Describe every transform Subsequence offers, as plain data. |
 
 
 ## `Composition`

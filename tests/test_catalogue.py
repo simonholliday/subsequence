@@ -14,6 +14,7 @@ import subsequence
 import subsequence.chords
 import subsequence.declarations
 import subsequence.easing
+import subsequence.pattern
 import subsequence.catalogue
 import subsequence.pattern_builder
 
@@ -514,6 +515,131 @@ def test_nothing_is_both_offered_and_dropped () -> None:
 
 
 # ---------------------------------------------------------------------------
+# transforms — the other half of the line
+# ---------------------------------------------------------------------------
+
+def _arguments_for (entry: typing.Dict[str, typing.Any]) -> typing.Dict[str, typing.Any]:
+
+	"""Plausible arguments for a described method, taken from its own description.
+
+	Derived rather than tabulated, so the probe below exercises the published
+	shapes as well as the behaviour — a table here would be a second copy of
+	facts the catalogue already states.
+	"""
+
+	arguments: typing.Dict[str, typing.Any] = {}
+
+	for parameter in entry["parameters"]:
+
+		if "default" in parameter:
+			arguments[parameter["name"]] = parameter["default"]
+		elif parameter["kind"] == "number":
+			arguments[parameter["name"]] = parameter.get("min", 1)
+		elif parameter["kind"] == "choice":
+			arguments[parameter["name"]] = parameter["options"][0]["value"]
+		elif parameter["kind"] == "switch":
+			arguments[parameter["name"]] = False
+		elif parameter["kind"] == "pitch":
+			arguments[parameter["name"]] = [60] if parameter.get("multiple") else 60
+		elif parameter["kind"] == "range":
+			arguments[parameter["name"]] = [1, 127]
+
+	return arguments
+
+
+def test_every_declared_transform_exists_on_the_builder () -> None:
+
+	"""A name that is not there would fail at the surface, not here."""
+
+	for name in subsequence.catalogue.TRANSFORMS:
+		assert callable(getattr(subsequence.pattern_builder.PatternBuilder, name, None)), name
+
+
+def test_the_two_catalogues_do_not_overlap () -> None:
+
+	"""A method places notes or reshapes them; being in both would say neither."""
+
+	assert not set(subsequence.catalogue.GENERATORS) & set(subsequence.catalogue.TRANSFORMS)
+
+
+def test_every_transform_returns_the_builder () -> None:
+
+	"""The family test, run rather than eyeballed — an accessor returns its data.
+
+	This is the check that caught `section_motif` among the generators (#2096),
+	and a second curated tuple is a second chance to make that mistake.
+	"""
+
+	for name in subsequence.catalogue.TRANSFORMS:
+		hints = typing.get_type_hints(getattr(subsequence.pattern_builder.PatternBuilder, name))
+		assert "PatternBuilder" in str(hints.get("return")), name
+
+
+def test_a_transform_never_places_a_note () -> None:
+
+	"""The mechanical form of the line: reshaping is not placing.
+
+	Run on an empty pattern (a transform has nothing to do, so nothing appears)
+	and on a populated one (it may move, shorten, quieten or remove notes, but
+	never add any).  Anything failing this is a generator and belongs in the
+	other tuple.
+	"""
+
+	for entry in subsequence.transforms():
+
+		arguments = _arguments_for(entry)
+
+		empty = _builder()
+		getattr(empty, entry["name"])(**arguments)
+		assert _note_count(empty) == 0, f'{entry["name"]} placed notes on an empty pattern'
+
+		populated = _builder()
+		populated.hit(60, [0.0, 1.0, 2.0, 3.0])
+		before = _note_count(populated)
+		getattr(populated, entry["name"])(**arguments)
+		assert _note_count(populated) <= before, f'{entry["name"]} added notes'
+
+
+def test_every_transform_entry_has_the_agreed_shape () -> None:
+
+	"""One describer, so a consumer needs no second code path."""
+
+	for entry in subsequence.transforms():
+		assert set(entry) == {"name", "summary", "partial", "parameters", "dropped"}
+		assert isinstance(entry["summary"], str) and entry["summary"]
+
+		for parameter in entry["parameters"]:
+			assert parameter["kind"] in VALID_KINDS, (entry["name"], parameter)
+
+
+def test_asking_the_wrong_catalogue_says_which_one_to_ask () -> None:
+
+	"""The two are easy to confuse and the answer is one call away."""
+
+	with pytest.raises(ValueError, match="is a transform, not a generator"):
+		subsequence.describe_generator("rotate")
+
+	with pytest.raises(ValueError, match="is a generator, not a transform"):
+		subsequence.describe_transform("euclidean")
+
+	with pytest.raises(ValueError, match=r"transforms\(\)"):
+		subsequence.describe_transform("nonsense")
+
+
+def test_midi_plumbing_is_not_a_transform () -> None:
+
+	"""It emits control events; it does not reshape notes.
+
+	Kept out so `transforms()` stays a category rather than becoming
+	"everything that is not a generator", which would not survive its first
+	addition.
+	"""
+
+	for name in ("cc", "cc_ramp", "nrpn", "rpn", "osc", "sysex", "bend", "program_change"):
+		assert name not in subsequence.catalogue.TRANSFORMS, name
+
+
+# ---------------------------------------------------------------------------
 # partial
 # ---------------------------------------------------------------------------
 
@@ -586,10 +712,16 @@ def test_an_optional_unshaped_parameter_does_not_make_it_partial () -> None:
 
 def test_describing_an_unknown_generator_says_how_to_find_the_real_ones () -> None:
 
-	"""The refusal carries the vocabulary rather than just refusing."""
+	"""The refusal carries the vocabulary rather than just refusing.
+
+	``rotate`` used to be the example here, as a chainable method that is not
+	a generator.  It is a declared *transform* now, and the refusal says so
+	instead — see `test_asking_the_wrong_catalogue_says_which_one_to_ask`.  So
+	this needs a name that is in neither catalogue.
+	"""
 
 	with pytest.raises(ValueError, match="not a declared generator"):
-		subsequence.describe_generator("rotate")
+		subsequence.describe_generator("cc_ramp")
 
 	with pytest.raises(ValueError, match="generators\\(\\)"):
 		subsequence.describe_generator("nonsense")
@@ -601,6 +733,30 @@ def test_the_summary_is_the_docstring_first_line () -> None:
 
 	assert subsequence.describe_generator("ghost_fill")["summary"] == (
 		"Fill the pattern with probability-biased ghost notes."
+	)
+
+
+def _builder () -> subsequence.pattern_builder.PatternBuilder:
+
+	"""A PatternBuilder over a bare 4-beat pattern (no MIDI required)."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4, device=0)
+
+	return subsequence.pattern_builder.PatternBuilder(pattern, cycle=0)
+
+
+def _note_count (builder: subsequence.pattern_builder.PatternBuilder) -> int:
+
+	"""How many notes are on the pattern this builder is writing to.
+
+	Counts drones as well as step notes.  Counting only ``steps`` would let a
+	verb that places a raw Note On through the sieve below, which is exactly
+	the under-reporting `placed()` had to fix (#2102).
+	"""
+
+	return (
+		sum(len(step.notes) for step in builder._pattern.steps.values())
+		+ len(builder._pattern.raw_note_events)
 	)
 
 

@@ -1,4 +1,4 @@
-"""Report the generators and their parameters as plain data.
+"""Report the generators and transforms, and their parameters, as plain data.
 
 A control surface can ask what Subsequence offers and build controls from the
 answer, so adding a generator here makes it appear over there with nobody
@@ -37,11 +37,19 @@ it could not fully drive (#2239).  Naming them costs nothing and is the
 difference between a gap and a silence.  Machine-only parameters are not
 listed: they are deliberately not offered, which is a different fact.
 
-What counts as a generator is a curation judgement, not a category: everything
-in :mod:`subsequence.pattern_algorithmic`, plus the verbs in
-:mod:`subsequence.pattern_builder` that *place* notes.  Transforms that reshape
-an existing pattern, accessors that return data, and MIDI plumbing are all out.
-See :data:`GENERATORS` for the list and the reasoning.
+There are two catalogues and one describer.  :func:`generators` lists what
+*places* notes; :func:`transforms` lists what *reshapes* notes already placed.
+The entries have the same shape, because a surface drives both the same way —
+``getattr(pattern, name)(**params)`` — so a consumer needs no second code path.
+
+Each list is a curation judgement rather than a category, and each has a
+mechanical test that :mod:`tests.test_catalogue` runs rather than eyeballs: a
+generator returns the builder and places notes; a transform returns the builder
+and never increases the note count.  Curating by reading names is what once put
+an accessor among the generators (#2096).  Accessors that return data are out of
+both, and so is MIDI plumbing, which emits control events rather than touching
+notes.  See :data:`GENERATORS` and :data:`TRANSFORMS` for the lists and the
+reasoning.
 """
 
 import collections.abc
@@ -107,6 +115,45 @@ GENERATORS: typing.Tuple[str, ...] = (
 	"sequence",
 	"strum",
 )
+
+# Every transform offered, in the order a catalogue lists them.
+#
+# The line here is the exact complement of the one above: **does it reshape
+# notes already placed?**  That is what keeps this a category rather than a
+# leftovers bin, and it is why the tuple is twelve rather than the twenty-odd
+# methods that merely happen to describe cleanly.
+#
+# Out, and why:
+#
+#   cc, nrpn, rpn      MIDI plumbing.  These emit control events; they do not
+#   osc, sysex, bend   reshape notes.  Including them would make transforms()
+#   program_change     mean "everything that is not a generator", which is not
+#   the *_ramp family  a category and would not survive its first addition.
+#   set_length         changes the pattern, not its notes.
+#   every, groove      real transforms, but each requires something with no
+#   scale_velocities   control shape — a callable, a template, a factor list,
+#   apply_tuning       a Tuning.  Not excluded on principle; they can join as
+#                      partial entries whenever somebody wants them.
+#
+# A transform never increases the note count and places nothing on an empty
+# pattern.  That is the mechanical form of the line and test_catalogue.py runs
+# it — curating by reading names is what once put an accessor among the
+# generators (#2096).
+TRANSFORMS: typing.Tuple[str, ...] = (
+	"rotate",
+	"swing",
+	"dropout",
+	"randomize",
+	"velocity_shape",
+	"transpose",
+	"invert",
+	"stretch",
+	"legato",
+	"detached",
+	"duration",
+	"reverse",
+)
+
 
 # Parameters that exist for the machine, not for a person.  A seed is an int in
 # the signature, but what a musician wants is a freeze switch — a control the
@@ -325,38 +372,13 @@ def _describe_parameter (
 	return None
 
 
-def describe_generator (name: str) -> typing.Dict[str, typing.Any]:
+def _describe (name: str) -> typing.Dict[str, typing.Any]:
 
-	"""Describe one generator's parameters as plain data.
+	"""Describe one method's parameters as plain data — generator or transform.
 
-	Parameters:
-		name: The generator's method name on ``PatternBuilder``, e.g.
-			``"ghost_fill"``.
-
-	Returns:
-		A dict with ``name``, ``summary``, ``partial``, ``parameters`` and
-		``dropped``.  ``partial`` is True when a *required* parameter has no
-		control shape, meaning the generator cannot be fully driven from a
-		surface; ``dropped`` names every parameter left out for want of a
-		shape, so an optional one cannot go missing in silence.
-
-	Raises:
-		ValueError: if *name* is not a declared generator.
-
-	Example:
-		```python
-		import subsequence
-
-		shape = subsequence.describe_generator("euclidean")
-		shape["parameters"][0]["kind"]     # 'pitch'
-		```
+	The two catalogues differ only in which names they list; what a control
+	looks like is the same question either way, so it is answered once here.
 	"""
-
-	if name not in GENERATORS:
-		raise ValueError(
-			f"{name!r} is not a declared generator. "
-			f"Use subsequence.generators() to see the {len(GENERATORS)} available."
-		)
 
 	function = getattr(subsequence.pattern_builder.PatternBuilder, name)
 	signature = inspect.signature(function)
@@ -402,6 +424,89 @@ def describe_generator (name: str) -> typing.Dict[str, typing.Any]:
 	}
 
 
+def describe_generator (name: str) -> typing.Dict[str, typing.Any]:
+
+	"""Describe one generator's parameters as plain data.
+
+	Parameters:
+		name: The generator's method name on ``PatternBuilder``, e.g.
+			``"ghost_fill"``.
+
+	Returns:
+		A dict with ``name``, ``summary``, ``partial``, ``parameters`` and
+		``dropped`` — see this module's contract.
+
+	Raises:
+		ValueError: if *name* is not a declared generator.  A transform is
+			named as such rather than reported missing, since the two
+			catalogues are easy to confuse and the answer is one call away.
+
+	Example:
+		```python
+		import subsequence
+
+		shape = subsequence.describe_generator("euclidean")
+		shape["parameters"][0]["kind"]     # 'pitch'
+		```
+	"""
+
+	if name not in GENERATORS:
+
+		if name in TRANSFORMS:
+			raise ValueError(
+				f"{name!r} is a transform, not a generator — "
+				f"use subsequence.describe_transform({name!r})."
+			)
+
+		raise ValueError(
+			f"{name!r} is not a declared generator. "
+			f"Use subsequence.generators() to see the {len(GENERATORS)} available."
+		)
+
+	return _describe(name)
+
+
+def describe_transform (name: str) -> typing.Dict[str, typing.Any]:
+
+	"""Describe one transform's parameters as plain data.
+
+	Parameters:
+		name: The transform's method name on ``PatternBuilder``, e.g.
+			``"rotate"``.
+
+	Returns:
+		The same shape :func:`describe_generator` returns.  A transform is
+		applied the same way a generator is, so a caller that can drive one
+		can drive the other without a second code path.
+
+	Raises:
+		ValueError: if *name* is not a declared transform.
+
+	Example:
+		```python
+		import subsequence
+
+		shape = subsequence.describe_transform("rotate")
+		shape["parameters"][0]["name"]     # 'steps'
+		```
+	"""
+
+	if name not in TRANSFORMS:
+
+		if name in GENERATORS:
+			raise ValueError(
+				f"{name!r} is a generator, not a transform — "
+				f"use subsequence.describe_generator({name!r})."
+			)
+
+		raise ValueError(
+			f"{name!r} is not a declared transform. "
+			f"Use subsequence.transforms() to see the {len(TRANSFORMS)} available."
+		)
+
+	return _describe(name)
+
+
 def generators () -> typing.List[typing.Dict[str, typing.Any]]:
 
 	"""Describe every generator Subsequence offers, as plain data.
@@ -420,3 +525,23 @@ def generators () -> typing.List[typing.Dict[str, typing.Any]]:
 	"""
 
 	return [describe_generator(name) for name in GENERATORS]
+
+
+def transforms () -> typing.List[typing.Dict[str, typing.Any]]:
+
+	"""Describe every transform Subsequence offers, as plain data.
+
+	The companion to :func:`generators`: those *place* notes, these *reshape*
+	notes already placed.  A surface that wants to roll a rhythm off the
+	downbeat asks here rather than holding its own list of method names.
+
+	Example:
+		```python
+		import subsequence
+
+		for shape in subsequence.transforms():
+			print(shape["name"], len(shape["parameters"]))
+		```
+	"""
+
+	return [_describe(name) for name in TRANSFORMS]
