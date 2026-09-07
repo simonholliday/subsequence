@@ -132,6 +132,35 @@ EasingCurve = typing.Literal[
 	"s_curve",
 ]
 
+# The note names a key may be spelled with — chords.NOTE_NAME_TO_PC, which is
+# strict: "Cb", "E#", lowercase and "H" all raise.  Written out rather than
+# derived, because a Literal needs literals; a test pins it to the table so the
+# two cannot drift.
+KeyName = typing.Literal[
+	"A", "A#", "Ab",
+	"B", "Bb",
+	"C", "C#",
+	"D", "D#", "Db",
+	"E", "Eb",
+	"F", "F#",
+	"G", "G#", "Gb",
+]
+
+# Registered Parameter Numbers.  Unlike CC and NRPN names — which come from the
+# instrument, through a per-pattern map — these are the MIDI specification's and
+# there is no per-pattern RPN map to extend them, so the vocabulary really is
+# closed.  It belongs to pymididefs, though, so a test pins this against
+# pymididefs.rpn.RPN_MAP rather than trusting a copy made once.
+RpnParameter = typing.Literal[
+	"channel_coarse_tuning",
+	"channel_fine_tuning",
+	"modulation_depth_range",
+	"null_parameter",
+	"pitch_bend_sensitivity",
+	"tuning_bank_select",
+	"tuning_program_select",
+]
+
 # cellular_2d(initial_state=) takes one of these names or an explicit grid.
 CellularSeed = typing.Literal["center", "random"]
 

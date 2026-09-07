@@ -420,7 +420,7 @@ class PatternAlgorithmicMixin:
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	@staticmethod
-	def build_ghost_bias (grid: int, bias: str) -> typing.List[float]:
+	def build_ghost_bias (grid: int, bias: subsequence.declarations.BiasCurve) -> typing.List[float]:
 
 		"""Build probability weights for ghost notes or other generative functions.
 

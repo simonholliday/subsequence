@@ -41,6 +41,7 @@ import warnings
 
 import subsequence.cadences
 import subsequence.constants.velocity
+import subsequence.declarations
 import subsequence.easing
 import subsequence.intervals
 import subsequence.sequence_utils
@@ -193,9 +194,14 @@ class NRPN:
 @dataclasses.dataclass(frozen=True)
 class RPN:
 
-	"""An RPN parameter — number, or one of the standard RPN names (resolved at placement)."""
+	"""An RPN parameter — number, or one of the standard RPN names (resolved at placement).
 
-	parameter: typing.Union[int, str]
+	The names are the MIDI specification's and there is no per-pattern map to
+	extend them, unlike CC and NRPN — so the vocabulary is genuinely closed and
+	says so.
+	"""
+
+	parameter: typing.Union[int, "subsequence.declarations.RpnParameter"]
 	fine: bool = False
 	null_reset: bool = True
 
@@ -313,7 +319,7 @@ class ControlEvent:
 	start: float
 	end: typing.Optional[float] = None
 	span: float = 0.0
-	shape: typing.Union[str, "subsequence.easing.EasingFn"] = "linear"
+	shape: typing.Union["subsequence.declarations.EasingCurve", "subsequence.easing.EasingFn"] = "linear"
 	probability: float = 1.0
 
 	def __post_init__ (self) -> None:
@@ -696,7 +702,7 @@ class Motif:
 		end: float,
 		beat_start: float,
 		beat_end: typing.Optional[float],
-		shape: typing.Union[str, "subsequence.easing.EasingFn"],
+		shape: typing.Union["subsequence.declarations.EasingCurve", "subsequence.easing.EasingFn"],
 		length: typing.Optional[float],
 		probability: float = 1.0,
 	) -> "Motif":
@@ -737,7 +743,7 @@ class Motif:
 		return cls._control_writes(CC(control), list(values), list(beats), length, probabilities)
 
 	@classmethod
-	def cc_ramp (cls, control: typing.Union[int, str], start: int, end: int, beat_start: float = 0.0, beat_end: typing.Optional[float] = None, shape: typing.Union[str, "subsequence.easing.EasingFn"] = "linear", length: typing.Optional[float] = None, probability: float = 1.0) -> "Motif":
+	def cc_ramp (cls, control: typing.Union[int, str], start: int, end: int, beat_start: float = 0.0, beat_end: typing.Optional[float] = None, shape: typing.Union["subsequence.declarations.EasingCurve", "subsequence.easing.EasingFn"] = "linear", length: typing.Optional[float] = None, probability: float = 1.0) -> "Motif":
 
 		"""A CC value swept ``start`` → ``end`` over a beat range — mirrors ``p.cc_ramp()``."""
 
@@ -751,7 +757,7 @@ class Motif:
 		return cls._control_writes(PitchBend(), list(values), list(beats), length, probabilities)
 
 	@classmethod
-	def pitch_bend_ramp (cls, start: float, end: float, beat_start: float = 0.0, beat_end: typing.Optional[float] = None, shape: typing.Union[str, "subsequence.easing.EasingFn"] = "linear", length: typing.Optional[float] = None, probability: float = 1.0) -> "Motif":
+	def pitch_bend_ramp (cls, start: float, end: float, beat_start: float = 0.0, beat_end: typing.Optional[float] = None, shape: typing.Union["subsequence.declarations.EasingCurve", "subsequence.easing.EasingFn"] = "linear", length: typing.Optional[float] = None, probability: float = 1.0) -> "Motif":
 
 		"""Pitch bend swept ``start`` → ``end`` (-1.0 to 1.0) over a beat range — mirrors ``p.pitch_bend_ramp()``."""
 
@@ -765,21 +771,21 @@ class Motif:
 		return cls._control_writes(NRPN(parameter, fine=fine, null_reset=null_reset), list(values), list(beats), length, probabilities)
 
 	@classmethod
-	def nrpn_ramp (cls, parameter: typing.Union[int, str], start: int, end: int, beat_start: float = 0.0, beat_end: typing.Optional[float] = None, shape: typing.Union[str, "subsequence.easing.EasingFn"] = "linear", fine: bool = True, null_reset: bool = True, length: typing.Optional[float] = None, probability: float = 1.0) -> "Motif":
+	def nrpn_ramp (cls, parameter: typing.Union[int, str], start: int, end: int, beat_start: float = 0.0, beat_end: typing.Optional[float] = None, shape: typing.Union["subsequence.declarations.EasingCurve", "subsequence.easing.EasingFn"] = "linear", fine: bool = True, null_reset: bool = True, length: typing.Optional[float] = None, probability: float = 1.0) -> "Motif":
 
 		"""An NRPN value swept over a beat range — mirrors ``p.nrpn_ramp()``."""
 
 		return cls._control_ramp(NRPN(parameter, fine=fine, null_reset=null_reset), start, end, beat_start, beat_end, shape, length, probability)
 
 	@classmethod
-	def rpn (cls, parameter: typing.Union[int, str], values: typing.List[int], beats: typing.List[float], fine: bool = False, null_reset: bool = True, length: typing.Optional[float] = None, probabilities: typing.Any = 1.0) -> "Motif":
+	def rpn (cls, parameter: typing.Union[int, "subsequence.declarations.RpnParameter"], values: typing.List[int], beats: typing.List[float], fine: bool = False, null_reset: bool = True, length: typing.Optional[float] = None, probabilities: typing.Any = 1.0) -> "Motif":
 
 		"""Discrete RPN parameter writes at beat positions — mirrors ``p.rpn()``."""
 
 		return cls._control_writes(RPN(parameter, fine=fine, null_reset=null_reset), list(values), list(beats), length, probabilities)
 
 	@classmethod
-	def rpn_ramp (cls, parameter: typing.Union[int, str], start: int, end: int, beat_start: float = 0.0, beat_end: typing.Optional[float] = None, shape: typing.Union[str, "subsequence.easing.EasingFn"] = "linear", fine: bool = True, null_reset: bool = True, length: typing.Optional[float] = None, probability: float = 1.0) -> "Motif":
+	def rpn_ramp (cls, parameter: typing.Union[int, "subsequence.declarations.RpnParameter"], start: int, end: int, beat_start: float = 0.0, beat_end: typing.Optional[float] = None, shape: typing.Union["subsequence.declarations.EasingCurve", "subsequence.easing.EasingFn"] = "linear", fine: bool = True, null_reset: bool = True, length: typing.Optional[float] = None, probability: float = 1.0) -> "Motif":
 
 		"""An RPN value swept over a beat range — mirrors ``p.rpn_ramp()``."""
 
@@ -793,7 +799,7 @@ class Motif:
 		return cls._control_writes(OSC(address), list(values), list(beats), length, probabilities)
 
 	@classmethod
-	def osc_ramp (cls, address: str, start: float, end: float, beat_start: float = 0.0, beat_end: typing.Optional[float] = None, shape: typing.Union[str, "subsequence.easing.EasingFn"] = "linear", length: typing.Optional[float] = None, probability: float = 1.0) -> "Motif":
+	def osc_ramp (cls, address: str, start: float, end: float, beat_start: float = 0.0, beat_end: typing.Optional[float] = None, shape: typing.Union["subsequence.declarations.EasingCurve", "subsequence.easing.EasingFn"] = "linear", length: typing.Optional[float] = None, probability: float = 1.0) -> "Motif":
 
 		"""An OSC float swept over a beat range — mirrors ``p.osc_ramp()``."""
 

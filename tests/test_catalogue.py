@@ -13,6 +13,7 @@ import pytest
 import subsequence
 import subsequence.chords
 import subsequence.declarations
+import subsequence.chords
 import subsequence.easing
 import subsequence.pattern
 import subsequence.catalogue
@@ -624,6 +625,27 @@ def test_asking_the_wrong_catalogue_says_which_one_to_ask () -> None:
 
 	with pytest.raises(ValueError, match=r"transforms\(\)"):
 		subsequence.describe_transform("nonsense")
+
+
+def test_snap_to_scale_is_a_transform_and_offers_its_keys () -> None:
+
+	"""It reshapes notes already placed, so it belonged by the line all along.
+
+	It was out only because it described as nothing: `key` was a bare `str`.
+	With the vocabulary written down (#2243) it offers seventeen keys, and
+	`mode` — open by design, since `register_scale` extends it — is named in
+	`dropped` rather than vanishing.  That pairing is why #2239 came first.
+	"""
+
+	entry = subsequence.describe_transform("snap_to_scale")
+	key = next(p for p in entry["parameters"] if p["name"] == "key")
+
+	assert entry["partial"] is False
+	assert entry["dropped"] == ["mode"]
+	assert key["kind"] == "choice"
+	assert {option["value"] for option in key["options"]} == set(
+		subsequence.chords.NOTE_NAME_TO_PC
+	)
 
 
 def test_midi_plumbing_is_not_a_transform () -> None:

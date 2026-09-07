@@ -10,6 +10,7 @@ import pymididefs.cc
 import pymididefs.rpn
 
 import subsequence.constants
+import subsequence.declarations
 import subsequence.easing
 import subsequence.pattern
 
@@ -143,7 +144,7 @@ class PatternMidiMixin:
 		beat_start: float = 0.0,
 		beat_end: typing.Optional[float] = None,
 		resolution: int = 1,
-		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear"
+		shape: typing.Union[subsequence.declarations.EasingCurve, subsequence.easing.EasingFn] = "linear"
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
@@ -214,7 +215,7 @@ class PatternMidiMixin:
 		beat_start: float = 0.0,
 		beat_end: typing.Optional[float] = None,
 		resolution: int = 1,
-		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear"
+		shape: typing.Union[subsequence.declarations.EasingCurve, subsequence.easing.EasingFn] = "linear"
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
@@ -420,7 +421,7 @@ class PatternMidiMixin:
 
 	def rpn (
 		self,
-		parameter: typing.Union[int, str],
+		parameter: typing.Union[int, subsequence.declarations.RpnParameter],
 		value: int,
 		beat: float = 0.0,
 		fine: bool = False,
@@ -482,7 +483,7 @@ class PatternMidiMixin:
 		beat_start: float = 0.0,
 		beat_end: typing.Optional[float] = None,
 		resolution: int = 4,
-		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
+		shape: typing.Union[subsequence.declarations.EasingCurve, subsequence.easing.EasingFn] = "linear",
 		fine: bool = True,
 		null_reset: bool = True,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -552,13 +553,13 @@ class PatternMidiMixin:
 
 	def rpn_ramp (
 		self,
-		parameter: typing.Union[int, str],
+		parameter: typing.Union[int, subsequence.declarations.RpnParameter],
 		start: int,
 		end: int,
 		beat_start: float = 0.0,
 		beat_end: typing.Optional[float] = None,
 		resolution: int = 4,
-		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
+		shape: typing.Union[subsequence.declarations.EasingCurve, subsequence.easing.EasingFn] = "linear",
 		fine: bool = True,
 		null_reset: bool = True,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -758,7 +759,7 @@ class PatternMidiMixin:
 		beat_start: float = 0.0,
 		beat_end: typing.Optional[float] = None,
 		resolution: int = 4,
-		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear"
+		shape: typing.Union[subsequence.declarations.EasingCurve, subsequence.easing.EasingFn] = "linear"
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
@@ -858,7 +859,7 @@ class PatternMidiMixin:
 		amount: float,
 		start: float = 0.0,
 		end: float = 1.0,
-		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
+		shape: typing.Union[subsequence.declarations.EasingCurve, subsequence.easing.EasingFn] = "linear",
 		resolution: int = 1,
 	) -> "subsequence.pattern_builder.PatternBuilder":
 
@@ -940,7 +941,7 @@ class PatternMidiMixin:
 	def portamento (
 		self,
 		time: float = 0.15,
-		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
+		shape: typing.Union[subsequence.declarations.EasingCurve, subsequence.easing.EasingFn] = "linear",
 		resolution: int = 1,
 		bend_range: typing.Optional[float] = 2.0,
 		wrap: bool = True,
@@ -1049,7 +1050,7 @@ class PatternMidiMixin:
 		notes: typing.Optional[typing.List[int]] = None,
 		steps: typing.Optional[typing.List[int]] = None,
 		time: float = 0.15,
-		shape: typing.Union[str, subsequence.easing.EasingFn] = "linear",
+		shape: typing.Union[subsequence.declarations.EasingCurve, subsequence.easing.EasingFn] = "linear",
 		resolution: int = 1,
 		bend_range: typing.Optional[float] = 2.0,
 		wrap: bool = True,

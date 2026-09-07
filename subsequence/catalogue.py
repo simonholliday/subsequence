@@ -141,6 +141,7 @@ GENERATORS: typing.Tuple[str, ...] = (
 # generators (#2096).
 TRANSFORMS: typing.Tuple[str, ...] = (
 	"rotate",
+	"snap_to_scale",
 	"swing",
 	"dropout",
 	"randomize",

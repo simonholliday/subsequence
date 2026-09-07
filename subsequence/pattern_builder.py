@@ -2147,7 +2147,7 @@ class PatternBuilder(
 		self,
 		low: int,
 		high: int,
-		shape: str = "linear",
+		shape: subsequence.declarations.EasingCurve = "linear",
 		grid: typing.Optional[int] = None,
 	) -> typing.List[int]:
 
@@ -2434,7 +2434,7 @@ class PatternBuilder(
 				note.duration = new_duration
 		return self
 
-	def snap_to_scale (self, key: str, mode: str = "ionian", strength: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def snap_to_scale (self, key: subsequence.declarations.KeyName, mode: str = "ionian", strength: float = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		Snap all notes in the pattern to the nearest pitch in a scale.

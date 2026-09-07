@@ -10,9 +10,12 @@ every time a control overshot.
 import logging
 import typing
 
+import pymididefs.rpn
 import pytest
 
+import subsequence.chords
 import subsequence.declarations
+import subsequence.easing
 import subsequence.pattern
 import subsequence.pattern_builder
 
@@ -92,6 +95,85 @@ def test_bias_vocabulary_matches_what_the_code_accepts () -> None:
 	for name in typing.get_args(subsequence.declarations.BiasCurve):
 		weights = builder.build_ghost_bias(16, name)
 		assert len(weights) == 16
+
+
+def test_key_names_match_the_table_that_resolves_them () -> None:
+
+	"""``KeyName`` has to be exactly what ``chords.NOTE_NAME_TO_PC`` accepts.
+
+	The table is strict — ``"Cb"``, ``"E#"``, lowercase and ``"H"`` all raise —
+	so a name here the resolver rejects would be a lie mypy enforced, and a
+	name missing here would refuse a key that works.
+	"""
+
+	assert set(typing.get_args(subsequence.declarations.KeyName)) == set(
+		subsequence.chords.NOTE_NAME_TO_PC
+	)
+
+
+def test_the_rpn_vocabulary_matches_the_map_it_comes_from () -> None:
+
+	"""``RpnParameter`` is copied from another package, so it needs a guard.
+
+	The names are ``pymididefs.rpn.RPN_MAP``'s — the MIDI specification's, not
+	ours — and a copy nothing checks would drift the day that package gains a
+	parameter.  This is the same drift test ``ThinStrategy`` has.
+	"""
+
+	assert set(typing.get_args(subsequence.declarations.RpnParameter)) == set(
+		pymididefs.rpn.RPN_MAP
+	)
+
+
+def test_the_easing_vocabulary_matches_the_functions_it_names () -> None:
+
+	"""``EasingCurve`` is the whole of ``EASING_FUNCTIONS``, which ``get_easing`` raises past."""
+
+	assert set(typing.get_args(subsequence.declarations.EasingCurve)) == set(
+		subsequence.easing.EASING_FUNCTIONS
+	)
+
+
+def test_a_scale_the_user_registers_still_works () -> None:
+
+	"""``snap_to_scale(mode=)`` is open by design and must stay ``str``.
+
+	``register_scale`` exists "for use with ``p.snap_to_scale()``", so a
+	``Literal`` there would make a type checker reject a scale the user had
+	legitimately registered — the one case in this pass where annotating would
+	do harm rather than nothing.  Proved by registering one, not by reading
+	the docstring.
+	"""
+
+	subsequence.register_scale("test_only_scale", [0, 1, 5, 7, 11])
+
+	builder = _builder()
+	for beat, pitch in enumerate((60, 61, 63, 66)):
+		builder.note(pitch, beat=float(beat), duration=0.5)
+
+	builder.snap_to_scale("C", "test_only_scale")
+
+	assert sum(len(step.notes) for step in builder._pattern.steps.values()) == 4
+
+
+def test_build_ghost_bias_takes_the_curves_and_not_thins_ninth () -> None:
+
+	"""The two vocabularies overlap, and annotating with the wrong one would lie.
+
+	``thin`` adds ``"strength"``, a weakest-first hierarchy with no ghost_fill
+	equivalent — and ``build_ghost_bias`` rejects it at run time.
+	"""
+
+	hints = typing.get_type_hints(
+		subsequence.pattern_builder.PatternBuilder.build_ghost_bias, include_extras=True,
+	)
+
+	assert set(typing.get_args(hints["bias"])) == set(
+		typing.get_args(subsequence.declarations.BiasCurve)
+	)
+
+	with pytest.raises(ValueError):
+		_builder().build_ghost_bias(16, "strength")		# type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
