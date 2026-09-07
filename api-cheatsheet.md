@@ -129,7 +129,7 @@ The musician's 'palette' for creating musical content.
 
 | Method | Description |
 |---|---|
-| `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key, scale, time_signature, held_notes, harmony, section_motifs, energy) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
+| `__init__(pattern, cycle, conductor, drum_note_map, cc_name_map, nrpn_name_map, section, bar, rng, tweaks, default_grid, data, key, scale, time_signature, held_notes, harmony, section_motifs, energy, stream_seed) -> None` | Initialize the builder with pattern context, cycle count, and optional section info. |
 | `apply_tuning(tuning, bend_range, channels, reference_note) -> PatternBuilder` | Apply a microtonal tuning to this pattern via pitch bend injection. |
 | `arpeggio(notes, root, velocity, count, inversion, beat, span, spacing, duration, direction, seed, rng) -> PatternBuilder` | Arpeggiate a chord (or a list of pitches) — cycle the notes one at a time at regular beat intervals. |
 | `bar_cycle(length) -> subsequence.pattern_builder.BarCycle` | Return the current bar's position within a repeating cycle of bars. |
@@ -197,6 +197,7 @@ The musician's 'palette' for creating musical content.
 | `rpn(parameter, value, beat, fine, null_reset) -> subsequence.pattern_builder.PatternBuilder` | Send a single RPN parameter write at a beat position. |
 | `rpn_ramp(parameter, start, end, beat_start, beat_end, resolution, shape, fine, null_reset) -> subsequence.pattern_builder.PatternBuilder` | Interpolate an RPN value over a beat range. |
 | `scale_velocities(factors, grid) -> PatternBuilder` | Scale note velocities by a per-step multiplier list. |
+| `scratch(name) -> PatternBuilder` | An empty builder sharing this pattern's musical context. |
 | `section_motif(part) -> Any \| None` | The Motif/Phrase bound to the current section (and part), or ``None``. |
 | `self_avoiding_walk(pitches, spacing, velocity, duration, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Generate a melody using a self-avoiding random walk. |
 | `seq(notation, pitch, velocity, seed, rng) -> PatternBuilder` | Build a pattern using an expressive string-based 'mini-notation'. |

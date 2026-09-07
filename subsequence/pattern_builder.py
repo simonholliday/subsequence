@@ -11,6 +11,7 @@ import logging
 import random
 import time
 import typing
+import zlib
 
 import pymididefs.rpn
 import subsequence.chords
@@ -121,7 +122,7 @@ class PatternBuilder(
 	quarter note) or **steps** (subdivisions of a pattern).
 	"""
 
-	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, scale: typing.Optional[str] = None, time_signature: typing.Tuple[int, int] = (4, 4), held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None, harmony: typing.Optional[typing.Any] = None, section_motifs: typing.Optional[typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]] = None, energy: float = 0.5) -> None:
+	def __init__ (self, pattern: subsequence.pattern.Pattern, cycle: int, conductor: typing.Optional[subsequence.conductor.Conductor] = None, drum_note_map: typing.Optional[typing.Dict[str, int]] = None, cc_name_map: typing.Optional[typing.Dict[str, int]] = None, nrpn_name_map: typing.Optional[typing.Dict[str, int]] = None, section: typing.Any = None, bar: int = 0, rng: typing.Optional[random.Random] = None, tweaks: typing.Optional[typing.Dict[str, typing.Any]] = None, default_grid: int = 16, data: typing.Optional[typing.Dict[str, typing.Any]] = None, key: typing.Optional[str] = None, scale: typing.Optional[str] = None, time_signature: typing.Tuple[int, int] = (4, 4), held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = None, harmony: typing.Optional[typing.Any] = None, section_motifs: typing.Optional[typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]] = None, energy: float = 0.5, stream_seed: typing.Optional[int] = None) -> None:
 
 		"""Initialize the builder with pattern context, cycle count, and optional section info.
 
@@ -194,6 +195,10 @@ class PatternBuilder(
 		self._section_motifs: typing.Optional[typing.Dict[typing.Tuple[str, typing.Optional[str]], typing.Any]] = section_motifs
 		self._held_notes: typing.Optional[subsequence.held_notes.HeldNotes] = held_notes
 		self._tuning_applied: bool = False  # set by apply_tuning() to prevent double-apply
+		# This pattern's derived stream seed, so scratch() can take a child
+		# stream of it rather than drawing from self.rng — see scratch().
+		# None when the composition is unseeded.
+		self._stream_seed: typing.Optional[int] = stream_seed
 
 	@property
 	def grid (self) -> int:
@@ -1158,6 +1163,86 @@ class PatternBuilder(
 			return None
 
 		return self._section_motifs.get((self.section.name, part))
+
+	def scratch (self, name: str = "scratch") -> "PatternBuilder":
+
+		"""An empty builder sharing this pattern's musical context.
+
+		Everything a generator reads is carried over — key, scale, harmony,
+		section, bar, cycle, conductor, tweaks, shared data, drum and control
+		name maps, held notes, time signature and energy — so a generator
+		behaves the same on a scratch as it does here.  A composition can build
+		one by hand, and then it holds a dozen copied fields that go stale the
+		day a thirteenth is added.
+
+		The scratch has its own empty pattern of the same length, so nothing it
+		places sounds.  Read the result back with :meth:`capture` or
+		:meth:`placed`, and place it here with :meth:`motif`.
+
+		**The random stream is a child, not the same one.**  Sharing this
+		builder's would advance it, so how the parent's later draws come out
+		would depend on how many scratches were made — and ``lock()`` promises
+		a pattern realises identically each cycle, which would then be true
+		only for a fixed number of them.  A fresh unseeded stream would be
+		worse: it would break reproducibility outright.  So the child is
+		derived by name, the same ``crc32`` way ``Composition`` derives a
+		pattern's stream from the composition seed.  Set a seed once at the
+		top and every scratch under it is reproducible; two scratches with
+		different names never draw the same numbers.
+
+		Parameters:
+			name: Names this scratch's stream.  Give each one its own name if
+				you make several, or they draw identically.
+
+		Example:
+			```python
+			@composition.pattern(channel=10, beats=4)
+			def drums (p):
+				p.hit("kick", [0, 2])
+				layer = p.scratch("hats").euclidean("hihat_closed", pulses=7)
+				p.motif(layer.capture(0.0, 4.0))
+			```
+		"""
+
+		child = subsequence.pattern.Pattern(
+			channel = self._pattern.channel,
+			length = self._pattern.length,
+			device = self._pattern.device,
+		)
+
+		# The harmony window is anchored on the absolute beat axis, so a
+		# scratch has to sit at the same place in the bar or a degree would
+		# resolve against a different chord than it does here.
+		child._cycle_start_pulse = self._pattern._cycle_start_pulse
+
+		derived = (
+			None if self._stream_seed is None
+			else zlib.crc32(f"{self._stream_seed}:{name}".encode())
+		)
+
+		return PatternBuilder(
+			pattern = child,
+			cycle = self.cycle,
+			conductor = self.conductor,
+			drum_note_map = self._drum_note_map,
+			cc_name_map = self._cc_name_map,
+			nrpn_name_map = self._nrpn_name_map,
+			section = self.section,
+			bar = self.bar,
+			rng = random.Random(derived),
+			tweaks = self._tweaks,
+			default_grid = self._default_grid,
+			data = self.data,
+			key = self.key,
+			scale = self.scale,
+			time_signature = self.time_signature,
+			held_notes = self._held_notes,
+			harmony = self.harmony,
+			section_motifs = self._section_motifs,
+			energy = self.energy,
+			stream_seed = derived,
+		)
+
 
 	def placed (self) -> typing.List[subsequence.pattern.PlacedNote]:
 

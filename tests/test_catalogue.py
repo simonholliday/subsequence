@@ -648,6 +648,25 @@ def test_snap_to_scale_is_a_transform_and_offers_its_keys () -> None:
 	)
 
 
+def test_scratch_is_in_neither_catalogue () -> None:
+
+	"""It returns *a* builder, not *the* builder — and both guards would miss it.
+
+	`test_every_generator_returns_the_builder` passes for it, because the
+	annotation says `PatternBuilder`.  `test_a_transform_never_places_a_note`
+	passes too, because what a scratch places lands on its own pattern and
+	never on this one.  So the two mechanical tests that catch a miscurated
+	name are both blind here, and this is the guard instead.
+
+	It is a factory, not a verb: it makes a context to work in rather than
+	changing anything.  Offering it on a surface would hand a person a control
+	that appears to do nothing.
+	"""
+
+	assert "scratch" not in subsequence.catalogue.GENERATORS
+	assert "scratch" not in subsequence.catalogue.TRANSFORMS
+
+
 def test_midi_plumbing_is_not_a_transform () -> None:
 
 	"""It emits control events; it does not reshape notes.

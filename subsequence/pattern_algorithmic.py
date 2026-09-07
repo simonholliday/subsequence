@@ -1715,7 +1715,7 @@ class PatternAlgorithmicMixin:
 		duration: float = 0.1,
 		feed_rate: float = 0.055,
 		kill_rate: float = 0.062,
-		steps: int = 1000,
+		steps: typing.Annotated[int, subsequence.declarations.Span(1, 20000)] = 1000,
 		no_overlap: bool = False,
 		probability: subsequence.declarations.UnitInterval = 1.0,
 		seed: typing.Optional[int] = None,
@@ -1752,7 +1752,10 @@ class PatternAlgorithmicMixin:
 			feed_rate: Rate of U replenishment.  Default 0.055.
 			kill_rate: Rate of V removal.  Default 0.062.
 			steps: Number of simulation iterations.  More = more developed
-			    pattern.  Default 1000.
+			    pattern.  Default 1000, and bounded at 20000 — the cost is
+			    linear (about 3 ms per thousand) and a rebuild that overruns
+			    delays the whole pattern.  The pattern settles by about 2000
+			    in any case; beyond that it drifts rather than develops.
 			no_overlap: Skip steps where ``pitch`` is already sounding.
 			probability: Chance (0.0–1.0) that each active step plays — 1.0 places them all, lower thins.
 			seed: Fix the thinning for this call (an int); omit to use the pattern's RNG.

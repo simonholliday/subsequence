@@ -6103,6 +6103,9 @@ class Composition:
 					harmony = harmony_view,
 					section_motifs = composition_ref._section_motifs,
 					energy = energy,
+					# So p.scratch() can take a child stream keyed off this
+					# pattern's, rather than drawing from the pattern's own.
+					stream_seed = composition_ref._stream_seed(self._builder_fn.__name__),
 				)
 
 				try:
