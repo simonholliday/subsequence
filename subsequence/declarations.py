@@ -172,7 +172,15 @@ def _spans_of (fn: typing.Callable) -> typing.Dict[str, typing.Tuple[int, Span]]
 	return found
 
 
-def bounded (fn: typing.Callable) -> typing.Callable:
+# The decorated function's own type, so the signature survives decoration.
+# A bare ``typing.Callable`` return has no parameters and no return type, which
+# erases every decorated generator as far as a type checker is concerned — the
+# vocabularies above then went unenforced at exactly the fourteen call sites
+# they were written for (#2156).  Do not simplify this back to ``Callable``.
+_Decorated = typing.TypeVar("_Decorated", bound=typing.Callable[..., typing.Any])
+
+
+def bounded (fn: _Decorated) -> _Decorated:
 
 	"""Clamp *fn*'s ``Span``-annotated arguments, warning once per parameter.
 
@@ -182,6 +190,10 @@ def bounded (fn: typing.Callable) -> typing.Callable:
 	Accepts the argument positionally or by keyword, and does nothing at all
 	when every value is already inside its span — the common case, which stays
 	free of allocation.
+
+	The wrapper is cast back to the decorated function's own type so mypy still
+	sees the real signature — the parameters, their vocabularies, and the
+	builder it returns for chaining.
 	"""
 
 	spans: typing.Optional[typing.Dict[str, typing.Tuple[int, Span]]] = None
@@ -232,4 +244,4 @@ def bounded (fn: typing.Callable) -> typing.Callable:
 
 		return fn(*(positional if positional is not None else args), **kwargs)
 
-	return wrapper
+	return typing.cast(_Decorated, wrapper)

@@ -5,7 +5,6 @@ repository's internals, so these tests pin the format as much as the content.
 A change that breaks one of them is a change somebody else has to hear about.
 """
 
-import collections.abc
 import inspect
 import typing
 
@@ -391,23 +390,46 @@ def test_arpeggio_offers_its_notes_rather_than_reporting_partial () -> None:
 	assert notes["multiple"] is True
 
 
-def test_the_arpeggio_pool_annotation_stays_covariant () -> None:
+def test_every_pitch_pool_annotation_stays_covariant () -> None:
 
-	"""Narrowing it to ``List`` would type-error the headline live-play idiom.
+	"""No pool may be spelled ``List``, because ``list`` is invariant.
 
 	``p.arpeggio(p.held_notes())`` is printed in three places in this package,
-	and ``held_notes()`` returns ``List[int]``, which is not a ``List[Pitch]``
-	because ``list`` is invariant.  So this is not a stylistic preference and
-	it must not be tidied away.
+	and ``held_notes()`` returns ``List[int]`` — which is not a ``List[Pitch]``
+	and never will be.  The same goes for the ``List[int]`` out of
+	``scale_notes()`` and for any homogeneous list a caller already holds, so a
+	pool a caller supplies must be annotated with the covariant ``Sequence``.
+
+	Swept rather than asserted one generator at a time: this was fixed on
+	``arpeggio`` for #2155 while ten others still said ``List``, and it stayed
+	invisible only because #2156's signature erasure meant nothing checked
+	them.  A sweep is what stops the next one being written the old way.
 	"""
 
-	hints = typing.get_type_hints(
-		subsequence.pattern_builder.PatternBuilder.arpeggio, include_extras=True,
-	)
-	origins = {typing.get_origin(arm) for arm in typing.get_args(hints["notes"])}
+	invariant: typing.List[str] = []
 
-	assert collections.abc.Sequence in origins
-	assert list not in origins
+	for entry in subsequence.generators():
+
+		hints = typing.get_type_hints(
+			getattr(subsequence.pattern_builder.PatternBuilder, entry["name"]),
+			include_extras=True,
+		)
+
+		for parameter in entry["parameters"]:
+
+			if parameter["kind"] != "pitch" or not parameter.get("multiple"):
+				continue
+
+			annotation = hints[parameter["name"]]
+			containers = [annotation, *typing.get_args(annotation)]
+
+			if any(typing.get_origin(arm) is list for arm in containers):
+				invariant.append(f'{entry["name"]}.{parameter["name"]}')
+
+	assert not invariant, (
+		"a pitch pool annotated List rejects the list a caller already holds — "
+		f"use typing.Sequence: {invariant}"
+	)
 
 
 def test_a_velocity_range_reports_the_midi_bounds () -> None:

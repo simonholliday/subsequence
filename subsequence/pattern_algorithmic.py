@@ -711,7 +711,7 @@ class PatternAlgorithmicMixin:
 	@subsequence.declarations.bounded
 	def cellular_2d (
 		self,
-		pitches: typing.List[subsequence.declarations.Pitch],
+		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		rule: str = "B368/S245",
 		generation: typing.Optional[int] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
@@ -1179,7 +1179,7 @@ class PatternAlgorithmicMixin:
 
 	def de_bruijn (
 		self,
-		pitches: typing.List[subsequence.declarations.Pitch],
+		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		window: int = 2,
 		spacing: typing.Optional[float] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
@@ -1244,7 +1244,7 @@ class PatternAlgorithmicMixin:
 
 	def golden (
 		self,
-		pitches: typing.Union[subsequence.declarations.Pitch, typing.List[subsequence.declarations.Pitch]],
+		pitches: typing.Union[subsequence.declarations.Pitch, typing.Sequence[subsequence.declarations.Pitch]],
 		count: int,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
@@ -1314,7 +1314,7 @@ class PatternAlgorithmicMixin:
 
 	def recaman (
 		self,
-		pitches: typing.List[subsequence.declarations.Pitch],
+		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		count: typing.Optional[int] = None,
 		spacing: typing.Optional[float] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
@@ -1448,7 +1448,7 @@ class PatternAlgorithmicMixin:
 
 	def fibonacci (
 		self,
-		pitches: typing.List[subsequence.declarations.Pitch],
+		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		modulus: typing.Optional[int] = None,
 		count: typing.Optional[int] = None,
 		spacing: typing.Optional[float] = None,
@@ -1553,7 +1553,7 @@ class PatternAlgorithmicMixin:
 
 	def lorenz (
 		self,
-		pitches: typing.List[subsequence.declarations.Pitch],
+		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		spacing: float = 0.25,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
@@ -1732,7 +1732,7 @@ class PatternAlgorithmicMixin:
 
 	def self_avoiding_walk (
 		self,
-		pitches: typing.List[subsequence.declarations.Pitch],
+		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		spacing: float = 0.25,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
@@ -2135,7 +2135,7 @@ class PatternAlgorithmicMixin:
 	@subsequence.declarations.bounded
 	def evolve (
 		self,
-		pitches: typing.List[subsequence.declarations.Pitch],
+		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		length: typing.Optional[int] = None,
 		drift: subsequence.declarations.UnitInterval = 0.0,
 		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
@@ -2234,7 +2234,7 @@ class PatternAlgorithmicMixin:
 	@subsequence.declarations.bounded
 	def branch (
 		self,
-		pitches: typing.List[subsequence.declarations.Pitch],
+		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		depth: int = 2,
 		path: int = 0,
 		mutation: subsequence.declarations.UnitInterval = 0.0,

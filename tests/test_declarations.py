@@ -189,6 +189,58 @@ def test_ratchet_velocity_multipliers_allow_up_to_two () -> None:
 
 
 # ---------------------------------------------------------------------------
+# The decorator's own signature
+# ---------------------------------------------------------------------------
+
+def test_bounded_hands_back_the_signature_it_was_given () -> None:
+
+	"""``bounded`` must be typed as an identity, or it erases what it decorates.
+
+	Declared ``(fn: typing.Callable) -> typing.Callable`` it type-checked fine
+	and silently threw the signature away: a bare ``Callable`` has no
+	parameters and no return type, so mypy stopped checking anything passed to
+	the fourteen decorated generators — including the very ``Literal``
+	vocabularies this module exists to enforce, and including whether the call
+	returned a builder at all (#2156).
+
+	Nothing at run time notices, because ``functools.wraps`` keeps
+	``inspect.signature`` honest either way.  The annotation on ``bounded``
+	itself is the only place the mistake is visible from in here, so this is
+	the guard.
+	"""
+
+	hints = typing.get_type_hints(subsequence.declarations.bounded)
+
+	assert isinstance(hints["fn"], typing.TypeVar)
+	assert hints["return"] is hints["fn"]
+
+
+def test_a_decorated_generator_still_reports_its_parameters () -> None:
+
+	"""The wrapper must not hide the vocabulary a caller is being held to.
+
+	``functools.wraps`` is what makes this true, and it is worth pinning
+	beside the annotation test: the catalogue reads these hints, so losing
+	them would empty a generator's controls as surely as the erasure emptied
+	its type checking.
+	"""
+
+	hints = typing.get_type_hints(
+		subsequence.pattern_builder.PatternBuilder.ghost_fill, include_extras=True,
+	)
+
+	# bias is Union[BiasCurve, List[float]] — an explicit weight list is the
+	# other way to ask for one, so the vocabulary is an arm rather than the
+	# whole annotation.
+	curves = next(
+		arm for arm in typing.get_args(hints["bias"])
+		if typing.get_origin(arm) is typing.Literal
+	)
+
+	assert typing.get_args(curves) == typing.get_args(subsequence.declarations.BiasCurve)
+
+
+# ---------------------------------------------------------------------------
 
 class _capture:
 
