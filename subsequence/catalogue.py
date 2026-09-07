@@ -21,12 +21,21 @@ The shape is fixed by agreement with the consumer, so treat it as a contract:
          "min": 0.0, "max": 1.0, "default": 0.3},
         ...
       ],
+      "dropped": [],
     }
 
 ``partial`` says a *required* parameter has no shape — a list, a dict, a
 callable — so the generator cannot be fully offered.  It is reported rather
 than hidden, because a control that cannot be completed is worse than one that
 is absent, and only the caller can decide which to show.
+
+``dropped`` names every parameter left out for want of a shape, required or
+not.  ``partial`` alone was not enough: it speaks only for the *required*
+ones, so an optional parameter with no shape vanished from an entry that still
+said ``"partial": False`` — a consumer told "fully offerable" about something
+it could not fully drive (#2239).  Naming them costs nothing and is the
+difference between a gap and a silence.  Machine-only parameters are not
+listed: they are deliberately not offered, which is a different fact.
 
 What counts as a generator is a curation judgement, not a category: everything
 in :mod:`subsequence.pattern_algorithmic`, plus the verbs in
@@ -325,9 +334,11 @@ def describe_generator (name: str) -> typing.Dict[str, typing.Any]:
 			``"ghost_fill"``.
 
 	Returns:
-		A dict with ``name``, ``summary``, ``partial`` and ``parameters``.
-		``partial`` is True when a *required* parameter has no control shape,
-		meaning the generator cannot be fully driven from a surface.
+		A dict with ``name``, ``summary``, ``partial``, ``parameters`` and
+		``dropped``.  ``partial`` is True when a *required* parameter has no
+		control shape, meaning the generator cannot be fully driven from a
+		surface; ``dropped`` names every parameter left out for want of a
+		shape, so an optional one cannot go missing in silence.
 
 	Raises:
 		ValueError: if *name* is not a declared generator.
@@ -358,6 +369,7 @@ def describe_generator (name: str) -> typing.Dict[str, typing.Any]:
 	summary = (inspect.getdoc(function) or "").strip().split("\n")[0]
 
 	parameters: typing.List[typing.Dict[str, typing.Any]] = []
+	dropped: typing.List[str] = []
 	partial = False
 
 	for parameter_name, parameter in signature.parameters.items():
@@ -369,8 +381,12 @@ def describe_generator (name: str) -> typing.Dict[str, typing.Any]:
 		described = _describe_parameter(parameter_name, parameter, annotation)
 
 		if described is None:
-			# A required parameter with no shape means a surface could offer a
-			# control that can never be completed.  Say so rather than hide it.
+			# Name it either way.  A required one also sets partial, because a
+			# surface could otherwise offer a control that can never be
+			# completed; an optional one used to leave no trace at all, which
+			# is how a generator came to report itself fully offerable while
+			# quietly missing a parameter.
+			dropped.append(parameter_name)
 			if parameter.default is inspect.Parameter.empty:
 				partial = True
 			continue
@@ -382,6 +398,7 @@ def describe_generator (name: str) -> typing.Dict[str, typing.Any]:
 		"summary": summary,
 		"partial": partial,
 		"parameters": parameters,
+		"dropped": dropped,
 	}
 
 

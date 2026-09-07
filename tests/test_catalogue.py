@@ -147,17 +147,17 @@ def test_nothing_is_dropped_silently_from_a_generator_reported_complete () -> No
 
 		function = getattr(subsequence.pattern_builder.PatternBuilder, entry["name"])
 		hints = typing.get_type_hints(function, include_extras=True)
-		offered = {parameter["name"] for parameter in entry["parameters"]}
 
-		for name, parameter in inspect.signature(function).parameters.items():
-
-			if name in subsequence.catalogue._NOT_FOR_PEOPLE or name in offered:
-				continue
+		# Read the entry's own "dropped" rather than re-deriving it from the
+		# signature: the published fact is the one worth testing, and a second
+		# derivation here could agree with itself while disagreeing with what
+		# a consumer is actually told.
+		for name in entry["dropped"]:
 
 			if (entry["name"], name) in KNOWINGLY_DROPPED:
 				continue
 
-			unexplained.append((entry["name"], name, str(hints.get(name, parameter.annotation))))
+			unexplained.append((entry["name"], name, str(hints.get(name, "<no annotation>"))))
 
 	assert not unexplained, (
 		"parameters dropped with no explanation — annotate them, or add them to "
@@ -217,14 +217,16 @@ def test_optional_pitch_parameters_are_offered () -> None:
 
 def test_every_entry_has_the_agreed_top_level_keys () -> None:
 
-	"""name, summary, partial and parameters, on every generator."""
+	"""name, summary, partial, parameters and dropped, on every generator."""
 
 	for entry in subsequence.generators():
-		assert set(entry) == {"name", "summary", "partial", "parameters"}
+		assert set(entry) == {"name", "summary", "partial", "parameters", "dropped"}
 		assert isinstance(entry["name"], str) and entry["name"]
 		assert isinstance(entry["summary"], str) and entry["summary"]
 		assert isinstance(entry["partial"], bool)
 		assert isinstance(entry["parameters"], list)
+		assert isinstance(entry["dropped"], list)
+		assert all(isinstance(name, str) for name in entry["dropped"])
 
 
 def test_every_parameter_declares_one_of_the_five_kinds () -> None:
@@ -457,6 +459,58 @@ def test_machine_parameters_are_not_offered () -> None:
 		assert "rng" not in names, entry["name"]
 		assert "seed" not in names, entry["name"]
 		assert "self" not in names, entry["name"]
+
+		# Nor are they *dropped*: they were never candidates.  Reporting them
+		# as dropped would say "this could not be shaped", which is not what
+		# happened and would make the key mean nothing.
+		assert not set(entry["dropped"]) & subsequence.catalogue._NOT_FOR_PEOPLE, entry["name"]
+
+
+# ---------------------------------------------------------------------------
+# dropped — what could not be shaped, said out loud
+# ---------------------------------------------------------------------------
+
+def test_a_generator_that_shapes_everything_drops_nothing () -> None:
+
+	"""The key means something only if it is empty in the ordinary case."""
+
+	assert subsequence.describe_generator("euclidean")["dropped"] == []
+
+
+def test_an_optional_parameter_with_no_shape_is_named_not_hidden () -> None:
+
+	"""The defect this exists for: complete-looking, and quietly missing something.
+
+	``fibonacci`` takes an optional ``mapping`` callable.  No control shape
+	maps to a function, so it is left out — and because it is optional the
+	generator is not flagged partial either.  Before #2239 a consumer was
+	told "fully offerable" with no way to learn otherwise.
+	"""
+
+	entry = subsequence.describe_generator("fibonacci")
+
+	assert entry["partial"] is False
+	assert entry["dropped"] == ["mapping"]
+	assert "mapping" not in {p["name"] for p in entry["parameters"]}
+
+
+def test_a_partial_generator_names_what_it_could_not_shape () -> None:
+
+	"""partial says *that* it cannot be driven; dropped says *what* it wanted."""
+
+	entry = subsequence.describe_generator("markov")
+
+	assert entry["partial"] is True
+	assert set(entry["dropped"]) >= {"transitions"}
+
+
+def test_nothing_is_both_offered_and_dropped () -> None:
+
+	"""The two lists partition the parameters a person could care about."""
+
+	for entry in subsequence.generators():
+		offered = {parameter["name"] for parameter in entry["parameters"]}
+		assert not offered & set(entry["dropped"]), entry["name"]
 
 
 # ---------------------------------------------------------------------------
