@@ -1482,7 +1482,8 @@ class PatternBuilder(
 			)
 		return self
 
-	def repeat (self, pitch: subsequence.declarations.Pitch, spacing: float, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
+	@subsequence.declarations.bounded
+	def repeat (self, pitch: subsequence.declarations.Pitch, spacing: typing.Annotated[float, subsequence.declarations.Span(low=0.01)], velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
 
 		"""
 		Repeat a note at a fixed beat interval for the whole pattern.
@@ -2441,7 +2442,8 @@ class PatternBuilder(
 				note.duration = new_duration
 		return self
 
-	def duration (self, beats: float) -> "PatternBuilder":
+	@subsequence.declarations.bounded
+	def duration (self, beats: typing.Annotated[float, subsequence.declarations.Span(low=0.01)]) -> "PatternBuilder":
 
 		"""
 		Set every note's duration to a fixed length in beats.
@@ -2650,7 +2652,8 @@ class PatternBuilder(
 		self._pattern.steps = new_steps
 		return self
 
-	def stretch (self, factor: float) -> "PatternBuilder":
+	@subsequence.declarations.bounded
+	def stretch (self, factor: typing.Annotated[float, subsequence.declarations.Span(low=0.01)]) -> "PatternBuilder":
 
 		"""
 		Stretch the pattern in time, scaling note positions and durations.

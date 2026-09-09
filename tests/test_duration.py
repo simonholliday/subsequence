@@ -68,20 +68,30 @@ def test_duration_minimum_one_pulse () -> None:
 	assert pat.steps[0].notes[0].duration == 1
 
 
-def test_duration_invalid_value () -> None:
+def test_duration_below_its_floor_is_clamped_not_rejected () -> None:
 
-	"""Test that negative/zero duration raises ValueError."""
+	"""#2251: a floor that clamps, where this used to raise.
+
+	The catalogue now declares ``beats`` as having a minimum, so a surface
+	opens the control at a value that works instead of at zero — and the bound
+	is enforced rather than merely published, per this codebase's rule that a
+	bound nothing consults drifts out of step with the code.
+
+	Clamping is the right way round here for the same reason every other bound
+	clamps: a rebuild runs every bar, and a failing one costs its pattern that
+	cycle.  It does mean a typo now sounds like a very short note rather than
+	silence, which is the trade.
+	"""
 
 	pat = subsequence.pattern.Pattern(channel=0, length=4.0)
 	builder = subsequence.pattern_builder.PatternBuilder(pattern=pat, cycle=0)
 
 	builder.note(60, 0.0)
+	builder.duration(0)
 
-	with pytest.raises(ValueError):
-		builder.duration(0)
+	durations = [n.duration for s in pat.steps.values() for n in s.notes]
 
-	with pytest.raises(ValueError):
-		builder.duration(-0.5)
+	assert durations and all(d > 0 for d in durations)
 
 
 def test_staccato_name_removed () -> None:

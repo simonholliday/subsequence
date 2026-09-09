@@ -62,6 +62,7 @@ reasoning.
 
 import collections.abc
 import inspect
+import math
 import typing
 
 import subsequence.declarations
@@ -298,6 +299,21 @@ def _literal_options (annotation: typing.Any) -> typing.Optional[typing.List[str
 	return None
 
 
+def _bounds (entry: typing.Dict[str, typing.Any], span: subsequence.declarations.Span) -> None:
+
+	"""Publish a span's floor, and its ceiling only when it has one.
+
+	A ``Span`` may be open above — a stretch factor has a smallest useful value
+	and no largest — and infinity is not valid JSON, so an absent ``max`` is the
+	honest way to say "no ceiling" rather than a number invented to fill it.
+	"""
+
+	entry["min"] = span.low
+
+	if math.isfinite(span.high):
+		entry["max"] = span.high
+
+
 def _finished (
 	entry: typing.Dict[str, typing.Any],
 	parameter: inspect.Parameter,
@@ -382,8 +398,7 @@ def _describe_parameter (
 		entry["kind"] = "number"
 		span = _span_of(annotation)
 		if span is not None:
-			entry["min"] = span.low
-			entry["max"] = span.high
+			_bounds(entry, span)
 		# An int steps by one; a float's useful step depends on its range, so
 		# it is left for the consumer to choose rather than invented here.
 		if bare is int:
@@ -394,8 +409,7 @@ def _describe_parameter (
 
 	if span is not None:
 		entry["kind"] = "number"
-		entry["min"] = span.low
-		entry["max"] = span.high
+		_bounds(entry, span)
 		return _finished(entry, parameter)
 
 	return None

@@ -106,19 +106,35 @@ def test_repeat_covers_pattern () -> None:
 	assert total_notes == 16
 
 
-def test_repeat_invalid_step_raises () -> None:
+def test_repeat_below_its_floor_is_clamped_not_rejected () -> None:
 
-	"""
-	Fill with non-positive step should raise ValueError.
+	"""#2251: a spacing of zero was the only value a surface could invent.
+
+	With no declared minimum a control opens at zero, and zero was the one
+	value this refused — so a person added a note repeat, heard nothing, and
+	the reason was in a log.  The floor is declared now, and enforced.
 	"""
 
 	pattern, builder = _make_builder()
 
-	with pytest.raises(ValueError):
-		builder.repeat(60, spacing=0)
+	builder.repeat(60, spacing=0)
+	builder.repeat(62, spacing=-1)
 
-	with pytest.raises(ValueError):
-		builder.repeat(60, spacing=-1)
+	assert sum(len(step.notes) for step in pattern.steps.values()) > 0
+
+
+def test_repeat_still_refuses_what_is_not_a_number () -> None:
+
+	"""Clamping the low end must not widen what counts as a spacing.
+
+	``bounded`` steps over anything that is not a number, so the function's own
+	check still meets a string — which is somebody else's mistake to report.
+	"""
+
+	pattern, builder = _make_builder()
+
+	with pytest.raises(TypeError):
+		builder.repeat(60, spacing="fast")		# type: ignore[arg-type]
 
 
 def test_duck_map_builds_multiplier_list () -> None:
@@ -1549,18 +1565,22 @@ def test_stretch_fractional_factor () -> None:
 	assert sorted(pattern.steps.keys()) == [0, 72]
 
 
-def test_stretch_invalid_factor_raises () -> None:
+def test_stretch_below_its_floor_is_clamped_not_rejected () -> None:
 
-	"""Zero or negative stretch factors raise ValueError."""
+	"""#2251: zero was the only opening value, and the one value it refused.
+
+	A hundredfold compression is past any musical use, so the floor costs a
+	musician nothing — and it costs a surface the guess that made the control
+	dead on arrival.
+	"""
 
 	pattern, builder = _make_builder(length=4)
 	builder.note(60, beat=0)
 
-	with pytest.raises(ValueError):
-		builder.stretch(0)
+	builder.stretch(0)
+	builder.stretch(-1.0)
 
-	with pytest.raises(ValueError):
-		builder.stretch(-1.0)
+	assert sum(len(step.notes) for step in pattern.steps.values()) > 0
 
 
 def test_stretch_preserves_drum_origin () -> None:

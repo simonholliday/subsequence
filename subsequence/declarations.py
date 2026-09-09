@@ -22,6 +22,7 @@ import dataclasses
 import functools
 import inspect
 import logging
+import math
 import typing
 
 
@@ -37,10 +38,17 @@ class Span:
 	``typing.Annotated[float, Span(0.0, 1.0)]``.
 	Read it back with :func:`typing.get_type_hints` passing
 	``include_extras=True``, which is what keeps the metadata visible.
+
+	``high`` may be left open — ``Span(low=0.01)`` — for a quantity whose only
+	real bound is a floor.  A stretch factor or a note duration has a smallest
+	useful value and no largest one, and inventing a ceiling to fill the field
+	would be a guess a consumer would then draw a slider to.  The catalogue
+	omits ``max`` in that case rather than publishing infinity, which is not
+	valid JSON.
 	"""
 
 	low: float
-	high: float
+	high: float = math.inf		# open above: a floor is often the only bound a quantity has
 
 
 	def clamp (self, value: float) -> float:
@@ -268,9 +276,15 @@ def bounded (fn: _Decorated) -> _Decorated:
 			key = (fn.__qualname__, name)
 
 			if key not in _warned:
+				# An open span has no ceiling to name, and "0.01–inf" reads as
+				# a typo rather than as a bound.
+				where = (
+					f"below {span.low}" if math.isinf(span.high)
+					else f"outside {span.low}–{span.high}"
+				)
 				_warned.add(key)
 				logger.warning(
-					f"{fn.__name__}({name}={given}) is outside {span.low}–{span.high}; "
+					f"{fn.__name__}({name}={given}) is {where}; "
 					f"using {pinned}. Further overshoots of this parameter are not logged."
 				)
 
