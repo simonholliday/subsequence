@@ -13,10 +13,6 @@ build/
 *.mid
 session_*.mid
 
-# Documentation build output
-docs/html/
-docs/*.html
-
 # Project metadata and instructions
 README-AGENTS.md
 AGENT-INSTRUCTIONS.md

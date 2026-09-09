@@ -14,8 +14,9 @@ blocks, ``:role:`x``` roles, and ``\\`text <url>\\`_`` hyperlink references):
   literal.  Reword so the backticks meet a space.
 
 Runs over ``subsequence/`` and exits non-zero on any finding, naming the
-file and line so the offending docstring is easy to find.  Inline-code that
-renders as code under both pdoc (markdown) and Sphinx (RST) passes clean.
+file and line so the offending docstring is easy to find.  Sphinx/RST is the
+only renderer these docstrings reach (the pdoc build was retired in #2325),
+so RST is the standard rather than a common subset of two.
 
 Usage:
     python scripts/check_docstring_markup.py [path ...]   # default: subsequence
