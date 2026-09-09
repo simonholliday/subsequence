@@ -265,6 +265,23 @@ def _velocity_key (velocity: subsequence.declarations.VelocityValue) -> typing.T
 	return (velocity, velocity)
 
 
+def _refuse_captured_drum (origin: typing.Optional[str], verb: str, moved: str) -> None:
+
+	"""Refuse to move a pitch that a capture resolved from a drum name.
+
+	The type guards elsewhere read the pitch, and a captured drum is an int
+	like any other note — so they never fire.  ``origin`` remembers which
+	instrument the number came from, and moving it is the same wrongness
+	reached by a different route.
+	"""
+
+	if origin is not None:
+		raise TypeError(
+			f"{verb} moves pitches — '{origin}' was captured from a drum name "
+			f"(a {moved} drum is a different instrument)"
+		)
+
+
 # ── Events ──────────────────────────────────────────────────────────────────
 
 @dataclasses.dataclass(frozen=True)
@@ -278,6 +295,12 @@ class MotifEvent:
 	for a pitch-stripped skeleton event (see :meth:`Motif.rhythm`), which
 	must be re-pitched via :meth:`Motif.pitched` before placement.
 	``velocity`` is an int or a ``(low, high)`` random-range tuple.
+
+	``origin`` names the drum a pitch was resolved *from*.  Only
+	:meth:`~subsequence.pattern_builder.PatternBuilder.capture` sets it —
+	capture reads notes back as absolute MIDI, so ``"kick"`` arrives here as
+	``36`` — and it is what lets the pitch-moving methods go on refusing a
+	drum they can no longer see.
 	"""
 
 	beat: float
@@ -285,6 +308,7 @@ class MotifEvent:
 	velocity: subsequence.declarations.VelocityValue = _DEFAULT_VELOCITY
 	duration: float = 0.25
 	probability: float = 1.0
+	origin: typing.Optional[str] = None		# Drum name a captured pitch was resolved from; None for anything authored directly.
 
 	def __post_init__ (self) -> None:
 
@@ -1292,14 +1316,17 @@ class Motif:
 
 		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
-	def _nudged_pitch (self, pitch: PitchSpec, rng: random.Random) -> PitchSpec:
+	def _nudged_pitch (self, pitch: PitchSpec, rng: random.Random, origin: typing.Optional[str]) -> PitchSpec:
 
 		"""One varied pitch: a small melodic nudge that always changes the note.
 
 		Degrees move by scale steps, MIDI ints by semitones, chord tones by
 		index; an Approach's target is nudged.  Drum names raise — a varied
-		drum is a different instrument, not a variation.
+		drum is a different instrument, not a variation — and so does a
+		captured drum, which arrives as a number carrying its ``origin``.
 		"""
+
+		_refuse_captured_drum(origin, "vary()", "varied")
 
 		if isinstance(pitch, Degree):
 			steps = [pitch.step + delta for delta in (-2, -1, 1, 2) if pitch.step + delta >= 1]
@@ -1308,7 +1335,7 @@ class Motif:
 			indices = [pitch.index + delta for delta in (-1, 1) if pitch.index + delta >= 1]
 			return ChordTone(rng.choice(indices), octave = pitch.octave)
 		if isinstance(pitch, Approach):
-			nudged = self._nudged_pitch(pitch.target, rng)
+			nudged = self._nudged_pitch(pitch.target, rng, None)	# an Approach is authored, never captured
 			if not isinstance(nudged, (int, Degree, ChordTone)):
 				raise TypeError(f"cannot vary an Approach aimed at {type(nudged).__name__} content")
 			return Approach(nudged)
@@ -1393,7 +1420,7 @@ class Motif:
 				if replacement is not None:
 					events[index] = dataclasses.replace(events[index], pitch = replacement)
 			else:
-				events[index] = dataclasses.replace(events[index], pitch = self._nudged_pitch(events[index].pitch, rng))
+				events[index] = dataclasses.replace(events[index], pitch = self._nudged_pitch(events[index].pitch, rng, events[index].origin))
 
 		return Motif(events = tuple(events), length = self.length, controls = self.controls, fit = self.fit)
 
@@ -1426,6 +1453,8 @@ class Motif:
 		rng draw happens regardless (stream stability); ``None`` means no
 		candidate preserves the shape — leave the note alone.
 		"""
+
+		_refuse_captured_drum(events[index].origin, "vary()", "varied")
 
 		pitch = events[index].pitch
 
@@ -1515,7 +1544,8 @@ class Motif:
 		if isinstance(spec, str) and spec in _CHORD_TONE_NAMES:
 			spec = ChordTone(spec)
 
-		events = tuple(dataclasses.replace(e, pitch=spec) for e in self.events)
+		# The new spec replaces whatever a capture resolved, so its origin goes too.
+		events = tuple(dataclasses.replace(e, pitch=spec, origin=None) for e in self.events)
 
 		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
@@ -1528,7 +1558,7 @@ class Motif:
 		with :meth:`pitched` before placement (placing a skeleton raises).
 		"""
 
-		events = tuple(dataclasses.replace(e, pitch=None) for e in self.events)
+		events = tuple(dataclasses.replace(e, pitch=None, origin=None) for e in self.events)
 
 		return Motif(events=events, length=self.length)
 
@@ -1547,19 +1577,22 @@ class Motif:
 		raises on absolute-MIDI or drum content; ``semitones=`` is the
 		literal chromatic form for MIDI ints and degrees.  Drum motifs raise
 		on both — a transposed drum name is a different instrument, not a
-		transposition.
+		transposition — and a captured drum raises too, because its number
+		still remembers which instrument it came from.
 		"""
 
 		if (steps is None) == (semitones is None):
 			raise ValueError("transpose() takes exactly one of steps= or semitones=")
 
-		def move (pitch: PitchSpec) -> PitchSpec:
+		def move (pitch: PitchSpec, origin: typing.Optional[str]) -> PitchSpec:
+
+			_refuse_captured_drum(origin, "transpose()", "transposed")
 
 			if pitch is None:
 				return None
 
 			if isinstance(pitch, Approach):
-				moved = move(pitch.target)
+				moved = move(pitch.target, None)
 				if not isinstance(moved, (int, Degree, ChordTone)):
 					raise TypeError(f"transpose cannot aim an Approach at {type(moved).__name__} content")
 				return Approach(moved)
@@ -1580,7 +1613,7 @@ class Motif:
 				return dataclasses.replace(pitch, chroma=pitch.chroma + semitones)
 			raise TypeError(f"transpose(semitones=) cannot move {type(pitch).__name__} content")
 
-		events = tuple(dataclasses.replace(e, pitch=move(e.pitch)) for e in self.events)
+		events = tuple(dataclasses.replace(e, pitch=move(e.pitch, e.origin)) for e in self.events)
 
 		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
@@ -1589,7 +1622,7 @@ class Motif:
 		"""
 		Mirror pitches around a pivot: MIDI content around a MIDI pivot,
 		degree content around a degree pivot (default: the first note's pitch).
-		Drum motifs raise.
+		Drum motifs raise, captured ones included.
 		"""
 
 		pitched_events = [e for e in self.events if e.pitch is not None]
@@ -1607,7 +1640,9 @@ class Motif:
 			else:
 				raise TypeError(f"invert() cannot derive a pivot from {type(first).__name__} content")
 
-		def mirror (pitch: PitchSpec) -> PitchSpec:
+		def mirror (pitch: PitchSpec, origin: typing.Optional[str]) -> PitchSpec:
+
+			_refuse_captured_drum(origin, "invert()", "mirrored")
 
 			if pitch is None:
 				return None
@@ -1627,7 +1662,7 @@ class Motif:
 				return dataclasses.replace(pitch, step=mirrored, octave=-pitch.octave, chroma=-pitch.chroma)
 			raise TypeError(f"invert() cannot mirror {type(pitch).__name__} content")
 
-		events = tuple(dataclasses.replace(e, pitch=mirror(e.pitch)) for e in self.events)
+		events = tuple(dataclasses.replace(e, pitch=mirror(e.pitch, e.origin)) for e in self.events)
 
 		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
@@ -1637,7 +1672,7 @@ class Motif:
 
 		"""A readable one-line summary: length, notes (pitch@beat), and control gestures."""
 
-		notes = ", ".join(f"{_pitch_label(e.pitch)}@{e.beat:g}" for e in self.events)
+		notes = ", ".join(f"{_event_label(e)}@{e.beat:g}" for e in self.events)
 		parts = [f"Motif {self.length:g} beats", f"[{notes}]" if notes else "[no notes]"]
 
 		if self.controls:
@@ -1669,6 +1704,16 @@ def _pitch_label (pitch: PitchSpec) -> str:
 		return f">{_pitch_label(pitch.target)}"
 
 	return str(pitch)
+
+
+def _event_label (event: MotifEvent) -> str:
+
+	"""One event's pitch label — the drum name wherever a capture kept one."""
+
+	if event.origin is not None:
+		return event.origin
+
+	return _pitch_label(event.pitch)
 
 
 def _control_label (c: ControlEvent) -> str:
@@ -2010,7 +2055,7 @@ class Phrase:
 				for index in inside[1:-1]:
 					events[index] = dataclasses.replace(
 						events[index],
-						pitch = segment._nudged_pitch(events[index].pitch, rng),
+						pitch = segment._nudged_pitch(events[index].pitch, rng, events[index].origin),
 					)
 
 			new_segments.append(Motif(events = tuple(events), length = segment.length, controls = segment.controls))

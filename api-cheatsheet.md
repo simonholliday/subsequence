@@ -345,7 +345,7 @@ An immutable musical figure: timed note events + control gestures + a length in 
 | `from_events(events, length, controls) -> Motif` | Build a motif from explicit events (power use; length defaults to the next whole beat). |
 | `generate(rhythm, length, scale, contour, end_on, cadence, pins, max_pitches, velocities, durations, seed, rng, state, nir_strength, pitch_diversity, tessitura_strength) -> Motif` | Generate a melodic motif — rhythm first, pitches walked, a value out. |
 | `hits(pitch, beats, length, velocities, durations, probabilities) -> Motif` | One pitch (usually a drum name) at a list of beat positions — the ``hit()`` convention. |
-| `invert(pivot) -> Motif` | Mirror pitches around a pivot: MIDI content around a MIDI pivot, degree content around a degree pivot (default: the first note's pitch). Drum motifs raise. |
+| `invert(pivot) -> Motif` | Mirror pitches around a pivot: MIDI content around a MIDI pivot, degree content around a degree pivot (default: the first note's pitch). Drum motifs raise, captured ones included. |
 | `join(motifs) -> Motif` | Fold a list of motifs into one with ``then`` (empty list → ``Motif.empty()``). |
 | `notes(notes, beats, velocities, durations, probabilities, length) -> Motif` | A melody written as absolute MIDI note numbers (60 = middle C); ``None`` = rest. |
 | `nrpn(parameter, values, beats, fine, null_reset, length, probabilities) -> Motif` | Discrete NRPN parameter writes at beat positions — mirrors ``p.nrpn()``. |

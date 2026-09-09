@@ -5,6 +5,7 @@ metric weight table.
 """
 
 import random
+import typing
 
 import pytest
 
@@ -447,6 +448,192 @@ def test_capture_windows () -> None:
 
 	assert [e.pitch for e in window.events] == [62, 64]
 	assert [e.beat for e in window.events] == [0.0, 1.0]
+
+
+# ── captured drums keep their provenance ────────────────────────────────────
+
+def _drum_builder () -> subsequence.pattern_builder.PatternBuilder:
+
+	"""A builder over a kit, for the capture round trip that loses drum names."""
+
+	return _builder(drum_note_map={"kick": 36, "snare": 38})
+
+
+def _captured_kit () -> subsequence.Motif:
+
+	"""A kick and a snare, placed and read back — absolute MIDI, named origins."""
+
+	p = _drum_builder()
+	p.motif(M.hits("kick", beats=[0.0]).stack(M.hits("snare", beats=[1.0])))
+
+	return p.capture(beat=0.0, span=4.0)
+
+
+def test_capture_keeps_the_drum_name_beside_the_number () -> None:
+
+	"""The pitch resolves to MIDI; the instrument it came from rides along."""
+
+	captured = _captured_kit()
+
+	assert [e.pitch for e in captured.events] == [36, 38]
+	assert [e.origin for e in captured.events] == ["kick", "snare"]
+
+
+def test_captured_pitched_notes_have_no_origin () -> None:
+
+	"""Only a named drum has provenance to keep — a melody was never named."""
+
+	p = _builder()
+	p.motif(M.notes([60, 64], beats=[0.0, 1.0], durations=0.5))
+
+	assert [e.origin for e in p.capture(beat=0.0, span=4.0).events] == [None, None]
+
+
+def test_a_captured_drum_still_refuses_to_vary () -> None:
+
+	"""#2238: the guard was unreachable once capture turned "kick" into 36."""
+
+	with pytest.raises(TypeError, match="kick"):
+		_captured_kit().vary(notes=2, position="anywhere", seed=4)
+
+
+def test_a_captured_drum_still_refuses_to_vary_on_contour () -> None:
+
+	"""keep_contour is the other half of vary() and moves pitches just the same."""
+
+	with pytest.raises(TypeError, match="drum"):
+		_captured_kit().vary(notes=1, seed=4, keep_contour=True)
+
+
+def test_a_captured_drum_still_refuses_to_transpose () -> None:
+
+	"""A transposed kick is a different instrument however the motif was made."""
+
+	with pytest.raises(TypeError, match="kick"):
+		_captured_kit().transpose(semitones=-1)
+
+
+def test_a_captured_drum_still_refuses_to_invert () -> None:
+
+	"""Mirroring moves pitches, so it meets the same refusal."""
+
+	with pytest.raises(TypeError, match="kick"):
+		_captured_kit().invert()
+
+
+def test_a_captured_melody_varies_freely () -> None:
+
+	"""The guard is about drums — pitched content is untouched by it."""
+
+	p = _builder()
+	p.motif(M.notes([60, 64, 67], beats=[0.0, 1.0, 2.0], durations=0.5))
+
+	varied = p.capture(beat=0.0, span=4.0).vary(notes=1, seed=4)
+
+	assert [e.pitch for e in varied.events] != [60, 64, 67]
+
+
+def test_re_pitching_a_captured_drum_drops_its_provenance () -> None:
+
+	"""pitched() replaces the spec outright, so the kick rhythm becomes a bass line."""
+
+	line = _captured_kit().pitched(36)
+
+	assert [e.origin for e in line.events] == [None, None]
+	assert [e.pitch for e in line.transpose(semitones=-1).events] == [35, 35]
+
+
+def test_stripping_pitches_drops_provenance_too () -> None:
+
+	"""A rhythmic skeleton has no instrument left to protect."""
+
+	assert [e.origin for e in _captured_kit().rhythm().events] == [None, None]
+
+
+def test_capture_describes_the_instrument_not_the_number () -> None:
+
+	"""A musician reads back what they played, not what the kit resolved it to."""
+
+	assert "kick@0" in _captured_kit().describe()
+
+
+def test_a_captured_drum_replaces_identically () -> None:
+
+	"""Provenance changes what may move — never what sounds."""
+
+	source = _drum_builder()
+	source.motif(M.hits("kick", beats=[0.0]).stack(M.hits("snare", beats=[1.0])))
+
+	replay = _drum_builder()
+	replay.motif(source.capture(beat=0.0, span=4.0))
+
+	assert _placed(replay) == _placed(source)
+
+
+# Every public Motif method that returns a Motif, with arguments that exercise it.
+# The sweep below asserts this table is complete, so a new pitch-moving method
+# cannot arrive without somebody deciding what it does to a captured drum.
+_MOTIF_OPERATIONS = {
+	"accent":        lambda m: m.accent(0.0),
+	"answer":        lambda m: m.answer(),
+	"invert":        lambda m: m.invert(),
+	"pitched":       lambda m: m.pitched(60),
+	"quantize":      lambda m: m.quantize(0.25),
+	"reverse":       lambda m: m.reverse(),
+	"rhythm":        lambda m: m.rhythm(),
+	"rotate":        lambda m: m.rotate(1.0),
+	"slice":         lambda m: m.slice(0.0, 2.0),
+	"stack":         lambda m: m.stack(M.notes([72], beats=[0.5], durations=0.25)),
+	"stretch":       lambda m: m.stretch(2.0),
+	"then":          lambda m: m.then(M.notes([72], beats=[0.5], durations=0.25)),
+	"transpose":     lambda m: m.transpose(semitones=1),
+	"vary":          lambda m: m.vary(notes=1, seed=4),
+	"with_velocity": lambda m: m.with_velocity(90),
+}
+
+
+def test_the_operation_sweep_covers_every_motif_method () -> None:
+
+	"""The table is the test's reach — an uncovered method would be an untested one."""
+
+	returns_motif = {
+		name
+		for name, member in vars(subsequence.Motif).items()
+		if not name.startswith("_")
+		and not isinstance(member, (classmethod, staticmethod))
+		and callable(member)
+		and typing.get_type_hints(member).get("return") is subsequence.Motif
+	}
+
+	assert returns_motif == set(_MOTIF_OPERATIONS)
+
+
+@pytest.mark.parametrize("operation", sorted(_MOTIF_OPERATIONS))
+def test_no_operation_moves_a_captured_drum (operation: str) -> None:
+
+	"""The invariant, read both ways: a drum's pitch and its name stay together.
+
+	Anything that moves a drum's pitch must refuse instead; anything that
+	legitimately re-pitches (``pitched``, ``rhythm``) must let the origin go
+	with the old spec.  The second direction matters as much as the first —
+	an operation that quietly dropped the origin would leave the *next* one
+	free to transpose a kick, and would satisfy a one-way check vacuously.
+	"""
+
+	sounds = {"kick": 36, "snare": 38}
+
+	try:
+		result = _MOTIF_OPERATIONS[operation](_captured_kit())
+	except TypeError:
+		return
+
+	assert len(result.events) >= 2, f"{operation} lost the events this is about"
+
+	for event in result.events:
+		if event.origin is not None:
+			assert event.pitch == sounds[event.origin], f"{operation} moved {event.origin}"
+		if event.pitch in sounds.values():
+			assert event.origin is not None, f"{operation} dropped the drum name from {event.pitch}"
 
 
 # ── threading + metric weights ──────────────────────────────────────────────

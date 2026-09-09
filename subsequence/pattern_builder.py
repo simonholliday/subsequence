@@ -1330,6 +1330,12 @@ class PatternBuilder(
 		gestures are not captured.  The round trip is generate → place →
 		capture → hand-edit → rebind.
 
+		A named drum is the exception: its name rides along beside the number
+		as the event's ``origin``, so :meth:`~subsequence.motifs.Motif.vary`,
+		:meth:`~subsequence.motifs.Motif.transpose` and
+		:meth:`~subsequence.motifs.Motif.invert` go on refusing it — a varied
+		kick is a different instrument, not a variation.
+
 		Parameters:
 			beat: Window start within the pattern.
 			span: Window length in beats (also the captured motif's length).
@@ -1350,6 +1356,7 @@ class PatternBuilder(
 					pitch = placed.pitch,
 					velocity = placed.velocity,
 					duration = max(placed.duration, 1) / ppq,
+					origin = placed.origin,
 				))
 
 		return subsequence.motifs.Motif(events=tuple(events), length=span)
