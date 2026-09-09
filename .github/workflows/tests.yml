@@ -29,6 +29,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # python-rtmidi ships no wheel for every interpreter here — 3.14 builds it
+      # from source — and that build needs ALSA present or it fails at metadata
+      # generation, before a single test has run. Unconditional rather than
+      # matched to a version, because which interpreters have a wheel is a fact
+      # about somebody else's release schedule.
+      - name: Install the ALSA headers python-rtmidi builds against
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
