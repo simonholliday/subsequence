@@ -18,11 +18,19 @@ The shape is fixed by agreement with the consumer, so treat it as a contract:
       "partial": False,
       "parameters": [
         {"name": "density", "kind": "number", "label": "density",
-         "min": 0.0, "max": 1.0, "default": 0.3},
+         "min": 0.0, "max": 1.0, "required": False, "default": 0.3},
         ...
       ],
       "dropped": [],
     }
+
+Every parameter carries ``required``, and ``default`` whenever there is one —
+``None`` included, which reaches a consumer as JSON ``null``.  So a required
+parameter with no default means supply something; an optional one defaulting
+to ``null`` means leave it alone, because ``None`` is what tells the function
+to decide for itself; and an optional one with a value means open the control
+there.  Nothing is left to be inferred from the order parameters happen to
+appear in (#2249, #2099).
 
 ``partial`` says a *required* parameter has no shape — a list, a dict, a
 callable — so the generator cannot be fully offered.  It is reported rather
@@ -290,6 +298,41 @@ def _literal_options (annotation: typing.Any) -> typing.Optional[typing.List[str
 	return None
 
 
+def _finished (
+	entry: typing.Dict[str, typing.Any],
+	parameter: inspect.Parameter,
+) -> typing.Dict[str, typing.Any]:
+
+	"""Stamp *entry* with whether it must be supplied, and what it falls back to.
+
+	``required`` is said outright rather than inferred.  A consumer used to read
+	it from position — Python puts undefaulted parameters first, so everything
+	before the first entry carrying a ``default`` was required — and that breaks
+	the moment a ``None``-defaulting parameter comes first, which is most of
+	them (#2249, #2099).  It is also simply a fact this module knows, and
+	inference is how a consumer ends up holding a second copy of it.
+
+	``default`` is emitted whenever there is one, **including ``None``**, which
+	reaches a consumer as JSON ``null``.  The two states it used to conflate
+	want opposite treatment: with no default the call fails unless a value is
+	supplied, while ``None`` is often the value that tells the function to
+	decide for itself — a grid, a length, a root — so the right move is to leave
+	it alone.  Sending ``null`` also lets a surface open a control at the value
+	the function would have used.
+
+	A tuple default becomes a list: JSON has no tuple, and a consumer handing
+	one back is the case that made every range control undrivable (#2349).
+	"""
+
+	value = parameter.default
+	entry["required"] = value is inspect.Parameter.empty
+
+	if not entry["required"]:
+		entry["default"] = list(value) if isinstance(value, tuple) else value
+
+	return entry
+
+
 def _describe_parameter (
 	name: str,
 	parameter: inspect.Parameter,
@@ -299,9 +342,6 @@ def _describe_parameter (
 	"""One parameter as a control, or None when its type maps to no shape."""
 
 	label = name.replace("_", " ")
-	default = parameter.default
-	has_default = default is not inspect.Parameter.empty
-
 	bare = _strip_optional(annotation)
 	entry: typing.Dict[str, typing.Any] = {"name": name, "label": label}
 
@@ -319,32 +359,24 @@ def _describe_parameter (
 		# control, so it degrades rather than breaks.
 		if several:
 			entry["multiple"] = True
-		if has_default and default is not None:
-			entry["default"] = default
-		return entry
+		return _finished(entry, parameter)
 
 	options = _literal_options(bare)
 
 	if options is not None:
 		entry["kind"] = "choice"
 		entry["options"] = [{"value": o, "label": o.replace("_", " ")} for o in options]
-		if has_default and default is not None:
-			entry["default"] = default
-		return entry
+		return _finished(entry, parameter)
 
 	if _is_range(bare):
 		entry["kind"] = "range"
 		entry["min"] = 1
 		entry["max"] = 127
-		if has_default and default is not None:
-			entry["default"] = list(default) if isinstance(default, tuple) else default
-		return entry
+		return _finished(entry, parameter)
 
 	if bare is bool:
 		entry["kind"] = "switch"
-		if has_default and default is not None:
-			entry["default"] = default
-		return entry
+		return _finished(entry, parameter)
 
 	if bare is int or bare is float:
 		entry["kind"] = "number"
@@ -356,9 +388,7 @@ def _describe_parameter (
 		# it is left for the consumer to choose rather than invented here.
 		if bare is int:
 			entry["step"] = 1
-		if has_default and default is not None:
-			entry["default"] = default
-		return entry
+		return _finished(entry, parameter)
 
 	span = _span_of(annotation)
 
@@ -366,9 +396,7 @@ def _describe_parameter (
 		entry["kind"] = "number"
 		entry["min"] = span.low
 		entry["max"] = span.high
-		if has_default and default is not None:
-			entry["default"] = default
-		return entry
+		return _finished(entry, parameter)
 
 	return None
 
@@ -435,7 +463,8 @@ def describe_generator (name: str) -> typing.Dict[str, typing.Any]:
 
 	Returns:
 		A dict with ``name``, ``summary``, ``partial``, ``parameters`` and
-		``dropped`` — see this module's contract.
+		``dropped`` — see this module's contract.  Each parameter says whether
+		it is ``required`` and what it defaults to.
 
 	Raises:
 		ValueError: if *name* is not a declared generator.  A transform is

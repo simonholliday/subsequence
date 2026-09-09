@@ -6,6 +6,7 @@ A change that breaks one of them is a change somebody else has to hear about.
 """
 
 import inspect
+import json
 import typing
 
 import pytest
@@ -516,6 +517,80 @@ def test_nothing_is_both_offered_and_dropped () -> None:
 
 
 # ---------------------------------------------------------------------------
+# required and default — the bit that used to be inferred (#2249)
+# ---------------------------------------------------------------------------
+
+def test_every_parameter_says_whether_it_is_required () -> None:
+
+	"""Said outright rather than left to be worked out from position.
+
+	A consumer used to read it from order — Python puts undefaulted parameters
+	first — and that is a copy of a fact this module already knows.
+	"""
+
+	for entry in _every_entry():
+
+		for parameter in entry["parameters"]:
+			assert isinstance(parameter["required"], bool), (entry["name"], parameter["name"])
+
+
+def test_required_and_default_partition_cleanly () -> None:
+
+	"""Required means no default; optional means there is one, even if it is None."""
+
+	for entry in _every_entry():
+
+		for parameter in entry["parameters"]:
+
+			if parameter["required"]:
+				assert "default" not in parameter, (entry["name"], parameter["name"])
+			else:
+				assert "default" in parameter, (entry["name"], parameter["name"])
+
+
+def test_a_none_default_is_reported_rather_than_omitted () -> None:
+
+	"""The flagship case: `rotate(steps, grid=None)`.
+
+	Both parameters used to look identical in the JSON, so a consumer marked
+	both required and opened `grid` at 0 — and `rotate` returns early on a grid
+	of 0, so the first transform anybody reaches for did nothing at all.
+	"""
+
+	steps = _parameter_of("rotate", "steps", subsequence.describe_transform)
+	grid = _parameter_of("rotate", "grid", subsequence.describe_transform)
+
+	assert steps["required"] is True and "default" not in steps
+	assert grid["required"] is False and grid["default"] is None
+
+
+def test_a_none_default_survives_the_wire () -> None:
+
+	"""It reaches a consumer as JSON null, which is the whole point."""
+
+	wire = json.loads(json.dumps(subsequence.describe_transform("rotate")))
+	grid = next(p for p in wire["parameters"] if p["name"] == "grid")
+
+	assert grid["default"] is None
+
+
+def test_the_verbs_that_refuse_a_voicing_argument_now_ask_for_nothing () -> None:
+
+	"""#2240 made `chord` refuse `root` alongside a plain pitch list — rightly.
+
+	A consumer filling every parameter that looked required then tripped that
+	check every cycle.  With `root` reported optional-and-null there is nothing
+	to fill.
+	"""
+
+	for name in ("chord", "strum", "arpeggio"):
+		for field in ("root", "count"):
+			parameter = _parameter_of(name, field, subsequence.describe_generator)
+			assert parameter["required"] is False, (name, field)
+			assert parameter["default"] is None, (name, field)
+
+
+# ---------------------------------------------------------------------------
 # transforms — the other half of the line
 # ---------------------------------------------------------------------------
 
@@ -799,6 +874,29 @@ def _note_count (builder: subsequence.pattern_builder.PatternBuilder) -> int:
 		sum(len(step.notes) for step in builder._pattern.steps.values())
 		+ len(builder._pattern.raw_note_events)
 	)
+
+
+def _every_entry () -> typing.List[typing.Dict[str, typing.Any]]:
+
+	"""Both catalogues, since the describer and its contract are shared."""
+
+	return subsequence.generators() + subsequence.transforms()
+
+
+def _parameter_of (
+	name: str,
+	field: str,
+	describer: typing.Callable[[str], typing.Dict[str, typing.Any]],
+) -> typing.Dict[str, typing.Any]:
+
+	"""One named parameter of one entry, from whichever catalogue it is in."""
+
+	for parameter in describer(name)["parameters"]:
+
+		if parameter["name"] == field:
+			return parameter
+
+	raise AssertionError(f"{name} has no parameter {field!r}")
 
 
 def _parameter (generator: str, name: str) -> typing.Dict[str, typing.Any]:
