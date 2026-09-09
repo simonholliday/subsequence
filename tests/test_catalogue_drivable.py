@@ -69,6 +69,10 @@ def _opening (parameter: typing.Dict[str, typing.Any]) -> typing.Any:
 		# A list, not a tuple: JSON has no tuple, and this is the only shape a
 		# consumer can actually send.
 		return [parameter["min"], parameter["max"]]
+	if kind == "chord":
+		# A name, not a Chord: an object does not cross a wire either, so this
+		# is built the way a surface builds it — a root joined to a quality.
+		return parameter["chord"]["roots"][0]["value"] + parameter["chord"]["qualities"][0]["value"]
 
 	raise AssertionError(f"no opening value for kind {kind!r}")
 

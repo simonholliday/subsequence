@@ -751,6 +751,131 @@ def test_a_chord_of_nothing_rests () -> None:
 	assert pattern.steps == {}
 
 
+# ── a chord by name, the form a wire can carry (#2375) ──────────────────────
+
+@pytest.fixture
+def a_registered_quality () -> typing.Iterator[str]:
+
+	"""A custom quality for the run of one test, then the tables as they were.
+
+	Registration is module-global, so leaving one behind would change what the
+	catalogue enumerates for every test after it.
+	"""
+
+	intervals = dict(subsequence.chords.CHORD_INTERVALS)
+	suffixes = dict(subsequence.chords.CHORD_SUFFIX)
+	parses = dict(subsequence.chords._SUFFIX_TO_QUALITY)
+
+	subsequence.chords.register_chord_quality("quartal", [0, 5, 10], suffix="q4")
+
+	yield "q4"
+
+	for table, before in (
+		(subsequence.chords.CHORD_INTERVALS, intervals),
+		(subsequence.chords.CHORD_SUFFIX, suffixes),
+		(subsequence.chords._SUFFIX_TO_QUALITY, parses),
+	):
+		table.clear()
+		table.update(before)
+
+
+def test_a_chord_name_voices_the_chord_it_names () -> None:
+
+	"""A Chord is a Python object; a name is what a control surface can send."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.chord("Cmaj7", root=48, duration=1.0)
+
+	assert sorted(note.pitch for note in pattern.steps[0].notes) == [48, 52, 55, 59]
+
+
+def test_a_chord_name_keeps_its_own_root_and_takes_root_as_a_register () -> None:
+
+	"""root= anchors the register; the name decides which chord (#2375).
+
+	Dm7 asked for around C3 lands on D3 — the nearest D — not on C.  Reading
+	root= as the chord's root would silently transpose every named chord.
+	"""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.chord("Dm7", root=48, duration=1.0)
+
+	assert sorted(note.pitch for note in pattern.steps[0].notes) == [50, 53, 57, 60]
+
+
+@pytest.mark.parametrize("verb", ["chord", "strum", "arpeggio"])
+def test_every_chord_verb_takes_a_name (verb: str) -> None:
+
+	"""One resolver serves all three, so none of them can be left behind."""
+
+	pattern, builder = _make_builder(length=4)
+
+	getattr(builder, verb)("Cmaj7", root=48)
+
+	assert {note.pitch for step in pattern.steps.values() for note in step.notes} == {48, 52, 55, 59}
+
+
+def test_broken_chord_takes_a_name_too () -> None:
+
+	"""It indexes chord tones, so a name is the only wire-shaped way to drive it."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.broken_chord("Cmaj7", root=48, order=[0, 2, 1], spacing=1.0)
+
+	positions = sorted(pattern.steps)[:3]
+
+	assert [pattern.steps[p].notes[0].pitch for p in positions] == [48, 55, 52]
+
+
+def test_broken_chord_handed_pitches_says_what_is_wrong () -> None:
+
+	"""It used to raise AttributeError on a list — an internal name, not an answer."""
+
+	_, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="only apply to the chord form"):
+		builder.broken_chord([60, 64, 67], root=48, order=[0, 1])
+
+
+def test_a_chord_name_still_needs_a_root () -> None:
+
+	"""A name carries a pitch class, not a register — same rule as a Chord."""
+
+	_, builder = _make_builder(length=4)
+
+	with pytest.raises(ValueError, match="needs a root"):
+		builder.chord("Cmaj7")
+
+
+def test_an_unreadable_chord_name_says_so_at_the_call_site () -> None:
+
+	"""It must not fall through to being read as a sequence of drum names.
+
+	Before #2375 a bare string was a Sequence[Pitch], so "Cmaj7" was five
+	characters looked up as drum voices: a rest and five log lines on a kit,
+	and a message about drum maps everywhere else.
+	"""
+
+	_, builder = _make_builder(length=4, drum_note_map={"kick": 36})
+
+	with pytest.raises(ValueError, match="Cannot parse chord name"):
+		builder.chord("Zx9", root=48)
+
+
+def test_a_registered_quality_can_be_named (a_registered_quality: str) -> None:
+
+	"""register_chord_quality opens the table, so a name using it must voice."""
+
+	pattern, builder = _make_builder(length=4)
+
+	builder.chord(f"C{a_registered_quality}", root=48, duration=1.0)
+
+	assert sorted(note.pitch for note in pattern.steps[0].notes) == [48, 53, 58]
+
+
 def test_arpeggio_accepts_any_sequence_of_pitches () -> None:
 
 	"""The annotation promises ``Sequence``, so a tuple has to work (#2155).

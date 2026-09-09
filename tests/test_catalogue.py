@@ -14,14 +14,13 @@ import pytest
 import subsequence
 import subsequence.chords
 import subsequence.declarations
-import subsequence.chords
 import subsequence.easing
 import subsequence.pattern
 import subsequence.catalogue
 import subsequence.pattern_builder
 
 
-VALID_KINDS = {"switch", "number", "choice", "range", "pitch"}
+VALID_KINDS = {"switch", "number", "choice", "range", "pitch", "chord"}
 
 
 # ---------------------------------------------------------------------------
@@ -799,16 +798,160 @@ def test_broken_chord_stays_partial_for_its_own_reason () -> None:
 
 	"""Its `order` is a step list, which maps to no control shape.
 
-	Left alone deliberately: widening its first argument would have meant
-	either reordering its parameters — breaking every positional caller — or
-	giving `order` a default it does not have, which would report the method
-	complete while dropping something it genuinely requires.
+	Its first argument is declared now (#2375), so `chord_obj` has left
+	`dropped` — but `order` is required and has no shape, and giving it a
+	default it does not have would report the method complete while dropping
+	something it genuinely needs.  So the blocker moved rather than went.
 	"""
 
 	entry = subsequence.describe_generator("broken_chord")
 
 	assert entry["partial"] is True
-	assert "order" in entry["dropped"]
+	assert entry["dropped"] == ["order"]
+
+
+# ---------------------------------------------------------------------------
+# The chord arm (#2375)
+# ---------------------------------------------------------------------------
+
+CHORD_VERBS = {"arpeggio": "notes", "chord": "chord_obj", "strum": "chord_obj"}
+
+
+@pytest.fixture
+def a_registered_quality () -> typing.Iterator[str]:
+
+	"""Register a quality for one test, then put the tables back.
+
+	The tables are module-global and the catalogue reads them live, so a
+	quality left behind would change what every later test is offered.
+	"""
+
+	before = (
+		dict(subsequence.chords.CHORD_INTERVALS),
+		dict(subsequence.chords.CHORD_SUFFIX),
+		dict(subsequence.chords._SUFFIX_TO_QUALITY),
+	)
+
+	subsequence.chords.register_chord_quality("quartal", [0, 5, 10], suffix="q4")
+
+	yield "q4"
+
+	for table, restored in zip(
+		(subsequence.chords.CHORD_INTERVALS, subsequence.chords.CHORD_SUFFIX, subsequence.chords._SUFFIX_TO_QUALITY),
+		before,
+	):
+		table.clear()
+		table.update(restored)
+
+
+@pytest.mark.parametrize("name,parameter", sorted(CHORD_VERBS.items()))
+def test_a_chord_verb_says_it_takes_a_chord (name: str, parameter: str) -> None:
+
+	"""The Chord arm used to vanish into the pool arm, so no surface could offer it."""
+
+	entry = subsequence.describe_generator(name)
+	first = entry["parameters"][0]
+
+	assert first["name"] == parameter
+	assert first["kind"] == "pitch"
+	assert first["multiple"] is True
+	assert first["accepts"] == ["chord", "pitches"]
+	assert first["chord"]["roots"] and first["chord"]["qualities"]
+
+
+def test_a_pool_only_generator_does_not_claim_a_chord () -> None:
+
+	"""The whole point: the ten that really do take only a list must stay apart.
+
+	If `accepts` appeared on everything with a pitch pool it would carry no
+	information at all, which is the state this ticket was filed about.
+	"""
+
+	pool_only = [
+		entry["name"]
+		for entry in subsequence.generators()
+		for p in entry["parameters"][:1]
+		if p.get("kind") == "pitch" and p.get("multiple") and entry["name"] not in CHORD_VERBS
+	]
+
+	assert pool_only, "no pool-only generator left to compare against"
+
+	for name in pool_only:
+		first = subsequence.describe_generator(name)["parameters"][0]
+		assert "accepts" not in first, name
+		assert "chord" not in first, name
+
+
+def test_broken_chord_declares_a_chord_only_control () -> None:
+
+	"""It indexes chord tones, so there is no pool arm to fall back to.
+
+	Declaring it a pitch pool would have handed a consumer a control that
+	raises rather than one that is merely coarse — so it gets a kind of its
+	own, and `accepts` says the pool form is not on offer.
+	"""
+
+	first = subsequence.describe_generator("broken_chord")["parameters"][0]
+
+	assert first["name"] == "chord_obj"
+	assert first["kind"] == "chord"
+	assert first["accepts"] == ["chord"]
+	assert "multiple" not in first
+
+
+def test_the_chord_vocabulary_composes_into_a_name_that_works () -> None:
+
+	"""Every root joined to every quality must parse *and* place.
+
+	Publishing two lists is only useful if joining them gives a value these
+	verbs accept — a vocabulary that describes something unusable is the
+	failure this ticket was about, one level further in.
+	"""
+
+	vocabulary = subsequence.describe_generator("chord")["parameters"][0]["chord"]
+
+	for root in vocabulary["roots"]:
+		for quality in vocabulary["qualities"]:
+
+			name = root["value"] + quality["value"]
+			pattern = subsequence.pattern.Pattern(channel=0, length=4)
+			builder = subsequence.pattern_builder.PatternBuilder(pattern, cycle=0, key="C", scale="major")
+
+			builder.chord(name, root=48, duration=1.0)
+
+			assert pattern.steps[0].notes, name
+
+
+def test_the_chord_vocabulary_is_read_live (a_registered_quality: str) -> None:
+
+	"""register_chord_quality opens the table, so the catalogue must not freeze it.
+
+	A musician who adds a quality should see it on the glass; a frozen list
+	would be a second copy of somebody else's table, which is the thing this
+	whole catalogue exists to avoid.
+	"""
+
+	offered = {q["value"] for q in subsequence.describe_generator("chord")["parameters"][0]["chord"]["qualities"]}
+
+	assert a_registered_quality in offered
+
+
+def test_a_quality_with_no_suffix_is_not_offered () -> None:
+
+	"""It has no name, and a name is the only thing this list is for."""
+
+	before = dict(subsequence.chords.CHORD_INTERVALS), dict(subsequence.chords.CHORD_SUFFIX)
+
+	subsequence.chords.register_chord_quality("nameless_stack", [0, 5, 10])
+
+	try:
+		offered = subsequence.describe_generator("chord")["parameters"][0]["chord"]["qualities"]
+		assert all(q["label"] != "nameless stack" for q in offered)
+	finally:
+		subsequence.chords.CHORD_INTERVALS.clear()
+		subsequence.chords.CHORD_INTERVALS.update(before[0])
+		subsequence.chords.CHORD_SUFFIX.clear()
+		subsequence.chords.CHORD_SUFFIX.update(before[1])
 
 
 def test_an_optional_unshaped_parameter_does_not_make_it_partial () -> None:

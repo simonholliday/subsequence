@@ -8,7 +8,7 @@ in the code that owns them.
 **This module describes; it does not draw.**  Nothing here knows about any
 particular consumer, and the return value is plain dicts and lists — no classes
 to import, no protocol to satisfy.  A parameter whose type maps to none of the
-five control shapes is simply left out.
+control shapes is simply left out.
 
 The shape is fixed by agreement with the consumer, so treat it as a contract:
 
@@ -31,6 +31,28 @@ to ``null`` means leave it alone, because ``None`` is what tells the function
 to decide for itself; and an optional one with a value means open the control
 there.  Nothing is left to be inferred from the order parameters happen to
 appear in (#2249, #2099).
+
+A parameter that accepts a **chord** says so, because the chord arm of a
+``Chord | Sequence[Pitch]`` union used to vanish into the pool arm and no
+surface could tell it from one that really only takes a list (#2375):
+
+    {"name": "notes", "kind": "pitch", "multiple": True,
+     "accepts": ["chord", "pitches"],
+     "chord": {"roots":     [{"value": "C",  "label": "C"}, ...],
+               "qualities": [{"value": "m7", "label": "minor 7th"}, ...]}}
+
+``accepts`` names the forms; ``chord`` carries what the chord form needs.  A
+name is a root joined to a quality suffix — ``"C" + "m7"`` — which is what
+these parameters take, and it is a *name* rather than a ``Chord`` because an
+object does not cross a wire (the same lesson as the range control that could
+only be sent as a JSON array, #2349).  A consumer that ignores both keys
+renders the pitch pool it rendered before, so this is additive.
+
+``kind: "chord"`` is the one place that is not additive: it means the
+parameter takes a chord and **nothing else**, so there is no pool arm to fall
+back to.  ``broken_chord`` is the case — it indexes chord tones, and a pitch
+list has nothing to index — and declaring it a pool would hand a consumer a
+control that raises rather than one that is merely coarse.
 
 ``partial`` says a *required* parameter has no shape — a list, a dict, a
 callable — so the generator cannot be fully offered.  It is reported rather
@@ -65,6 +87,7 @@ import inspect
 import math
 import typing
 
+import subsequence.chords
 import subsequence.declarations
 import subsequence.pattern_builder
 
@@ -272,6 +295,44 @@ def _pitch_arity (annotation: typing.Any) -> typing.Optional[bool]:
 	return False if takes_one else None
 
 
+def _takes_chord (annotation: typing.Any) -> bool:
+
+	"""True when one of *annotation*'s arms is a :class:`~subsequence.chords.Chord`."""
+
+	return any(arm is subsequence.chords.Chord for arm in typing.get_args(annotation))
+
+
+def _chord_vocabulary () -> typing.Dict[str, typing.List[typing.Dict[str, str]]]:
+
+	"""The two halves of a chord name, so a surface can offer one.
+
+	A name is a root followed by a quality suffix — ``"C"`` + ``"maj7"`` — which
+	is what :func:`~subsequence.chords.parse_chord` reads and what
+	``Chord.name()`` writes, so joining one choice from each list gives a value
+	these parameters accept.
+
+	Both are read **at call time rather than frozen**, because
+	:func:`~subsequence.chords.register_chord_quality` opens the quality table:
+	a musician who registers a quality should see it on the glass rather than
+	discover it is invisible.  Two calls can therefore differ, which is
+	deliberate.  A quality registered without a suffix is absent here, because
+	a chord name is the only thing this list is for and such a quality has no
+	name to give.
+
+	The orders are the tables' own — chromatic for roots, and the order the
+	qualities were written in — because both are read by a musician scrolling
+	a picker, and a registered quality lands at the end where its author looks.
+	"""
+
+	return {
+		"roots": [{"value": name, "label": name} for name in subsequence.chords.NOTE_NAME_TO_PC],
+		"qualities": [
+			{"value": suffix, "label": quality.replace("_", " ")}
+			for quality, suffix in subsequence.chords.CHORD_SUFFIX.items()
+		],
+	}
+
+
 def _is_range (annotation: typing.Any) -> bool:
 
 	"""True when *annotation* offers a ``Tuple[int, int]`` arm — a low/high pair."""
@@ -375,6 +436,21 @@ def _describe_parameter (
 		# control, so it degrades rather than breaks.
 		if several:
 			entry["multiple"] = True
+		if _takes_chord(bare):
+			# The pool arm is still what an unaware consumer draws, so this is
+			# additive: it degrades to today's control rather than breaking.
+			entry["accepts"] = ["chord", "pitches"]
+			entry["chord"] = _chord_vocabulary()
+		return _finished(entry, parameter)
+
+	if _takes_chord(bare):
+		# Chord-only — broken_chord() indexes chord tones, so a pitch list has
+		# nothing to index and voicing a name is the only way to drive it.
+		# Declaring it as a pool would break a consumer that ignored the
+		# difference, which is why it gets a kind rather than a footnote.
+		entry["kind"] = "chord"
+		entry["accepts"] = ["chord"]
+		entry["chord"] = _chord_vocabulary()
 		return _finished(entry, parameter)
 
 	options = _literal_options(bare)

@@ -1527,6 +1527,7 @@ class PatternBuilder(
 		self,
 		notes: typing.Union[
 			subsequence.chords.Chord,
+			str,
 			typing.Sequence[subsequence.declarations.Pitch],
 		],
 		root: typing.Optional[int] = None,
@@ -1567,9 +1568,11 @@ class PatternBuilder(
 			p.arpeggio(p.held_notes(), direction="up")
 
 		Parameters:
-			notes: A chord to arpeggiate (anything with a ``.tones()`` method — the
-				pattern's ``chord``, or a chord from ``p.progression()``), or a list
-				of MIDI note numbers (e.g. ``60``) / drum-name strings when the
+			notes: A chord to arpeggiate — anything with a ``.tones()`` method (the
+				pattern's ``chord``, or a chord from ``p.progression()``), or a
+				chord *name* like ``"Cmaj7"``, which is the form a control
+				surface can send — or a list of MIDI note numbers (e.g. ``60``)
+				/ drum-name strings when the
 				pattern has a ``drum_note_map``.  For pitched note *names* use the
 				integer constants in ``subsequence.constants.midi_notes`` (e.g.
 				``notes.C4``).  In the list form, a drum name the map lacks is
@@ -1622,23 +1625,14 @@ class PatternBuilder(
 		if spacing <= 0:
 			raise ValueError("Spacing must be positive")
 
-		# Resolve the first argument into a concrete pitch list.  A chord-like object
-		# (it has .tones()) is voiced via root/count/inversion exactly as chord() does;
-		# anything else is treated as an explicit list of pitches (today's behaviour).
-		resolved: typing.List[int]
+		# A chord — an object with .tones(), or a name like "Cmaj7" — is voiced via
+		# root/count/inversion; anything else is an explicit list of pitches.
+		resolved: typing.List[int] = self._pitches_from("arpeggio", notes, root, inversion, count)
 
-		if hasattr(notes, "tones"):
-			if root is None:
-				raise ValueError("arpeggio(<chord>, …) needs a root — e.g. arpeggio(chord, root=48); pass a root MIDI note, or hand a list of pitches instead")
-			resolved = notes.tones(root=root, inversion=inversion, count=count)
-		else:
-			if root is not None or count is not None or inversion != 0:
-				raise ValueError("arpeggio root=, count=, and inversion= only apply to the chord form — arpeggio(chord, root=48, count=4); with a plain pitch list, drop them")
-			if not notes:
-				return self	# nothing held (e.g. p.arpeggio(p.held_notes()) with no keys down) — rest
-			resolved = [r for r in (self._resolve_pitch_lenient(p) for p in notes) if r is not None]
-			if not resolved:
-				return self	# every named voice was dropped (this device lacks them all)
+		if not resolved:
+			# Nothing held (p.arpeggio(p.held_notes()) with no keys down), or every
+			# named voice was one this device lacks — either way, a rest.
+			return self
 
 		if direction == "up":
 			pass  # already in ascending order as supplied
@@ -1706,10 +1700,30 @@ class PatternBuilder(
 			method, beat,
 		)
 
+	def _as_chord (self, value: typing.Any) -> typing.Optional[subsequence.chords.Chord]:
+
+		"""The chord *value* is or names, or None when it is a list of pitches.
+
+		A name like ``"Cmaj7"`` is the form a control surface can send — a
+		``Chord`` is a Python object and does not cross a wire — so a string
+		here is read as a chord name rather than as a sequence of pitches.  It
+		could not honestly be the latter: every character would have to be a
+		drum voice, and a one-character voice name is not a thing anybody has.
+		"""
+
+		if isinstance(value, str):
+			return subsequence.chords.parse_chord(value)
+
+		if hasattr(value, "tones"):
+			return typing.cast(subsequence.chords.Chord, value)
+
+		return None
+
+
 	def _pitches_from (
 		self,
 		method: str,
-		value: typing.Union[subsequence.chords.Chord, typing.Sequence[subsequence.declarations.Pitch]],
+		value: typing.Union[subsequence.chords.Chord, str, typing.Sequence[subsequence.declarations.Pitch]],
 		root: typing.Optional[int],
 		inversion: int,
 		count: typing.Optional[int],
@@ -1718,26 +1732,31 @@ class PatternBuilder(
 		"""Voice a chord, or resolve a plain pitch list — the shared first argument.
 
 		``chord()``, ``strum()``, ``broken_chord()`` and ``arpeggio()`` all take
-		"a chord, or the pitches themselves".  A chord-like object (it has
-		``.tones()``) is voiced through ``root``/``inversion``/``count``; a
-		sequence is resolved as pitches, leniently, so a drum name this device
-		cannot voice is dropped rather than raising.
+		"a chord, or the pitches themselves".  A chord — an object with
+		``.tones()``, or a name like ``"Cmaj7"`` — is voiced through
+		``root``/``inversion``/``count``; a sequence is resolved as pitches,
+		leniently, so a drum name this device cannot voice is dropped rather
+		than raising, and those three voicing arguments are refused because
+		they would mean nothing for a list somebody has already chosen.
 
-		May return an empty list — every named voice was one this device lacks.
-		The caller decides what that means; for a placing verb it is a rest.
+		May return an empty list — an empty pool, or every named voice was one
+		this device lacks.  The caller decides what that means; for a placing
+		verb it is a rest.
 		"""
 
-		if hasattr(value, "tones"):
+		chord = self._as_chord(value)
 
-			if root is None:
-				raise ValueError(
-					f"{method}(<chord>, …) needs a root — e.g. {method}(chord, root=48); "
-					"pass a root MIDI note, or hand a list of pitches instead"
-				)
+		if chord is None:
+			self._refuse_voicing_arguments(method, root, inversion, count)
+			return [r for r in (self._resolve_pitch_lenient(p) for p in typing.cast(typing.Sequence[typing.Any], value)) if r is not None]
 
-			return typing.cast(typing.List[int], value.tones(root=root, inversion=inversion, count=count))
+		if root is None:
+			raise ValueError(
+				f"{method}(<chord>, …) needs a root — e.g. {method}(chord, root=48); "
+				"pass a root MIDI note, or hand a list of pitches instead"
+			)
 
-		return [r for r in (self._resolve_pitch_lenient(p) for p in value) if r is not None]
+		return chord.tones(root=root, inversion=inversion, count=count)
 
 
 	def _refuse_voicing_arguments (self, method: str, root: typing.Optional[int], inversion: int, count: typing.Optional[int] = None) -> None:
@@ -1755,7 +1774,7 @@ class PatternBuilder(
 			)
 
 
-	def chord (self, chord_obj: typing.Union[subsequence.chords.Chord, typing.Sequence[subsequence.declarations.Pitch]], root: typing.Optional[int] = None, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
+	def chord (self, chord_obj: typing.Union[subsequence.chords.Chord, str, typing.Sequence[subsequence.declarations.Pitch]], root: typing.Optional[int] = None, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
 
 		"""
 		Place a chord at ``beat`` (the start of the pattern by default).
@@ -1765,11 +1784,12 @@ class PatternBuilder(
 
 		Parameters:
 			chord_obj: The chord to play (usually the ``chord`` parameter
-				passed to your pattern function) — or, exactly as
-				``arpeggio()`` takes it, a plain list of pitches to voice
-				as written: MIDI note numbers, or drum names when the
-				pattern has a ``drum_note_map``.  A name this device
-				cannot voice is dropped (warned once); an empty list rests.
+				passed to your pattern function, or a name like
+				``"Cmaj7"``) — or, exactly as ``arpeggio()`` takes it, a
+				plain list of pitches to voice as written: MIDI note
+				numbers, or drum names when the pattern has a
+				``drum_note_map``.  A name this device cannot voice is
+				dropped (warned once); an empty list rests.
 			root: MIDI root note (e.g., 60 for Middle C).  Required for a
 				chord, and not used for a plain pitch list — passing it
 				with one raises, rather than looking as though it applied.
@@ -1817,9 +1837,6 @@ class PatternBuilder(
 		if beat != 0.0 and (sustain or detached is not None):
 			self._warn_positioned_articulation("chord", beat)
 
-		if not hasattr(chord_obj, "tones"):
-			self._refuse_voicing_arguments("chord", root, inversion, count)
-
 		pitches = self._pitches_from("chord", chord_obj, root, inversion, count)
 
 		if not pitches:
@@ -1844,7 +1861,7 @@ class PatternBuilder(
 			self.legato(legato)
 		return self
 
-	def strum (self, chord_obj: typing.Union[subsequence.chords.Chord, typing.Sequence[subsequence.declarations.Pitch]], root: typing.Optional[int] = None, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, spacing: float = 0.05, direction: subsequence.declarations.StrumDirection = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
+	def strum (self, chord_obj: typing.Union[subsequence.chords.Chord, str, typing.Sequence[subsequence.declarations.Pitch]], root: typing.Optional[int] = None, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, spacing: float = 0.05, direction: subsequence.declarations.StrumDirection = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
 
 		"""
 		Play a chord with a small time offset between each note (strum effect).
@@ -1855,11 +1872,12 @@ class PatternBuilder(
 
 		Parameters:
 			chord_obj: The chord to play (usually the ``chord`` parameter
-				passed to your pattern function) — or, exactly as
-				``arpeggio()`` takes it, a plain list of pitches to voice
-				as written: MIDI note numbers, or drum names when the
-				pattern has a ``drum_note_map``.  A name this device
-				cannot voice is dropped (warned once); an empty list rests.
+				passed to your pattern function, or a name like
+				``"Cmaj7"``) — or, exactly as ``arpeggio()`` takes it, a
+				plain list of pitches to voice as written: MIDI note
+				numbers, or drum names when the pattern has a
+				``drum_note_map``.  A name this device cannot voice is
+				dropped (warned once); an empty list rests.
 			root: MIDI root note (e.g., 60 for Middle C).  Required for a
 				chord, and not used for a plain pitch list — passing it
 				with one raises, rather than looking as though it applied.
@@ -1917,9 +1935,6 @@ class PatternBuilder(
 
 		if direction not in ("up", "down"):
 			raise ValueError(f"direction must be 'up' or 'down', got '{direction}'")
-
-		if not hasattr(chord_obj, "tones"):
-			self._refuse_voicing_arguments("strum", root, inversion, count)
 
 		pitches = self._pitches_from("strum", chord_obj, root, inversion, count)
 
@@ -2001,7 +2016,7 @@ class PatternBuilder(
 			scale = self.scale or "ionian",
 		)
 
-	def broken_chord (self, chord_obj: typing.Any, root: int, order: typing.List[int], spacing: float = 0.25, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0, beat: float = 0.0, span: typing.Optional[float] = None) -> "PatternBuilder":
+	def broken_chord (self, chord_obj: typing.Union[subsequence.chords.Chord, str], root: int, order: typing.List[int], spacing: float = 0.25, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0, beat: float = 0.0, span: typing.Optional[float] = None) -> "PatternBuilder":
 
 		"""
 		Play a chord as an arpeggio in a specific or random order.
@@ -2015,7 +2030,8 @@ class PatternBuilder(
 		Higher indices will cycle into the next octave.
 
 		Parameters:
-			chord_obj: The chord to play (usually from ``p.section.chord``).
+			chord_obj: The chord to play (usually from ``p.section.chord``), or a
+				chord name like ``"Cmaj7"``.
 			root: MIDI root note (e.g., 60 for Middle C).
 			order: List of indices into the chord tones array, dictating playback order.
 			spacing: Time between each note in beats (default 0.25 = 16th note).
@@ -2049,7 +2065,7 @@ class PatternBuilder(
 				raise ValueError("order must contain only non-negative integers")
 
 		required_count = max(order) + 1
-		tones = chord_obj.tones(root=root, inversion=inversion, count=required_count)
+		tones = self._pitches_from("broken_chord", chord_obj, root, inversion, required_count)
 		pitches = [tones[i] for i in order]
 
 		self.arpeggio(notes=pitches, spacing=spacing, velocity=velocity, duration=duration, direction="up", beat=beat, span=span)
