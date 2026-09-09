@@ -39,7 +39,8 @@ surface could tell it from one that really only takes a list (#2375):
     {"name": "notes", "kind": "pitch", "multiple": True,
      "accepts": ["chord", "pitches"],
      "chord": {"roots":     [{"value": "C",  "label": "C"}, ...],
-               "qualities": [{"value": "m7", "label": "minor 7th"}, ...]}}
+               "qualities": [{"value": "m7", "label": "minor 7th"}, ...],
+               "needs":     ["root"]}}
 
 ``accepts`` names the forms; ``chord`` carries what the chord form needs.  A
 name is a root joined to a quality suffix — ``"C" + "m7"`` — which is what
@@ -47,6 +48,15 @@ these parameters take, and it is a *name* rather than a ``Chord`` because an
 object does not cross a wire (the same lesson as the range control that could
 only be sent as a JSON array, #2349).  A consumer that ignores both keys
 renders the pitch pool it rendered before, so this is additive.
+
+``needs`` is the part a flat declaration cannot hold.  ``root`` is
+``required: False, default: None`` because the *pitch-list* form refuses it —
+and the chord form raises without it, so a surface following the ordinary rule
+(a null default means leave it alone) would build a control that fails every
+cycle.  One field cannot say both, so the chord form names what it requires.
+Note that ``root`` there is a **register**: the name has already chosen the
+pitch classes, and the chord voices at the nearest instance of its own root, so
+47 through 50 all give C3.
 
 ``kind: "chord"`` is the one place that is not additive: it means the
 parameter takes a chord and **nothing else**, so there is no pool arm to fall
@@ -302,7 +312,17 @@ def _takes_chord (annotation: typing.Any) -> bool:
 	return any(arm is subsequence.chords.Chord for arm in typing.get_args(annotation))
 
 
-def _chord_vocabulary () -> typing.Dict[str, typing.List[typing.Dict[str, str]]]:
+# What the chord form needs that the flat declaration calls optional.  ``root``
+# is ``Optional[int] = None`` because the *pitch-list* form refuses it — but a
+# chord is voiced through it and ``PatternBuilder._pitches_from`` raises without
+# one, so ``required: false`` is not merely incomplete for the chord form, it is
+# wrong in the form the surface is about to use (#2375).  The requirement lives
+# in a runtime branch and cannot be read off a signature, so it is written here
+# and proved by ``tests/test_catalogue.py`` rather than trusted.
+_CHORD_FORM_NEEDS = ("root",)
+
+
+def _chord_vocabulary (parameters: typing.Iterable[str]) -> typing.Dict[str, typing.Any]:
 
 	"""The two halves of a chord name, so a surface can offer one.
 
@@ -322,7 +342,16 @@ def _chord_vocabulary () -> typing.Dict[str, typing.List[typing.Dict[str, str]]]
 	The orders are the tables' own — chromatic for roots, and the order the
 	qualities were written in — because both are read by a musician scrolling
 	a picker, and a registered quality lands at the end where its author looks.
+
+	``needs`` names the parameters this form requires that the flat declaration
+	calls optional.  Today that is ``root``, which is a **register** rather than
+	a root: the name has already chosen the pitch classes, and the chord is
+	voiced at the nearest instance of its own root to that number, so 47 through
+	50 all give C3.  A surface that draws it beside the root picker without
+	knowing that has two controls named for the same thing.
 	"""
+
+	names = set(parameters)
 
 	return {
 		"roots": [{"value": name, "label": name} for name in subsequence.chords.NOTE_NAME_TO_PC],
@@ -330,6 +359,7 @@ def _chord_vocabulary () -> typing.Dict[str, typing.List[typing.Dict[str, str]]]
 			{"value": suffix, "label": quality.replace("_", " ")}
 			for quality, suffix in subsequence.chords.CHORD_SUFFIX.items()
 		],
+		"needs": [name for name in _CHORD_FORM_NEEDS if name in names],
 	}
 
 
@@ -414,9 +444,14 @@ def _describe_parameter (
 	name: str,
 	parameter: inspect.Parameter,
 	annotation: typing.Any,
+	siblings: typing.Iterable[str] = (),
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
 
-	"""One parameter as a control, or None when its type maps to no shape."""
+	"""One parameter as a control, or None when its type maps to no shape.
+
+	``siblings`` are the other parameter names on the same method, needed only
+	by the chord form, which has to say which of them it requires.
+	"""
 
 	label = name.replace("_", " ")
 	bare = _strip_optional(annotation)
@@ -440,7 +475,7 @@ def _describe_parameter (
 			# The pool arm is still what an unaware consumer draws, so this is
 			# additive: it degrades to today's control rather than breaking.
 			entry["accepts"] = ["chord", "pitches"]
-			entry["chord"] = _chord_vocabulary()
+			entry["chord"] = _chord_vocabulary(siblings)
 		return _finished(entry, parameter)
 
 	if _takes_chord(bare):
@@ -450,7 +485,7 @@ def _describe_parameter (
 		# difference, which is why it gets a kind rather than a footnote.
 		entry["kind"] = "chord"
 		entry["accepts"] = ["chord"]
-		entry["chord"] = _chord_vocabulary()
+		entry["chord"] = _chord_vocabulary(siblings)
 		return _finished(entry, parameter)
 
 	options = _literal_options(bare)
@@ -519,7 +554,7 @@ def _describe (name: str) -> typing.Dict[str, typing.Any]:
 			continue
 
 		annotation = hints.get(parameter_name, parameter.annotation)
-		described = _describe_parameter(parameter_name, parameter, annotation)
+		described = _describe_parameter(parameter_name, parameter, annotation, signature.parameters)
 
 		if described is None:
 			# Name it either way.  A required one also sets partial, because a

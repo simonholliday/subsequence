@@ -899,6 +899,100 @@ def test_broken_chord_declares_a_chord_only_control () -> None:
 	assert "multiple" not in first
 
 
+def _chord_builder () -> "subsequence.pattern_builder.PatternBuilder":
+
+	"""A plain builder for driving a chord verb the way a surface would."""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+
+	return subsequence.pattern_builder.PatternBuilder(pattern, cycle=0, key="C", scale="major")
+
+
+# The extra arguments a verb needs that have nothing to do with the chord form.
+# broken_chord's `order` is required and has no control shape, which is why it
+# stays partial — it is supplied here so the chord form itself can be exercised.
+_BESIDES = {"broken_chord": {"order": [0, 1]}}
+
+# A value a surface could defensibly open each declared need at.  Anything in
+# `needs` without one fails the tests below rather than being skipped.
+_OPENINGS = {"root": 48}
+
+
+@pytest.mark.parametrize("name", sorted(list(CHORD_VERBS) + ["broken_chord"]))
+def test_the_chord_form_names_what_it_requires (name: str) -> None:
+
+	"""`needs` is a claim about a runtime branch, so it is proved rather than trusted.
+
+	`root` is declared `required: false, default: null`, which under #2249's
+	rule means *leave it alone* — and the chord form then refuses the call.
+	One field cannot say both, so the chord block names the difference; this
+	asserts the difference is real, by omitting each named parameter and
+	requiring the failure it promises.
+	"""
+
+	first = subsequence.describe_generator(name)["parameters"][0]
+	needs = first["chord"]["needs"]
+
+	assert needs, f"{name} declares a chord form that needs nothing — is that true?"
+
+	for need in needs:
+		assert need in _OPENINGS, f"no opening value known for {need!r} — teach this test"
+
+	# One at a time, with the others supplied.  Omitting them all together
+	# would pass for a `needs` naming something the code does not require: the
+	# call fails on a different missing argument and the bogus entry survives.
+	for omitted in needs:
+
+		arguments = dict(_BESIDES.get(name, {}))
+		arguments.update({need: _OPENINGS[need] for need in needs if need != omitted})
+
+		with pytest.raises(Exception):
+			getattr(_chord_builder(), name)("Cmaj7", **arguments)
+
+
+@pytest.mark.parametrize("name", sorted(list(CHORD_VERBS) + ["broken_chord"]))
+def test_the_chord_form_works_once_its_needs_are_met (name: str) -> None:
+
+	"""And `needs` is complete: supply what it names and the call goes through.
+
+	The other half of the contract.  A list that named too much would leave a
+	surface unable to open a control it could have opened; this is the test
+	that would notice.
+	"""
+
+	arguments = dict(_BESIDES.get(name, {}))
+	first = subsequence.describe_generator(name)["parameters"][0]
+
+	for need in first["chord"]["needs"]:
+		assert need in _OPENINGS, f"no opening value known for {need!r} — teach this test"
+		arguments[need] = _OPENINGS[need]
+
+	builder = _chord_builder()
+	getattr(builder, name)("Cmaj7", **arguments)
+
+	assert builder._pattern.steps, f"{name} placed nothing with its needs met"
+
+
+def test_root_is_a_register_rather_than_a_root () -> None:
+
+	"""The name chooses the pitch classes; `root` only chooses the octave.
+
+	Pinned because the declaration cannot say it and a surface would otherwise
+	draw two controls named for the same thing.  A chord voices at the nearest
+	instance of its OWN root to the number given, so a range of values collapse
+	onto one voicing.
+	"""
+
+	def voiced (spec: str, root: int) -> typing.List[int]:
+		builder = _chord_builder()
+		builder.chord(spec, root=root, duration=1.0)
+		return sorted(note.pitch for note in builder._pattern.steps[0].notes)
+
+	assert voiced("Cmaj7", 47) == voiced("Cmaj7", 50) == [48, 52, 55, 59]
+	assert voiced("Cmaj7", 55) == [60, 64, 67, 71]
+	assert voiced("Dm7", 48) == [50, 53, 57, 60]
+
+
 def test_the_chord_vocabulary_composes_into_a_name_that_works () -> None:
 
 	"""Every root joined to every quality must parse *and* place.
