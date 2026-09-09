@@ -274,12 +274,19 @@ def test_enough_examples_can_actually_be_run () -> None:
 
 
 @pytest.mark.parametrize("example", RUNNABLE, ids=str)
-def test_a_runnable_example_runs (example: Example) -> None:
+def test_a_runnable_example_runs (example: Example, patch_midi: None) -> None:
 
 	"""The example does what it says: no exception, against a real builder.
 
 	Stronger than the static pass, which only asks whether a method exists —
 	this catches an argument whose *value* stopped being accepted.
+
+	``patch_midi`` is here because ``_UNSAFE`` cannot be complete: it is a list
+	of names somebody thought of, and it missed ``mido.get_output_names()`` in
+	`midi_utils`, which enumerated real ports here and raised on a CI runner
+	with no ALSA at all.  The fake backend covers the whole class — anything
+	that reaches a device — and the name list is left to cover what a fake
+	backend cannot, which is the calls that never return.
 	"""
 
 	namespace = _namespace()
@@ -292,7 +299,7 @@ def test_a_runnable_example_runs (example: Example) -> None:
 
 
 @pytest.mark.parametrize("where,reason", sorted(_NEEDS_MORE_THAN_A_NAMESPACE.items()))
-def test_an_excused_example_still_needs_its_excuse (where: str, reason: str) -> None:
+def test_an_excused_example_still_needs_its_excuse (where: str, reason: str, patch_midi: None) -> None:
 
 	"""An example excused from running must still be unable to run.
 

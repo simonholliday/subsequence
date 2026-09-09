@@ -59,6 +59,30 @@ def test_an_annotation_is_spelled_the_project_way (annotation: typing.Any, expec
 	assert GENERATOR.format_annotation(annotation) == expected
 
 
+@pytest.mark.parametrize("annotation", [
+	typing.Optional[int],
+	typing.Union[float, typing.List[float]],
+	typing.Union[int, str, None],
+	typing.List[typing.Optional[int]],
+	typing.Optional[typing.Dict[str, typing.Union[int, float]]],
+])
+def test_a_union_never_leaks_how_the_interpreter_spells_it (annotation: typing.Any) -> None:
+
+	"""Neither a pipe nor a bare NoneType, whichever Python is running.
+
+	This is the property rather than the spelling, and it is the one that
+	broke: rendering a union by reading its repr looked right on 3.14 and
+	produced `Union[int, str, NoneType]` on 3.10, because only one of those
+	reprs contains a pipe to notice. A union is built here now rather than
+	read, so there is no version-dependent path left to test.
+	"""
+
+	rendered = GENERATOR.format_annotation(annotation)
+
+	assert "|" not in rendered
+	assert "NoneType" not in rendered
+
+
 def test_the_generated_sheet_carries_no_pipe_unions () -> None:
 
 	"""End to end: nothing in the sheet is spelled the interpreter's way.

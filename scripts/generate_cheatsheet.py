@@ -117,22 +117,17 @@ def format_annotation (annotation: typing.Any) -> str:
 	writes ``typing.Optional[X]`` rather than PEP 604 (see the type-hint
 	override in the project notes), so that is the spelling here.
 
-	Only unions diverge, so anything without one is handed straight to the
-	formatter ``str(signature)`` itself uses — every other row stays
-	byte-identical rather than being re-rendered by this.
+	A union is always rendered here rather than read off its repr, because the
+	repr is the thing that moves: 3.10 writes ``Union[int, str, NoneType]``
+	where 3.14 writes ``int | str | None``, and only one of those is the
+	spelling this project uses.  Everything else is handed to the formatter
+	``str(signature)`` itself uses, so rows without a union stay byte-identical
+	rather than being re-rendered by this.
 	"""
-
-	plain = inspect.formatannotation(annotation)
-
-	if "|" not in plain:
-		return plain
 
 	arguments = typing.get_args(annotation)
 
-	if not arguments:
-		return plain
-
-	if typing.get_origin(annotation) in _UNION_ORIGINS:
+	if arguments and typing.get_origin(annotation) in _UNION_ORIGINS:
 
 		# None is pulled out and spelled as Optional however many arms there
 		# are, so a three-arm union does not become the bare NoneType that a
@@ -146,6 +141,12 @@ def format_annotation (annotation: typing.Any) -> str:
 
 		return f"Optional[{rendered}]" if len(present) < len(arguments) else rendered
 
+	plain = inspect.formatannotation(annotation)
+
+	if "|" not in plain or not arguments:
+		return plain
+
+	# A union nested inside a generic — recurse so it is canonicalised too.
 	head = plain.split("[")[0]
 
 	return f"{head}[" + ", ".join(format_annotation(a) for a in arguments) + "]"
