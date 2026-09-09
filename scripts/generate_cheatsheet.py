@@ -15,7 +15,12 @@ import inspect
 import os
 import re
 import sys
+import types
 import typing
+
+# What a union can be spelled as.  ``types.UnionType`` is the PEP 604 ``X | Y``
+# object, which is what newer interpreters build even for a ``typing.Union``.
+_UNION_ORIGINS = (typing.Union, types.UnionType)
 
 # Add the path so we can import subsequence
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -101,20 +106,62 @@ def get_first_line (doc: typing.Optional[str]) -> str:
 	return re.sub(r'^[\s*`-]*', '', first_para).strip()
 
 
+def format_annotation (annotation: typing.Any) -> str:
+
+	"""Render an annotation the way this project spells types, on any interpreter.
+
+	``str(signature)`` follows the running Python: 3.10 prints ``Optional[int]``
+	and 3.14 prints ``int | None`` for the same annotation.  So a sheet
+	generated on one and checked on the other differs in rows nobody touched,
+	which is how the ``--check`` gate failed on its first run.  This project
+	writes ``typing.Optional[X]`` rather than PEP 604 (see the type-hint
+	override in the project notes), so that is the spelling here.
+
+	Only unions diverge, so anything without one is handed straight to the
+	formatter ``str(signature)`` itself uses — every other row stays
+	byte-identical rather than being re-rendered by this.
+	"""
+
+	plain = inspect.formatannotation(annotation)
+
+	if "|" not in plain:
+		return plain
+
+	arguments = typing.get_args(annotation)
+
+	if not arguments:
+		return plain
+
+	if typing.get_origin(annotation) in _UNION_ORIGINS:
+
+		# None is pulled out and spelled as Optional however many arms there
+		# are, so a three-arm union does not become the bare NoneType that a
+		# two-arm special case would leave behind.
+		present = [a for a in arguments if a is not type(None)]
+
+		if len(present) == 1:
+			rendered = format_annotation(present[0])
+		else:
+			rendered = "Union[" + ", ".join(format_annotation(a) for a in present) + "]"
+
+		return f"Optional[{rendered}]" if len(present) < len(arguments) else rendered
+
+	head = plain.split("[")[0]
+
+	return f"{head}[" + ", ".join(format_annotation(a) for a in arguments) + "]"
+
+
 def format_signature (sig: inspect.Signature) -> str:
 
 	"""Format a signature by removing 'self' and type annotations for a cleaner cheat sheet."""
 
-	s = str(sig)
 	ret_part = ""
 
-	if ") -> " in s:
-		# Find the last ") -> " which separates params from return type
-		ret_part = s[s.rfind(") -> ") + 1:]
+	if sig.return_annotation is not inspect.Signature.empty:
 		# Forward-reference annotations ("PatternBuilder") render with their
 		# quote characters — strip them so the sheet shows `-> Groove`, not
 		# the confusing `-> "'Groove'"`.
-		ret_part = ret_part.replace('"', '').replace("'", "")
+		ret_part = " -> " + format_annotation(sig.return_annotation).replace('"', '').replace("'", "")
 
 	params = []
 
