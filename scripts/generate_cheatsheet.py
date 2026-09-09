@@ -3,8 +3,14 @@ Generate ``api-cheatsheet.md`` from the public API's signatures and docstrings.
 
 Run after changing the public API surface so the cheat sheet stays in sync:
 ``python scripts/generate_cheatsheet.py``.
+
+``--check`` writes nothing and exits non-zero if the file on disk is not what
+this would generate, naming what moved.  CI runs that, so the cheat sheet
+cannot go stale while somebody is in a hurry — it was accurate by discipline
+before, which works right up until the day it does not (#2326).
 """
 
+import difflib
 import inspect
 import os
 import re
@@ -294,12 +300,52 @@ def generate_markdown () -> str:
 	return "\n".join(output)
 
 
+def check (path: str, expected: str) -> int:
+
+	"""Report whether the cheat sheet on disk still matches the code.
+
+	Returns a process exit status.  The diff is trimmed rather than printed
+	whole: a signature change is a handful of lines, and a regeneration nobody
+	ran is hundreds — the first is the useful message and the second only
+	needs its size.
+	"""
+
+	if not os.path.exists(path):
+		print(f"{path} does not exist — run: python scripts/generate_cheatsheet.py")
+		return 1
+
+	with open(path) as handle:
+		current = handle.read()
+
+	if current == expected:
+		print(f"{os.path.basename(path)} is up to date")
+		return 0
+
+	diff = list(difflib.unified_diff(
+		current.splitlines(), expected.splitlines(),
+		fromfile=f"{os.path.basename(path)} (on disk)", tofile="generated from the code",
+		lineterm="", n=1,
+	))
+
+	print(f"{os.path.basename(path)} is out of date — run: python scripts/generate_cheatsheet.py")
+	print()
+	print("\n".join(diff[:40]))
+
+	if len(diff) > 40:
+		print(f"... and {len(diff) - 40} more lines")
+
+	return 1
+
+
 if __name__ == "__main__":
 
 	md_content = generate_markdown()
 
 	docs_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 	output_path = os.path.join(docs_dir, 'api-cheatsheet.md')
+
+	if "--check" in sys.argv[1:]:
+		sys.exit(check(output_path, md_content))
 
 	with open(output_path, 'w') as f:
 		f.write(md_content)

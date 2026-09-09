@@ -1518,7 +1518,7 @@ def logistic_map (r: float, steps: int, x0: float = 0.5) -> typing.List[float]:
 		chaos = subsequence.sequence_utils.logistic_map(r=3.7, steps=16)
 		for i, v in enumerate(chaos):
 		    if v > 0.5:
-		        p.hit_steps("snare_2", [i], velocity=round(30 + 50 * v), no_overlap=True)
+		        p.hit_steps("snare_2", [i], velocity=round(30 + 50 * v))
 		```
 	"""
 
@@ -1564,7 +1564,7 @@ def pink_noise (steps: int, sources: int = 16, seed: int = 0) -> typing.List[flo
 		noise = subsequence.sequence_utils.pink_noise(steps=p.grid, seed=p.bar)
 		for i, level in enumerate(noise):
 		    if level > 0.3:
-		        p.hit_steps("hi_hat_closed", [i], velocity=round(40 + 50 * level), no_overlap=True)
+		        p.hit_steps("hi_hat_closed", [i], velocity=round(40 + 50 * level))
 		```
 	"""
 

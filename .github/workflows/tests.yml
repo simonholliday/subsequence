@@ -25,5 +25,8 @@ jobs:
       - name: Check docstring markup
         run: python scripts/check_docstring_markup.py subsequence
 
+      - name: Check the cheat sheet matches the code
+        run: python scripts/generate_cheatsheet.py --check
+
       - name: Run tests
         run: python -m pytest tests/ -q

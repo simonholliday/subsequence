@@ -10,6 +10,7 @@ default (1.0) so existing seeded compositions reproduce bit-for-bit.
 """
 
 import random
+import re
 import types
 import typing
 
@@ -195,6 +196,75 @@ def test_broken_chord_defaults_to_chord_velocity () -> None:
 	velocities = {velocity for _, _, velocity in _placements(pattern)}
 	assert velocities == {subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY}
 	assert subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY == 90
+
+
+def test_package_all_lists_every_curated_export () -> None:
+
+	"""``subsequence.__all__`` is the public surface, and misses nothing.
+
+	The package curates by assignment — ``Composition = subsequence.composition
+	.Composition`` and thirty-seven more — which nothing but a human can see.
+	Without ``__all__`` a reference generator, an IDE and ``import *`` all fall
+	back to "everything importable", which here is the whole package tree
+	(#2324).  A new export that skips this list would be invisible to all three
+	while working perfectly by name, so it is pinned rather than trusted.
+	"""
+
+	exported = subsequence.__all__
+
+	assert len(exported) == len(set(exported)), "duplicate entry in __all__"
+
+	for name in exported:
+		assert hasattr(subsequence, name), f"__all__ names {name}, which the package does not have"
+
+	# Modules are exempt from the reverse check — a submodule is bound by its
+	# own import, not by a curation decision — but an exported one (``roles``)
+	# may still appear above.
+	bound = {
+		name for name in dir(subsequence)
+		if not name.startswith("_")
+		and not isinstance(getattr(subsequence, name), types.ModuleType)
+	}
+
+	assert bound - set(exported) == set(), "a package-level export is missing from __all__"
+
+
+def test_the_package_docstring_names_the_same_exports () -> None:
+
+	"""The prose list and ``__all__`` are one fact written twice, so pin them together.
+
+	The docstring is what a reader meets first and what the reference renders;
+	drift between it and the code is the quiet kind, because both halves look
+	authoritative on their own.
+	"""
+
+	docstring = subsequence.__doc__ or ""
+	_, _, tail = docstring.partition("Package-level exports:")
+
+	assert tail, "the module docstring no longer names its exports"
+
+	named = re.findall(r"``(\w+)``", tail)
+
+	assert set(named) == set(subsequence.__all__)
+
+
+def test_package_star_import_brings_no_incidental_modules () -> None:
+
+	"""``import *`` hands over the surface, not the package tree.
+
+	Seventeen submodule imports sit at the top of ``__init__.py`` so the
+	rebindings below can reach them.  Before ``__all__`` every one of them rode
+	along into a caller's namespace — forty-two modules against a surface of
+	thirty-eight — where ``pattern``, ``display`` or ``osc`` could shadow
+	something of the caller's own.
+	"""
+
+	namespace: typing.Dict[str, typing.Any] = {}
+	exec("from subsequence import *", namespace)  # noqa: S102
+
+	modules = {name for name, value in namespace.items() if isinstance(value, types.ModuleType)}
+
+	assert modules == {"roles"}, "import * is handing over submodules again"
 
 
 def test_sequence_utils_all_matches_its_public_names () -> None:

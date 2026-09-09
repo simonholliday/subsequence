@@ -190,6 +190,7 @@ import subsequence.composition
 import subsequence.definitions
 import subsequence.groove
 import subsequence.harmonic_rhythm
+import subsequence.harmony
 import subsequence.intervals
 import subsequence.melodic_state
 import subsequence.midi_utils
@@ -247,3 +248,51 @@ describe_generator = subsequence.catalogue.describe_generator
 # reshape notes already placed, so a surface never holds its own list.
 transforms = subsequence.catalogue.transforms
 describe_transform = subsequence.catalogue.describe_transform
+
+
+# The public surface, and the only list of it that tools read.  Every name here
+# is bound above; the module docstring names the same set in prose, and
+# ``tests/test_api_consistency.py`` fails if the three ever disagree.  Without
+# it, ``from subsequence import *`` hands over forty-odd submodules that nobody
+# is meant to import, and a reference generator has no way to tell the surface
+# from the machinery (#2324).
+__all__ = [
+	"Composition",
+	"Motif",
+	"Phrase",
+	"motif",
+	"sentence",
+	"period",
+	"Cadence",
+	"Section",
+	"Form",
+	"Degree",
+	"ChordTone",
+	"Approach",
+	"MotifEvent",
+	"ControlEvent",
+	"Progression",
+	"ChordSpan",
+	"PitchSet",
+	"progression",
+	"Chord",
+	"Groove",
+	"MelodicState",
+	"Tuning",
+	"between",
+	"parse_chord",
+	"register_chord_quality",
+	"register_scale",
+	"scale_notes",
+	"bank_select",
+	"Definitions",
+	"load_definitions",
+	"roles",
+	"sieve",
+	"residual_class",
+	"PlacedNote",
+	"generators",
+	"describe_generator",
+	"transforms",
+	"describe_transform",
+]

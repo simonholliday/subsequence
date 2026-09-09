@@ -11,7 +11,7 @@ Example:
 	first_inv = subsequence.voicings.invert_chord([0, 4, 7], inversion=1)  # [4, 7, 12]
 
 	# Automatic voice leading across a pattern
-	@composition.pattern(channel=0, length=4, voice_leading=True)
+	@composition.pattern(channel=0, beats=4, voice_leading=True)
 	def chords (p, chord):
 		p.chord(chord, root=52, velocity=90, sustain=True)
 	```
