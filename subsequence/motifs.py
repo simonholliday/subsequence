@@ -255,11 +255,11 @@ def _signal_sort_key (signal: ControlSignal) -> tuple:
 	return (rank,)
 
 
-def _velocity_key (velocity: typing.Union[int, typing.Tuple[int, int]]) -> typing.Tuple[int, int]:
+def _velocity_key (velocity: subsequence.declarations.VelocityValue) -> typing.Tuple[int, int]:
 
 	"""Normalise scalar-or-range velocity to a sortable pair."""
 
-	if isinstance(velocity, tuple):
+	if isinstance(velocity, (tuple, list)):
 		return (velocity[0], velocity[1])
 
 	return (velocity, velocity)
@@ -282,7 +282,7 @@ class MotifEvent:
 
 	beat: float
 	pitch: PitchSpec
-	velocity: typing.Union[int, typing.Tuple[int, int]] = _DEFAULT_VELOCITY
+	velocity: subsequence.declarations.VelocityValue = _DEFAULT_VELOCITY
 	duration: float = 0.25
 	probability: float = 1.0
 
@@ -1270,10 +1270,10 @@ class Motif:
 
 		"""Add *amount* velocity to every note at the given beat position (0-based beats)."""
 
-		def boost (velocity: typing.Union[int, typing.Tuple[int, int]]) -> typing.Union[int, typing.Tuple[int, int]]:
+		def boost (velocity: subsequence.declarations.VelocityValue) -> subsequence.declarations.VelocityValue:
 			# Clamp both ends: a negative amount (a de-accent) must not store
 			# a velocity below 1, which MIDI cannot play.
-			if isinstance(velocity, tuple):
+			if isinstance(velocity, (tuple, list)):
 				return (max(1, min(127, velocity[0] + amount)), max(1, min(127, velocity[1] + amount)))
 			return max(1, min(127, velocity + amount))
 
@@ -1284,7 +1284,7 @@ class Motif:
 
 		return Motif(events=events, length=self.length, controls=self.controls, fit=self.fit)
 
-	def with_velocity (self, velocity: typing.Union[int, typing.Tuple[int, int]]) -> "Motif":
+	def with_velocity (self, velocity: subsequence.declarations.VelocityValue) -> "Motif":
 
 		"""Replace every note's velocity (an int, or a ``(low, high)`` random range)."""
 
@@ -2155,7 +2155,7 @@ class Phrase:
 
 		return self._lift("quantize", grid)
 
-	def with_velocity (self, velocity: typing.Union[int, typing.Tuple[int, int]]) -> "Phrase":
+	def with_velocity (self, velocity: subsequence.declarations.VelocityValue) -> "Phrase":
 
 		"""Replace every note's velocity, segment-wise."""
 

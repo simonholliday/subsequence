@@ -105,14 +105,14 @@ def test_resolve_velocity_tuple_uses_explicit_rng () -> None:
 def test_resolve_velocity_wrong_tuple_length_raises () -> None:
 
 	_, builder = _make_builder()
-	with pytest.raises(ValueError, match="velocity tuple must be"):
+	with pytest.raises(ValueError, match="velocity range must be"):
 		builder._resolve_velocity((60, 70, 80))
 
 
 def test_resolve_velocity_string_raises () -> None:
 
 	_, builder = _make_builder()
-	with pytest.raises(TypeError, match="velocity must be int or"):
+	with pytest.raises(TypeError, match="velocity must be a number or"):
 		builder._resolve_velocity("loud")
 
 
@@ -430,5 +430,63 @@ def test_invalid_velocity_raises_at_builder () -> None:
 	with pytest.raises(TypeError):
 		builder.hit_steps(pitch=60, steps=[0, 4, 8, 12], velocity="loud")
 
-	with pytest.raises(ValueError, match="velocity tuple must be"):
+	with pytest.raises(ValueError, match="velocity range must be"):
 		builder.hit_steps(pitch=60, steps=[0, 4, 8, 12], velocity=(60, 80, 100))
+
+
+# ---------------------------------------------------------------------------
+# A list is a pair too (#2349)
+# ---------------------------------------------------------------------------
+
+def test_a_velocity_range_may_arrive_as_a_list () -> None:
+
+	"""JSON has no tuple, and the catalogue publishes velocity as a range.
+
+	A person moves both handles of a control the catalogue advertised, and
+	their choice reaches the verb as an array.  Refusing it made every one of
+	those 31 controls impossible to drive — not badly opened, but unusable at
+	any value a consumer could send.
+	"""
+
+	pattern, builder = _make_builder()
+
+	builder.bresenham(60, 4, velocity=[40, 41])
+
+	velocities = [note.velocity for step in pattern.steps.values() for note in step.notes]
+
+	assert velocities
+	assert all(40 <= velocity <= 41 for velocity in velocities)
+
+
+def test_a_list_and_a_tuple_velocity_draw_the_same () -> None:
+
+	"""They mean the same thing; only the wire told them apart."""
+
+	pattern_a, builder_a = _make_builder()
+	pattern_b, builder_b = _make_builder()
+
+	builder_a.bresenham(60, 4, velocity=(50, 90), seed=11)
+	builder_b.bresenham(60, 4, velocity=[50, 90], seed=11)
+
+	assert [n.velocity for s in pattern_a.steps.values() for n in s.notes] == \
+	       [n.velocity for s in pattern_b.steps.values() for n in s.notes]
+
+
+def test_a_string_is_still_refused () -> None:
+
+	"""A str is a sequence, and it is not a velocity."""
+
+	_, builder = _make_builder()
+
+	with pytest.raises(TypeError, match="velocity must be a number or"):
+		builder._resolve_velocity("60")		# type: ignore[arg-type]
+
+
+def test_a_pair_of_the_wrong_length_is_still_refused () -> None:
+
+	"""Widening the container must not widen the shape."""
+
+	_, builder = _make_builder()
+
+	with pytest.raises(ValueError, match="velocity range must be"):
+		builder._resolve_velocity([1, 2, 3])		# type: ignore[arg-type]

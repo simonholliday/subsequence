@@ -79,6 +79,16 @@ class PitchParameter:
 # here (the engine/user boundary, #1465).
 Pitch = typing.Annotated[typing.Union[int, str], PitchParameter()]
 
+# A velocity: one value, or a (low, high) pair drawn from per note.
+#
+# The pair may be a tuple **or a list**, and the list arm is load-bearing rather
+# than generous.  The catalogue publishes velocity as a "range" control, a
+# person moves both handles, and their choice reaches the verb as a JSON array
+# — JSON has no tuple.  A tuple-only velocity made every range control the
+# catalogue advertises impossible to drive (#2349).  The Tuple arm stays first
+# so catalogue._is_range still recognises the shape.
+VelocityValue = typing.Union[int, typing.Tuple[int, int], typing.List[int]]
+
 # Probability-curve names.  ghost_fill(bias=) and thin(strategy=) share this
 # vocabulary because they share build_ghost_bias(); thin's docstring already
 # promises they match, and one alias turns that promise into something mypy

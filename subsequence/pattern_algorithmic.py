@@ -103,7 +103,7 @@ class PatternAlgorithmicMixin:
 			self,
 			pitch: subsequence.declarations.Pitch,
 			beat: float,
-			velocity: typing.Union[int, typing.Tuple[int, int]],
+			velocity: subsequence.declarations.VelocityValue,
 			duration: float,
 		) -> "subsequence.pattern_builder.PatternBuilder": ...
 		def _resolve_pitch (self, pitch: subsequence.declarations.Pitch) -> int: ...
@@ -133,7 +133,7 @@ class PatternAlgorithmicMixin:
 
 		return self.rng
 
-	def _resolve_velocity (self, velocity: typing.Union[int, typing.Tuple[int, int]], rng: typing.Optional[random.Random] = None) -> int:
+	def _resolve_velocity (self, velocity: subsequence.declarations.VelocityValue, rng: typing.Optional[random.Random] = None) -> int:
 
 		"""Resolve a velocity argument to a single integer.
 
@@ -156,9 +156,14 @@ class PatternAlgorithmicMixin:
 			A single integer velocity.
 		"""
 
-		if isinstance(velocity, tuple):
+		# A list counts as a pair.  The catalogue publishes velocity as a
+		# "range" control, and a person's choice reaches here as a JSON array —
+		# JSON has no tuple, so refusing one made every range control the
+		# catalogue advertises impossible to drive (#2349).  A list and a tuple
+		# mean the same thing; only the wire told them apart.
+		if isinstance(velocity, (tuple, list)):
 			if len(velocity) != 2:
-				raise ValueError(f"velocity tuple must be (low, high), got {velocity!r}")
+				raise ValueError(f"velocity range must be (low, high), got {velocity!r}")
 
 			low, high = int(velocity[0]), int(velocity[1])
 			if low > high:
@@ -169,15 +174,17 @@ class PatternAlgorithmicMixin:
 
 			return rng.randint(low, high)
 		if isinstance(velocity, bool):
-			raise TypeError(f"velocity must be int or (low, high) tuple, got bool: {velocity!r}")
+			raise TypeError(f"velocity must be a number or a (low, high) pair, got bool: {velocity!r}")
 		if isinstance(velocity, (int, float)):
 			return int(velocity)
-		raise TypeError(f"velocity must be int or (low, high) tuple, got {type(velocity).__name__}: {velocity!r}")
+		raise TypeError(
+			f"velocity must be a number or a (low, high) pair, got {type(velocity).__name__}: {velocity!r}"
+		)
 
 	def _place_gated_sequence (
 		self,
 		sequence: typing.Sequence[typing.Any],
-		event_for: typing.Callable[[int, typing.Any], typing.Optional[typing.Tuple[typing.Union[int, str], typing.Union[int, typing.Tuple[int, int]], float]]],
+		event_for: typing.Callable[[int, typing.Any], typing.Optional[typing.Tuple[typing.Union[int, str], subsequence.declarations.VelocityValue, float]]],
 		probability: float,
 		rng: random.Random,
 		no_overlap: bool = False,
@@ -228,7 +235,7 @@ class PatternAlgorithmicMixin:
 		self,
 		sequence: typing.List[int],
 		pitch: subsequence.declarations.Pitch,
-		velocity: typing.Union[int, typing.Tuple[int, int]],
+		velocity: subsequence.declarations.VelocityValue,
 		duration: float,
 		probability: float,
 		rng: random.Random,
@@ -242,7 +249,7 @@ class PatternAlgorithmicMixin:
 		a note; zeros are rests.
 		"""
 
-		def _event (i: int, hit_value: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], typing.Union[int, typing.Tuple[int, int]], float]]:
+		def _event (i: int, hit_value: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], subsequence.declarations.VelocityValue, float]]:
 			if hit_value == 0:
 				return None
 			return (pitch, velocity, duration)
@@ -287,7 +294,7 @@ class PatternAlgorithmicMixin:
 		return spacing, int(self._pattern.length / spacing)
 
 	@subsequence.declarations.bounded
-	def euclidean (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
+	def euclidean (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Generate a Euclidean rhythm.
@@ -323,7 +330,7 @@ class PatternAlgorithmicMixin:
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	@subsequence.declarations.bounded
-	def bresenham (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
+	def bresenham (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Generate a rhythm using the Bresenham line algorithm.
@@ -461,7 +468,7 @@ class PatternAlgorithmicMixin:
 			steps=grid, weights=weights
 		)
 
-		def _event (step_idx: int, voice_idx: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], typing.Union[int, typing.Tuple[int, int]], float]]:
+		def _event (step_idx: int, voice_idx: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], subsequence.declarations.VelocityValue, float]]:
 			if voice_idx == rest_index:
 				return None
 
@@ -713,7 +720,7 @@ class PatternAlgorithmicMixin:
 		pitch: subsequence.declarations.Pitch,
 		rule: int = 30,
 		generation: typing.Optional[int] = None,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
 		duration: float = 0.1,
 		no_overlap: bool = False,
 		probability: subsequence.declarations.UnitInterval = 1.0,
@@ -872,7 +879,7 @@ class PatternAlgorithmicMixin:
 		)
 
 		for row_idx, pitch in enumerate(pitches):
-			row_velocity: typing.Union[int, typing.Tuple[int, int]]
+			row_velocity: subsequence.declarations.VelocityValue
 
 			if isinstance(velocity, list):
 				row_velocity = int(velocity[row_idx % len(velocity)])
@@ -891,7 +898,7 @@ class PatternAlgorithmicMixin:
 		self,
 		transitions: typing.Dict[str, typing.List[typing.Tuple[str, int]]],
 		pitch_map: typing.Dict[str, int],
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		duration: float = 0.1,
 		spacing: float = 0.25,
 		start: typing.Optional[str] = None,
@@ -983,7 +990,7 @@ class PatternAlgorithmicMixin:
 		self,
 		state: subsequence.melodic_state.MelodicState,
 		spacing: float = 0.25,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
 		duration: float = 0.2,
 		chord_tones: typing.Optional[typing.List[int]] = None,
 		seed: typing.Optional[int] = None,
@@ -1062,7 +1069,7 @@ class PatternAlgorithmicMixin:
 		rules: typing.Dict[str, typing.Union[str, typing.List[typing.Tuple[str, float]]]],
 		generations: int = 3,
 		spacing: typing.Optional[float] = None,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
@@ -1175,10 +1182,10 @@ class PatternAlgorithmicMixin:
 	def thue_morse (
 		self,
 		pitch: subsequence.declarations.Pitch,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		duration: float = 0.1,
 		pitch_b: typing.Optional[subsequence.declarations.Pitch] = None,
-		velocity_b: typing.Optional[typing.Union[int, typing.Tuple[int, int]]] = None,
+		velocity_b: typing.Optional[subsequence.declarations.VelocityValue] = None,
 		no_overlap: bool = False,
 		probability: subsequence.declarations.UnitInterval = 1.0,
 		seed: typing.Optional[int] = None,
@@ -1241,7 +1248,7 @@ class PatternAlgorithmicMixin:
 			second_pitch = pitch_b
 			second_velocity = velocity_b
 
-			def _event (i: int, val: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], typing.Union[int, typing.Tuple[int, int]], float]]:
+			def _event (i: int, val: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], subsequence.declarations.VelocityValue, float]]:
 				if val == 0:
 					return (pitch, velocity, duration)
 				return (second_pitch, second_velocity, duration)
@@ -1254,7 +1261,7 @@ class PatternAlgorithmicMixin:
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		window: int = 2,
 		spacing: typing.Optional[float] = None,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
@@ -1322,7 +1329,7 @@ class PatternAlgorithmicMixin:
 		self,
 		pitches: typing.Union[subsequence.declarations.Pitch, typing.Sequence[subsequence.declarations.Pitch]],
 		count: int,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
@@ -1393,7 +1400,7 @@ class PatternAlgorithmicMixin:
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		count: typing.Optional[int] = None,
 		spacing: typing.Optional[float] = None,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		start: int = 0,
 		skip: int = 0,
@@ -1528,7 +1535,7 @@ class PatternAlgorithmicMixin:
 		modulus: typing.Optional[int] = None,
 		count: typing.Optional[int] = None,
 		spacing: typing.Optional[float] = None,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		a: int = 1,
 		b: int = 1,
@@ -1631,7 +1638,7 @@ class PatternAlgorithmicMixin:
 		self,
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		spacing: float = 0.25,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		dt: float = 0.01,
 		sigma: float = 10.0,
@@ -1708,7 +1715,7 @@ class PatternAlgorithmicMixin:
 			else:
 				pitch_idx = int(x * len(pitches)) % len(pitches)
 				p_pitch = pitches[pitch_idx]
-				if isinstance(velocity, tuple):
+				if isinstance(velocity, (tuple, list)):
 					p_vel = int(velocity[0] + y * (velocity[1] - velocity[0]))
 				else:
 					# A fixed int means FIXED - the y axis only drives velocity
@@ -1725,7 +1732,7 @@ class PatternAlgorithmicMixin:
 		self,
 		pitch: subsequence.declarations.Pitch,
 		threshold: float = 0.5,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.1,
 		feed_rate: float = 0.055,
 		kill_rate: float = 0.062,
@@ -1792,12 +1799,12 @@ class PatternAlgorithmicMixin:
 
 		sequence = [1 if c > threshold else 0 for c in concentrations]
 
-		if isinstance(velocity, tuple):
+		if isinstance(velocity, (tuple, list)):
 			# Map concentration to velocity range for active steps: louder
 			# where the pattern is denser (deterministic, not random).
 			midi_vel_lo, midi_vel_hi = velocity
 
-			def _event (i: int, hit: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], typing.Union[int, typing.Tuple[int, int]], float]]:
+			def _event (i: int, hit: typing.Any) -> typing.Optional[typing.Tuple[typing.Union[int, str], subsequence.declarations.VelocityValue, float]]:
 				if hit == 0:
 					return None
 
@@ -1813,7 +1820,7 @@ class PatternAlgorithmicMixin:
 		self,
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		spacing: float = 0.25,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
@@ -2217,7 +2224,7 @@ class PatternAlgorithmicMixin:
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		length: typing.Optional[int] = None,
 		drift: subsequence.declarations.UnitInterval = 0.0,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		spacing: float = 0.25,
 		seed: typing.Optional[int] = None,
@@ -2317,7 +2324,7 @@ class PatternAlgorithmicMixin:
 		depth: int = 2,
 		path: int = 0,
 		mutation: subsequence.declarations.UnitInterval = 0.0,
-		velocity: typing.Union[int, typing.Tuple[int, int]] = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
+		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
 		duration: float = 0.2,
 		spacing: float = 0.25,
 		seed: typing.Optional[int] = None,
