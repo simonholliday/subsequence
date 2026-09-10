@@ -973,6 +973,101 @@ def test_the_chord_form_works_once_its_needs_are_met (name: str) -> None:
 	assert builder._pattern.steps, f"{name} placed nothing with its needs met"
 
 
+def _moved (parameter: typing.Dict[str, typing.Any]) -> typing.Any:
+
+	"""A value of the declared shape that is **not** the declared default.
+
+	Moved rather than opened, because opening values are exactly the ones that
+	do not fail: `inversion` opens at 0, which is the one value the pitch-list
+	form tolerates, and that is why nothing blew up until a musician turned a
+	dial (#2410).
+	"""
+
+	kind, default = parameter["kind"], parameter.get("default")
+
+	if kind == "number":
+		for candidate in (parameter.get("min"), 1, 2, 0.5):
+			if candidate is not None and candidate != default:
+				if parameter.get("max") is None or candidate <= parameter["max"]:
+					return candidate
+		return None
+
+	if kind == "switch":
+		return not bool(default)
+
+	if kind == "choice":
+		return next((o["value"] for o in parameter["options"] if o["value"] != default), None)
+
+	if kind == "range":
+		return [parameter["min"], parameter["max"]]
+
+	return None
+
+
+@pytest.mark.parametrize("name", sorted(CHORD_VERBS))
+def test_only_names_exactly_what_the_pitch_list_form_refuses (name: str) -> None:
+
+	"""`only` is a claim about a runtime branch, so it is measured, not trusted.
+
+	Every declared parameter is moved off its default beside a pitch list, and
+	the set that refuses must be exactly the set `only` names — which catches a
+	fourth voicing parameter arriving without a line here, and equally catches
+	this list naming something that works perfectly well.
+	"""
+
+	entry = subsequence.describe_generator(name)
+	declared = entry["parameters"]
+	refused = set()
+
+	for parameter in declared[1:]:
+
+		value = _moved(parameter)
+
+		if value is None:
+			continue
+
+		try:
+			getattr(_chord_builder(), name)([36, 40, 43], **{parameter["name"]: value})
+		except Exception:
+			refused.add(parameter["name"])
+
+	assert refused == set(declared[0]["chord"]["only"])
+
+
+@pytest.mark.parametrize("name", sorted(CHORD_VERBS))
+def test_what_the_chord_form_requires_is_part_of_what_it_owns (name: str) -> None:
+
+	"""`needs` is a subset of `only`: required *with* a chord, refused *without* one.
+
+	Two different facts about the same parameters, and a `needs` entry missing
+	from `only` would mean a surface hid a control it was also told to supply.
+	"""
+
+	block = subsequence.describe_generator(name)["parameters"][0]["chord"]
+
+	assert set(block["needs"]) <= set(block["only"])
+
+
+def test_zero_does_not_excuse_a_chord_only_parameter () -> None:
+
+	"""Only *absence* reads as "not asked for" — which is why `only` is needed.
+
+	A surface drawing a stepper can reach zero and cannot reach unset, so a
+	dial that looks harmless at its bottom stop still kills the layer.  Pinned
+	because it is the whole reason the declaration has to say so.
+	"""
+
+	pool = [36, 40, 43]
+
+	_chord_builder().arpeggio(pool)                     # no voicing arguments — plays
+	_chord_builder().arpeggio(pool, inversion=0)        # the one tolerated value
+	_chord_builder().arpeggio(pool, count=None)         # absence, not zero
+
+	for refused in ({"count": 0}, {"root": 0}, {"inversion": 1}):
+		with pytest.raises(ValueError, match="only apply to the chord form"):
+			_chord_builder().arpeggio(pool, **refused)
+
+
 def test_root_is_a_register_rather_than_a_root () -> None:
 
 	"""The name chooses the pitch classes; `root` only chooses the octave.

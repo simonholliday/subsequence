@@ -40,7 +40,8 @@ surface could tell it from one that really only takes a list (#2375):
      "accepts": ["chord", "pitches"],
      "chord": {"roots":     [{"value": "C",  "label": "C"}, ...],
                "qualities": [{"value": "m7", "label": "minor 7th"}, ...],
-               "needs":     ["root"]}}
+               "needs":     ["root"],
+               "only":      ["root", "count", "inversion"]}}
 
 ``accepts`` names the forms; ``chord`` carries what the chord form needs.  A
 name is a root joined to a quality suffix — ``"C" + "m7"`` — which is what
@@ -57,6 +58,15 @@ cycle.  One field cannot say both, so the chord form names what it requires.
 Note that ``root`` there is a **register**: the name has already chosen the
 pitch classes, and the chord voices at the nearest instance of its own root, so
 47 through 50 all give C3.
+
+``only`` is the other half of the same problem, from the other side: these
+parameters belong to the chord form and are **refused** beside a pitch list, so
+a surface holding a list must not offer them.  Zero does not excuse them —
+``count=0`` and ``root=0`` are refused as surely as any other number, and only
+*absence* reads as "not asked for".  A panel drawing a stepper can reach zero
+and cannot reach unset, which is how a musician turning a dial silently killed a
+layer (#2410).  ``needs`` is a subset: required *with* a chord, refused
+*without* one.
 
 ``kind: "chord"`` is the one place that is not additive: it means the
 parameter takes a chord and **nothing else**, so there is no pool arm to fall
@@ -321,6 +331,16 @@ def _takes_chord (annotation: typing.Any) -> bool:
 # and proved by ``tests/test_catalogue.py`` rather than trusted.
 _CHORD_FORM_NEEDS = ("root",)
 
+# What belongs to the chord form alone.  These three voice a chord, so beside a
+# pitch list they are refused rather than ignored — and *zero does not excuse
+# them*: only absence works, because ``count=0`` is a meaningless count while
+# ``inversion=0`` is a real inversion.  Declared as ordinary numbers next to
+# ``beat`` and ``spacing``, which apply to both forms, so nothing told a surface
+# these were different and a musician moving one killed the layer (#2410).
+# ``_CHORD_FORM_NEEDS`` is a subset: required *with* a chord, versus refused
+# *without* one.
+_CHORD_FORM_ONLY = ("root", "count", "inversion")
+
 
 def _chord_vocabulary (parameters: typing.Iterable[str]) -> typing.Dict[str, typing.Any]:
 
@@ -349,6 +369,12 @@ def _chord_vocabulary (parameters: typing.Iterable[str]) -> typing.Dict[str, typ
 	voiced at the nearest instance of its own root to that number, so 47 through
 	50 all give C3.  A surface that draws it beside the root picker without
 	knowing that has two controls named for the same thing.
+
+	``only`` names the parameters that belong to this form and no other, so a
+	surface holding a pitch list knows not to offer them.  They are refused
+	beside a list rather than ignored, and absence is the only thing that reads
+	as "not asked for" — so a dial that can reach zero but not *unset* is a dial
+	that kills the layer (#2410).  ``needs`` is a subset of it.
 	"""
 
 	names = set(parameters)
@@ -360,6 +386,7 @@ def _chord_vocabulary (parameters: typing.Iterable[str]) -> typing.Dict[str, typ
 			for quality, suffix in subsequence.chords.CHORD_SUFFIX.items()
 		],
 		"needs": [name for name in _CHORD_FORM_NEEDS if name in names],
+		"only": [name for name in _CHORD_FORM_ONLY if name in names],
 	}
 
 
