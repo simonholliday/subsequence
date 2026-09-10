@@ -20,7 +20,7 @@ import subsequence.catalogue
 import subsequence.pattern_builder
 
 
-VALID_KINDS = {"switch", "number", "choice", "range", "pitch", "chord"}
+VALID_KINDS = {"switch", "number", "choice", "range", "pitch", "chord", "position"}
 
 
 # ---------------------------------------------------------------------------
@@ -116,9 +116,14 @@ KNOWINGLY_DROPPED: typing.FrozenSet[typing.Tuple[str, str]] = frozenset({
 	("fibonacci", "mapping"),
 	("lorenz", "mapping"),
 	("recaman", "mapping"),
-	# A step list.  A surface could plausibly offer a step grid, but that
-	# would be a sixth kind and is not ours to invent alone.
-	("ratchet", "steps"),
+	# One duration, or one per step.  The shape is real — parallel lists
+	# stepped through together is what sequence() is for — but describing it
+	# would mean putting "multiple" on a number, and thirty velocity
+	# parameters are the same scalar-or-list shape while meaning a random
+	# range instead.  Today only branch ORDER keeps those reading as "range",
+	# which is too thin a thread to hang thirty controls on, so this waits to
+	# be asked for deliberately rather than invented here (#2411).
+	("sequence", "durations"),
 })
 
 
@@ -362,6 +367,151 @@ def test_a_covariant_sequence_of_pitches_is_a_pool_too () -> None:
 	assert subsequence.catalogue._pitch_arity(pitch) is False
 	assert subsequence.catalogue._pitch_arity(typing.Sequence[int]) is None
 
+
+@pytest.mark.parametrize("generator,name,unit", [
+	("hit", "beats", "beat"),
+	("hit_steps", "steps", "step"),
+	("sequence", "steps", "step"),
+])
+def test_a_placing_verb_offers_the_positions_it_fires_at (generator: str, name: str, unit: str) -> None:
+
+	"""The three verbs that took a list of positions and could not say so.
+
+	All three mean one thing — which positions in the bar fire — and differ
+	only in the unit.  Before #2411 the list annotation mapped to no shape, so
+	each lost a required parameter and reported itself undrivable: a panel
+	could add the block and it would sit there doing nothing.
+	"""
+
+	parameter = _parameter(generator, name)
+
+	assert parameter["kind"] == "position"
+	assert parameter["unit"] == unit
+	assert parameter["multiple"] is True
+	assert parameter["required"] is True
+
+
+def test_a_position_publishes_no_bounds () -> None:
+
+	"""How many positions a pattern has is the composition's to know.
+
+	This is the whole reason it is a kind rather than a bounded number: the
+	count is per composition and differs per pattern on a real rig, so any
+	ceiling published from here would be wrong for somebody.  The same
+	reasoning as a pitch, which is why it is the same shape of join (#1465).
+	"""
+
+	for generator, name in (("hit", "beats"), ("hit_steps", "steps"), ("sequence", "steps"), ("ratchet", "steps")):
+
+		parameter = _parameter(generator, name)
+
+		assert "min" not in parameter, f"{generator}.{name} published a floor"
+		assert "max" not in parameter, f"{generator}.{name} published a ceiling"
+		assert "options" not in parameter, f"{generator}.{name} published an option list"
+
+
+def test_the_unit_is_what_separates_two_otherwise_identical_shapes () -> None:
+
+	"""``List[float]`` against ``List[int]`` is not something to make a consumer guess.
+
+	Whether a verb counts beats or grid indices is a fact about the verb, and
+	it is the one half of this that IS ours to publish.
+	"""
+
+	assert _parameter("hit", "beats")["unit"] == "beat"
+	assert _parameter("hit_steps", "steps")["unit"] == "step"
+
+
+def test_every_published_unit_is_one_the_vocabulary_declares () -> None:
+
+	"""A unit typed by hand rather than chosen would reach a consumer unannounced.
+
+	``PositionUnit`` is spelled as a ``Literal`` so mypy refuses a new one, and
+	this is the run-time half of that: whatever is actually published has to be
+	a name the vocabulary carries.
+	"""
+
+	declared = set(typing.get_args(subsequence.declarations.PositionUnit))
+
+	for entry in subsequence.generators() + subsequence.transforms():
+
+		for parameter in entry["parameters"]:
+
+			if parameter["kind"] == "position":
+				assert parameter["unit"] in declared, f"{entry['name']}.{parameter['name']}"
+
+
+def test_an_optional_position_says_so_and_keeps_its_default () -> None:
+
+	"""``ratchet(steps=)`` limits ratcheting to named zones, or does the lot.
+
+	It sat in the knowingly-dropped ledger with the note that a step list
+	"would be a sixth kind and is not ours to invent alone" — which is the kind
+	#2411 asked for, so it comes out of the ledger with the other three.
+	``None`` still reaches a consumer as ``null``, because leaving it alone is
+	how you tell the function to decide for itself.
+	"""
+
+	parameter = _parameter("ratchet", "steps")
+
+	assert parameter["kind"] == "position"
+	assert parameter["unit"] == "step"
+	assert parameter["required"] is False
+	assert parameter["default"] is None
+
+
+def test_a_position_reads_as_one_or_several_the_way_a_pitch_does () -> None:
+
+	"""The reader is the pitch reader's twin, and is pinned the same way."""
+
+	step = subsequence.declarations.StepPosition
+	arity = subsequence.catalogue._position_arity
+
+	assert arity(typing.List[step])[1] is True		# type: ignore[index]
+	assert arity(typing.Sequence[step])[1] is True	# type: ignore[index]
+	assert arity(step)[1] is False					# type: ignore[index]
+	assert arity(typing.List[int]) is None
+	assert arity(int) is None
+
+
+def test_a_position_that_also_declares_a_span_is_still_a_position () -> None:
+
+	"""Where the branch order is actually load-bearing.
+
+	A *lone* position cannot be mistaken for a number, and this test used to
+	claim it could: ``Annotated[int, ...]`` never equals ``int``, so that
+	branch was never going to take it and moving the position branch below it
+	changes nothing.  Measured, not reasoned — the reordering probe passed,
+	which is how the claim was caught.
+
+	The branch that *would* take it is the trailing one reading a ``Span`` off
+	the metadata.  A position carrying a declared span would publish as a
+	bounded number, which is the single thing this kind exists to avoid: how
+	many positions a pattern has belongs to the composition, so any bound
+	stated here is wrong for somebody (#2411).
+
+	Nothing declares that combination today, which is exactly why it wants a
+	test rather than a reader's attention.
+	"""
+
+	annotation = typing.Annotated[
+		int,
+		subsequence.declarations.Span(0.0, 15.0),
+		subsequence.declarations.PositionParameter("step"),
+	]
+
+	described = subsequence.catalogue._describe_parameter(
+		"where",
+		inspect.Parameter("where", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+		annotation,
+	)
+
+	assert described is not None
+	assert described["kind"] == "position"
+	assert described["unit"] == "step"
+	assert "min" not in described, "a position published a bound the composition owns"
+	assert "max" not in described, "a position published a bound the composition owns"
+	assert "multiple" not in described
 
 def test_a_pool_sharing_a_union_with_a_chord_is_still_a_pool () -> None:
 

@@ -2048,7 +2048,7 @@ class PatternAlgorithmicMixin:
 		velocity_end: subsequence.declarations.VelocityScale = 1.0,
 		shape: typing.Union[subsequence.declarations.EasingCurve, typing.Callable[[float], float]] = "linear",
 		gate: subsequence.declarations.UnitInterval = 0.5,
-		steps: typing.Optional[typing.List[int]] = None,
+		steps: typing.Optional[typing.List[subsequence.declarations.StepPosition]] = None,
 		grid: typing.Optional[int] = None,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,

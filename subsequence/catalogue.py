@@ -315,6 +315,46 @@ def _pitch_arity (annotation: typing.Any) -> typing.Optional[bool]:
 	return False if takes_one else None
 
 
+def _position_marker (annotation: typing.Any) -> typing.Optional[subsequence.declarations.PositionParameter]:
+
+	"""The position marker on *annotation*, or None when it carries none."""
+
+	for meta in getattr(annotation, "__metadata__", ()):
+
+		if isinstance(meta, subsequence.declarations.PositionParameter):
+			return meta
+
+	return None
+
+
+def _position_arity (
+	annotation: typing.Any,
+) -> typing.Optional[typing.Tuple[subsequence.declarations.PositionParameter, bool]]:
+
+	"""The position marker on *annotation*, and whether it takes several.
+
+	Returns None when it is not a position at all.  The pool arm is what the
+	three placing verbs actually take — a bar fires at several positions, not
+	one — and it is read off the container's argument rather than the container,
+	so ``List[StepPosition]`` and a lone ``StepPosition`` answer the same reader.
+	"""
+
+	marker = _position_marker(annotation)
+
+	if marker is not None:
+		return marker, False
+
+	if typing.get_origin(annotation) in _POOL_ORIGINS:
+
+		arguments = typing.get_args(annotation)
+		inner = _position_marker(arguments[0]) if arguments else None
+
+		if inner is not None:
+			return inner, True
+
+	return None
+
+
 def _takes_chord (annotation: typing.Any) -> bool:
 
 	"""True when one of *annotation*'s arms is a :class:`~subsequence.chords.Chord`."""
@@ -485,7 +525,9 @@ def _describe_parameter (
 	entry: typing.Dict[str, typing.Any] = {"name": name, "label": label}
 
 	# Order matters: a pitch is an int-or-str and would otherwise read as a
-	# number, and a Literal is a str and would otherwise read as free text.
+	# number, a position that also declared a Span would otherwise publish as
+	# a bounded one, and a Literal is a str and would otherwise read as free
+	# text.
 	several = _pitch_arity(bare)
 
 	if several is not None:
@@ -513,6 +555,21 @@ def _describe_parameter (
 		entry["kind"] = "chord"
 		entry["accepts"] = ["chord"]
 		entry["chord"] = _chord_vocabulary(siblings)
+		return _finished(entry, parameter)
+
+	position = _position_arity(bare)
+
+	if position is not None:
+		# The pitch join again, against the other fact a composition owns: how
+		# many positions a pattern has is per-composition, so publishing a
+		# bound here would be wrong for somebody (#2411).  ``unit`` is the half
+		# that is ours — a consumer cannot tell beats from grid indices by
+		# looking at List[float] against List[int].
+		marker, several = position
+		entry["kind"] = "position"
+		entry["unit"] = marker.unit
+		if several:
+			entry["multiple"] = True
 		return _finished(entry, parameter)
 
 	options = _literal_options(bare)

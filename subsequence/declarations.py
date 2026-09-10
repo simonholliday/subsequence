@@ -87,6 +87,40 @@ class PitchParameter:
 # here (the engine/user boundary, #1465).
 Pitch = typing.Annotated[typing.Union[int, str], PitchParameter()]
 
+# Which unit a position is counted in.  Spelled as a vocabulary rather than a
+# bare str so a new one cannot be introduced by typing it, and so the catalogue
+# publishes a value a consumer can switch on.
+PositionUnit = typing.Literal["step", "beat"]
+
+
+@dataclasses.dataclass (frozen=True)
+class PositionParameter:
+
+	"""Marks a parameter as naming a position in the pattern.
+
+	The same join as :class:`PitchParameter`, made against the other fact a
+	composition owns.  How many positions a pattern has is per-composition — on
+	a real rig one pattern runs nine steps where its neighbours run sixteen — so
+	a bound published from here would be wrong for somebody.  Subsequence says
+	only THAT a parameter is a position, and leaves the count to the consumer
+	that knows it (the engine/user boundary, #1465).
+
+	``unit`` is the half that *is* ours.  Whether a verb counts beats or grid
+	indices is a fact about the verb, and ``List[int]`` against ``List[float]``
+	is not enough for a consumer to tell them apart without guessing (#2411).
+	"""
+
+	unit: PositionUnit
+
+
+# A grid index: which slot of a subdivided bar fires.  How many slots there are
+# is the pattern's own business — its ``grid``, or the length it derives one
+# from — which is exactly why the bound is not stated here.
+StepPosition = typing.Annotated[int, PositionParameter("step")]
+
+# A position in beats, so a figure is not tied to the grid's resolution.
+BeatPosition = typing.Annotated[float, PositionParameter("beat")]
+
 # A velocity: one value, or a (low, high) pair drawn from per note.
 #
 # The pair may be a tuple **or a list**, and the list arm is load-bearing rather

@@ -65,6 +65,11 @@ def _opening (parameter: typing.Dict[str, typing.Any]) -> typing.Any:
 		return False
 	if kind == "pitch":
 		return [60] if parameter.get("multiple") else 60
+	if kind == "position":
+		# No bound is published on purpose — how many positions a pattern has
+		# belongs to the composition, not to the function (#2411) — so this
+		# falls back to zero, which is the one position every pattern has.
+		return [0] if parameter.get("multiple") else 0
 	if kind == "range":
 		# A list, not a tuple: JSON has no tuple, and this is the only shape a
 		# consumer can actually send.
