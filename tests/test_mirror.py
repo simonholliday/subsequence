@@ -629,6 +629,39 @@ def test_resolve_mirrors_rejects_non_dict_map () -> None:
 			pass
 
 
+def test_a_named_pool_on_a_chord_verb_now_re_resolves_at_a_mirror () -> None:
+
+	"""The consequence of #2395, stated rather than left to be discovered.
+
+	`origin` has two jobs: it tells a surface which row a note landed on, and
+	it is what a mirror re-resolves through its own kit.  Carrying it for
+	`arpeggio`/`chord`/`strum` — which is what #2395 asked for — necessarily
+	turns the second one on for them too, so a second device now plays *its*
+	kick where it used to receive the primary's number.
+
+	That is the behaviour `note`, `hit_steps`, `euclidean` and `de_bruijn` have
+	always had, so this makes three anomalies consistent rather than inventing
+	anything.  Unlike a captured motif (#2372), there is no ambiguity about
+	which map a name belongs to: it was typed into this pattern.
+	"""
+
+	pattern = subsequence.pattern.Pattern(channel=0, length=4)
+	builder = subsequence.pattern_builder.PatternBuilder(
+		pattern, cycle=0, drum_note_map={"kick": 36},
+	)
+
+	builder.chord(["kick"])
+
+	placed = pattern.steps[0].notes[0]
+
+	assert placed.origin == "kick"
+
+	other_kit = subsequence.sequencer._MirrorTarget(1, 5, {"kick": 60})
+
+	assert subsequence.sequencer._destination_pitch(placed, other_kit, primary=True) == 36
+	assert subsequence.sequencer._destination_pitch(placed, other_kit, primary=False) == 60
+
+
 def test_destination_pitch_helper () -> None:
 
 	"""``_destination_pitch`` covers every branch incl. drop (None) and primary_unmapped."""

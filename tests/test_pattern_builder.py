@@ -779,6 +779,97 @@ def a_registered_quality () -> typing.Iterator[str]:
 		table.update(before)
 
 
+# ── a named pool keeps its name on the note (#2395) ─────────────────────────
+
+_NAMED_KIT = {"C2": 36, "D#2": 39}
+
+
+def _origins (pattern: subsequence.pattern.Pattern) -> typing.List[typing.Optional[str]]:
+
+	"""Every placed note's origin, in pulse order."""
+
+	return [note.origin for pulse in sorted(pattern.steps) for note in pattern.steps[pulse].notes]
+
+
+@pytest.mark.parametrize("verb", ["arpeggio", "chord", "strum"])
+def test_a_named_pool_keeps_its_names (verb: str) -> None:
+
+	"""`origin` is how a surface knows which row a note landed on.
+
+	These three resolved their first argument to plain numbers before placing
+	anything, so the name was correct going in and gone by the time a Note
+	existed — and a panel drew nothing for notes the room could hear (#2395).
+	"""
+
+	pattern, builder = _make_builder(length=4, drum_note_map=_NAMED_KIT)
+
+	getattr(builder, verb)(["C2", "D#2"])
+
+	assert set(_origins(pattern)) == {"C2", "D#2"}
+
+
+@pytest.mark.parametrize("verb", ["arpeggio", "chord", "strum"])
+def test_a_numeric_pool_carries_no_origin (verb: str) -> None:
+
+	"""A MIDI number was never named, so there is nothing to carry."""
+
+	pattern, builder = _make_builder(length=4, drum_note_map=_NAMED_KIT)
+
+	getattr(builder, verb)([36, 39])
+
+	assert set(_origins(pattern)) == {None}
+
+
+@pytest.mark.parametrize("verb", ["arpeggio", "chord", "strum", "broken_chord"])
+def test_the_chord_form_carries_no_origin (verb: str) -> None:
+
+	"""A chord's tones are numbers nobody named — the name was of the chord.
+
+	Left deliberately: `origin` means "this note was asked for by this name",
+	and no row on any surface is called Cmaj7's third.
+	"""
+
+	pattern, builder = _make_builder(length=4, drum_note_map=_NAMED_KIT)
+	extra = {"order": [0, 1]} if verb == "broken_chord" else {}
+
+	getattr(builder, verb)("Cmaj7", root=48, **extra)
+
+	assert set(_origins(pattern)) == {None}
+
+
+def test_the_chord_verbs_agree_with_the_verbs_that_always_carried_it () -> None:
+
+	"""Parity, rather than a constant: the same pool, named the same way.
+
+	`de_bruijn` keeps the names given exactly this list, which is what made
+	the three anomalies rather than a rule about pool-takers. Comparing them
+	is a stronger claim than asserting either alone.
+	"""
+
+	def origins_from (verb: str) -> typing.Set[typing.Optional[str]]:
+		pattern, builder = _make_builder(length=4, drum_note_map=_NAMED_KIT)
+		getattr(builder, verb)(["C2", "D#2"])
+		return set(_origins(pattern))
+
+	reference = origins_from("de_bruijn")
+
+	assert reference == {"C2", "D#2"}
+
+	for verb in ("arpeggio", "chord", "strum"):
+		assert origins_from(verb) == reference, verb
+
+
+def test_a_name_no_device_can_voice_is_still_dropped () -> None:
+
+	"""Carrying the name must not cost the leniency that was already there."""
+
+	pattern, builder = _make_builder(length=4, drum_note_map=_NAMED_KIT)
+
+	builder.chord(["C2", "not_a_voice"])
+
+	assert _origins(pattern) == ["C2"]
+
+
 def test_a_chord_name_voices_the_chord_it_names () -> None:
 
 	"""A Chord is a Python object; a name is what a control surface can send."""

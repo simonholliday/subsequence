@@ -425,10 +425,13 @@ class PatternBuilder(
 		yet lacks the voice) is **dropped** — warned once, returns ``None`` —
 		instead of raising, so a device may legitimately lack a voice that other
 		devices have.  Used by the methods that do NOT carry the drum name to
-		mirror destinations (``note_on``/``note_off``/``drone``, ``arpeggio``,
-		``evolve``, ``branch``, and the ``thin``/``ratchet`` pitch filter), so
-		resolution is against the primary map only.  A string with **no**
-		``drum_note_map`` at all is still a configuration error and raises.
+		mirror destinations (``note_on``/``note_off``/``drone``, ``evolve``,
+		``branch``, and the ``thin``/``ratchet`` pitch filter), so resolution
+		is against the primary map only.  ``arpeggio``/``chord``/``strum`` left
+		that list in #2395: resolving to a bare int threw away the name a
+		surface needs, so they place through :meth:`_resolve_hit_pitch` now.
+		A string with **no** ``drum_note_map`` at all is still a configuration
+		error and raises.
 		"""
 
 		if isinstance(pitch, int):
@@ -1627,7 +1630,7 @@ class PatternBuilder(
 
 		# A chord — an object with .tones(), or a name like "Cmaj7" — is voiced via
 		# root/count/inversion; anything else is an explicit list of pitches.
-		resolved: typing.List[int] = self._pitches_from("arpeggio", notes, root, inversion, count)
+		resolved = self._pitches_from("arpeggio", notes, root, inversion, count)
 
 		if not resolved:
 			# Nothing held (p.arpeggio(p.held_notes()) with no keys down), or every
@@ -1669,8 +1672,11 @@ class PatternBuilder(
 		position = beat
 		i = 0
 		while position < end:
+			midi, origin, _ = resolved[i % len(resolved)]
 			self.note(
-				pitch = resolved[i % len(resolved)],
+				# The name where there is one, so note() resolves and carries it
+				# exactly as a hand-written p.note("kick") would.
+				pitch = midi if origin is None else origin,
 				beat = position,
 				velocity = velocity,
 				duration = duration,
@@ -1727,7 +1733,7 @@ class PatternBuilder(
 		root: typing.Optional[int],
 		inversion: int,
 		count: typing.Optional[int],
-	) -> typing.List[int]:
+	) -> typing.List[typing.Tuple[int, typing.Optional[str], bool]]:
 
 		"""Voice a chord, or resolve a plain pitch list — the shared first argument.
 
@@ -1735,9 +1741,17 @@ class PatternBuilder(
 		"a chord, or the pitches themselves".  A chord — an object with
 		``.tones()``, or a name like ``"Cmaj7"`` — is voiced through
 		``root``/``inversion``/``count``; a sequence is resolved as pitches,
-		leniently, so a drum name this device cannot voice is dropped rather
+		leniently, so a drum name no destination can voice is dropped rather
 		than raising, and those three voicing arguments are refused because
 		they would mean nothing for a list somebody has already chosen.
+
+		Each entry is ``(midi_pitch, origin, primary_unmapped)`` — the same
+		triple :meth:`_resolve_hit_pitch` returns, so a named voice keeps its
+		name all the way to the ``Note``.  Without that these three verbs
+		placed notes no surface could match to the row that sounds them, where
+		``hit_steps``, ``note``, ``euclidean`` and ``de_bruijn`` all carried it
+		(#2395).  A chord's tones are numbers nobody named, so their origin is
+		``None``.
 
 		May return an empty list — an empty pool, or every named voice was one
 		this device lacks.  The caller decides what that means; for a placing
@@ -1748,7 +1762,8 @@ class PatternBuilder(
 
 		if chord is None:
 			self._refuse_voicing_arguments(method, root, inversion, count)
-			return [r for r in (self._resolve_pitch_lenient(p) for p in typing.cast(typing.Sequence[typing.Any], value)) if r is not None]
+			resolved = (self._resolve_hit_pitch(p) for p in typing.cast(typing.Sequence[typing.Any], value))
+			return [r for r in resolved if r is not None]
 
 		if root is None:
 			raise ValueError(
@@ -1756,7 +1771,7 @@ class PatternBuilder(
 				"pass a root MIDI note, or hand a list of pitches instead"
 			)
 
-		return chord.tones(root=root, inversion=inversion, count=count)
+		return [(tone, None, False) for tone in chord.tones(root=root, inversion=inversion, count=count)]
 
 
 	def _refuse_voicing_arguments (self, method: str, root: typing.Optional[int], inversion: int, count: typing.Optional[int] = None) -> None:
@@ -1788,8 +1803,10 @@ class PatternBuilder(
 				``"Cmaj7"``) — or, exactly as ``arpeggio()`` takes it, a
 				plain list of pitches to voice as written: MIDI note
 				numbers, or drum names when the pattern has a
-				``drum_note_map``.  A name this device cannot voice is
-				dropped (warned once); an empty list rests.
+				``drum_note_map``.  A name is carried to the mirror
+				fan-out so each device re-resolves it through its own
+				map; one no destination maps at all is dropped (warned
+				once), and an empty list rests.
 			root: MIDI root note (e.g., 60 for Middle C).  Required for a
 				chord, and not used for a plain pitch list — passing it
 				with one raises, rather than looking as though it applied.
@@ -1849,12 +1866,14 @@ class PatternBuilder(
 			if duration <= 0:
 				raise ValueError(f"detached ({detached}) must be less than the pattern length ({self._pattern.length:g} beats) so the chord keeps a positive duration")
 
-		for pitch in pitches:
+		for pitch, origin, unmapped in pitches:
 			self._pattern.add_note_beats(
 				beat_position = beat,
 				pitch = pitch,
 				velocity = self._resolve_velocity(velocity),
-				duration_beats = duration
+				duration_beats = duration,
+				origin = origin,
+				primary_unmapped = unmapped,
 			)
 
 		if legato is not None:
@@ -1876,8 +1895,10 @@ class PatternBuilder(
 				``"Cmaj7"``) — or, exactly as ``arpeggio()`` takes it, a
 				plain list of pitches to voice as written: MIDI note
 				numbers, or drum names when the pattern has a
-				``drum_note_map``.  A name this device cannot voice is
-				dropped (warned once); an empty list rests.
+				``drum_note_map``.  A name is carried to the mirror
+				fan-out so each device re-resolves it through its own
+				map; one no destination maps at all is dropped (warned
+				once), and an empty list rests.
 			root: MIDI root note (e.g., 60 for Middle C).  Required for a
 				chord, and not used for a plain pitch list — passing it
 				with one raises, rather than looking as though it applied.
@@ -1951,8 +1972,9 @@ class PatternBuilder(
 			if duration <= 0:
 				raise ValueError(f"detached ({detached}) plus the strum stagger exceeds the pattern length ({self._pattern.length:g} beats) — reduce detached, spacing, or count")
 
-		for i, pitch in enumerate(pitches):
-			self.note(pitch=pitch, beat=beat + i * spacing, velocity=velocity, duration=duration)
+		for i, (pitch, origin, _) in enumerate(pitches):
+			# The name where there is one, so note() carries it as a named hit does.
+			self.note(pitch=pitch if origin is None else origin, beat=beat + i * spacing, velocity=velocity, duration=duration)
 
 		if legato is not None:
 			self.legato(legato)
@@ -2065,7 +2087,7 @@ class PatternBuilder(
 				raise ValueError("order must contain only non-negative integers")
 
 		required_count = max(order) + 1
-		tones = self._pitches_from("broken_chord", chord_obj, root, inversion, required_count)
+		tones = [midi for midi, _, _ in self._pitches_from("broken_chord", chord_obj, root, inversion, required_count)]
 		pitches = [tones[i] for i in order]
 
 		self.arpeggio(notes=pitches, spacing=spacing, velocity=velocity, duration=duration, direction="up", beat=beat, span=span)
