@@ -1249,9 +1249,9 @@ def test_arpeggio_chord_form_inversion () -> None:
 	assert first_three == expected[:3]
 
 
-def test_arpeggio_chord_form_direction_down () -> None:
+def test_arpeggio_chord_form_direction_reverse () -> None:
 
-	"""direction='down' on a chord starts from the highest tone."""
+	"""direction='reverse' walks the given order backwards — on a chord, that starts from the highest tone."""
 
 	pattern, builder = _make_builder(length=4)
 
@@ -2466,9 +2466,9 @@ def test_strum_places_notes_with_offset () -> None:
 	assert pitches == [52, 56, 59]
 
 
-def test_strum_direction_down () -> None:
+def test_strum_direction_reverse () -> None:
 
-	"""direction='down' should reverse pitch order (highest first at beat 0)."""
+	"""direction='reverse' should reverse pitch order (on a chord, highest first at beat 0)."""
 
 	pattern, builder = _make_builder(length=4)
 
@@ -2500,9 +2500,9 @@ def test_strum_with_count () -> None:
 	assert total_notes == 5
 
 
-def test_strum_default_direction_is_up () -> None:
+def test_strum_default_direction_is_forward () -> None:
 
-	"""Default direction should be 'up' (first note is lowest pitch)."""
+	"""Default direction is 'forward' — the pitches in the order given, which for a chord is lowest first."""
 
 	pattern, builder = _make_builder(length=4)
 
