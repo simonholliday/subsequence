@@ -211,7 +211,7 @@ class PatternBuilder(
 		"""Number of grid slots in this pattern (e.g. 16 for a 4-beat sixteenth-note pattern)."""
 		return self._default_grid
 
-	def _has_pitch_at_beat (self, pitch: subsequence.declarations.Pitch, beat: float) -> bool:
+	def _has_pitch_at_beat (self, pitch: subsequence.declarations.Pitch, beat: subsequence.declarations.Beats) -> bool:
 		"""Helper to check if a pitch is already sounding at a specific beat.
 
 		Tolerant of unmappable drum names: a name absent from this pattern's
@@ -510,7 +510,7 @@ class PatternBuilder(
 
 		return pymididefs.rpn.RPN_MAP[parameter]
 
-	def note (self, pitch: subsequence.declarations.Pitch, beat: float, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
+	def note (self, pitch: subsequence.declarations.Pitch, beat: subsequence.declarations.Beats, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.Beats = 0.25) -> "PatternBuilder":
 
 		"""
 		Place a single MIDI note at a specific beat position.
@@ -563,7 +563,7 @@ class PatternBuilder(
 		)
 		return self
 
-	def note_on (self, pitch: subsequence.declarations.Pitch, beat: float, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
+	def note_on (self, pitch: subsequence.declarations.Pitch, beat: subsequence.declarations.Beats, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
 
 		"""
 		Place an explicit Note On event without a duration.
@@ -598,7 +598,7 @@ class PatternBuilder(
 		)
 		return self
 
-	def note_off (self, pitch: subsequence.declarations.Pitch, beat: float) -> "PatternBuilder":
+	def note_off (self, pitch: subsequence.declarations.Pitch, beat: subsequence.declarations.Beats) -> "PatternBuilder":
 
 		"""
 		Place an explicit Note Off event to silence a drone.
@@ -626,7 +626,7 @@ class PatternBuilder(
 		)
 		return self
 
-	def drone (self, pitch: subsequence.declarations.Pitch, beat: float = 0.0, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
+	def drone (self, pitch: subsequence.declarations.Pitch, beat: subsequence.declarations.Beats = 0.0, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY) -> "PatternBuilder":
 
 		"""
 		A musical alias for ``note_on``. Places a raw Note On event without a duration,
@@ -656,7 +656,7 @@ class PatternBuilder(
 		self.note_off(pitch, beat=0.0)
 		return self
 
-	def silence (self, beat: float = 0.0) -> "PatternBuilder":
+	def silence (self, beat: subsequence.declarations.Beats = 0.0) -> "PatternBuilder":
 
 		"""
 		Sends an 'All Notes Off' (CC 123) and 'All Sound Off' (CC 120) message
@@ -670,7 +670,7 @@ class PatternBuilder(
 		self.cc(control=120, value=0, beat=beat)
 		return self
 
-	def hit (self, pitch: subsequence.declarations.Pitch, beats: typing.List[subsequence.declarations.BeatPosition], velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1) -> "PatternBuilder":
+	def hit (self, pitch: subsequence.declarations.Pitch, beats: typing.List[subsequence.declarations.BeatPosition], velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.Beats = 0.1) -> "PatternBuilder":
 
 		"""
 		Place multiple short 'hits' at a list of beat positions.
@@ -694,7 +694,7 @@ class PatternBuilder(
 		return self
 
 	@subsequence.declarations.bounded
-	def hit_steps (self, pitch: subsequence.declarations.Pitch, steps: typing.List[subsequence.declarations.StepPosition], velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.1, grid: typing.Optional[int] = None, probability: subsequence.declarations.UnitInterval = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def hit_steps (self, pitch: subsequence.declarations.Pitch, steps: typing.List[subsequence.declarations.StepPosition], velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.Beats = 0.1, grid: typing.Optional[subsequence.declarations.StepCount] = None, probability: subsequence.declarations.UnitInterval = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		Place short hits at specific step (grid) positions.
@@ -746,8 +746,8 @@ class PatternBuilder(
 	def motif (
 		self,
 		m: "subsequence.motifs.Motif",
-		beat: float = 0.0,
-		span: typing.Optional[float] = None,
+		beat: subsequence.declarations.Beats = 0.0,
+		span: typing.Optional[subsequence.declarations.Beats] = None,
 		root: int = 60,
 		velocity: typing.Optional[subsequence.declarations.VelocityValue] = None,
 		fit: typing.Optional[float] = None,
@@ -1035,7 +1035,7 @@ class PatternBuilder(
 
 		return midi
 
-	def _emit_control (self, control: "subsequence.motifs.ControlEvent", beat: float, resolution: typing.Optional[int]) -> None:
+	def _emit_control (self, control: "subsequence.motifs.ControlEvent", beat: subsequence.declarations.Beats, resolution: typing.Optional[int]) -> None:
 
 		"""Emit one stored control gesture through the matching builder verb."""
 
@@ -1084,7 +1084,7 @@ class PatternBuilder(
 		fit: typing.Optional[float] = None,
 		resolution: typing.Optional[int] = None,
 		align: subsequence.declarations.PhraseAlign = "pattern",
-		offset: float = 0.0,
+		offset: subsequence.declarations.Beats = 0.0,
 	) -> "PatternBuilder":
 
 		"""Place this cycle's window of a Phrase — position computed, never stored.
@@ -1328,7 +1328,7 @@ class PatternBuilder(
 		return found
 
 
-	def capture (self, beat: float = 0.0, span: float = 4.0) -> "subsequence.motifs.Motif":
+	def capture (self, beat: subsequence.declarations.Beats = 0.0, span: float = 4.0) -> "subsequence.motifs.Motif":
 
 		"""
 		Read the notes placed so far back out as a :class:`~subsequence.motifs.Motif`.
@@ -1371,7 +1371,7 @@ class PatternBuilder(
 		return subsequence.motifs.Motif(events=tuple(events), length=span)
 
 	@subsequence.declarations.bounded
-	def sequence (self, steps: typing.List[subsequence.declarations.StepPosition], pitches: typing.Union[subsequence.declarations.Pitch, typing.Sequence[subsequence.declarations.Pitch]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[int] = None, probability: subsequence.declarations.UnitInterval = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def sequence (self, steps: typing.List[subsequence.declarations.StepPosition], pitches: typing.Union[subsequence.declarations.Pitch, typing.Sequence[subsequence.declarations.Pitch]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[subsequence.declarations.StepCount] = None, probability: subsequence.declarations.UnitInterval = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		A multi-parameter step sequencer.
@@ -1499,7 +1499,7 @@ class PatternBuilder(
 		return self
 
 	@subsequence.declarations.bounded
-	def repeat (self, pitch: subsequence.declarations.Pitch, spacing: typing.Annotated[float, subsequence.declarations.Span(low=0.01)], velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: float = 0.25) -> "PatternBuilder":
+	def repeat (self, pitch: subsequence.declarations.Pitch, spacing: typing.Annotated[float, subsequence.declarations.Span(low=0.01)], velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.Beats = 0.25) -> "PatternBuilder":
 
 		"""
 		Repeat a note at a fixed beat interval for the whole pattern.
@@ -1543,10 +1543,10 @@ class PatternBuilder(
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY,
 		count: typing.Optional[int] = None,
 		inversion: int = 0,
-		beat: float = 0.0,
-		span: typing.Optional[float] = None,
-		spacing: float = 0.25,
-		duration: typing.Optional[float] = None,
+		beat: subsequence.declarations.Beats = 0.0,
+		span: typing.Optional[subsequence.declarations.Beats] = None,
+		spacing: subsequence.declarations.Beats = 0.25,
+		duration: typing.Optional[subsequence.declarations.Beats] = None,
 		direction: subsequence.declarations.ArpeggioDirection = "forward",
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None
@@ -1705,7 +1705,7 @@ class PatternBuilder(
 			i += 1
 		return self
 
-	def _warn_positioned_articulation (self, method: str, beat: float) -> None:
+	def _warn_positioned_articulation (self, method: str, beat: subsequence.declarations.Beats) -> None:
 
 		"""Warn (once per pattern) that ``sustain``/``detached`` ring from the pattern
 		length, not from ``beat``.
@@ -1835,7 +1835,7 @@ class PatternBuilder(
 			)
 
 
-	def chord (self, chord_obj: typing.Union[subsequence.chords.Chord, str, typing.Sequence[subsequence.declarations.Pitch]], root: typing.Optional[int] = None, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
+	def chord (self, chord_obj: typing.Union[subsequence.chords.Chord, str, typing.Sequence[subsequence.declarations.Pitch]], root: typing.Optional[int] = None, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: subsequence.declarations.Beats = 1.0, inversion: int = 0, count: typing.Optional[int] = None, legato: typing.Optional[float] = None, detached: typing.Optional[subsequence.declarations.Beats] = None, beat: subsequence.declarations.Beats = 0.0) -> "PatternBuilder":
 
 		"""
 		Place a chord at ``beat`` (the start of the pattern by default).
@@ -1926,7 +1926,7 @@ class PatternBuilder(
 			self.legato(legato)
 		return self
 
-	def strum (self, chord_obj: typing.Union[subsequence.chords.Chord, str, typing.Sequence[subsequence.declarations.Pitch]], root: typing.Optional[int] = None, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, spacing: float = 0.05, direction: subsequence.declarations.StrumDirection = "forward", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
+	def strum (self, chord_obj: typing.Union[subsequence.chords.Chord, str, typing.Sequence[subsequence.declarations.Pitch]], root: typing.Optional[int] = None, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: subsequence.declarations.Beats = 1.0, inversion: int = 0, count: typing.Optional[int] = None, spacing: subsequence.declarations.Beats = 0.05, direction: subsequence.declarations.StrumDirection = "forward", legato: typing.Optional[float] = None, detached: typing.Optional[subsequence.declarations.Beats] = None, beat: subsequence.declarations.Beats = 0.0) -> "PatternBuilder":
 
 		"""
 		Play a chord with a small time offset between each note (strum effect).
@@ -2090,7 +2090,7 @@ class PatternBuilder(
 			scale = self.scale or "ionian",
 		)
 
-	def broken_chord (self, chord_obj: typing.Union[subsequence.chords.Chord, str], root: int, order: typing.List[int], spacing: float = 0.25, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, duration: typing.Optional[float] = None, inversion: int = 0, beat: float = 0.0, span: typing.Optional[float] = None) -> "PatternBuilder":
+	def broken_chord (self, chord_obj: typing.Union[subsequence.chords.Chord, str], root: int, order: typing.List[int], spacing: subsequence.declarations.Beats = 0.25, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, duration: typing.Optional[subsequence.declarations.Beats] = None, inversion: int = 0, beat: subsequence.declarations.Beats = 0.0, span: typing.Optional[subsequence.declarations.Beats] = None) -> "PatternBuilder":
 
 		"""
 		Play a chord as an arpeggio in a specific or random order.
@@ -2145,7 +2145,7 @@ class PatternBuilder(
 		self.arpeggio(notes=pitches, spacing=spacing, velocity=velocity, duration=duration, direction="forward", beat=beat, span=span)
 		return self
 
-	def swing (self, percent: float = 57.0, grid: float = 0.25, strength: float = 1.0) -> "PatternBuilder":
+	def swing (self, percent: typing.Annotated[float, subsequence.declarations.Unit("percent")] = 57.0, grid: subsequence.declarations.Beats = 0.25, strength: float = 1.0) -> "PatternBuilder":
 
 		"""
 		Apply swing feel to all notes in the pattern.
@@ -2288,7 +2288,7 @@ class PatternBuilder(
 		self,
 		steps: typing.Iterable[int],
 		floor: float = 0.0,
-		grid: typing.Optional[int] = None,
+		grid: typing.Optional[subsequence.declarations.StepCount] = None,
 	) -> typing.List[float]:
 
 		"""
@@ -2331,7 +2331,7 @@ class PatternBuilder(
 		low: int,
 		high: int,
 		shape: subsequence.declarations.EasingCurve = "linear",
-		grid: typing.Optional[int] = None,
+		grid: typing.Optional[subsequence.declarations.StepCount] = None,
 	) -> typing.List[int]:
 
 		"""
@@ -2379,7 +2379,7 @@ class PatternBuilder(
 	def scale_velocities (
 		self,
 		factors: typing.Sequence[float],
-		grid: typing.Optional[int] = None,
+		grid: typing.Optional[subsequence.declarations.StepCount] = None,
 	) -> "PatternBuilder":
 
 		"""
@@ -2433,7 +2433,7 @@ class PatternBuilder(
 
 	def randomize (
 		self,
-		timing: float = 0.03,
+		timing: subsequence.declarations.Beats = 0.03,
 		velocity: float = 0.0,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None
@@ -2540,7 +2540,7 @@ class PatternBuilder(
 		return self
 
 	@subsequence.declarations.bounded
-	def duration (self, beats: typing.Annotated[float, subsequence.declarations.Span(low=0.01)]) -> "PatternBuilder":
+	def duration (self, beats: typing.Annotated[float, subsequence.declarations.Span(low=0.01), subsequence.declarations.Unit("beats")]) -> "PatternBuilder":
 
 		"""
 		Set every note's duration to a fixed length in beats.
@@ -2568,7 +2568,7 @@ class PatternBuilder(
 				note.duration = duration_pulses
 		return self
 
-	def detached (self, beats: float = 0.05) -> "PatternBuilder":
+	def detached (self, beats: subsequence.declarations.Beats = 0.05) -> "PatternBuilder":
 
 		"""
 		Shorten note durations so a guaranteed silence precedes the next onset.
@@ -2801,7 +2801,7 @@ class PatternBuilder(
 		self._pattern.steps = new_steps
 		return self
 
-	def rotate (self, steps: int, grid: typing.Optional[int] = None) -> "PatternBuilder":
+	def rotate (self, steps: subsequence.declarations.StepCount, grid: typing.Optional[subsequence.declarations.StepCount] = None) -> "PatternBuilder":
 
 		"""
 		Rotate the pattern by a number of grid steps, wrapping around.
@@ -2841,7 +2841,7 @@ class PatternBuilder(
 		self._pattern.steps = new_steps
 		return self
 
-	def transpose (self, semitones: int) -> "PatternBuilder":
+	def transpose (self, semitones: typing.Annotated[int, subsequence.declarations.Unit("semitones")]) -> "PatternBuilder":
 
 		"""
 		Shift all note pitches up or down.

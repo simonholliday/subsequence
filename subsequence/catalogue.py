@@ -315,6 +315,33 @@ def _pitch_arity (annotation: typing.Any) -> typing.Optional[bool]:
 	return False if takes_one else None
 
 
+def _unwrap (annotation: typing.Any) -> typing.Any:
+
+	"""*annotation* with any ``Annotated`` wrapper removed.
+
+	Markers are read off the wrapper, but every question below it asks about
+	*shape* — is this a Literal, a low/high pair, a bool — and those read the
+	arms with ``typing.get_args``, which on an ``Annotated`` returns the marker
+	rather than the arms.  Without this, attaching a unit to a velocity would
+	silently demote a ``range`` control to no control at all, across thirty
+	parameters, with nothing to notice.
+	"""
+
+	return getattr(annotation, "__origin__", annotation) if hasattr(annotation, "__metadata__") else annotation
+
+
+def _unit_of (annotation: typing.Any) -> typing.Optional[subsequence.declarations.Unit]:
+
+	"""The unit declared on *annotation*, if it carries one."""
+
+	for meta in getattr(annotation, "__metadata__", ()):
+
+		if isinstance(meta, subsequence.declarations.Unit):
+			return meta
+
+	return None
+
+
 def _position_marker (annotation: typing.Any) -> typing.Optional[subsequence.declarations.PositionParameter]:
 
 	"""The position marker on *annotation*, or None when it carries none."""
@@ -522,7 +549,17 @@ def _describe_parameter (
 
 	label = name.replace("_", " ")
 	bare = _strip_optional(annotation)
+	shape = _unwrap(bare)
 	entry: typing.Dict[str, typing.Any] = {"name": name, "label": label}
+
+	# Said once here rather than in each branch, so a kind added later carries
+	# it without anybody remembering to.  A parameter with no declared unit
+	# omits the key entirely — a dial reading 0.0-1.0 is measured in nothing,
+	# and its bounds already say so (#2437).
+	unit = _unit_of(bare)
+
+	if unit is not None:
+		entry["unit"] = unit.name
 
 	# Order matters: a pitch is an int-or-str and would otherwise read as a
 	# number, a position that also declared a Span would otherwise publish as
@@ -540,14 +577,14 @@ def _describe_parameter (
 		# control, so it degrades rather than breaks.
 		if several:
 			entry["multiple"] = True
-		if _takes_chord(bare):
+		if _takes_chord(shape):
 			# The pool arm is still what an unaware consumer draws, so this is
 			# additive: it degrades to today's control rather than breaking.
 			entry["accepts"] = ["chord", "pitches"]
 			entry["chord"] = _chord_vocabulary(siblings)
 		return _finished(entry, parameter)
 
-	if _takes_chord(bare):
+	if _takes_chord(shape):
 		# Chord-only — broken_chord() indexes chord tones, so a pitch list has
 		# nothing to index and voicing a name is the only way to drive it.
 		# Declaring it as a pool would break a consumer that ignored the
@@ -572,35 +609,35 @@ def _describe_parameter (
 			entry["multiple"] = True
 		return _finished(entry, parameter)
 
-	options = _literal_options(bare)
+	options = _literal_options(shape)
 
 	if options is not None:
 		entry["kind"] = "choice"
 		entry["options"] = [{"value": o, "label": o.replace("_", " ")} for o in options]
 		return _finished(entry, parameter)
 
-	if _is_range(bare):
+	if _is_range(shape):
 		entry["kind"] = "range"
 		entry["min"] = 1
 		entry["max"] = 127
 		return _finished(entry, parameter)
 
-	if bare is bool:
+	if shape is bool:
 		entry["kind"] = "switch"
 		return _finished(entry, parameter)
 
-	if bare is int or bare is float:
+	if shape is int or shape is float:
 		entry["kind"] = "number"
-		span = _span_of(annotation)
+		span = _span_of(bare)
 		if span is not None:
 			_bounds(entry, span)
 		# An int steps by one; a float's useful step depends on its range, so
 		# it is left for the consumer to choose rather than invented here.
-		if bare is int:
+		if shape is int:
 			entry["step"] = 1
 		return _finished(entry, parameter)
 
-	span = _span_of(annotation)
+	span = _span_of(bare)
 
 	if span is not None:
 		entry["kind"] = "number"

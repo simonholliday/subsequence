@@ -369,9 +369,9 @@ def test_a_covariant_sequence_of_pitches_is_a_pool_too () -> None:
 
 
 @pytest.mark.parametrize("generator,name,unit", [
-	("hit", "beats", "beat"),
-	("hit_steps", "steps", "step"),
-	("sequence", "steps", "step"),
+	("hit", "beats", "beats"),
+	("hit_steps", "steps", "steps"),
+	("sequence", "steps", "steps"),
 ])
 def test_a_placing_verb_offers_the_positions_it_fires_at (generator: str, name: str, unit: str) -> None:
 
@@ -418,28 +418,110 @@ def test_the_unit_is_what_separates_two_otherwise_identical_shapes () -> None:
 	it is the one half of this that IS ours to publish.
 	"""
 
-	assert _parameter("hit", "beats")["unit"] == "beat"
-	assert _parameter("hit_steps", "steps")["unit"] == "step"
+	assert _parameter("hit", "beats")["unit"] == "beats"
+	assert _parameter("hit_steps", "steps")["unit"] == "steps"
 
 
 def test_every_published_unit_is_one_the_vocabulary_declares () -> None:
 
 	"""A unit typed by hand rather than chosen would reach a consumer unannounced.
 
-	``PositionUnit`` is spelled as a ``Literal`` so mypy refuses a new one, and
-	this is the run-time half of that: whatever is actually published has to be
-	a name the vocabulary carries.
+	The published field is a plain string and a consumer is handed a word, not
+	a vocabulary — that is the whole of #2435, and it is what lets another app
+	say ``"kHz"`` without anything in between knowing what one is.  Closing the
+	set on *this* side costs a consumer nothing and buys it the one thing a
+	free string cannot give: our words are stable, so it may switch on ours.
 	"""
 
-	declared = set(typing.get_args(subsequence.declarations.PositionUnit))
+	declared = set(typing.get_args(subsequence.declarations.UnitName))
 
 	for entry in subsequence.generators() + subsequence.transforms():
 
 		for parameter in entry["parameters"]:
 
-			if parameter["kind"] == "position":
+			if "unit" in parameter:
 				assert parameter["unit"] in declared, f"{entry['name']}.{parameter['name']}"
 
+
+def test_the_position_units_are_drawn_from_the_same_vocabulary () -> None:
+
+	"""Both reach a consumer under one ``unit`` key, so two spellings would be a defect.
+
+	``PositionUnit`` is the narrower set — a position is counted in steps or in
+	beats and in nothing else — but it is not a *separate* vocabulary, and this
+	is what stops it drifting into one.  It caught exactly that: positions were
+	published as ``"step"`` and ``"beat"`` while every other unit was plural.
+	"""
+
+	assert set(typing.get_args(subsequence.declarations.PositionUnit)) <= set(
+		typing.get_args(subsequence.declarations.UnitName)
+	)
+
+
+def test_a_declared_unit_reaches_the_entry () -> None:
+
+	"""The three that a surface most needs to tell apart."""
+
+	assert _parameter("euclidean", "velocity")["unit"] == "MIDI velocity"
+	assert _parameter("euclidean", "duration")["unit"] == "beats"
+	assert _parameter_of("transpose", "semitones", subsequence.describe_transform)["unit"] == "semitones"
+
+
+def test_one_name_carries_different_units_in_different_verbs () -> None:
+
+	"""Why the unit rides on the declaration and not on a table keyed by name.
+
+	Three names collide outright, and a lookup table would have been wrong on
+	the day it was written — which is what makes this worth a test rather than
+	a comment.  ``grid`` is the one a consumer would most likely guess at: it
+	is a count of slots everywhere except ``swing``, where it is a note value
+	in beats.
+	"""
+
+	assert _parameter_of("swing", "grid", subsequence.describe_transform)["unit"] == "beats"
+	assert _parameter("hit_steps", "grid")["unit"] == "steps"
+
+	# velocity is MIDI velocity everywhere except randomize, where it scales one.
+	assert _parameter("euclidean", "velocity")["unit"] == "MIDI velocity"
+	assert "unit" not in _parameter_of("randomize", "velocity", subsequence.describe_transform)
+
+
+def test_a_dial_that_measures_nothing_declares_no_unit () -> None:
+
+	"""A unit is a unit of measure, not a description of the parameter.
+
+	A 0.0-1.0 dial is measured in nothing and its bounds already say what it
+	is, so inventing a word for it would be worse than the silence — and the
+	ticket that asked for this said so first.
+	"""
+
+	for generator, name in (("euclidean", "probability"), ("lorenz", "sigma"), ("thin", "amount")):
+		assert "unit" not in _parameter(generator, name), f"{generator}.{name} invented a unit"
+
+
+def test_declaring_a_unit_does_not_change_the_control_it_is_attached_to () -> None:
+
+	"""The failure this would have shipped, silently, across thirty parameters.
+
+	Every shape question below the markers reads the arms with
+	``typing.get_args``, which on an ``Annotated`` returns the marker instead —
+	so wrapping ``VelocityValue`` to name its unit demoted every velocity from
+	a ``range`` control to no control at all.  Nothing raised; the entries just
+	quietly lost a parameter.  ``_unwrap`` is what sees through the wrapper,
+	and this is the guard on it.
+	"""
+
+	velocity = _parameter("euclidean", "velocity")
+
+	assert velocity["kind"] == "range", "a unit demoted a range control"
+	assert velocity["min"] == 1
+	assert velocity["max"] == 127
+	assert velocity["unit"] == "MIDI velocity"
+
+	# And the same for the other shapes a marker now sits beside.
+	assert _parameter("hit_steps", "grid")["kind"] == "number"
+	assert _parameter("hit_steps", "grid")["step"] == 1
+	assert _parameter_of("duration", "beats", subsequence.describe_transform)["min"] == 0.01
 
 def test_an_optional_position_says_so_and_keeps_its_default () -> None:
 
@@ -455,7 +537,7 @@ def test_an_optional_position_says_so_and_keeps_its_default () -> None:
 	parameter = _parameter("ratchet", "steps")
 
 	assert parameter["kind"] == "position"
-	assert parameter["unit"] == "step"
+	assert parameter["unit"] == "steps"
 	assert parameter["required"] is False
 	assert parameter["default"] is None
 
@@ -497,7 +579,7 @@ def test_a_position_that_also_declares_a_span_is_still_a_position () -> None:
 	annotation = typing.Annotated[
 		int,
 		subsequence.declarations.Span(0.0, 15.0),
-		subsequence.declarations.PositionParameter("step"),
+		subsequence.declarations.PositionParameter("steps"),
 	]
 
 	described = subsequence.catalogue._describe_parameter(
@@ -508,7 +590,7 @@ def test_a_position_that_also_declares_a_span_is_still_a_position () -> None:
 
 	assert described is not None
 	assert described["kind"] == "position"
-	assert described["unit"] == "step"
+	assert described["unit"] == "steps"
 	assert "min" not in described, "a position published a bound the composition owns"
 	assert "max" not in described, "a position published a bound the composition owns"
 	assert "multiple" not in described

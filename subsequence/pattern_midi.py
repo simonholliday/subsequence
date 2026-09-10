@@ -106,7 +106,7 @@ class PatternMidiMixin:
 
 	# ── CC messages ─────────────────────────────────────────────────────────
 
-	def cc (self, control: typing.Union[int, str], value: int, beat: float = 0.0) -> "subsequence.pattern_builder.PatternBuilder":
+	def cc (self, control: typing.Union[int, str], value: int, beat: subsequence.declarations.Beats = 0.0) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Send a single CC message at a beat position.
@@ -185,7 +185,7 @@ class PatternMidiMixin:
 
 	# ── Pitch bend ──────────────────────────────────────────────────────────
 
-	def pitch_bend (self, value: float, beat: float = 0.0) -> "subsequence.pattern_builder.PatternBuilder":
+	def pitch_bend (self, value: float, beat: subsequence.declarations.Beats = 0.0) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Send a single pitch bend message at a beat position.
@@ -366,7 +366,7 @@ class PatternMidiMixin:
 		self,
 		parameter: typing.Union[int, str],
 		value: int,
-		beat: float = 0.0,
+		beat: subsequence.declarations.Beats = 0.0,
 		fine: bool = False,
 		null_reset: bool = True,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -423,7 +423,7 @@ class PatternMidiMixin:
 		self,
 		parameter: typing.Union[int, subsequence.declarations.RpnParameter],
 		value: int,
-		beat: float = 0.0,
+		beat: subsequence.declarations.Beats = 0.0,
 		fine: bool = False,
 		null_reset: bool = True,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -602,7 +602,7 @@ class PatternMidiMixin:
 	def program_change (
 		self,
 		program: int,
-		beat: float = 0.0,
+		beat: subsequence.declarations.Beats = 0.0,
 		bank_msb: typing.Optional[int] = None,
 		bank_lsb: typing.Optional[int] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -671,7 +671,7 @@ class PatternMidiMixin:
 		)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-	def sysex (self, data: typing.Union[bytes, typing.List[int]], beat: float = 0.0) -> "subsequence.pattern_builder.PatternBuilder":
+	def sysex (self, data: typing.Union[bytes, typing.List[int]], beat: subsequence.declarations.Beats = 0.0) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Send a System Exclusive (SysEx) message at a beat position.
@@ -717,7 +717,7 @@ class PatternMidiMixin:
 
 	# ── OSC messages ─────────────────────────────────────────────────────────
 
-	def osc (self, address: str, *args: typing.Any, beat: float = 0.0) -> "subsequence.pattern_builder.PatternBuilder":
+	def osc (self, address: str, *args: typing.Any, beat: subsequence.declarations.Beats = 0.0) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Send an OSC message at a beat position.

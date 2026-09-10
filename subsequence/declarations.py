@@ -69,6 +69,52 @@ class Span:
 UnitInterval = typing.Annotated[float, Span(0.0, 1.0)]
 VelocityScale = typing.Annotated[float, Span(0.0, 2.0)]
 
+# The units this package measures things in.  Deliberately small and closed on
+# THIS side while the published field stays a plain string: a consumer is told
+# a word, not a vocabulary, so nothing downstream has to know what a beat is —
+# but because the set is pinned here and tested, a surface can safely switch on
+# ours without us promising a vocabulary to every other app (#2437, #2435).
+#
+# A unit is a unit of MEASURE, not a description.  A dial reading 0.0-1.0 has
+# no unit and gets none; its bounds already say what it is.
+UnitName = typing.Literal[
+	"beats",
+	"steps",
+	"semitones",
+	"octaves",
+	"notes",
+	"MIDI velocity",
+	"percent",
+]
+
+
+@dataclasses.dataclass (frozen=True)
+class Unit:
+
+	"""What a numeric parameter is measured in, for a surface to draw beside it.
+
+	Attach it with :data:`typing.Annotated`, beside a :class:`Span` where there
+	is one.  It carries no bound and implies no conversion — it is a word for a
+	person, which is why the same field can say ``"beats"`` here and ``"kHz"``
+	from another app without anything in between knowing either.
+
+	It goes on the *declaration* rather than in a table keyed on parameter
+	name, because the names genuinely collide: ``length`` is beats on a pattern
+	and a count of steps on ``evolve``, ``grid`` is a slot count everywhere
+	except ``swing`` where it is beats, and ``velocity`` is MIDI velocity
+	everywhere except ``randomize`` where it is a 0-1 scale factor.  A table
+	would have been wrong on the day it was written.
+	"""
+
+	name: UnitName
+
+
+# The two that recur often enough to be worth a name, so a signature reads as
+# prose and the unit is stated once rather than at each of the fifty-odd sites.
+Beats = typing.Annotated[float, Unit("beats")]
+StepCount = typing.Annotated[int, Unit("steps")]
+
+
 @dataclasses.dataclass (frozen=True)
 class PitchParameter:
 
@@ -89,8 +135,10 @@ Pitch = typing.Annotated[typing.Union[int, str], PitchParameter()]
 
 # Which unit a position is counted in.  Spelled as a vocabulary rather than a
 # bare str so a new one cannot be introduced by typing it, and so the catalogue
-# publishes a value a consumer can switch on.
-PositionUnit = typing.Literal["step", "beat"]
+# publishes a value a consumer can switch on.  Its members are drawn from
+# ``UnitName`` and a test pins that, because both reach a consumer under the
+# same ``unit`` key and two spellings of one word there would be a defect.
+PositionUnit = typing.Literal["steps", "beats"]
 
 
 @dataclasses.dataclass (frozen=True)
@@ -116,10 +164,10 @@ class PositionParameter:
 # A grid index: which slot of a subdivided bar fires.  How many slots there are
 # is the pattern's own business — its ``grid``, or the length it derives one
 # from — which is exactly why the bound is not stated here.
-StepPosition = typing.Annotated[int, PositionParameter("step")]
+StepPosition = typing.Annotated[int, PositionParameter("steps")]
 
 # A position in beats, so a figure is not tied to the grid's resolution.
-BeatPosition = typing.Annotated[float, PositionParameter("beat")]
+BeatPosition = typing.Annotated[float, PositionParameter("beats")]
 
 # A velocity: one value, or a (low, high) pair drawn from per note.
 #
@@ -129,7 +177,7 @@ BeatPosition = typing.Annotated[float, PositionParameter("beat")]
 # — JSON has no tuple.  A tuple-only velocity made every range control the
 # catalogue advertises impossible to drive (#2349).  The Tuple arm stays first
 # so catalogue._is_range still recognises the shape.
-VelocityValue = typing.Union[int, typing.Tuple[int, int], typing.List[int]]
+VelocityValue = typing.Annotated[typing.Union[int, typing.Tuple[int, int], typing.List[int]], Unit("MIDI velocity")]
 
 # Probability-curve names.  ghost_fill(bias=) and thin(strategy=) share this
 # vocabulary because they share build_ghost_bias(); thin's docstring already
