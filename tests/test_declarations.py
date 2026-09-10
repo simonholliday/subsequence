@@ -68,17 +68,21 @@ def test_thin_strategy_is_the_bias_vocabulary_plus_strength () -> None:
 
 def test_arpeggio_and_strum_directions_are_deliberately_different () -> None:
 
-	"""strum only reverses; arpeggio also ping-pongs and shuffles.
+	"""strum staggers a chord; arpeggio also ping-pongs and shuffles.
 
-	One shared alias would let strum(direction="up_down") type-check, and strum
-	has no such mode.
+	One shared alias would let strum(direction="forward_and_back") type-check,
+	and strum has no such mode.
 	"""
 
 	arpeggio = set(typing.get_args(subsequence.declarations.ArpeggioDirection))
 	strum = set(typing.get_args(subsequence.declarations.StrumDirection))
 
-	assert strum == {"up", "down"}
-	assert arpeggio == {"up", "down", "up_down", "random"}
+	assert strum == {"forward", "reverse", "low_to_high", "high_to_low"}
+	assert arpeggio == {
+		"forward", "reverse", "forward_and_back",
+		"low_to_high", "high_to_low", "low_to_high_and_back",
+		"random",
+	}
 	assert strum < arpeggio
 
 

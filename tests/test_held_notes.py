@@ -182,7 +182,7 @@ def test_arpeggio_over_held_notes_rests_when_empty () -> None:
 	"""p.arpeggio(p.held_notes()) places nothing when no keys are held."""
 	pattern = subsequence.pattern.Pattern(channel=0, length=4)
 	builder = subsequence.pattern_builder.PatternBuilder(pattern=pattern, cycle=0, default_grid=16, held_notes=subsequence.held_notes.HeldNotes())
-	result = builder.arpeggio(builder.held_notes(), direction="up")
+	result = builder.arpeggio(builder.held_notes(), direction="forward")
 	assert result is builder
 	assert pattern.steps == {}
 
@@ -195,7 +195,7 @@ def test_arpeggio_over_held_notes_places_notes () -> None:
 	pattern = subsequence.pattern.Pattern(channel=0, length=4)
 	builder = subsequence.pattern_builder.PatternBuilder(pattern=pattern, cycle=0, default_grid=16, held_notes=h)
 
-	builder.arpeggio(builder.held_notes(), spacing=1.0, direction="up")
+	builder.arpeggio(builder.held_notes(), spacing=1.0, direction="forward")
 
 	placed = [note.pitch for step in pattern.steps.values() for note in step.notes]
 	assert sorted(set(placed)) == [60, 64, 67]

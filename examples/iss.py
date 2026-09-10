@@ -246,7 +246,7 @@ def arp (p, chord):
 	# Direction mirrors the ISS's north/south heading — ascending when going north,
 	# descending when going south. iss_lat.delta is positive while climbing, negative
 	# while descending. The flip happens naturally at each pole (~every 46 minutes).
-	direction = "up" if iss_lat.delta >= 0 else "down"
+	direction = "low_to_high" if iss_lat.delta >= 0 else "high_to_low"
 
 	pitches = chord.tones(root=60, count=4)   # Four chord tones from C4 upward
 	p.arpeggio(pitches, spacing=0.25, velocity=arp_velocity, duration=0.05, direction=direction)

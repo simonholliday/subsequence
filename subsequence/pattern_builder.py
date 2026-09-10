@@ -33,6 +33,12 @@ import subsequence.progressions
 
 logger = logging.getLogger(__name__)
 
+# Read off the declarations rather than repeated, so the runtime check and the
+# published vocabulary cannot drift apart — the catalogue derives a surface's
+# option list from the same Literal.
+_ARPEGGIO_DIRECTIONS: typing.Tuple[str, ...] = typing.get_args(subsequence.declarations.ArpeggioDirection)
+_STRUM_DIRECTIONS: typing.Tuple[str, ...] = typing.get_args(subsequence.declarations.StrumDirection)
+
 
 def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 
@@ -1541,7 +1547,7 @@ class PatternBuilder(
 		span: typing.Optional[float] = None,
 		spacing: float = 0.25,
 		duration: typing.Optional[float] = None,
-		direction: subsequence.declarations.ArpeggioDirection = "up",
+		direction: subsequence.declarations.ArpeggioDirection = "forward",
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None
 	) -> "PatternBuilder":
@@ -1568,7 +1574,7 @@ class PatternBuilder(
 		An empty pitch list rests (places nothing), so a live arpeggiator over
 		``p.held_notes()`` is simply silent when no keys are held::
 
-			p.arpeggio(p.held_notes(), direction="up")
+			p.arpeggio(p.held_notes(), direction="forward")
 
 		Parameters:
 			notes: A chord to arpeggiate — anything with a ``.tones()`` method (the
@@ -1598,11 +1604,22 @@ class PatternBuilder(
 			spacing: Time between each note in beats (default 0.25 = 16th note).
 			duration: Note duration in beats.  Defaults to ``spacing`` (each note
 				fills its slot exactly).
-			direction: Order in which the notes are cycled:
+			direction: Order in which the notes are cycled.
 
-				- ``"up"`` — lowest to highest, then wrap (default).
-				- ``"down"`` — highest to lowest, then wrap.
-				- ``"up_down"`` — ascend then descend (ping-pong), cycling.
+				``forward`` and ``reverse`` walk the pitches **in the order
+				they were given**.  For a chord that is ascending, because a
+				chord's tones arrive sorted; for a list somebody chose it is
+				the order they chose, which is musically real — ``G, C, E``
+				is a different figure from ``C, E, G``.  The ``low_to_high``
+				pair sorts by pitch first, whatever order they arrived in.
+
+				- ``"forward"`` — as given, then wrap (default).
+				- ``"reverse"`` — as given, backwards.
+				- ``"forward_and_back"`` — as given, there and back (ping-pong).
+				- ``"low_to_high"`` — sorted, ascending.
+				- ``"high_to_low"`` — sorted, descending.
+				- ``"low_to_high_and_back"`` — sorted, there and back: the
+				  figure a hardware arpeggiator calls up-down.
 				- ``"random"`` — shuffled once per call using *rng*.
 
 			seed: Fix the ``direction="random"`` shuffle for this call (an
@@ -1614,8 +1631,8 @@ class PatternBuilder(
 			# Arpeggiate the pattern's current chord, four voices ascending
 			p.arpeggio(chord, root=60, count=4, spacing=0.25)
 
-			# A plain list of pitches — ping-pong: C E G E C E G E ...
-			p.arpeggio([60, 64, 67], spacing=0.25, direction="up_down")
+			# A list you chose, there and back: C E G E C E G E ...
+			p.arpeggio([60, 64, 67], spacing=0.25, direction="forward_and_back")
 
 			# One chord of a progression, confined to its slot, humanised
 			p.arpeggio(chord, root=48, beat=start, span=length, velocity=(60, 95))
@@ -1637,19 +1654,22 @@ class PatternBuilder(
 			# named voice was one this device lacks — either way, a rest.
 			return self
 
-		if direction == "up":
-			pass  # already in ascending order as supplied
-		elif direction == "down":
+		self._check_direction("arpeggio", direction, _ARPEGGIO_DIRECTIONS)
+
+		if direction in ("low_to_high", "high_to_low", "low_to_high_and_back"):
+			resolved = sorted(resolved, key=lambda entry: entry[0])
+
+		if direction in ("reverse", "high_to_low"):
 			resolved = list(reversed(resolved))
-		elif direction == "up_down":
+		elif direction in ("forward_and_back", "low_to_high_and_back"):
+			# There and back without repeating either end, so the figure reads
+			# as one gesture rather than a stutter at the turns.
 			if len(resolved) > 1:
 				resolved = resolved + list(reversed(resolved[1:-1]))
 		elif direction == "random":
 			rng = self._rng_from(seed, rng)
 			resolved = list(resolved)
 			rng.shuffle(resolved)
-		else:
-			raise ValueError(f"direction must be 'up', 'down', 'up_down', or 'random', got '{direction}'")
 
 		if duration is None:
 			duration = spacing
@@ -1774,6 +1794,32 @@ class PatternBuilder(
 		return [(tone, None, False) for tone in chord.tones(root=root, inversion=inversion, count=count)]
 
 
+	def _check_direction (self, method: str, direction: str, allowed: typing.Tuple[str, ...]) -> None:
+
+		"""Refuse an unknown cycling direction, naming the replacement for a retired one.
+
+		``up``, ``down`` and ``up_down`` were retired rather than redefined
+		(#2414).  They walked the pitches in the order they were given while
+		the docstring promised lowest to highest, and a name that quietly
+		changed meaning would have altered what existing pieces play with
+		nothing to notice it — where an unknown name stops the call and says so.
+		"""
+
+		if direction in allowed:
+			return
+
+		replacement = subsequence.declarations.RETIRED_DIRECTIONS.get(direction)
+
+		if replacement is not None and replacement in allowed:
+			raise ValueError(
+				f"{method} direction '{direction}' was retired because it never sorted — "
+				f"'{replacement}' plays exactly what it played, and 'low_to_high' is what "
+				"its documentation described"
+			)
+
+		raise ValueError(f"{method} direction must be one of {', '.join(allowed)} — got '{direction}'")
+
+
 	def _refuse_voicing_arguments (self, method: str, root: typing.Optional[int], inversion: int, count: typing.Optional[int] = None) -> None:
 
 		"""Reject root/inversion/count when the caller passed plain pitches.
@@ -1880,7 +1926,7 @@ class PatternBuilder(
 			self.legato(legato)
 		return self
 
-	def strum (self, chord_obj: typing.Union[subsequence.chords.Chord, str, typing.Sequence[subsequence.declarations.Pitch]], root: typing.Optional[int] = None, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, spacing: float = 0.05, direction: subsequence.declarations.StrumDirection = "up", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
+	def strum (self, chord_obj: typing.Union[subsequence.chords.Chord, str, typing.Sequence[subsequence.declarations.Pitch]], root: typing.Optional[int] = None, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY, sustain: bool = False, duration: float = 1.0, inversion: int = 0, count: typing.Optional[int] = None, spacing: float = 0.05, direction: subsequence.declarations.StrumDirection = "forward", legato: typing.Optional[float] = None, detached: typing.Optional[float] = None, beat: float = 0.0) -> "PatternBuilder":
 
 		"""
 		Play a chord with a small time offset between each note (strum effect).
@@ -1913,7 +1959,11 @@ class PatternBuilder(
 			count: Number of notes to play (cycles tones if higher than
 				the chord's natural size).
 			spacing: Time in beats between each note onset (default 0.05).
-			direction: ``"up"`` for low-to-high, ``"down"`` for high-to-low.
+			direction: ``"forward"`` staggers the pitches in the order they were
+				given (ascending for a chord, whose tones arrive sorted) and
+				``"reverse"`` staggers them backwards; ``"low_to_high"`` and
+				``"high_to_low"`` sort by pitch first.  A guitarist's downstroke
+				is ``"low_to_high"`` whatever order the notes were handed over in.
 			beat: Beat offset for the first note (default 0.0); the stagger is added
 				on top.  ``sustain``/``detached`` ring from the pattern length, not from
 				``beat`` — set ``duration`` explicitly when placing positioned strums.
@@ -1937,7 +1987,7 @@ class PatternBuilder(
 			p.strum(chord, root=52, velocity=85, spacing=0.06, legato=0.95)
 
 			# Fast downward strum
-			p.strum(chord, root=52, direction="down", spacing=0.03)
+			p.strum(chord, root=52, direction="reverse", spacing=0.03)
 
 			# Five-voice strum with a 0.25-beat safety gap before the
 			# next chord — won't exhaust polyphony on a 5-voice synth.
@@ -1954,15 +2004,17 @@ class PatternBuilder(
 		if spacing <= 0:
 			raise ValueError("spacing must be positive")
 
-		if direction not in ("up", "down"):
-			raise ValueError(f"direction must be 'up' or 'down', got '{direction}'")
+		self._check_direction("strum", direction, _STRUM_DIRECTIONS)
 
 		pitches = self._pitches_from("strum", chord_obj, root, inversion, count)
 
 		if not pitches:
 			return self	# an empty pool, or every named voice missing here — rest
 
-		if direction == "down":
+		if direction in ("low_to_high", "high_to_low"):
+			pitches = sorted(pitches, key=lambda entry: entry[0])
+
+		if direction in ("reverse", "high_to_low"):
 			pitches = list(reversed(pitches))
 
 		if sustain:
@@ -2090,7 +2142,7 @@ class PatternBuilder(
 		tones = [midi for midi, _, _ in self._pitches_from("broken_chord", chord_obj, root, inversion, required_count)]
 		pitches = [tones[i] for i in order]
 
-		self.arpeggio(notes=pitches, spacing=spacing, velocity=velocity, duration=duration, direction="up", beat=beat, span=span)
+		self.arpeggio(notes=pitches, spacing=spacing, velocity=velocity, duration=duration, direction="forward", beat=beat, span=span)
 		return self
 
 	def swing (self, percent: float = 57.0, grid: float = 0.25, strength: float = 1.0) -> "PatternBuilder":

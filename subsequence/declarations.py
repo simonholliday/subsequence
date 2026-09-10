@@ -130,10 +130,36 @@ ThinStrategy = typing.Literal[
 	"e_and_a",
 ]
 
-# Deliberately NOT shared: arpeggio cycles four ways and strum only reverses.
-# One alias covering both would let strum("up_down") type-check.
-ArpeggioDirection = typing.Literal["up", "down", "up_down", "random"]
-StrumDirection = typing.Literal["up", "down"]
+# Deliberately NOT shared: arpeggio has figures a strum cannot make.  One alias
+# covering both would let strum("forward_and_back") type-check.
+#
+# ``forward``/``reverse`` walk the pitches in the order they were given;
+# ``low_to_high``/``high_to_low`` sort by pitch first.  The distinction is the
+# whole point of the vocabulary: for a chord the two are the same, because a
+# chord's tones arrive sorted, and for a list somebody picked they are not
+# (#2414).  The old ``up``/``down``/``up_down`` were retired rather than
+# redefined — reusing a name would have changed what existing pieces play with
+# nothing to notice it, where an unknown name raises.
+ArpeggioDirection = typing.Literal[
+	"forward",
+	"reverse",
+	"forward_and_back",
+	"low_to_high",
+	"high_to_low",
+	"low_to_high_and_back",
+	"random",
+]
+StrumDirection = typing.Literal["forward", "reverse", "low_to_high", "high_to_low"]
+
+# What the retired names meant, so the error can name the replacement rather
+# than only listing what is valid.  ``forward`` preserves behaviour in every
+# case: for a chord it is identical to ``low_to_high``, and for a pool it is
+# what ``up`` actually did whatever the docstring claimed.
+RETIRED_DIRECTIONS: typing.Dict[str, str] = {
+	"up": "forward",
+	"down": "reverse",
+	"up_down": "forward_and_back",
+}
 
 PhraseAlign = typing.Literal["pattern", "section"]
 

@@ -3265,7 +3265,7 @@ class Composition:
 
 			@comp.pattern(channel=6, beats=4)
 			def arp (p):
-			    p.arpeggio(p.held_notes(), direction="up")  # rests when silent
+			    p.arpeggio(p.held_notes(), direction="forward")  # rests when silent
 			```
 		"""
 

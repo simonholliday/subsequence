@@ -680,7 +680,7 @@ def test_strum_reverses_a_plain_pitch_list_when_asked () -> None:
 
 	pattern, builder = _make_builder(length=4)
 
-	builder.strum([60, 64, 67], spacing=0.25, direction="down")
+	builder.strum([60, 64, 67], spacing=0.25, direction="reverse")
 
 	positions = sorted(pattern.steps)
 	pitches = [pattern.steps[position].notes[0].pitch for position in positions]
@@ -777,6 +777,160 @@ def a_registered_quality () -> typing.Iterator[str]:
 	):
 		table.clear()
 		table.update(before)
+
+
+# ── which order the notes are cycled in (#2414) ─────────────────────────────
+
+# A pool in a deliberately unsorted order, so "as given" and "by pitch" differ.
+_UNSORTED = ["G2", "C2", "C3", "D#2"]
+_UNSORTED_KIT = {"C2": 36, "D#2": 39, "G2": 43, "C3": 48}
+
+# What each figure plays, written out rather than computed, so the table reads
+# as the documentation and a change to either has to be made deliberately.
+_ARPEGGIO_FIGURES = {
+	"forward":              ["G2", "C2", "C3", "D#2"],
+	"reverse":              ["D#2", "C3", "C2", "G2"],
+	"forward_and_back":     ["G2", "C2", "C3", "D#2", "C3", "C2"],
+	"low_to_high":          ["C2", "D#2", "G2", "C3"],
+	"high_to_low":          ["C3", "G2", "D#2", "C2"],
+	"low_to_high_and_back": ["C2", "D#2", "G2", "C3", "G2", "D#2"],
+}
+
+
+@pytest.mark.parametrize("direction,expected", sorted(_ARPEGGIO_FIGURES.items()))
+def test_an_arpeggio_figure_plays_what_it_says (direction: str, expected: typing.List[str]) -> None:
+
+	"""`forward` walks the pool as given; `low_to_high` sorts it first.
+
+	The old `up` promised lowest-to-highest and delivered the order given,
+	which was true only for a chord — whose tones arrive sorted — and false
+	for a list somebody picked (#2414).
+	"""
+
+	pattern, builder = _make_builder(length=4, drum_note_map=_UNSORTED_KIT)
+
+	builder.arpeggio(_UNSORTED, direction=direction, spacing=0.25)
+
+	played = [note.origin for pulse in sorted(pattern.steps) for note in pattern.steps[pulse].notes]
+
+	assert played[:len(expected)] == expected
+
+
+def test_the_order_a_musician_picked_survives () -> None:
+
+	"""The default must not sort — `G, C, E` is a different figure from `C, E, G`.
+
+	This is the capability the bug was accidentally providing, and the reason
+	the fix was new vocabulary rather than making `up` honest.
+	"""
+
+	pattern, builder = _make_builder(length=4, drum_note_map=_UNSORTED_KIT)
+
+	builder.arpeggio(_UNSORTED, spacing=0.25)
+
+	played = [note.origin for pulse in sorted(pattern.steps) for note in pattern.steps[pulse].notes]
+
+	assert played[:4] == _UNSORTED
+
+
+def test_a_chord_sounds_the_same_either_way () -> None:
+
+	"""Why nobody noticed: a chord's tones arrive sorted, so both agree on it.
+
+	`forward` is the behaviour-preserving replacement for `up` precisely
+	because of this — for chord content the retired name was never wrong.
+	"""
+
+	def voiced (direction: str) -> typing.List[int]:
+		pattern, builder = _make_builder(length=4)
+		builder.arpeggio("Cmaj7", root=48, direction=direction, spacing=0.25)
+		return [n.pitch for pulse in sorted(pattern.steps) for n in pattern.steps[pulse].notes][:4]
+
+	assert voiced("forward") == voiced("low_to_high") == [48, 52, 55, 59]
+	assert voiced("reverse") == voiced("high_to_low") == [59, 55, 52, 48]
+
+
+@pytest.mark.parametrize("direction,expected", [
+	("forward", ["G2", "C2", "C3", "D#2"]),
+	("reverse", ["D#2", "C3", "C2", "G2"]),
+	("low_to_high", ["C2", "D#2", "G2", "C3"]),
+	("high_to_low", ["C3", "G2", "D#2", "C2"]),
+])
+def test_a_strum_staggers_in_the_order_it_says (direction: str, expected: typing.List[str]) -> None:
+
+	"""strum carried the same false promise and moved with arpeggio."""
+
+	pattern, builder = _make_builder(length=4, drum_note_map=_UNSORTED_KIT)
+
+	builder.strum(_UNSORTED, direction=direction, spacing=0.1)
+
+	played = [note.origin for pulse in sorted(pattern.steps) for note in pattern.steps[pulse].notes]
+
+	assert played == expected
+
+
+@pytest.mark.parametrize("retired,replacement", [("up", "forward"), ("down", "reverse"), ("up_down", "forward_and_back")])
+def test_a_retired_direction_names_its_replacement (retired: str, replacement: str) -> None:
+
+	"""Retired rather than redefined, and the error has to be worth reading.
+
+	Reusing `up` for the sorted figure would have changed what existing pieces
+	play with nothing to notice it.  Removing it stops the call instead — but
+	only earns that if it says which name keeps the sound.
+
+	Matched on the migration wording rather than on the replacement alone: the
+	*generic* message lists every valid direction, so "forward" appears in it
+	either way and this would have passed with the hint deleted.  Found by
+	breaking it, which is the only way that kind of hole shows up.
+	"""
+
+	_, builder = _make_builder(length=4, drum_note_map=_UNSORTED_KIT)
+
+	with pytest.raises(ValueError, match="was retired") as raised:
+		builder.arpeggio(_UNSORTED, direction=retired)
+
+	assert f"'{replacement}'" in str(raised.value)
+
+
+def test_an_unknown_direction_lists_what_is_valid () -> None:
+
+	"""A name that never existed gets the vocabulary, not a migration note."""
+
+	_, builder = _make_builder(length=4, drum_note_map=_UNSORTED_KIT)
+
+	with pytest.raises(ValueError, match="must be one of"):
+		builder.arpeggio(_UNSORTED, direction="sideways")
+
+	# strum has no ping-pong, so arpeggio's replacement is no use to it.
+	with pytest.raises(ValueError, match="must be one of"):
+		builder.strum(_UNSORTED, direction="up_down")
+
+
+def test_the_runtime_check_reads_the_published_vocabulary () -> None:
+
+	"""The check and the catalogue's option list are one Literal, not two lists.
+
+	A surface's labels are derived from the same annotation, so a direction the
+	panel offers and the function refuses would be a control that cannot work.
+
+	The **order** is carried through too, unsorted, so the declaration decides
+	what a musician scrolls past: the two "as given" figures, then the three
+	sorted by pitch, then random.  Alphabetical would interleave them.
+	"""
+
+	for name, alias in (
+		("arpeggio", subsequence.declarations.ArpeggioDirection),
+		("strum", subsequence.declarations.StrumDirection),
+	):
+		entry = subsequence.describe_generator(name)
+		options = next(p for p in entry["parameters"] if p["name"] == "direction")["options"]
+
+		assert [o["value"] for o in options] == list(typing.get_args(alias)), name
+
+	arpeggio = subsequence.describe_generator("arpeggio")["parameters"]
+	labels = [o["label"] for o in next(p for p in arpeggio if p["name"] == "direction")["options"]]
+
+	assert labels[:3] == ["forward", "reverse", "forward and back"]
 
 
 # ── a named pool keeps its name on the note (#2395) ─────────────────────────
@@ -1102,7 +1256,7 @@ def test_arpeggio_chord_form_direction_down () -> None:
 	pattern, builder = _make_builder(length=4)
 
 	chord = subsequence.chords.Chord(root_pc=0, quality="major")
-	builder.arpeggio(chord, root=60, spacing=0.5, direction="down")
+	builder.arpeggio(chord, root=60, spacing=0.5, direction="reverse")
 
 	positions = sorted(pattern.steps.keys())
 	first_pitch = pattern.steps[positions[0]].notes[0].pitch
@@ -2320,7 +2474,7 @@ def test_strum_direction_down () -> None:
 
 	chord = subsequence.chords.Chord(root_pc=4, quality="major")
 
-	builder.strum(chord, root=52, velocity=90, spacing=0.1, direction="down")
+	builder.strum(chord, root=52, velocity=90, spacing=0.1, direction="reverse")
 
 	positions = sorted(pattern.steps.keys())
 

@@ -338,7 +338,7 @@ class EasedValue:
 		Example::
 
 			# Choose arpeggio direction based on which way the value is moving.
-			direction = "up" if iss_lat.delta >= 0 else "down"
+			direction = "low_to_high" if iss_lat.delta >= 0 else "high_to_low"
 			p.arpeggio(pitches, spacing=0.25, direction=direction)
 
 			# Scale an effect by how large the change was.
