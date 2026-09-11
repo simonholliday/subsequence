@@ -443,6 +443,30 @@ def test_every_published_unit_is_one_the_vocabulary_declares () -> None:
 				assert parameter["unit"] in declared, f"{entry['name']}.{parameter['name']}"
 
 
+def test_every_word_in_the_vocabulary_is_one_something_actually_sends () -> None:
+
+	"""The other direction, and the one that keeps the set a promise.
+
+	Superconductor's adapter keys bounds and choices on ``(name, unit)`` since
+	Simon settled #2435, so these spellings are a contract rather than a
+	caption.  A word nobody publishes makes the vocabulary a wish instead — it
+	would satisfy the guard above trivially, while saying nothing about what
+	actually crosses the wire.  ``notes`` was dropped by this test's reasoning
+	once we agreed ``count`` was better left blank than right five times in six.
+	"""
+
+	published = {
+		parameter["unit"]
+		for entry in subsequence.generators() + subsequence.transforms()
+		for parameter in entry["parameters"]
+		if "unit" in parameter
+	}
+
+	unused = set(typing.get_args(subsequence.declarations.UnitName)) - published
+
+	assert not unused, f"declared but never sent: {sorted(unused)} — reserve nothing, add when used"
+
+
 def test_the_position_units_are_drawn_from_the_same_vocabulary () -> None:
 
 	"""Both reach a consumer under one ``unit`` key, so two spellings would be a defect.

@@ -1404,7 +1404,7 @@ class PatternAlgorithmicMixin:
 		duration: subsequence.declarations.Beats = 0.2,
 		start: int = 0,
 		skip: int = 0,
-		octave_span: int = 2,
+		octave_span: typing.Annotated[int, subsequence.declarations.Unit("octaves")] = 2,
 		mapping: typing.Optional[
 			typing.Callable[
 				[int, int],

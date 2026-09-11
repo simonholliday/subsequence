@@ -75,6 +75,20 @@ VelocityScale = typing.Annotated[float, Span(0.0, 2.0)]
 # but because the set is pinned here and tested, a surface can safely switch on
 # ours without us promising a vocabulary to every other app (#2437, #2435).
 #
+# **These spellings are a published contract, not a caption.**  Simon settled
+# #2435 in favour of a closed set per producing app, so Superconductor's
+# adapter now KEYS on these words — a bound or a set of choices is looked up by
+# ``(name, unit)``.  Renaming one is therefore a break, and a silent one: they
+# would not notice, the control would simply stop being bounded.  If a word has
+# to move, move it loudly and tell them, the way ``direction`` was retired in
+# #2414.  Adding a word is additive and safe; changing or removing one is not.
+#
+# Every word here is one something actually publishes, and a test says so.  A
+# reserved word nobody sends would make the vocabulary a wish rather than a
+# promise — ``notes`` was dropped for exactly that reason, once we and
+# Superconductor agreed that ``count`` (voices on a chord, notes everywhere
+# else) was better left blank than labelled right five times out of six.
+#
 # A unit is a unit of MEASURE, not a description.  A dial reading 0.0-1.0 has
 # no unit and gets none; its bounds already say what it is.
 UnitName = typing.Literal[
@@ -82,7 +96,6 @@ UnitName = typing.Literal[
 	"steps",
 	"semitones",
 	"octaves",
-	"notes",
 	"MIDI velocity",
 	"percent",
 ]
