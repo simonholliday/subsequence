@@ -275,14 +275,23 @@ EasingCurve = typing.Literal[
 # strict: "Cb", "E#", lowercase and "H" all raise.  Written out rather than
 # derived, because a Literal needs literals; a test pins it to the table so the
 # two cannot drift.
+#
+# **The order is load-bearing, and it is chromatic, from C** (#2378).  The
+# catalogue publishes a Literal in declared order — it never sorts — so this
+# order is what a musician scrolls through, and it has to match the chord
+# roots #2375 publishes straight from the table, or a panel shows two note
+# pickers ordered differently.  It also chooses a default for somebody else: a
+# surface opens a choice with no default at its FIRST option, so this spelled
+# alphabetically made a freshly added snap_to_scale snap to A major for no
+# reason but the alphabet.  The test pins the order, not just the membership.
 KeyName = typing.Literal[
-	"A", "A#", "Ab",
-	"B", "Bb",
-	"C", "C#",
-	"D", "D#", "Db",
-	"E", "Eb",
-	"F", "F#",
-	"G", "G#", "Gb",
+	"C", "C#", "Db",
+	"D", "D#", "Eb",
+	"E",
+	"F", "F#", "Gb",
+	"G", "G#", "Ab",
+	"A", "A#", "Bb",
+	"B",
 ]
 
 # Registered Parameter Numbers.  Unlike CC and NRPN names — which come from the

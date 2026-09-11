@@ -115,6 +115,22 @@ def test_key_names_match_the_table_that_resolves_them () -> None:
 	)
 
 
+def test_key_names_are_declared_in_the_order_a_musician_reads_them () -> None:
+
+	"""Chromatic from C, and the same order as the chord roots beside them.
+
+	Membership alone let this ship alphabetically — ``Ab`` after ``A#``, ``Db``
+	after ``D#`` — because the set test above cannot see order, and the
+	catalogue publishes a Literal exactly as declared (#2378).  Pinned to the
+	table's own order, which is what #2375's chord roots are read from, so the
+	two note pickers a panel can draw side by side cannot disagree again.
+	"""
+
+	assert list(typing.get_args(subsequence.declarations.KeyName)) == list(
+		subsequence.chords.NOTE_NAME_TO_PC
+	)
+
+
 def test_the_rpn_vocabulary_matches_the_map_it_comes_from () -> None:
 
 	"""``RpnParameter`` is copied from another package, so it needs a guard.
