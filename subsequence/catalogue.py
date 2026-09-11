@@ -342,6 +342,18 @@ def _unit_of (annotation: typing.Any) -> typing.Optional[subsequence.declaration
 	return None
 
 
+def _step_of (annotation: typing.Any) -> typing.Optional[subsequence.declarations.Step]:
+
+	"""The step declared on *annotation*, if it carries one."""
+
+	for meta in getattr(annotation, "__metadata__", ()):
+
+		if isinstance(meta, subsequence.declarations.Step):
+			return meta
+
+	return None
+
+
 def _position_marker (annotation: typing.Any) -> typing.Optional[subsequence.declarations.PositionParameter]:
 
 	"""The position marker on *annotation*, or None when it carries none."""
@@ -631,10 +643,16 @@ def _describe_parameter (
 		span = _span_of(bare)
 		if span is not None:
 			_bounds(entry, span)
-		# An int steps by one; a float's useful step depends on its range, so
-		# it is left for the consumer to choose rather than invented here.
+		# An int steps by one.  A float's useful step depends on what it
+		# measures, so it is published only where the declaration says — a
+		# beat position steps by a sixteenth, a gate by a twentieth (#2367).
+		# Left unsaid, a surface invents one, and Superconductor's tenth can
+		# never land on a sixteenth.  A declared Step wins over the int's one.
 		if shape is int:
 			entry["step"] = 1
+		step = _step_of(bare)
+		if step is not None:
+			entry["step"] = step.size
 		return _finished(entry, parameter)
 
 	span = _span_of(bare)

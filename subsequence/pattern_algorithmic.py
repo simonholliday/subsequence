@@ -102,13 +102,13 @@ class PatternAlgorithmicMixin:
 		def note (
 			self,
 			pitch: subsequence.declarations.Pitch,
-			beat: subsequence.declarations.Beats,
+			beat: subsequence.declarations.GridBeats,
 			velocity: subsequence.declarations.VelocityValue,
-			duration: subsequence.declarations.Beats,
+			duration: subsequence.declarations.GateBeats,
 		) -> "subsequence.pattern_builder.PatternBuilder": ...
 		def _resolve_pitch (self, pitch: subsequence.declarations.Pitch) -> int: ...
 		def _resolve_pitch_lenient (self, pitch: subsequence.declarations.Pitch) -> typing.Optional[int]: ...
-		def _has_pitch_at_beat (self, pitch: subsequence.declarations.Pitch, beat: subsequence.declarations.Beats) -> bool: ...
+		def _has_pitch_at_beat (self, pitch: subsequence.declarations.Pitch, beat: subsequence.declarations.GridBeats) -> bool: ...
 
 	def _rng_from (self, seed: typing.Optional[int], rng: typing.Optional[random.Random]) -> random.Random:
 
@@ -236,7 +236,7 @@ class PatternAlgorithmicMixin:
 		sequence: typing.List[int],
 		pitch: subsequence.declarations.Pitch,
 		velocity: subsequence.declarations.VelocityValue,
-		duration: subsequence.declarations.Beats,
+		duration: subsequence.declarations.GateBeats,
 		probability: float,
 		rng: random.Random,
 		no_overlap: bool = False
@@ -260,7 +260,7 @@ class PatternAlgorithmicMixin:
 		self,
 		verb: str,
 		length: int,
-		spacing: typing.Optional[subsequence.declarations.Beats],
+		spacing: typing.Optional[subsequence.declarations.GridBeats],
 		noun: str = "notes",
 	) -> typing.Tuple[float, int]:
 
@@ -294,7 +294,7 @@ class PatternAlgorithmicMixin:
 		return spacing, int(self._pattern.length / spacing)
 
 	@subsequence.declarations.bounded
-	def euclidean (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.Beats = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
+	def euclidean (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.GateBeats = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Generate a Euclidean rhythm.
@@ -330,7 +330,7 @@ class PatternAlgorithmicMixin:
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	@subsequence.declarations.bounded
-	def bresenham (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.Beats = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
+	def bresenham (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.GateBeats = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
 
 		"""
 		Generate a rhythm using the Bresenham line algorithm.
@@ -363,7 +363,7 @@ class PatternAlgorithmicMixin:
 		self,
 		parts: typing.Dict[typing.Union[int, str], float],
 		velocity: typing.Union[int, typing.Dict[typing.Union[int, str], int]] = subsequence.constants.velocity.DEFAULT_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.1,
+		duration: subsequence.declarations.GateBeats = 0.1,
 		grid: typing.Optional[subsequence.declarations.StepCount] = None,
 		probability: subsequence.declarations.UnitInterval = 1.0,
 		no_overlap: bool = False,
@@ -604,7 +604,7 @@ class PatternAlgorithmicMixin:
 		bias: typing.Union[subsequence.declarations.BiasCurve, typing.List[float]] = "uniform",
 		no_overlap: bool = True,
 		grid: typing.Optional[subsequence.declarations.StepCount] = None,
-		duration: subsequence.declarations.Beats = 0.1,
+		duration: subsequence.declarations.GateBeats = 0.1,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -721,7 +721,7 @@ class PatternAlgorithmicMixin:
 		rule: int = 30,
 		generation: typing.Optional[int] = None,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.1,
+		duration: subsequence.declarations.GateBeats = 0.1,
 		no_overlap: bool = False,
 		probability: subsequence.declarations.UnitInterval = 1.0,
 		seed: typing.Optional[int] = None,
@@ -780,11 +780,11 @@ class PatternAlgorithmicMixin:
 		rule: str = "B368/S245",
 		generation: typing.Optional[int] = None,
 		velocity: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.1,
+		duration: subsequence.declarations.GateBeats = 0.1,
 		no_overlap: bool = False,
 		probability: subsequence.declarations.UnitInterval = 1.0,
 		initial_state: typing.Union[subsequence.declarations.CellularSeed, typing.List[typing.List[int]]] = "center",
-		density: float = 0.5,
+		density: subsequence.declarations.UnitInterval = 0.5,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -899,8 +899,8 @@ class PatternAlgorithmicMixin:
 		transitions: typing.Dict[str, typing.List[typing.Tuple[str, int]]],
 		pitch_map: typing.Dict[str, int],
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.1,
-		spacing: subsequence.declarations.Beats = 0.25,
+		duration: subsequence.declarations.GateBeats = 0.1,
+		spacing: subsequence.declarations.GridBeats = 0.25,
 		start: typing.Optional[str] = None,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
@@ -989,9 +989,9 @@ class PatternAlgorithmicMixin:
 	def melody (
 		self,
 		state: subsequence.melodic_state.MelodicState,
-		spacing: subsequence.declarations.Beats = 0.25,
+		spacing: subsequence.declarations.GridBeats = 0.25,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CHORD_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.2,
+		duration: subsequence.declarations.GateBeats = 0.2,
 		chord_tones: typing.Optional[typing.List[int]] = None,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
@@ -1068,9 +1068,9 @@ class PatternAlgorithmicMixin:
 		axiom: str,
 		rules: typing.Dict[str, typing.Union[str, typing.List[typing.Tuple[str, float]]]],
 		generations: int = 3,
-		spacing: typing.Optional[subsequence.declarations.Beats] = None,
+		spacing: typing.Optional[subsequence.declarations.GridBeats] = None,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.2,
+		duration: subsequence.declarations.GateBeats = 0.2,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -1183,7 +1183,7 @@ class PatternAlgorithmicMixin:
 		self,
 		pitch: subsequence.declarations.Pitch,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.1,
+		duration: subsequence.declarations.GateBeats = 0.1,
 		pitch_b: typing.Optional[subsequence.declarations.Pitch] = None,
 		velocity_b: typing.Optional[subsequence.declarations.VelocityValue] = None,
 		no_overlap: bool = False,
@@ -1260,9 +1260,9 @@ class PatternAlgorithmicMixin:
 		self,
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		window: int = 2,
-		spacing: typing.Optional[subsequence.declarations.Beats] = None,
+		spacing: typing.Optional[subsequence.declarations.GridBeats] = None,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.2,
+		duration: subsequence.declarations.GateBeats = 0.2,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -1330,7 +1330,7 @@ class PatternAlgorithmicMixin:
 		pitches: typing.Union[subsequence.declarations.Pitch, typing.Sequence[subsequence.declarations.Pitch]],
 		count: int,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.2,
+		duration: subsequence.declarations.GateBeats = 0.2,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -1399,9 +1399,9 @@ class PatternAlgorithmicMixin:
 		self,
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		count: typing.Optional[int] = None,
-		spacing: typing.Optional[subsequence.declarations.Beats] = None,
+		spacing: typing.Optional[subsequence.declarations.GridBeats] = None,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.2,
+		duration: subsequence.declarations.GateBeats = 0.2,
 		start: int = 0,
 		skip: int = 0,
 		octave_span: typing.Annotated[int, subsequence.declarations.Unit("octaves")] = 2,
@@ -1534,9 +1534,9 @@ class PatternAlgorithmicMixin:
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
 		modulus: typing.Optional[int] = None,
 		count: typing.Optional[int] = None,
-		spacing: typing.Optional[subsequence.declarations.Beats] = None,
+		spacing: typing.Optional[subsequence.declarations.GridBeats] = None,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.2,
+		duration: subsequence.declarations.GateBeats = 0.2,
 		a: int = 1,
 		b: int = 1,
 		mapping: typing.Optional[
@@ -1637,9 +1637,9 @@ class PatternAlgorithmicMixin:
 	def lorenz (
 		self,
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
-		spacing: subsequence.declarations.Beats = 0.25,
+		spacing: subsequence.declarations.GridBeats = 0.25,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.2,
+		duration: subsequence.declarations.GateBeats = 0.2,
 		dt: float = 0.01,
 		sigma: float = 10.0,
 		rho: float = 28.0,
@@ -1731,9 +1731,9 @@ class PatternAlgorithmicMixin:
 	def reaction_diffusion (
 		self,
 		pitch: subsequence.declarations.Pitch,
-		threshold: float = 0.5,
+		threshold: subsequence.declarations.UnitInterval = 0.5,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.1,
+		duration: subsequence.declarations.GateBeats = 0.1,
 		feed_rate: float = 0.055,
 		kill_rate: float = 0.062,
 		steps: typing.Annotated[int, subsequence.declarations.Span(1, 20000)] = 1000,
@@ -1819,9 +1819,9 @@ class PatternAlgorithmicMixin:
 	def self_avoiding_walk (
 		self,
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
-		spacing: subsequence.declarations.Beats = 0.25,
+		spacing: subsequence.declarations.GridBeats = 0.25,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.2,
+		duration: subsequence.declarations.GateBeats = 0.2,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -2225,8 +2225,8 @@ class PatternAlgorithmicMixin:
 		length: typing.Optional[int] = None,
 		drift: subsequence.declarations.UnitInterval = 0.0,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.2,
-		spacing: subsequence.declarations.Beats = 0.25,
+		duration: subsequence.declarations.GateBeats = 0.2,
+		spacing: subsequence.declarations.GridBeats = 0.25,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":
@@ -2325,8 +2325,8 @@ class PatternAlgorithmicMixin:
 		path: int = 0,
 		mutation: subsequence.declarations.UnitInterval = 0.0,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_GENERATIVE_VELOCITY,
-		duration: subsequence.declarations.Beats = 0.2,
-		spacing: subsequence.declarations.Beats = 0.25,
+		duration: subsequence.declarations.GateBeats = 0.2,
+		spacing: subsequence.declarations.GridBeats = 0.25,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
 	) -> "subsequence.pattern_builder.PatternBuilder":

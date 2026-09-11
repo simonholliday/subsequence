@@ -313,12 +313,139 @@ def test_an_unbounded_number_omits_min_and_max_rather_than_inventing_them () -> 
 	assert "min" not in duration and "max" not in duration
 
 
-def test_an_int_steps_by_one_and_a_float_does_not () -> None:
+def test_an_int_steps_by_one_and_a_float_only_where_declared () -> None:
 
-	"""step is emitted only where the type genuinely implies one."""
+	"""step is emitted only where the type or the declaration genuinely implies one.
+
+	An int steps by one.  A float used to carry no step at all, on the
+	reasoning that its increment depends on what it measures — which was right,
+	and is why a float now carries one only where its declaration says what
+	that is (#2367).  A float that declares nothing still gets nothing, rather
+	than an increment invented here.
+	"""
 
 	assert _parameter("euclidean", "pulses")["step"] == 1
-	assert "step" not in _parameter("euclidean", "duration")
+	assert _parameter("euclidean", "duration")["step"] == 0.05
+	assert "step" not in _parameter("lorenz", "sigma")
+
+
+def test_every_published_step_divides_its_default () -> None:
+
+	"""The rule that chose the sizes, and the one that would catch a wrong one.
+
+	Superconductor's stepper adds and subtracts from where it is and never
+	snaps, so a step the default is not a multiple of walks a lattice that can
+	never come back to a musical value — a 0.25 step on a duration defaulting
+	to 0.1 goes 0.35, 0.6, 0.85 for ever.  This is what ruled a sixteenth out
+	for durations and a strum's stagger, rather than anybody's taste.
+	"""
+
+	off: typing.List[str] = []
+
+	for entry in subsequence.generators() + subsequence.transforms():
+
+		for parameter in entry["parameters"]:
+
+			step = parameter.get("step")
+			default = parameter.get("default")
+
+			if not step or isinstance(default, bool) or not isinstance(default, (int, float)):
+				continue
+
+			if abs(round(default / step) * step - default) > 1e-9:
+				off.append(f"{entry['name']}.{parameter['name']}: default {default}, step {step}")
+
+	assert not off, "a stepper could never return to these defaults: " + "; ".join(off)
+
+
+@pytest.mark.parametrize("generator,name", [
+	("arpeggio", "beat"), ("arpeggio", "span"), ("arpeggio", "spacing"), ("phrase", "offset"),
+])
+def test_time_on_the_grid_steps_by_a_sixteenth (generator: str, name: str) -> None:
+
+	"""Where a note lands, how long a figure runs, the gap between onsets.
+
+	Superconductor's invented tenth could never reach a sixteenth — 0.1, 0.2,
+	0.3 — so a beat position could not be stepped onto the grid the rest of
+	this package assumes.
+	"""
+
+	assert _parameter(generator, name)["step"] == 0.25
+
+
+def test_a_gate_steps_finer_than_the_grid_and_still_reaches_it () -> None:
+
+	"""How long a note sounds lives below a sixteenth, so it needs a finer step.
+
+	A drum gate defaults to 0.1 and a strum's stagger to 0.05, and a sixteenth
+	step could reach neither.  A twentieth divides both — and every sixteenth
+	is a multiple of it, so stepping a duration up still passes 0.25, 0.5, 1.0.
+	"""
+
+	duration = _parameter("euclidean", "duration")
+
+	assert duration["step"] == 0.05
+	assert round(0.25 / duration["step"]) * duration["step"] == pytest.approx(0.25)
+
+	# strum shares chord's placement vocabulary but staggers rather than places,
+	# so its spacing is a gate and not a grid position.
+	assert _parameter("strum", "spacing")["step"] == 0.05
+	assert _parameter("arpeggio", "spacing")["step"] == 0.25
+
+
+def test_a_documented_zero_to_one_dial_is_now_a_slider () -> None:
+
+	"""Eleven dials promised 0.0-1.0 in their docstrings and declared no range.
+
+	Unbounded, a surface drew each as a stepper a person could push to -0.1 or
+	1.3.  #2367 assumed proportions "mostly have a Span already"; these eleven
+	did not.  A range makes them sliders, which makes their step moot.
+	"""
+
+	for verb, name in (
+		("cellular_2d", "density"), ("chord", "legato"), ("strum", "legato"),
+		("reaction_diffusion", "threshold"), ("motif", "fit"), ("phrase", "fit"),
+	):
+		parameter = _parameter(verb, name)
+		assert (parameter["min"], parameter["max"]) == (0.0, 1.0), f"{verb}.{name}"
+
+	for verb, name in (
+		("dropout", "probability"), ("legato", "ratio"), ("randomize", "velocity"),
+		("snap_to_scale", "strength"), ("swing", "strength"),
+	):
+		parameter = _parameter_of(verb, name, subsequence.describe_transform)
+		assert (parameter["min"], parameter["max"]) == (0.0, 1.0), f"{verb}.{name}"
+
+
+def test_a_quantity_with_no_musical_increment_is_left_alone () -> None:
+
+	"""Better no step than an invented one.
+
+	Lorenz's constants and reaction-diffusion's rates are numbers from a
+	system of equations with no musical increment, and a stretch factor is
+	already served by a tenth — it reaches 0.5, 1.0 and 2.0 on its own.
+	"""
+
+	for verb, name in (("lorenz", "sigma"), ("lorenz", "dt"), ("reaction_diffusion", "feed_rate")):
+		assert "step" not in _parameter(verb, name), f"{verb}.{name}"
+
+	assert "step" not in _parameter_of("stretch", "factor", subsequence.describe_transform)
+
+
+def test_repeat_spacing_is_measured_in_beats () -> None:
+
+	"""The one beats parameter #2437 missed, because it was spelled ``Annotated``.
+
+	That pass matched ``spacing: float``; repeat's spacing already carried a
+	span and so was written differently, and went out with no unit.  Found by
+	the #2367 sweep, which grouped every unbounded control by its unit.
+	"""
+
+	spacing = _parameter("repeat", "spacing")
+
+	assert spacing["unit"] == "beats"
+	assert spacing["step"] == 0.25
+	assert spacing["min"] == 0.01
 
 
 def test_a_pitch_carries_no_options () -> None:

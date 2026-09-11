@@ -122,10 +122,44 @@ class Unit:
 	name: UnitName
 
 
+@dataclasses.dataclass (frozen=True)
+class Step:
+
+	"""How far one tap of a stepper moves a number that has no range to divide.
+
+	An ``int`` already steps by one and a parameter with both ends already
+	divides into a slider, so this is for the unbounded float — where, left
+	unsaid, a surface invents an increment.  Superconductor invents a tenth
+	(#2367), which on a quantity measured in beats can never land on a
+	sixteenth: 0.1, 0.2, 0.3.
+
+	**The step must divide the default.**  A stepper adds and subtracts from
+	where it is, starting from zero when a value is unset, and never snaps — so
+	a step the default is not a multiple of walks a lattice that can never come
+	back to a musical value.  A 0.25 step on a duration defaulting to 0.1 would
+	go 0.35, 0.6, 0.85 for ever.  A test holds every published default to it,
+	and that rule rather than taste is what chose the two sizes below.
+	"""
+
+	size: float
+
+
 # The two that recur often enough to be worth a name, so a signature reads as
 # prose and the unit is stated once rather than at each of the fifty-odd sites.
 Beats = typing.Annotated[float, Unit("beats")]
 StepCount = typing.Annotated[int, Unit("steps")]
+
+# Time that falls on the grid: where a note lands, how long a figure runs, the
+# gap between onsets.  A sixteenth, because that is the grid the rest of this
+# package assumes — it is what default_grid means.
+GridBeats = typing.Annotated[Beats, Step(0.25)]
+
+# How long a note sounds, or a short gap before the next.  These live below a
+# sixteenth — a drum gate is 0.1, a strum's stagger 0.05 — so a sixteenth step
+# could not reach their own defaults.  A twentieth is the coarsest size that
+# divides every default they declare, and every sixteenth is still a multiple
+# of it, so stepping a duration up reaches 0.25, 0.5 and 1.0 on the way.
+GateBeats = typing.Annotated[Beats, Step(0.05)]
 
 
 @dataclasses.dataclass (frozen=True)
