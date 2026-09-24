@@ -10,6 +10,7 @@ building verbs live in ``pattern_builder``.
 """
 
 import dataclasses
+import random
 import typing
 
 import subsequence.constants
@@ -274,6 +275,13 @@ class Pattern:
 		# Likewise warn once if a positioned chord/strum (beat != 0) uses sustain=/detached=,
 		# which size their ring from the pattern length rather than from beat.
 		self._warned_positioned_articulation: bool = False
+
+		# The seed each random cellular_2d() start drew, by its place among a
+		# build's cellular_2d() calls, beside the stream it was drawn from.  Kept,
+		# so the grid evolves from bar to bar instead of being drawn afresh every
+		# bar (#3072).  reroll() and lock() deal the pattern a new stream, and a
+		# new stream draws again.
+		self._drawn_grid_seeds: typing.Dict[int, typing.Tuple[typing.Optional[random.Random], int]] = {}
 
 
 	def _finish_builds (self) -> None:

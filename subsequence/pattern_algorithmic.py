@@ -109,6 +109,7 @@ class PatternAlgorithmicMixin:
 
 	_pattern: subsequence.pattern.Pattern
 	_default_grid: int
+	_cellular_2d_calls: int
 	rng: random.Random
 	cycle: int
 	data: typing.Dict[str, typing.Any]
@@ -820,6 +821,30 @@ class PatternAlgorithmicMixin:
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	@subsequence.declarations.bounded
+	def _grid_seed_drawn_once (self, call: int, rng: random.Random) -> int:
+
+		"""The seed call number *call* of cellular_2d() drew for its random start, drawn now if never.
+
+		It used to be drawn afresh on every rebuild, so each bar was an unrelated
+		random fill, the automaton never ran, and a bar at cycle 400 cost 40 ms to
+		evolve from nothing (#3072).  The pattern keeps the draw beside the stream
+		it came from: reroll() deals the pattern a new stream, which draws a new
+		grid, and lock() re-deals the same stream every bar, which draws the same
+		one again.  An unseeded composition gives its patterns no stream, so the
+		draw is kept for the run.
+		"""
+
+		stream = getattr(self._pattern, "_rng", None)
+		kept = self._pattern._drawn_grid_seeds.get(call)
+
+		if kept is not None and kept[0] is stream:
+			return kept[1]
+
+		drawn = rng.randint(2, 2_147_483_646)
+		self._pattern._drawn_grid_seeds[call] = (stream, drawn)
+
+		return drawn
+
 	def cellular_2d (
 		self,
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
@@ -830,7 +855,7 @@ class PatternAlgorithmicMixin:
 		duration: subsequence.declarations.GateBeats = 0.1,
 		no_overlap: bool = False,
 		probability: subsequence.declarations.UnitInterval = 1.0,
-		initial_state: typing.Union[subsequence.declarations.CellularSeed, typing.List[typing.List[int]]] = "center",
+		initial_state: typing.Union[subsequence.declarations.CellularSeed, typing.List[typing.List[int]]] = "random",
 		density: subsequence.declarations.UnitInterval = 0.5,
 		seed: typing.Optional[int] = None,
 		rng: typing.Optional[random.Random] = None,
@@ -845,6 +870,11 @@ class PatternAlgorithmicMixin:
 		The default rule B368/S245 (Morley/"Move") produces chaotic, active
 		patterns.  B3/S23 is Conway's Life; B36/S23 is HighLife.
 
+		Left alone, most grids this small die out or settle into a loop within
+		tens of bars.  So a random start, the default, is redrawn whenever it
+		dies out or falls into a loop of one or two bars, and the part carries
+		on with a fresh grid instead of falling silent for good.
+
 		Parameters:
 			pitches: MIDI note numbers or drum names, one per row.  Row 0
 			         maps to the first pitch.
@@ -858,15 +888,23 @@ class PatternAlgorithmicMixin:
 			duration: Note duration in beats.
 			no_overlap: If True, skip notes where same pitch already exists.
 			probability: Chance (0.0–1.0) that each live cell plays - 1.0 places them all, lower thins.
-			initial_state: The generation-0 grid.  ``"center"`` (default) lights a
-			      single cell at the centre; ``"random"`` fills cells with probability
-			      *density* (seed it with *seed* for a reproducible fill); or pass an
-			      explicit ``list[list[int]]`` (rows × cols) for a custom start.
+			initial_state: The generation-0 grid.  ``"random"`` (default) fills
+			      cells with probability *density*.  The fill is drawn once for
+			      the pattern, from the composition's seed when it has one, so a
+			      seeded piece plays the same on every run, and it then evolves a
+			      generation per bar, redrawn as described above.  ``"center"``
+			      lights a single cell at the centre, which lives only under a
+			      rule that can grow a lone cell (one with B1, B2 or S0); under the
+			      rules above it plays once and falls silent.  An explicit
+			      ``list[list[int]]`` (rows × cols) starts from that grid.  Neither
+			      is ever redrawn.
 			density: Fill probability for ``initial_state="random"`` (0.0–1.0).
-			seed: RNG seed (an int) for the ``"random"`` initial grid, so it
-			      reproduces.  Ignored for ``"center"`` or an explicit grid (a
-			      warning is emitted if passed there).
-			rng: Random generator for the probability thinning.  Defaults to
+			seed: An int that fixes the ``"random"`` fill, and every grid drawn
+			      after it, whatever the composition's seed.  Ignored for
+			      ``"center"`` or an explicit grid (a warning is emitted if
+			      passed there).
+			rng: Random generator for the probability thinning, and for the one
+			     draw of a random start with no *seed*.  Defaults to
 			     ``self.rng``.
 
 		Example:
@@ -888,6 +926,11 @@ class PatternAlgorithmicMixin:
 		if rng is None:
 			rng = self.rng
 
+		# Which of this build's cellular_2d() calls this is, so a random start
+		# finds the seed it drew in an earlier build (#3072).
+		call = self._cellular_2d_calls
+		self._cellular_2d_calls += 1
+
 		# Translate (initial_state, seed) into the underlying generator's seed arg,
 		# which stays int-or-grid: 1 = single centre cell, any other int = an
 		# RNG-seeded fill at *density*, a grid = an explicit starting state.
@@ -902,7 +945,7 @@ class PatternAlgorithmicMixin:
 				# seed=1 to a fixed surrogate - every seed stays deterministic.
 				grid_seed = seed if seed != 1 else -1
 			else:
-				grid_seed = rng.randint(2, 2_147_483_646)
+				grid_seed = self._grid_seed_drawn_once(call, rng)
 		else:
 			raise ValueError(f"cellular_2d(): initial_state must be \"center\", \"random\", or a grid - got {initial_state!r}")
 
@@ -917,14 +960,27 @@ class PatternAlgorithmicMixin:
 		cols = self._default_grid
 		rows = len(pitches)
 
-		grid = subsequence.sequence_utils.generate_cellular_automaton_2d(
-			rows=rows,
-			cols=cols,
-			rule=rule,
-			generation=generation,
-			seed=grid_seed,
-			density=density,
-		)
+		if initial_state == "random" and isinstance(grid_seed, int):
+			# Redrawn whenever it dies out or settles into a one- or two-bar loop,
+			# so the part never falls silent for good (#3072, #3498).  "center" and
+			# an explicit grid live or die as the rule decides.
+			grid = subsequence.sequence_utils._ca_2d_redrawing(
+				rows=rows,
+				cols=cols,
+				rule=rule,
+				generation=generation,
+				seed=grid_seed,
+				density=density,
+			)
+		else:
+			grid = subsequence.sequence_utils.generate_cellular_automaton_2d(
+				rows=rows,
+				cols=cols,
+				rule=rule,
+				generation=generation,
+				seed=grid_seed,
+				density=density,
+			)
 
 		for row_idx, pitch in enumerate(pitches):
 			row_velocity: subsequence.declarations.VelocityValue

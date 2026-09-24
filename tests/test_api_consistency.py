@@ -68,7 +68,9 @@ def _placements (pattern: subsequence.pattern.Pattern) -> typing.List[typing.Tup
 	lambda b, rng: b.cellular_1d(36, velocity=100, rng=rng),
 	lambda b, rng: b.thue_morse(36, velocity=100, rng=rng),
 	lambda b, rng: b.reaction_diffusion(36, velocity=100, rng=rng),
-	lambda b, rng: b.cellular_2d([36, 38, 42], velocity=100, generation=0, rng=rng),
+	# seed= because a random start with none draws its grid from rng, once per
+	# pattern (#3072); this isolates the placement guard.
+	lambda b, rng: b.cellular_2d([36, 38, 42], velocity=100, generation=0, seed=5, rng=rng),
 ])
 def test_inverted_generator_draws_nothing_at_default_probability (place: typing.Callable) -> None:
 
@@ -136,15 +138,20 @@ def test_rng_from_precedence_and_double_warning () -> None:
 # ── cellular_2d: the seed/grid split — initial_state= ("center"/"random"/grid) plus an
 #    integer seed= for a reproducible random fill. ──
 
-def test_cellular_2d_center_is_the_default () -> None:
+def test_cellular_2d_random_is_the_default () -> None:
 
-	p_default, b_default = _make_builder()
-	p_explicit, b_explicit = _make_builder()
+	"""A random fill since #3498: the single centre cell it replaced died at once under every rule named."""
 
-	b_default.cellular_2d([36, 38, 42], velocity=100, generation=0)
-	b_explicit.cellular_2d([36, 38, 42], velocity=100, generation=0, initial_state="center")
+	placed = []
 
-	assert _placements(p_default) == _placements(p_explicit)
+	for given in ({}, {"initial_state": "random"}):
+		pattern = subsequence.pattern.Pattern(channel=0, length=4)
+		builder = subsequence.pattern_builder.PatternBuilder(pattern=pattern, cycle=0, default_grid=16, data={}, rng=random.Random(3))
+		builder.cellular_2d([36, 38, 42], velocity=100, generation=0, **given)
+		placed.append(_placements(pattern))
+
+	assert placed[0] == placed[1]
+	assert len(placed[0]) > 1
 
 
 def test_cellular_2d_random_is_reproducible_with_seed () -> None:
@@ -175,14 +182,15 @@ def test_cellular_2d_seed_with_center_warns () -> None:
 
 	"""Passing seed= with a non-random initial_state warns that the seed is ignored.
 
-	Regression: cellular_2d(pitches, seed=7) at the default initial_state="center"
+	Regression: cellular_2d(pitches, seed=7) at the then-default initial_state="center"
 	silently dropped the seed — a footgun once the old int-or-grid seed= was removed.
+	The default has been "random" since #3498, so the centre start is named here.
 	"""
 
 	_, builder = _make_builder()
 
 	with pytest.warns(UserWarning, match="seed="):
-		builder.cellular_2d([36, 38, 42], velocity=100, generation=0, seed=7)
+		builder.cellular_2d([36, 38, 42], velocity=100, generation=0, initial_state="center", seed=7)
 
 
 # ── P2: the one approved sound change — broken_chord is a chord voice, so its

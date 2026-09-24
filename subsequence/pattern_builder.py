@@ -246,6 +246,9 @@ class PatternBuilder(
 		self._stream_at_start: typing.Optional[typing.Tuple[typing.Any, ...]] = self.rng.getstate() if stream_seed is not None else None
 		self._repeating: bool = repeating
 		self._zero_indexed_channels: bool = zero_indexed_channels
+		# How many cellular_2d() calls this build has made, so each keeps the
+		# grid seed it drew on its pattern (#3072).
+		self._cellular_2d_calls: int = 0
 
 	@property
 	def grid (self) -> int:

@@ -2097,6 +2097,9 @@ def generate_cellular_automaton_2d (
 	The default rule B368/S245 (Morley/"Move") produces chaotic, active
 	patterns well-suited to generative music.  B3/S23 is Conway's Life.
 
+	This evolves one start as it is, dead or alive.  ``p.cellular_2d()``
+	redraws a random start that dies out or loops.
+
 	Parameters:
 		rows: Number of rows (maps to pitches or instruments).
 		cols: Number of columns (maps to time steps / rhythm grid).
@@ -2181,6 +2184,79 @@ def generate_cellular_automaton_2d (
 		grid = _ca_2d_step(grid, rows, cols, birth_set, survival_set)
 
 	_ca_2d_cache.put(cache_key, (generation, [row[:] for row in grid]))
+
+	return grid
+
+
+# The latest (grid, the grid before it, how many fresh grids have been drawn)
+# per configuration, for _ca_2d_redrawing().
+_ca_2d_redraw_cache: _EvolutionCache[typing.Tuple[typing.List[typing.List[int]], typing.Optional[typing.List[typing.List[int]]], int]] = _EvolutionCache()
+
+
+def _ca_2d_redraw_seed (seed: int, draws: int) -> int:
+
+	"""The seed of the *draws*-th fresh grid after *seed*'s own: the same on every run, and never 1."""
+
+	return random.Random(f"{seed}:{draws}").randint(2, 2_147_483_646)
+
+
+def _ca_2d_redrawing (
+	rows: int,
+	cols: int,
+	rule: str,
+	generation: int,
+	seed: int,
+	density: float,
+) -> typing.List[typing.List[int]]:
+
+	"""A random-start 2D automaton, redrawn whenever it dies out or settles into a one- or two-bar loop.
+
+	Generation *generation* of the automaton begun from *seed*, except that a
+	generation which comes out empty, or the same as the one before it or the
+	one before that, is replaced by a fresh grid drawn at *density*.  Those
+	grids come from *seed* in a fixed order, so a seeded piece plays the same
+	on every run.
+
+	Measured before this existed, a random 4x16 grid drawn once and left to
+	evolve under the default rule died out 52 times in 100, and every one of
+	them died or looped, at a median of bar 42 (#3072, #3498).
+	"""
+
+	if rows <= 0 or cols <= 0:
+		return [[] for _ in range(max(0, rows))]
+
+	if generation < 0:
+		raise ValueError(
+			f"generation must be 0 or more, got {generation}. "
+			f"Generation 0 is the initial state; p.cycle counts up from there."
+		)
+
+	birth_set, survival_set = _parse_life_rule(rule)
+	cache_key = (rows, cols, rule, seed, density)
+	cached = _ca_2d_redraw_cache.get(cache_key)
+
+	before: typing.Optional[typing.List[typing.List[int]]]
+
+	if cached is not None and cached[0] <= generation:
+		current_gen, (grid, before, draws) = cached
+	else:
+		current_gen, grid, before, draws = 0, _ca_2d_initial_grid(rows, cols, seed, density), None, 0
+
+	for _ in range(current_gen, generation):
+		after = _ca_2d_step(grid, rows, cols, birth_set, survival_set)
+
+		if not any(any(row) for row in after) or after == grid or after == before:
+			draws += 1
+			grid, before = _ca_2d_initial_grid(rows, cols, _ca_2d_redraw_seed(seed, draws), density), None
+		else:
+			grid, before = after, grid
+
+	# Copies, so the entry the cache holds is never the object handed back.
+	_ca_2d_redraw_cache.put(cache_key, (generation, (
+		[row[:] for row in grid],
+		None if before is None else [row[:] for row in before],
+		draws,
+	)))
 
 	return grid
 
