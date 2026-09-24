@@ -147,11 +147,9 @@ GENERATORS: typing.Tuple[str, ...] = (
 	"lsystem",
 	"markov",
 	"melody",
-	"ratchet",
 	"reaction_diffusion",
 	"recaman",
 	"self_avoiding_walk",
-	"thin",
 	"thue_morse",
 	# subsequence.pattern_builder — the note-placing verbs
 	"arpeggio",
@@ -172,8 +170,9 @@ GENERATORS: typing.Tuple[str, ...] = (
 #
 # The line here is the exact complement of the one above: **does it reshape
 # notes already placed?**  That is what keeps this a category rather than a
-# leftovers bin, and it is why the tuple is twelve rather than the twenty-odd
-# methods that merely happen to describe cleanly.
+# leftovers bin, and it is why the tuple is fifteen rather than the twenty-odd
+# methods that merely happen to describe cleanly.  thin and ratchet were filed
+# as generators until #3497, though neither places a note on an empty pattern.
 #
 # Out, and why:
 #
@@ -187,15 +186,18 @@ GENERATORS: typing.Tuple[str, ...] = (
 #   apply_tuning       a Tuning.  Not excluded on principle; they can join as
 #                      partial entries whenever somebody wants them.
 #
-# A transform never increases the note count and places nothing on an empty
-# pattern.  That is the mechanical form of the line and test_catalogue.py runs
-# it — curating by reading names is what once put an accessor among the
-# generators (#2096).
+# A transform places nothing on an empty pattern, and adds no note of its own:
+# only ratchet adds any, splitting a note into a burst of copies of it.  That
+# is the mechanical form of the line and test_catalogue.py runs it, beside its
+# complement for generators - curating by reading names is what once put an
+# accessor among the generators (#2096).
 TRANSFORMS: typing.Tuple[str, ...] = (
 	"rotate",
 	"snap_to_scale",
 	"swing",
 	"dropout",
+	"thin",
+	"ratchet",
 	"randomize",
 	"velocity_shape",
 	"transpose",

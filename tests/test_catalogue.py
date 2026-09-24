@@ -1070,14 +1070,19 @@ def test_every_transform_returns_the_builder () -> None:
 		assert "PatternBuilder" in str(hints.get("return")), name
 
 
+# The one transform that adds notes: it splits each into a burst of copies of it (#3497).
+_SPLITS_NOTES = {"ratchet"}
+
+
 def test_a_transform_never_places_a_note () -> None:
 
 	"""The mechanical form of the line: reshaping is not placing.
 
 	Run on an empty pattern (a transform has nothing to do, so nothing appears)
 	and on a populated one (it may move, shorten, quieten or remove notes, but
-	never add any).  Anything failing this is a generator and belongs in the
-	other tuple.
+	add none of its own).  Anything failing this is a generator and belongs in
+	the other tuple.  ratchet adds notes, and every one is a copy of a note that
+	was there, which here means pitch 60.
 	"""
 
 	for entry in subsequence.transforms():
@@ -1092,7 +1097,51 @@ def test_a_transform_never_places_a_note () -> None:
 		populated.hit(60, [0.0, 1.0, 2.0, 3.0])
 		before = _note_count(populated)
 		getattr(populated, entry["name"])(**arguments)
-		assert _note_count(populated) <= before, f'{entry["name"]} added notes'
+
+		if entry["name"] in _SPLITS_NOTES:
+			pitches = {note.pitch for step in populated._pattern.steps.values() for note in step.notes}
+			assert _note_count(populated) > before and pitches == {60}, f'{entry["name"]} added something that was not a copy'
+		else:
+			assert _note_count(populated) <= before, f'{entry["name"]} added notes'
+
+
+def test_a_generator_places_notes_on_an_empty_pattern () -> None:
+
+	"""The complement, which nothing checked (review M18): a generator places notes where there were none.
+
+	thin and ratchet were generators until #3497 and placed nothing here.  An entry
+	the catalogue marks partial has a required parameter with no control shape, so it
+	cannot be driven from its description and is left out by the catalogue's own word.
+	"""
+
+	driven = 0
+
+	for entry in subsequence.generators():
+
+		if entry["partial"]:
+			continue
+
+		arguments = _arguments_for(entry)
+
+		for parameter in entry["parameters"]:
+			if parameter["kind"] == "position" and parameter["name"] not in arguments:
+				arguments[parameter["name"]] = [0, 4] if parameter.get("multiple") else 0
+
+		builder = _builder()
+		getattr(builder, entry["name"])(**arguments)
+		driven += 1
+
+		assert _note_count(builder) > 0, f'{entry["name"]} placed nothing on an empty pattern'
+
+	assert driven >= 20, f"only {driven} generators were driven"
+
+
+def test_thin_and_ratchet_reshape_what_is_there () -> None:
+
+	"""Simon's call (#3497): both are transforms, so a surface stacks them below what they reshape."""
+
+	for name in ("thin", "ratchet"):
+		assert name in subsequence.catalogue.TRANSFORMS and name not in subsequence.catalogue.GENERATORS, name
 
 
 def test_every_transform_entry_has_the_agreed_shape () -> None:
@@ -1653,9 +1702,15 @@ def _parameter_of (
 
 def _parameter (generator: str, name: str) -> typing.Dict[str, typing.Any]:
 
-	"""The named parameter of a generator, for brevity in the tests above."""
+	"""The named parameter of a generator or a transform, for brevity in the tests above.
 
-	for parameter in subsequence.describe_generator(generator)["parameters"]:
+	thin and ratchet moved from one catalogue to the other (#3497), so it looks in whichever
+	holds the name.
+	"""
+
+	describe = subsequence.describe_transform if generator in subsequence.catalogue.TRANSFORMS else subsequence.describe_generator
+
+	for parameter in describe(generator)["parameters"]:
 
 		if parameter["name"] == name:
 			return parameter
