@@ -211,6 +211,36 @@ class PatternAlgorithmicMixin:
 			f"velocity must be a number or a (low, high) pair, got {type(velocity).__name__}: {velocity!r}"
 		)
 
+	def _velocities_at (self, velocities: typing.Any, index: int) -> subsequence.declarations.VelocityValue:
+
+		"""What ``velocities=`` gives the step or row at *index* (#3525).
+
+		A list is one value per step or row, read by index, and a function (where
+		the verb takes one) is called with the index.  Anything else means what
+		``velocity=`` means, for every step: one value, or a ``(low, high)`` tuple,
+		handed back whole so it is drawn per note.  A tuple, because a two-element
+		list here is one value per step, as it is in ``sequence()`` and the motifs.
+		"""
+
+		if callable(velocities):
+			return int(velocities(index))
+
+		if isinstance(velocities, tuple):
+			if len(velocities) != 2:
+				raise ValueError(f"velocities= takes a list, one value per step or row, or what velocity= takes: one value or a (low, high) range; got {velocities!r}")
+			return velocities
+
+		if isinstance(velocities, bool) or isinstance(velocities, str):
+			raise TypeError(f"velocities= takes a list, one value per step or row, or one value or a (low, high) range; got {type(velocities).__name__}: {velocities!r}")
+
+		if isinstance(velocities, (int, float)):
+			return int(velocities)
+
+		if len(velocities) == 0:
+			raise ValueError("velocities list cannot be empty")
+
+		return int(velocities[index % len(velocities)])
+
 	def _place_gated_sequence (
 		self,
 		sequence: typing.Sequence[typing.Any],
@@ -648,6 +678,8 @@ class PatternAlgorithmicMixin:
 		density: subsequence.declarations.UnitInterval = 0.3,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.GHOST_FILL_VELOCITY,
 		velocities: typing.Optional[typing.Union[
+			int,
+			typing.Tuple[int, int],
 			typing.Sequence[typing.Union[int, float]],
 			typing.Callable[[int], typing.Union[int, float]]
 		]] = None,
@@ -675,7 +707,10 @@ class PatternAlgorithmicMixin:
 				has no tuple.
 			velocities: One value per step, as a list read by step index or a
 				callable taking the step index ``i``.  Allows dynamic values
-				like Perlin noise curves.  Wins over ``velocity``.
+				like Perlin noise curves.  It also takes what ``velocity``
+				takes: one value, or a ``(low, high)`` tuple drawn per note
+				(a two-element list here is one value per step).  Wins over
+				``velocity``.
 			bias: Probability distribution shape:
 
 				- ``"uniform"``    - equal probability everywhere
@@ -754,10 +789,8 @@ class PatternAlgorithmicMixin:
 
 			if velocities is None:
 				vel = self._resolve_velocity(velocity, rng)
-			elif callable(velocities):
-				vel = int(velocities(i))
 			else:
-				vel = int(velocities[i % len(velocities)])
+				vel = self._resolve_velocity(self._velocities_at(velocities, i), rng)
 
 			self.note(pitch=pitch, beat=i * step_duration, velocity=vel, duration=duration)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
@@ -852,7 +885,7 @@ class PatternAlgorithmicMixin:
 		rule: str = "B368/S245",
 		generation: typing.Optional[int] = None,
 		velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_CA_VELOCITY,
-		velocities: typing.Optional[typing.List[int]] = None,
+		velocities: typing.Optional[typing.Union[int, typing.Tuple[int, int], typing.List[int]]] = None,
 		duration: subsequence.declarations.GateBeats = 0.1,
 		no_overlap: bool = False,
 		probability: subsequence.declarations.UnitInterval = 1.0,
@@ -885,7 +918,10 @@ class PatternAlgorithmicMixin:
 			    so the grid evolves each bar automatically.
 			velocity: Single MIDI velocity for every row, or a ``(low, high)``
 			          range drawn per note.
-			velocities: One value per row.  Wins over ``velocity``.
+			velocities: One value per row, as a list read by row index.  It
+				also takes what ``velocity`` takes: one value, or a
+				``(low, high)`` tuple drawn per note (a two-element list here
+				is one value per row).  Wins over ``velocity``.
 			duration: Note duration in beats.
 			no_overlap: If True, skip notes where same pitch already exists.
 			probability: Chance (0.0–1.0) that each live cell plays - 1.0 places them all, lower thins.
@@ -918,7 +954,7 @@ class PatternAlgorithmicMixin:
 		if not pitches:
 			raise ValueError("pitches list cannot be empty")
 
-		if velocities is not None and not velocities:
+		if isinstance(velocities, list) and not velocities:
 			raise ValueError("velocities list cannot be empty")
 
 		if generation is None:
@@ -987,7 +1023,8 @@ class PatternAlgorithmicMixin:
 			row_velocity: subsequence.declarations.VelocityValue
 
 			if velocities is not None:
-				row_velocity = int(velocities[row_idx % len(velocities)])
+				# A (low, high) range stays whole, to be drawn per placed note downstream.
+				row_velocity = self._velocities_at(velocities, row_idx)
 			elif isinstance(velocity, (tuple, list)):
 				# (low, high) range - resolved per placed note downstream.
 				row_velocity = velocity

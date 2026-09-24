@@ -956,7 +956,10 @@ class Motif:
 				``"side_stick"``, ``"low_conga"``), so it sounds against the
 				standard GM drum map without a ``pitch=``.
 			length: Total beats the cycle spans (4 = one common-time bar).
-			velocities / durations / probabilities: The parallel-list params.
+			velocities / durations / probabilities: The parallel-list params:
+				one value for every note, or a list of one per note.
+				``velocities`` also takes a ``(low, high)`` range, drawn
+				per note.
 
 		Returns:
 			A drum/pitched :class:`Motif` of the timeline's onsets.
@@ -1227,7 +1230,8 @@ class Motif:
 			max_pitches: Cap on distinct pitches (a tight pool is a hook);
 				keeps the most central candidates.
 			velocities / durations: Scalar or per-note list (the parallel-
-				list convention).
+				list convention).  ``velocities`` also takes a ``(low, high)``
+				range, drawn per note.
 			seed: Seed for the walk (required or warned - module-level
 				nondeterminism breaks live reload).
 			rng: Explicit stream (overrides ``seed``).
