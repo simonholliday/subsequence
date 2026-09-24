@@ -10,8 +10,9 @@ Measuring the round trip also found labels the printer got wrong, which now read
 they are: a major-seventh sus4 printed as ``C7sus4``, a 6th was taken for a diminished seventh
 (``C76`` for Cmaj7 with a 6th), and a 7 glued onto a name ending in one read as another number.
 
-``C+7`` is still refused, and ``C+9`` keeps its reading: what an augmented chord's number means is
-the ``C+9`` question on #3012, not settled here.
+An augmented chord's number is a minor seventh, as on a chart (#3499, Simon's call on the ``C+9``
+question): ``C+7`` is C E G# Bb and ``C+9`` adds the D, where ``C+9`` used to read with a major
+seventh and ``C+7`` was refused.  That let the last 18 labels read back: ``C+7sus4`` and its kin.
 """
 
 import itertools
@@ -54,9 +55,9 @@ def test_every_label_over_every_quality_extension_and_bass_reads_back () -> None
 
 	"""The whole domain the printer covers, on three roots: the same notes, root and bass, and the same label.
 
-	The one family left out is the augmented chord with a number and a sus,
-	which prints ``C+7sus4`` and waits on the C+9 question.  It is refused,
-	never read as another chord, and the test says so if that changes.
+	The augmented chord with a number and a sus, ``C+7sus4``, was the last
+	family refused, until an augmented chord's number was read as a chart
+	reads it (#3499).
 	"""
 
 	misread: typing.List[str] = []
@@ -88,9 +89,8 @@ def test_every_label_over_every_quality_extension_and_bass_reads_back () -> None
 			misread.append(f"{label}: prints back as {back.label()!r}")
 
 	assert misread == []
-	assert read == 2457
-	assert len(refused) == 18
-	assert all("+7sus" in label for label in refused), sorted(refused)
+	assert sorted(refused) == []
+	assert read == 2475
 
 
 @pytest.mark.parametrize("name, intervals", [
@@ -152,16 +152,43 @@ def test_the_printer_names_the_chord_it_has (quality: str, extensions: typing.Tu
 	assert _span(quality, extensions).label() == now
 
 
-def test_an_augmented_chord_with_a_seven_is_still_not_read () -> None:
+@pytest.mark.parametrize("name, intervals", [
+	("C+7", [0, 4, 8, 10]),
+	("Caug7", [0, 4, 8, 10]),
+	("C7#5", [0, 4, 8, 10]),
+	("C7+5", [0, 4, 8, 10]),
+	("C+9", [0, 4, 8, 10, 14]),
+	("C9#5", [0, 4, 8, 10, 14]),
+	("C+13", [0, 4, 8, 10, 14, 21]),
+	("C+11", [0, 8, 10, 14, 17]),
+	("C+maj7", [0, 4, 8, 11]),
+	("C+maj9", [0, 4, 8, 11, 14]),
+	("Cmaj7#5", [0, 4, 8, 11]),
+	("C+7sus4", [0, 5, 8, 10]),
+])
+def test_an_augmented_chord_reads_as_a_chart_writes_it (name: str, intervals: typing.List[int]) -> None:
 
-	"""A guard for the C+9 question on #3012: C+7 is refused, as it was before #3014."""
+	"""#3499: a number after '+' is a minor seventh; the major seventh is named.
 
-	with pytest.raises(ValueError):
-		_read("C+7")
+	C+13 leaves out the natural 11 over the major third, and C+11 drops the third, by the same
+	two jazz rules every dominant follows (decision 12 of #2991).
+	"""
+
+	assert _read(name).decorated_intervals() == intervals
 
 
-def test_an_augmented_ninth_keeps_its_reading () -> None:
+@pytest.mark.parametrize("name, printed", [
+	("C7#5", "C+7"),
+	("Caug7", "C+7"),
+	("C9#5", "C+9"),
+	("Cmaj7#5", "C+maj7"),
+	("C+9", "C+9"),
+])
+def test_a_chart_spelling_prints_as_the_library_spells_it (name: str, printed: str) -> None:
 
-	"""A guard for the same question: C+9 reads as it always has, with a major seventh."""
+	"""What a chart spelling prints as, which reads back as the same chord."""
 
-	assert _read("C+9").decorated_intervals() == [0, 4, 8, 11, 14]
+	span = _read(name)
+
+	assert span.label() == printed
+	assert _sound(_read(printed)) == _sound(span)

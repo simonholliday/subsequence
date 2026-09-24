@@ -1251,7 +1251,10 @@ def _parse_chord_name (name: str, beats: float) -> ChordSpan:
 	and a bass after a slash (``C/E``, ``Am7/G``).
 
 	A bare major root under a 9, 11 or 13 is read as a dominant, so ``"C9"``
-	and ``"Cmaj9"`` are the two different chords they are on paper.
+	and ``"Cmaj9"`` are the two different chords they are on paper.  So is an
+	augmented one: ``"C+9"`` has a minor seventh, as a chart means it, and
+	``"C+maj9"`` a major one.  ``"C7#5"``, ``"C9#5"`` and ``"Caug7"`` read as
+	charts write them (#3499).
 	"""
 
 	body, slash, bass_name = name.partition("/")
@@ -1293,15 +1296,52 @@ def _parse_chord_body (body: str) -> typing.Tuple[subsequence.chords.Chord, typi
 	raise refused
 
 
+def _raised_fifth (body: str) -> typing.Optional[typing.Tuple[subsequence.chords.Chord, typing.Tuple[typing.Any, ...], typing.Optional[typing.Tuple[int, ...]]]]:
+
+	"""A dominant or major seventh chord written before a raised fifth (``C7`` of ``C7#5``), read as the augmented chord it is.
+
+	``C9#5`` is ``C+9`` and ``Cmaj7#5`` is ``C+maj7``.  Anything else is None.
+	"""
+
+	for top in (13, 11, 9, 7):
+
+		number = str(top)
+
+		if not body.endswith(number):
+			continue
+
+		try:
+			root, quality = subsequence.chords.split_chord_name(body[:-len(number)])
+		except ValueError:
+			return None
+
+		if quality == "":
+			return _parse_stacked(root + "+" + number)
+
+		if quality in ("maj", "M"):
+			return _parse_stacked(root + "+maj" + number)
+
+		return None
+
+	return None
+
+
 def _parse_stacked (body: str) -> typing.Optional[typing.Tuple[subsequence.chords.Chord, typing.Tuple[typing.Any, ...], typing.Optional[typing.Tuple[int, ...]]]]:
 
-	"""A chord with a stacked 7, 9, 11 or 13 in it, spelled as the printer spells one; None if it is not one.
+	"""A chord with a stacked 7, 9, 11 or 13 in it, spelled as a chart or the printer spells one; None if it is not one.
 
-	A 7 is read only where the name says which seventh: ``+maj7`` and
-	``mMaj7``.  A bare ``+7`` is left unread, with ``+9`` read as it always
-	has been, until what an augmented chord's number means is settled (the
-	``C+9`` question on #3012).
+	A 7 is read only where the name says which seventh.  An augmented chord's
+	number is a minor seventh, as on a chart: ``C+7`` and ``Caug7`` are
+	C E G# Bb, and ``C+9`` adds the D (#3499).  Its major seventh is named,
+	``C+maj7``, as the printer writes it.  A raised fifth written after the
+	number reads the same way, so ``C7#5`` and ``C7+5`` are ``C+7``.
 	"""
+
+	for suffix in ("#5", "+5"):
+		if body.endswith(suffix):
+			raised = _raised_fifth(body[:-len(suffix)])
+			if raised is not None:
+				return raised
 
 	for top in (13, 11, 9, 7):
 
@@ -1325,6 +1365,11 @@ def _parse_stacked (body: str) -> typing.Optional[typing.Tuple[subsequence.chord
 			# An augmented chord deepens in its own colour, to the major seventh.
 			if head.endswith("+maj"):
 				return subsequence.chords.parse_chord(head[:-len("maj")]), (top,), None
+
+			# But its bare number is a minor seventh, as on a chart (#3499).  The
+			# jazz rules in decorated_intervals() still shape an 11th and a 13th.
+			if head.endswith(("+", "aug")):
+				return subsequence.chords.parse_chord(head), (top,), (10,) + _ABOVE_THE_SEVENTH[top]
 
 			# A seventh named outright - maj, dim - is that seventh chord, which
 			# keeps its seventh under a sus: read as a triad, the sus took the

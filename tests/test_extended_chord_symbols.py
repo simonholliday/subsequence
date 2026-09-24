@@ -68,15 +68,15 @@ def test_a_bare_major_symbol_with_an_extension_is_a_dominant (symbol: str, inter
 	("Cmaj13", [0, 4, 7, 11, 14, 21]),
 	("Cm9", [0, 3, 7, 10, 14]),
 	("Cdim9", [0, 3, 6, 9, 14]),
-	("C+9", [0, 4, 8, 11, 14]),
+	("C+maj9", [0, 4, 8, 11, 14]),
 ])
 def test_a_spelled_quality_keeps_its_own_colour (symbol: str, intervals: typing.List[int]) -> None:
 
 	"""Only the bare major changes: a named seventh still says which one it is.
 
-	``C+9`` is here because a quality with no seventh of its own spelling —
-	there is no ``C+7`` in the table — is what the bare-root test protects: it
-	deepens in its own colour rather than failing to parse.
+	``C+maj9`` is the augmented chord's major ninth.  ``C+9`` itself has a
+	minor seventh since #3499, as a chart means it; test_chord_names_read_back.py
+	holds that.
 	"""
 
 	assert _span(symbol).decorated_intervals() == intervals
