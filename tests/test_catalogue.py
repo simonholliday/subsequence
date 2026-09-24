@@ -7,6 +7,7 @@ A change that breaks one of them is a change somebody else has to hear about.
 
 import inspect
 import json
+import random
 import typing
 
 import pytest
@@ -1655,11 +1656,17 @@ def test_the_summary_is_the_docstring_first_line () -> None:
 
 def _builder () -> subsequence.pattern_builder.PatternBuilder:
 
-	"""A PatternBuilder over a bare 4-beat pattern (no MIDI required)."""
+	"""A PatternBuilder over a bare 4-beat pattern (no MIDI required).
+
+	Seeded, so a generator draws the same notes on every run.  Unseeded, the
+	builder takes a fresh ``random.Random()``, and ghost_fill at its default
+	density placed no note at all about one run in 200, which failed the
+	generator check for nothing (#3569).
+	"""
 
 	pattern = subsequence.pattern.Pattern(channel=0, length=4, device=0)
 
-	return subsequence.pattern_builder.PatternBuilder(pattern, cycle=0)
+	return subsequence.pattern_builder.PatternBuilder(pattern, cycle=0, rng=random.Random(1))
 
 
 def _note_count (builder: subsequence.pattern_builder.PatternBuilder) -> int:
