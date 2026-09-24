@@ -120,6 +120,142 @@ def test_a_drivable_entry_builds_at_its_opening_values (entry: typing.Dict[str, 
 		) from error
 
 
+def _declared_edges (parameter: typing.Dict[str, typing.Any]) -> typing.List[typing.Any]:
+
+	"""Each value at an edge of what an optional control declares it accepts.
+
+	A number at whichever bounds it declares; a range at each end and across
+	both, as the JSON arrays a surface sends; every option of a choice; both
+	positions of a switch.  A number that declares no bounds gives nothing:
+	inventing a range would be a guess, so those are listed below instead.
+	"""
+
+	kind = parameter["kind"]
+
+	if kind == "number":
+		return [parameter[end] for end in ("min", "max") if end in parameter]
+	if kind == "range":
+		low, high = parameter["min"], parameter["max"]
+		return [[low, low], [high, high], [low, high]]
+	if kind == "choice":
+		return [option["value"] for option in parameter["options"]]
+	if kind == "switch":
+		return [True, False]
+
+	return []
+
+
+@pytest.mark.parametrize("entry", _drivable(), ids=lambda entry: str(entry["name"]))
+def test_a_drivable_entry_builds_at_every_edge_its_optional_controls_declare (entry: typing.Dict[str, typing.Any]) -> None:
+
+	"""Each optional control, one at a time, at each edge it publishes (#3431).
+
+	The opening values leave optional controls alone, so a control a surface
+	draws could fail at an edge it publishes and nothing here would say:
+	lorenz's ``dt`` silenced its part on every rebuild from about 0.025, and
+	only a render found it (#3408).  Required controls open as above, and the
+	other optional ones keep their defaults.  An entry whose required count
+	publishes no bounds opens it at zero and places nothing, so an edge that
+	matters only once notes are placed is not reached there (euclidean,
+	bresenham and golden, with the unbounded controls below).
+	"""
+
+	required = {
+		parameter["name"]: _opening(parameter)
+		for parameter in entry["parameters"]
+		if parameter["required"]
+	}
+
+	failures: typing.List[str] = []
+
+	for parameter in entry["parameters"]:
+
+		if parameter["required"]:
+			continue
+
+		for value in _declared_edges(parameter):
+
+			arguments = dict(required, **{parameter["name"]: value})
+
+			try:
+				getattr(_builder(), entry["name"])(**arguments)
+			except Exception as error:		# noqa: BLE001 - the failure is the point
+				failures.append(f"{parameter['name']}={value!r}: {type(error).__name__}: {error}")
+
+	assert failures == [], f"{entry['name']} is reported drivable but raised at an edge it declares"
+
+
+def test_the_edges_are_driven_for_most_drivable_entries () -> None:
+
+	"""The guard on that guard, as a proportion for the reason given below."""
+
+	with_edges = [
+		entry for entry in _drivable()
+		if any(not parameter["required"] and _declared_edges(parameter) for parameter in entry["parameters"])
+	]
+
+	assert len(with_edges) > len(_drivable()) // 2
+
+
+# The optional numbers a drivable entry publishes with no bounds, as they stood
+# on 2026-09-24 (#3431).  The edge test above cannot drive them, and giving them
+# bounds changes what a surface offers, which is Simon's call.  Until then none
+# may be added: a new optional number declares its bounds.  When one of these
+# gains bounds, take it off this list.
+_UNBOUNDED_OPTIONAL_NUMBERS: typing.Dict[str, typing.Set[str]] = {
+	"arpeggio": {"beat", "count", "duration", "inversion", "root", "spacing", "span"},
+	"branch": {"depth", "duration", "path", "spacing"},
+	"bresenham": {"duration"},
+	"cellular_1d": {"duration", "generation", "rule"},
+	"cellular_2d": {"duration", "generation"},
+	"chord": {"beat", "count", "detached", "duration", "inversion", "root"},
+	"de_bruijn": {"duration", "spacing", "window"},
+	"detached": {"beats"},
+	"drone": {"beat"},
+	"euclidean": {"duration"},
+	"evolve": {"duration", "length", "spacing"},
+	"fibonacci": {"a", "b", "count", "duration", "modulus", "spacing"},
+	"ghost_fill": {"duration", "grid"},
+	"golden": {"duration"},
+	"hit": {"duration"},
+	"hit_steps": {"duration", "grid"},
+	"invert": {"pivot"},
+	"lorenz": {"beta", "duration", "rho", "sigma", "spacing", "x0", "y0", "z0"},
+	"note": {"duration"},
+	"randomize": {"timing"},
+	"ratchet": {"grid", "subdivisions"},
+	"reaction_diffusion": {"duration"},
+	"recaman": {"count", "duration", "octave_span", "skip", "spacing", "start"},
+	"repeat": {"duration"},
+	"rotate": {"grid"},
+	"self_avoiding_walk": {"duration", "spacing"},
+	"sequence": {"grid"},
+	"strum": {"beat", "count", "detached", "duration", "inversion", "root", "spacing"},
+	"swing": {"grid", "percent"},
+	"thin": {"grid"},
+	"thue_morse": {"duration"},
+	"velocity_shape": {"high", "low"},
+}
+
+
+def test_no_optional_number_is_published_unbounded_beyond_those_known () -> None:
+
+	"""A new optional number declares its bounds, so the edge test can drive it (#3431).
+
+	Exactly the list, not within it, so a control that gains bounds leaves
+	the list in the same change and the list stays a true account.
+	"""
+
+	unbounded: typing.Dict[str, typing.Set[str]] = {}
+
+	for entry in _drivable():
+		for parameter in entry["parameters"]:
+			if not parameter["required"] and parameter["kind"] == "number" and not _declared_edges(parameter):
+				unbounded.setdefault(entry["name"], set()).add(parameter["name"])
+
+	assert unbounded == _UNBOUNDED_OPTIONAL_NUMBERS
+
+
 def test_every_drivable_entry_is_covered () -> None:
 
 	"""The sweep is worth nothing if it silently stops covering things.
