@@ -45,6 +45,29 @@ _ARPEGGIO_DIRECTIONS: typing.Tuple[str, ...] = typing.get_args(subsequence.decla
 _STRUM_DIRECTIONS: typing.Tuple[str, ...] = typing.get_args(subsequence.declarations.StrumDirection)
 
 
+def _with_its_closing_writes (fragment: typing.Any, whole: typing.Any) -> typing.Any:
+
+	"""*fragment*, the last window of *whole*, with *whole*'s closing writes on its own end (#3557).
+
+	A discrete control write on a phrase's length closes a gesture and carries its value into
+	whatever follows (#3009).  A window is half-open, so none of them holds it, and
+	``phrase()`` never sent it where the phrase loops, though ``motif()`` sends it on the
+	pattern's end.
+	"""
+
+	flat = whole.flatten() if hasattr(whole, "flatten") else whole
+	closing = tuple(
+		dataclasses.replace(control, beat = fragment.length)
+		for control in getattr(flat, "controls", ())
+		if control.end is None and control.beat >= flat.length - 1e-9
+	)
+
+	if not closing:
+		return fragment
+
+	return dataclasses.replace(fragment, controls = fragment.controls + closing)
+
+
 def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 
 	"""Expand a scalar to a list of length n, or lay a list over n steps.
@@ -1264,7 +1287,8 @@ class PatternBuilder(
 		zero new state.  A pattern shorter than the phrase walks through it
 		cycle by cycle; deliberately mismatched lengths are phase drift
 		(polymeter against the phrase).  When the cycle window crosses the
-		phrase's end, the phrase loops.
+		phrase's end, the phrase loops, and a control write on its end, which
+		closes a gesture, is sent where it loops, as ``motif()`` sends it.
 
 		Patterns that should own the phrase's length call
 		``p.set_length(phrase.length)`` once instead.
@@ -1314,6 +1338,11 @@ class PatternBuilder(
 			take = min(window_beats - placed, length - position)
 			piece = value.slice(position, position + take)
 			fragment = piece.flatten() if hasattr(piece, "flatten") else piece
+
+			# The window reaching the phrase's end carries its closing writes to
+			# where the phrase loops (#3557).
+			if position + take >= length - 1e-9:
+				fragment = _with_its_closing_writes(fragment, value)
 
 			self.motif(fragment, beat=placed, root=root, velocity=velocity, fit=fit, resolution=resolution)
 

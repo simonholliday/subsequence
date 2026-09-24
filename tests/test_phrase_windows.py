@@ -358,3 +358,81 @@ def test_two_pieces_of_one_gesture_at_one_beat_sort_the_same_either_way () -> No
 	other_way = motifs.Motif(events = (), length = 4.0, controls = (second, first))
 
 	assert one_way == other_way
+
+
+# ---------------------------------------------------------------------------
+# The write on a phrase's end, where the phrase loops (#3557)
+# ---------------------------------------------------------------------------
+
+# 64 on beat 1, and 127 on its end, where it closes the gesture (#3009).
+_CLOSING = motifs.Motif.cc(74, [64, 127], beats = [1, 2])
+
+
+def _phrase_sends (value: typing.Any, pattern_length: float, song_beats: float = 8.0) -> typing.List[typing.Tuple[float, int]]:
+
+	"""Every CC ``p.phrase(value)`` sends over *song_beats*, cycle by cycle, in song beats."""
+
+	sent: typing.List[typing.Tuple[float, int]] = []
+
+	for cycle in range(int(round(song_beats / pattern_length))):
+
+		pattern = subsequence.pattern.Pattern(channel = 1, length = pattern_length)
+		builder = subsequence.pattern_builder.PatternBuilder(pattern = pattern, cycle = cycle)
+		builder.phrase(value)
+		builder._finish_build()
+
+		sent.extend((cycle * pattern_length + event.pulse / PPQ, event.value) for event in pattern.cc_events)
+
+	return sorted(sent)
+
+
+def _motif_sends (value: motifs.Motif, song_beats: float = 8.0) -> typing.List[typing.Tuple[float, int]]:
+
+	"""The same, placed with ``p.motif()`` by a pattern as long as the motif."""
+
+	sent: typing.List[typing.Tuple[float, int]] = []
+
+	for cycle in range(int(round(song_beats / value.length))):
+
+		pattern = subsequence.pattern.Pattern(channel = 1, length = value.length)
+		builder = subsequence.pattern_builder.PatternBuilder(pattern = pattern, cycle = cycle)
+		builder.motif(value)
+		builder._finish_build()
+
+		sent.extend((cycle * value.length + event.pulse / PPQ, event.value) for event in pattern.cc_events)
+
+	return sorted(sent)
+
+
+@pytest.mark.parametrize("pattern_length", [1.0, 2.0, 4.0])
+def test_a_looped_phrase_sends_the_write_on_its_end (pattern_length: float) -> None:
+
+	"""A phrase's closing write fell in no window, so a looped phrase sent 64 and never 127.
+
+	It now plays as ``p.motif()`` plays it, whatever length of pattern walks the phrase.
+	"""
+
+	expected = [(beat, 64 if beat % 2 else 127) for beat in (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0)]
+
+	assert _motif_sends(_CLOSING) == expected
+	assert _phrase_sends(_CLOSING, pattern_length) == expected
+
+
+def test_a_phrase_of_segments_sends_the_write_on_its_last_end () -> None:
+
+	"""The write between two segments was always inside a window; the one on the whole phrase's end was not."""
+
+	phrase = _CLOSING + _CLOSING
+
+	assert _phrase_sends(phrase, 4.0) == [(beat, 64 if beat % 2 else 127) for beat in (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0)]
+
+
+def test_a_phrase_with_no_write_on_its_end_is_unchanged () -> None:
+
+	"""A guard: nothing is added where a phrase does not close a gesture on its end."""
+
+	# Given its length: without one, the last write would sit on the end and close it.
+	inside = motifs.Motif.cc(74, [64, 100], beats = [0, 1], length = 2.0)
+
+	assert inside.length == 2.0
+	assert _phrase_sends(inside, 4.0) == [(0.0, 64), (1.0, 100), (2.0, 64), (3.0, 100), (4.0, 64), (5.0, 100), (6.0, 64), (7.0, 100)]
