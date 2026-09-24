@@ -841,14 +841,15 @@ class PatternBuilder(
 		return self
 
 	@subsequence.declarations.bounded
-	def hit_steps (self, pitch: subsequence.declarations.Pitch, steps: typing.List[subsequence.declarations.StepPosition], velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.GateBeats = 0.1, grid: typing.Optional[subsequence.declarations.StepCount] = None, probability: subsequence.declarations.UnitInterval = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def hit_steps (self, pitch: subsequence.declarations.Pitch, steps: typing.Sequence[subsequence.declarations.StepPosition], velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.GateBeats = 0.1, grid: typing.Optional[subsequence.declarations.StepCount] = None, probability: subsequence.declarations.UnitInterval = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		Place short hits at specific step (grid) positions.
 
 		Parameters:
 			pitch: MIDI note number or drum name.
-			steps: A list of grid indices (0 to ``grid - 1``).
+			steps: A list of grid indices (0 to ``grid - 1``), or a range such
+				as ``range(0, 16, 4)``.
 			velocity: MIDI velocity (0-127), or a ``(low, high)`` tuple
 				for a fresh random draw per step.
 			duration: Note duration in beats.
@@ -1576,7 +1577,7 @@ class PatternBuilder(
 		return subsequence.motifs.Motif(events=tuple(events), length=span)
 
 	@subsequence.declarations.bounded
-	def sequence (self, steps: typing.List[subsequence.declarations.StepPosition], pitches: typing.Union[subsequence.declarations.Pitch, typing.Sequence[subsequence.declarations.Pitch]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, velocity: typing.Optional[subsequence.declarations.VelocityValue] = None, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[subsequence.declarations.StepCount] = None, probability: subsequence.declarations.UnitInterval = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
+	def sequence (self, steps: typing.Sequence[subsequence.declarations.StepPosition], pitches: typing.Union[subsequence.declarations.Pitch, typing.Sequence[subsequence.declarations.Pitch]], velocities: typing.Union[int, typing.Tuple[int, int], typing.List[int]] = subsequence.constants.velocity.DEFAULT_VELOCITY, velocity: typing.Optional[subsequence.declarations.VelocityValue] = None, durations: typing.Union[float, typing.List[float]] = 0.1, grid: typing.Optional[subsequence.declarations.StepCount] = None, probability: subsequence.declarations.UnitInterval = 1.0, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "PatternBuilder":
 
 		"""
 		A multi-parameter step sequencer.
