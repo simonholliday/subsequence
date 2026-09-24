@@ -124,7 +124,7 @@ The `examples/` directory holds self-documenting compositions. Because Subsequen
 |---|---|
 | `demo.py` / `demo_advanced.py` | Drums, bass, and an arpeggio over evolving E-aeolian harmony - the Composition API vs the Direct Pattern API, side by side. Start here. |
 | `labyrinth.py` / `subharmonicon.py` | Fully documented recreations of two Moog semi-modular sequencers, every panel control exposed as a named variable. Exercise most of the API. |
-| `arpeggiator.py` | Form sections, five patterns, cycle-dependent variation, Phrygian harmony, and section-aware muting. |
+| `arpeggiator.py` | Form sections, four patterns, cycle-dependent variation, Phrygian harmony, and section-aware muting. |
 | `bresenham_poly.py` | Dense generative drums on a weighted-graph form (pulse → emerge → peak → dissolve); ghost fills, cellular automata, interlocking hats. |
 | `emergence.py` | A six-section drum piece that breathes, builds, and breaks - Perlin fields, rare "fracture" eruptions, the full rhythm toolkit. |
 | `frozen.py` | `freeze()` + `section_chords()` - a frozen verse and chorus alongside a live-generated bridge. |
@@ -164,6 +164,8 @@ Feedback and ideas are very welcome - open a [Discussion ↗](https://github.com
 
 ## Related projects
 
+**[Superconductor ↗](https://github.com/simonholliday/superconductor)** - a visual tool for Subsequence, by the same author, and a work in progress. It is a touchscreen control surface: a small service serves one page to the screen's browser, a composition declares the controls it offers, and the page draws them - step grids for drums, pitched note grids, an instrument's own settings, stacks of generators and transforms built from Subsequence's own catalogue, and a transport. Tapping the screen changes the music, and changes in the music show on the screen. It is at an early stage of development, so expect rough edges and an interface that changes between versions. So far, Subsequence is the only software it drives.
+
 **[Subsample ↗](https://github.com/simonholliday/subsample)** - a sister project by the same author: a live sampler, automatic drum-kit builder, and MIDI sample instrument. Point a microphone at the world (or feed in recordings and sample packs) and Subsample captures, analyses, and maps every sound into a playable instrument automatically. Connect it to Subsequence over a virtual MIDI port, or enable OSC on both sides for richer event communication.
 
 ## Credits
@@ -175,6 +177,7 @@ Subsequence makes use of these excellent open-source libraries:
 | [mido ↗](https://github.com/mido/mido) | MIDI message handling and file I/O | MIT |
 | [python-rtmidi ↗](https://github.com/SpotlightKid/python-rtmidi) | Real-time MIDI I/O | MIT |
 | [python-osc ↗](https://github.com/attwad/python-osc) | OSC protocol support | Unlicense |
+| [PyYAML ↗](https://github.com/yaml/pyyaml) | Project definitions files, the names shared with Subsample | MIT |
 | [pymididefs ↗](https://github.com/simonholliday/PyMidiDefs) | Canonical MIDI 1.0/2.0 constant definitions | MIT |
 | [aalink ↗](https://github.com/artfwo/aalink) *(optional)* | Ableton Link integration | GPL-3.0 |
 
@@ -188,8 +191,8 @@ This project is managed with [Subroutine](https://github.com/simonholliday/subro
 
 ## License
 
-Subsequence is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPLv3). You are free to use, modify, and distribute it under the terms of the AGPL. If you run a modified version as part of a network service, you must make the source code available to its users.
+Subsequence is released under the [GNU Affero General Public License v3.0](https://github.com/simonholliday/subsequence/blob/main/LICENSE) (AGPLv3). You are free to use, modify, and distribute it under the terms of the AGPL. If you run a modified version as part of a network service, you must make the source code available to its users.
 
-The core dependencies (mido, python-rtmidi, python-osc) are all permissively licensed (MIT, Unlicense). The optional Ableton Link integration uses `aalink` (GPL-3.0), compatible with the AGPL.
+The core dependencies (mido, python-rtmidi, python-osc, PyYAML, pymididefs) are all permissively licensed (MIT, Unlicense). The optional Ableton Link integration uses `aalink` (GPL-3.0), compatible with the AGPL.
 
 **Commercial licensing.** To use Subsequence in a proprietary or closed-source product without the obligations of the AGPL, contact simon.holliday@protonmail.com to discuss a commercial license.
