@@ -36,6 +36,9 @@ test = [
 ]
 dev = [
     "mypy>=1.8.0",
+    # The PyYAML stubs, so CI type-checks definitions.py as the dev machine does:
+    # without them yaml is untyped, and CI went red on an ignore they make necessary (#3541).
+    "types-PyYAML>=6.0",
 ]
 link = [
     "aalink>=0.2",
@@ -72,10 +75,6 @@ pretty = true
 
 [[tool.mypy.overrides]]
 module = "mido.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "yaml.*"
 ignore_missing_imports = true
 
 [tool.setuptools_scm]
