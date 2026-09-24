@@ -821,7 +821,6 @@ class PatternAlgorithmicMixin:
 		)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-	@subsequence.declarations.bounded
 	def _grid_seed_drawn_once (self, call: int, rng: random.Random) -> int:
 
 		"""The seed call number *call* of cellular_2d() drew for its random start, drawn now if never.
@@ -846,6 +845,7 @@ class PatternAlgorithmicMixin:
 
 		return drawn
 
+	@subsequence.declarations.bounded
 	def cellular_2d (
 		self,
 		pitches: typing.Sequence[subsequence.declarations.Pitch],

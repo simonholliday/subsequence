@@ -7,8 +7,11 @@ costs its pattern that cycle, so validation would silence a part mid-performance
 every time a control overshot.
 """
 
+import importlib
+import inspect
 import logging
 import math
+import pkgutil
 import typing
 
 import pymididefs.rpn
@@ -395,3 +398,89 @@ def test_infinity_is_refused_where_the_span_is_open_above () -> None:
 
 	with pytest.raises(ValueError, match=r"repeat\(spacing=inf\) is not a finite number"):
 		_builder().repeat(60, spacing=math.inf)
+
+
+# ---------------------------------------------------------------------------
+# Every declared range is held by its decorator, or said not to be
+# ---------------------------------------------------------------------------
+
+# Every wrapper bounded() makes runs this one code object, which is how to tell one.
+_BOUNDED = subsequence.declarations.bounded(lambda: None).__code__
+
+# Ranges declared for a control surface to draw, and deliberately not enforced on a caller in
+# Python: f692cd5 gave them their span so a surface draws a slider, where "legato above 1.0 still
+# overlaps notes for anybody who asks in Python".
+_SPANS_FOR_A_SURFACE_ONLY = {
+	"subsequence.pattern_builder.PatternBuilder.dropout",
+	"subsequence.pattern_builder.PatternBuilder.legato",
+	"subsequence.pattern_builder.PatternBuilder.randomize",
+	"subsequence.pattern_builder.PatternBuilder.snap_to_scale",
+	"subsequence.pattern_builder.PatternBuilder.swing",
+}
+
+
+def _declaring_a_span () -> typing.Dict[str, typing.Callable]:
+
+	"""Every public function and method in the package with a Span in its signature, by full name."""
+
+	found: typing.Dict[str, typing.Callable] = {}
+
+	for module_info in pkgutil.walk_packages(subsequence.__path__, "subsequence."):
+
+		# Importing __main__ runs its logging.basicConfig(), which the rest of the suite would inherit.
+		if module_info.name == "subsequence.__main__":
+			continue
+
+		module = importlib.import_module(module_info.name)
+
+		for name, value in vars(module).items():
+
+			if name.startswith("_"):
+				continue
+
+			if inspect.isclass(value) and value.__module__ == module.__name__:
+				members = [(f"{value.__qualname__}.{member}", fn) for member, fn in vars(value).items() if inspect.isfunction(fn) and not member.startswith("_")]
+			elif inspect.isfunction(value) and value.__module__ == module.__name__:
+				members = [(value.__qualname__, value)]
+			else:
+				continue
+
+			for qualname, fn in members:
+				if subsequence.declarations._spans_of(inspect.unwrap(fn)):
+					found[f"{module.__name__}.{qualname}"] = fn
+
+	return found
+
+
+def test_every_declared_range_is_enforced_or_said_not_to_be () -> None:
+
+	"""A Span in a signature is held by bounded(), or named above with the reason it is not (#3532).
+
+	c3233d2 put a helper between cellular_2d() and its decorator, which then guarded the helper, and
+	cellular_2d() played a NaN probability.  Nothing held a declared range to the decorator that
+	makes it mean something, so nothing noticed.
+	"""
+
+	found = _declaring_a_span()
+
+	assert len(found) >= 20, f"only {len(found)} callables declare a range: the walk is missing some"
+
+	assert {name for name, fn in found.items() if getattr(fn, "__code__", None) is not _BOUNDED} == _SPANS_FOR_A_SURFACE_ONLY
+
+
+def test_cellular_2d_holds_its_ranges_again () -> None:
+
+	"""The regression itself: a NaN is refused, and an overshoot clamps with one warning, as the other generators do.
+
+	The overshoot's notes cannot show it: the kernel plays density=1.5 exactly as 1.0, clamped or not.
+	"""
+
+	with pytest.raises(ValueError, match=r"cellular_2d\(probability=nan\) is not a finite number"):
+		_builder().cellular_2d([60, 62, 64], probability=math.nan)
+
+	subsequence.declarations._warned.clear()
+
+	with _capture(logging.getLogger("subsequence.declarations")) as records:
+		_builder().cellular_2d([60, 62, 64], probability=1.5)
+
+	assert len(records) == 1 and "probability" in records[0], records
