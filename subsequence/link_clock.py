@@ -10,7 +10,7 @@ pip install subsequence[link]
 
 Usage::
 
-    link_clock = LinkClock(bpm=120, quantum=4.0, loop=asyncio.get_running_loop())
+    link_clock = LinkClock(bpm=120, quantum=4.0)    # made on the running event loop
     beat_origin = await link_clock.wait_for_bar()
     # ... in the pulse loop, stepping one pulse at a time:
     beat = await link_clock.sync(1 / PPQN)
@@ -21,7 +21,6 @@ multiple of what it is given.  Requires aalink 0.2 or later.
 
 from __future__ import annotations
 
-import asyncio
 import math
 import typing
 
@@ -43,20 +42,23 @@ class LinkClock:
 	"""
 	Thin wrapper around ``aalink.Link`` for Subsequence's pulse-based clock.
 
+	Made on the running event loop, which aalink takes for itself: from 0.2 it
+	warns whenever it is handed one, so every Link session raised a
+	DeprecationWarning (#3555).
+
 	Parameters:
 		bpm: Initial tempo in BPM (proposed to the Link session).
 		quantum: Beat cycle length - 4.0 means one bar in 4/4 time.
-		loop: The running asyncio event loop (required by aalink).
 	"""
 
-	def __init__ (self, bpm: float, quantum: float, loop: asyncio.AbstractEventLoop) -> None:
+	def __init__ (self, bpm: float, quantum: float) -> None:
 
 		"""
 		Join the Link session immediately, proposing *bpm* and setting the bar length to *quantum* beats.
 		"""
 
 		aalink = _require_aalink()
-		self._link = aalink.Link(bpm, loop)
+		self._link = aalink.Link(bpm)
 		self._link.enabled = True
 		self._link.quantum = float(quantum)
 

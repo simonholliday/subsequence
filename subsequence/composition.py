@@ -7134,7 +7134,6 @@ class Composition:
 			self._sequencer._link_clock = subsequence.link_clock.LinkClock(
 				bpm = self.bpm,
 				quantum = self._link_quantum,
-				loop = asyncio.get_running_loop(),
 			)
 
 		# Deal play-time streams.  Every stream is NAME-keyed (crc32 of

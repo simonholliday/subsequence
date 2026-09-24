@@ -1,8 +1,13 @@
 """Tests for Ableton Link integration (link_clock module + Composition.link())."""
 
+import asyncio
+import contextlib
+import math
 import sys
 import types
+import typing
 import unittest.mock
+import warnings
 
 import pytest
 
@@ -163,3 +168,69 @@ def test_set_target_bpm_ignored_under_link (patch_midi: None) -> None:
 	# No local ramp is created, and Link is not asked to ramp.
 	assert seq._bpm_transition is None
 	mock_link_clock.request_tempo.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_link_session_hands_aalink_no_loop (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""aalink 0.2 and later take the running loop themselves, and warn whenever Link() is handed one (#3555).
+
+	The stand-in warns as aalink's own source does (``src/aalink.cpp`` in 0.2 and 0.2.3), and the
+	composition joins the session through its real path, ``_run()``.
+	"""
+
+	made: typing.List[typing.Any] = []
+
+	class Link:
+
+		enabled = False
+		quantum = 4.0
+		num_peers = 0
+		playing = False
+
+		def __init__ (self, bpm: float, loop: typing.Any = None) -> None:
+
+			if loop is not None:
+				warnings.warn(
+					"The 'loop' parameter is deprecated and will be removed in future versions of aalink",
+					DeprecationWarning,
+					stacklevel = 2,
+				)
+
+			self.loop = loop if loop is not None else asyncio.get_running_loop()
+			self.tempo = float(bpm)
+			self.beat = 0.0
+			made.append(self)
+
+		def __setattr__ (self, name: str, value: typing.Any) -> None:
+
+			if name == "enabled":
+				self.__dict__.setdefault("enabled_history", []).append(value)
+
+			object.__setattr__(self, name, value)
+
+		async def sync (self, period: float) -> float:
+
+			await asyncio.sleep(0.001)
+			self.beat = (math.floor(self.beat / period + 1e-9) + 1) * period
+
+			return self.beat
+
+	fake_aalink = types.ModuleType("aalink")
+	fake_aalink.Link = Link		# type: ignore[attr-defined]
+	monkeypatch.setitem(sys.modules, "aalink", fake_aalink)
+
+	composition = subsequence.Composition(output_device = "Dummy MIDI", bpm = 132)
+	composition.link(quantum = 4)
+
+	with warnings.catch_warnings(record = True) as caught:
+
+		warnings.simplefilter("always")
+
+		with contextlib.suppress(asyncio.TimeoutError):
+			await asyncio.wait_for(composition._run(), timeout = 0.3)
+
+	assert made, "the run never joined the session"
+	assert made[0].loop is asyncio.get_running_loop()
+	assert made[0].enabled_history == [True, False], "it should join the session, then leave it at the stop"
+	assert [str(warning.message) for warning in caught if issubclass(warning.category, DeprecationWarning)] == []
