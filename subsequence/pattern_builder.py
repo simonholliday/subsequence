@@ -47,7 +47,7 @@ _STRUM_DIRECTIONS: typing.Tuple[str, ...] = typing.get_args(subsequence.declarat
 
 def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 
-	"""Expand a scalar to a list of length n, or adjust a list to length n.
+	"""Expand a scalar to a list of length n, or lay a list over n steps.
 
 	Parameters:
 		name: The name of the parameter being expanded (used for logging).
@@ -57,7 +57,8 @@ def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 	Returns:
 		A list of length ``n``. If ``value`` is a scalar, returns ``[value] * n``.
 		If ``value`` is a list longer than ``n``, truncates it and logs a warning.
-		If ``value`` is a list shorter than ``n``, repeats the last value and logs a warning.
+		If ``value`` is a list shorter than ``n``, starts it again from its
+		beginning, as every list laid over steps does (#3537).
 	"""
 
 	if isinstance(value, (int, float, str)):
@@ -72,11 +73,7 @@ def _expand_sequence_param (name: str, value: typing.Any, n: int) -> list:
 		logger.warning("sequence(): %s has %d values but only %d steps - truncating", name, len(result), n)
 		return result[:n]
 
-	if len(result) < n:
-		logger.warning("sequence(): %s has %d values but %d steps - repeating last value", name, len(result), n)
-		return result + [result[-1]] * (n - len(result))
-
-	return result
+	return [result[i % len(result)] for i in range(n)]
 
 
 class BarCycle:
@@ -1584,7 +1581,10 @@ class PatternBuilder(
 
 		Define which grid steps fire, and then provide a list of pitches,
 		velocities, and durations. If you provide a list for any parameter,
-		Subsequence will step through it as it places each note.
+		Subsequence will step through it as it places each note.  A list
+		shorter than the steps starts again from its beginning, so three
+		pitches over eight steps make a figure that drifts against the
+		rhythm; a longer one is cut short, with a warning.
 
 		Parameters:
 			steps: List of grid indices to trigger. An empty list is a
@@ -1592,9 +1592,8 @@ class PatternBuilder(
 				unchanged (handy when probabilistic gating rejects every step).
 			pitches: Pitch or list of pitches.
 			velocities: Velocity (default 100), ``(low, high)`` tuple for
-				a fresh random draw per step, or a list of velocities
-				matched to the steps one-to-one (a short list repeats its
-				final value, a long list is truncated - both warn).
+				a fresh random draw per step, or a list of velocities, one
+				per step.
 			velocity: The same as ``velocities`` for a single value or a
 				``(low, high)`` range, and the name every other verb uses -
 				which is what a control surface drives, since a two-element

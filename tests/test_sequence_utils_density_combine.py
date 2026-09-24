@@ -74,15 +74,16 @@ def test_combine_mixed_scalar_and_list () -> None:
 	assert abs(out[1] - (0.8 + 0.5) / 2) < TOL
 
 
-def test_combine_length_mismatch_repeats_last () -> None:
+def test_combine_length_mismatch_starts_the_shorter_again () -> None:
 
-	"""The shorter list layer repeats its last value."""
+	"""The shorter list layer starts again from its beginning (#3537)."""
 
-	out = C([[0.2, 0.4, 0.6], [0.9]], "min")
-	assert len(out) == 3
+	out = C([[0.2, 0.4, 0.6, 0.8], [0.9, 0.1]], "min")
+	assert len(out) == 4
 	assert abs(out[0] - 0.2) < TOL     # min(0.2, 0.9)
-	assert abs(out[1] - 0.4) < TOL     # min(0.4, 0.9) — 0.9 repeated
-	assert abs(out[2] - 0.6) < TOL     # min(0.6, 0.9) — 0.9 repeated
+	assert abs(out[1] - 0.1) < TOL     # min(0.4, 0.1)
+	assert abs(out[2] - 0.6) < TOL     # min(0.6, 0.9) - the layer starts again
+	assert abs(out[3] - 0.1) < TOL     # min(0.8, 0.1)
 
 
 def test_combine_list_geomean_per_step () -> None:

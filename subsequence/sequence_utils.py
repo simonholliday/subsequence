@@ -319,8 +319,9 @@ def _select_mask (
 	truthy) or ``steps`` (a collection of step indices, active at those positions)
 	must be given.  With ``keep_active`` True each step is kept where the selector
 	is active and set to ``off`` elsewhere; with False the sense is inverted.  An
-	``against`` part shorter than ``sequence`` repeats its last value; an empty one
-	is inactive everywhere; indices in ``steps`` outside the sequence are ignored.
+	``against`` part shorter than ``sequence`` starts again from its beginning
+	(#3537); an empty one is inactive everywhere; indices in ``steps`` outside the
+	sequence are ignored.
 	"""
 
 	if (against is None) == (steps is None):
@@ -328,7 +329,7 @@ def _select_mask (
 
 	if against is not None:
 		active = (
-			[bool(against[i]) if i < len(against) else bool(against[-1]) for i in range(len(sequence))]
+			[bool(against[i % len(against)]) for i in range(len(sequence))]
 			if against else [False] * len(sequence)
 		)
 	else:
@@ -352,8 +353,9 @@ def mask (
 	selector as **exactly one** of:
 
 		- ``against`` - a parallel part, active where ``against[i]`` is truthy
-			(non-zero).  Shorter than ``sequence`` it repeats its last value; an
-			empty one is inactive everywhere.
+			(non-zero).  Shorter than ``sequence`` it starts again from its
+			beginning, so a one-beat part gates every beat; an empty one is
+			inactive everywhere.
 		- ``steps`` - a collection of step indices, active at exactly those
 			positions.  Indices outside the sequence are ignored.
 
@@ -403,7 +405,8 @@ def choke (
 	drum *choke* - one voice silences another on the steps it sounds.  Give the
 	selector as **exactly one** of ``against`` (a parallel part, active where
 	truthy) or ``steps`` (a collection of active step indices), with the same
-	repeat-last / ignore-out-of-range / empty rules as :func:`mask`.
+	rules as :func:`mask`: a shorter part starts again, an index outside the
+	sequence is ignored, and an empty part is inactive everywhere.
 
 	``choke(seq, against=other)`` is the same as masking by the complement of
 	``other``.
@@ -739,8 +742,8 @@ def density_warp (
 	``amount`` may likewise be a single float (applied to every element) or a
 	per-step list (e.g. a Perlin density field).  The result is a list whenever
 	either argument is a list; when both are lists of unequal length the result
-	has the length of the longer, the shorter extended by repeating its last
-	value.  An empty list yields an empty list.
+	has the length of the longer, and the shorter starts again from its
+	beginning.  An empty list yields an empty list.
 
 	Parameters:
 		value: A probability/density in ``[0, 1]``, or a list of them.
@@ -764,15 +767,14 @@ def density_warp (
 
 		if isinstance(amount, list):
 
-			# Both lists: an empty operand yields []; otherwise pad the shorter
-			# by repeating its last element (the _expand_sequence_param rule).
+			# Both lists: an empty operand yields []; otherwise the shorter
+			# starts again from its beginning, as every list laid over steps
+			# does (#3537).
 			if not value or not amount:
 				return []
 
 			n = max(len(value), len(amount))
-			vs = value if len(value) == n else value + [value[-1]] * (n - len(value))
-			amt = amount if len(amount) == n else amount + [amount[-1]] * (n - len(amount))
-			return [_density_warp_scalar(v, a) for v, a in zip(vs, amt)]
+			return [_density_warp_scalar(value[i % len(value)], amount[i % len(amount)]) for i in range(n)]
 
 		return [_density_warp_scalar(v, amount) for v in value]
 
@@ -873,8 +875,8 @@ def density_spread (
 	``value`` may be a single float or a list; the return matches that shape.
 	``amount`` may likewise be a single float (applied to every element) or a
 	per-step list.  The result is a list whenever either is a list; on unequal
-	lengths the shorter repeats its last value, and an empty list yields an empty
-	list.  ``midpoint`` is a single anchor in the open interval ``(0, 1)``.
+	lengths the shorter starts again from its beginning, and an empty list yields
+	an empty list.  ``midpoint`` is a single anchor in the open interval ``(0, 1)``.
 
 	Parameters:
 		value: A probability/density in ``[0, 1]``, or a list of them.
@@ -908,15 +910,14 @@ def density_spread (
 
 		if isinstance(amount, list):
 
-			# Both lists: an empty operand yields []; otherwise pad the shorter
-			# by repeating its last element (the _expand_sequence_param rule).
+			# Both lists: an empty operand yields []; otherwise the shorter
+			# starts again from its beginning, as every list laid over steps
+			# does (#3537).
 			if not value or not amount:
 				return []
 
 			n = max(len(value), len(amount))
-			vs = value if len(value) == n else value + [value[-1]] * (n - len(value))
-			amt = amount if len(amount) == n else amount + [amount[-1]] * (n - len(amount))
-			return [_density_spread_scalar(v, a, midpoint) for v, a in zip(vs, amt)]
+			return [_density_spread_scalar(value[i % len(value)], amount[i % len(amount)], midpoint) for i in range(n)]
 
 		return [_density_spread_scalar(v, amount, midpoint) for v in value]
 
@@ -965,8 +966,8 @@ def combine_densities (
 	Broadcasting generalises the rule in :func:`density_warp`: if every layer is
 	a single value the result is a single value; if any layer is a list the
 	result is a list as long as the longest layer, with scalar layers applied to
-	every step and shorter lists extended by repeating their last value.  An
-	empty list layer yields ``[]``.
+	every step and shorter lists starting again from their beginning.  An empty
+	list layer yields ``[]``.
 
 	Parameters:
 		layers: The density layers to blend.  Each entry is a value in
@@ -1020,7 +1021,7 @@ def combine_densities (
 
 		for layer in layers:
 			if isinstance(layer, list):
-				step.append(layer[i] if i < len(layer) else layer[-1])
+				step.append(layer[i % len(layer)])
 			else:
 				step.append(layer)
 

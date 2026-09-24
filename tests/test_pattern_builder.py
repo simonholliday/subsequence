@@ -2332,20 +2332,20 @@ def test_sequence_list_longer_truncates () -> None:
 	assert pattern.steps[ppq].notes[0].pitch == 64
 
 
-def test_sequence_list_shorter_repeats_last () -> None:
+def test_sequence_list_shorter_starts_again () -> None:
 
-	"""A pitches list shorter than steps should repeat the last value."""
+	"""A pitches list shorter than steps starts again from its beginning (#3537)."""
 
 	pattern, builder = _make_builder(length=4)
 
-	# 4 steps but only 2 pitches - last value (64) fills remaining.
+	# 4 steps but only 2 pitches - the list starts again at the third step.
 	builder.sequence([0, 4, 8, 12], pitches=[60, 64])
 
 	ppq = subsequence.constants.MIDI_QUARTER_NOTE
 
 	assert pattern.steps[0].notes[0].pitch == 60
 	assert pattern.steps[ppq].notes[0].pitch == 64
-	assert pattern.steps[ppq * 2].notes[0].pitch == 64
+	assert pattern.steps[ppq * 2].notes[0].pitch == 60
 	assert pattern.steps[ppq * 3].notes[0].pitch == 64
 
 
@@ -2495,9 +2495,9 @@ def test_sequence_truncation_logs_warning (caplog) -> None:
 	assert "truncating" in caplog.text
 
 
-def test_sequence_repeat_logs_warning (caplog) -> None:
+def test_sequence_shorter_list_says_nothing (caplog) -> None:
 
-	"""Repeating the last value for a shorter list should log a warning."""
+	"""A shorter list starts again, which is how it is read, not a slip: nothing to warn about (#3537)."""
 
 	import logging
 
@@ -2506,7 +2506,7 @@ def test_sequence_repeat_logs_warning (caplog) -> None:
 	with caplog.at_level(logging.WARNING, logger="subsequence.pattern_builder"):
 		builder.sequence([0, 4, 8, 12], pitches=[60, 64])
 
-	assert "repeating last value" in caplog.text
+	assert caplog.text == ""
 
 
 # --- Strum ---

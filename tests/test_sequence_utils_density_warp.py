@@ -140,19 +140,22 @@ def test_list_value_list_amount () -> None:
 	assert abs(out[1] - W(0.8, 0.3)) < TOL
 
 
-def test_length_mismatch_repeats_last () -> None:
+def test_length_mismatch_starts_the_shorter_again () -> None:
 
-	"""On unequal lengths the shorter operand repeats its last value."""
+	"""On unequal lengths the shorter operand starts again from its beginning (#3537).
 
-	out = W([0.2, 0.5, 0.8], [0.6])
+	A one-value operand reads the same either way, so the shorter has two values here.
+	"""
+
+	out = W([0.2, 0.5, 0.8, 0.3], [0.6, 0.4])
+	assert len(out) == 4
+	for v, a, o in zip([0.2, 0.5, 0.8, 0.3], [0.6, 0.4, 0.6, 0.4], out):
+		assert abs(o - W(v, a)) < TOL
+
+	out = W([0.2, 0.8], [0.3, 0.5, 0.7])
 	assert len(out) == 3
-	for v, o in zip([0.2, 0.5, 0.8], out):
-		assert abs(o - W(v, 0.6)) < TOL
-
-	out = W([0.5], [0.2, 0.4, 0.6])
-	assert len(out) == 3
-	for a, o in zip([0.2, 0.4, 0.6], out):
-		assert abs(o - W(0.5, a)) < TOL
+	for v, a, o in zip([0.2, 0.8, 0.2], [0.3, 0.5, 0.7], out):
+		assert abs(o - W(v, a)) < TOL
 
 
 def test_empty_list_edges () -> None:

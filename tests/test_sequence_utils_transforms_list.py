@@ -107,11 +107,11 @@ def test_mask_zero_default_vs_float () -> None:
 	assert MASK([0.5, 0.5], against=[1, 0], zero=0.0) == [0.5, 0.0]
 
 
-def test_mask_against_shorter_repeats_last () -> None:
+def test_mask_against_shorter_starts_again () -> None:
 
-	"""A short parallel part repeats its last value."""
+	"""A short parallel part starts again from its beginning (#3537)."""
 
-	assert MASK([9, 9, 9, 9], against=[1, 0]) == [9, 0, 0, 0]
+	assert MASK([9, 9, 9, 9], against=[1, 0]) == [9, 0, 9, 0]
 
 
 def test_mask_against_longer_truncates () -> None:
@@ -190,11 +190,11 @@ def test_choke_custom_floor () -> None:
 	assert CHOKE([9, 9], against=[1, 0], floor=-1) == [-1, 9]
 
 
-def test_choke_against_shorter_repeats_last () -> None:
+def test_choke_against_shorter_starts_again () -> None:
 
-	"""A short parallel part repeats its last value."""
+	"""A short parallel part starts again from its beginning (#3537)."""
 
-	assert CHOKE([9, 9, 9, 9], against=[1, 0]) == [0, 9, 9, 9]
+	assert CHOKE([9, 9, 9, 9], against=[1, 0]) == [0, 9, 0, 9]
 
 
 def test_choke_steps_out_of_range_ignored () -> None:
