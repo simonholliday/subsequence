@@ -249,6 +249,8 @@ class PatternBuilder(
 		# How many cellular_2d() calls this build has made, so each keeps the
 		# grid seed it drew on its pattern (#3072).
 		self._cellular_2d_calls: int = 0
+		# And self_avoiding_walk() calls, so each goes on from where it left off (#3500).
+		self._self_avoiding_walk_calls: int = 0
 
 	@property
 	def grid (self) -> int:

@@ -3057,6 +3057,7 @@ def self_avoiding_walk (
 	high: int,
 	rng: random.Random,
 	start: typing.Optional[int] = None,
+	heard: typing.Optional[typing.Sequence[int]] = None,
 ) -> typing.List[int]:
 
 	"""
@@ -3089,6 +3090,9 @@ def self_avoiding_walk (
 		high: Maximum value (inclusive).
 		rng: Random number generator instance.
 		start: Starting value.  Defaults to the midpoint of ``[low, high]``.
+		heard: Values heard just before this walk, oldest first, which it keeps
+		       clear of as if it had played them.  Pass the end of one walk, with
+		       its last value as *start*, and the next goes on as the same line.
 
 	Returns:
 		List of ``n`` integers in ``[low, high]``.
@@ -3115,7 +3119,11 @@ def self_avoiding_walk (
 	span = high - low + 1
 	remembered = max(2, span // 2)
 
-	recent: typing.Deque[int] = collections.deque([current], maxlen = remembered)
+	recent: typing.Deque[int] = collections.deque((value for value in heard or () if low <= value <= high), maxlen = remembered)
+
+	if not recent or recent[-1] != current:
+		recent.append(current)
+
 	result: typing.List[int] = [current]
 
 	def reachable (avoid_recent: bool) -> typing.Tuple[typing.List[int], typing.List[float]]:

@@ -283,6 +283,11 @@ class Pattern:
 		# new stream draws again.
 		self._drawn_grid_seeds: typing.Dict[int, typing.Tuple[typing.Optional[random.Random], int]] = {}
 
+		# Where each self_avoiding_walk() call left off, by its place among a
+		# build's calls: the pitch list it walked, and the indices it heard last,
+		# oldest first.  The next bar goes on from there (#3500).
+		self._walk_states: typing.Dict[int, typing.Tuple[typing.Tuple[typing.Any, ...], typing.Tuple[int, ...]]] = {}
+
 
 	def _finish_builds (self) -> None:
 

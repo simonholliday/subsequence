@@ -110,6 +110,7 @@ class PatternAlgorithmicMixin:
 	_pattern: subsequence.pattern.Pattern
 	_default_grid: int
 	_cellular_2d_calls: int
+	_self_avoiding_walk_calls: int
 	rng: random.Random
 	cycle: int
 	data: typing.Dict[str, typing.Any]
@@ -2014,6 +2015,42 @@ class PatternAlgorithmicMixin:
 			self._place_rhythm_sequence(sequence, pitch, int(velocity), duration, probability, rng, no_overlap)
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
+	def _walk_resumes (
+		self,
+		state: typing.Optional[typing.Tuple[typing.Tuple[typing.Any, ...], typing.Tuple[int, ...]]],
+		pool: typing.Tuple[typing.Any, ...],
+	) -> typing.Optional[typing.Tuple[int, typing.List[int]]]:
+
+		"""Where a walk over *pool* goes on from and what it heard there, or None to start in the middle.
+
+		The same list goes on from the index it ended on, remembering the
+		indices it heard.  A changed list goes on from its note nearest the one
+		the walk ended on, the lower of two as near, and remembers only the
+		notes it heard that the new list holds (#3500).  A list with a note that
+		does not read as a pitch starts again in the middle.
+		"""
+
+		if state is None:
+			return None
+
+		walked, heard = state
+
+		if walked == pool:
+			return heard[-1], list(heard)
+
+		old = [self._resolve_pitch_lenient(pitch) for pitch in walked]
+		known = [pitch for pitch in (self._resolve_pitch_lenient(pitch) for pitch in pool) if pitch is not None]
+		last = old[heard[-1]]
+
+		if last is None or len(known) != len(pool):
+			return None
+
+		ended: int = last
+		start = min(range(len(known)), key = lambda index: (abs(known[index] - ended), known[index]))
+		remembered = [known.index(pitch) for pitch in (old[index] for index in heard) if pitch in known]
+
+		return start, remembered
+
 	def self_avoiding_walk (
 		self,
 		pitches: typing.Sequence[subsequence.declarations.Pitch],
@@ -2036,8 +2073,14 @@ class PatternAlgorithmicMixin:
 		So the line stays step-wise and keeps finding new notes.  Over 500
 		seeds, a bar of sixteenths on the eight notes of C major from 60 to 72
 		gave 188 different melodies, with about a quarter of the moves skipping
-		a note.  Each call starts on the middle of the list (65 in that scale).
-		Two pitches can only alternate.
+		a note.  Two pitches can only alternate.
+
+		It is one line, not a bar at a time.  The first bar starts on the middle
+		of the list (65 in that scale), and each bar after it goes on from where
+		the last one ended, still keeping clear of what it heard there.  If the
+		list changes from one bar to the next, as it does when it follows the
+		chord, the walk goes on from the note in the new list nearest the one
+		it ended on.
 
 		Parameters:
 			pitches: Ordered list of MIDI note numbers or note strings.  The walk
@@ -2046,7 +2089,8 @@ class PatternAlgorithmicMixin:
 			spacing: Time between notes in beats.  Default 0.25 (16th note).
 			velocity: MIDI velocity.  An ``(low, high)`` tuple randomises per note.
 			duration: Note duration in beats.
-			seed: Fix the walk for this call (an int); omit to use the pattern's RNG.
+			seed: Fix the walk's choices (an int), so it plays the same on every
+			    run; omit to use the pattern's RNG.
 			rng: Advanced determinism form - a ``random.Random`` (wins over ``seed=``).
 
 		Example:
@@ -2065,12 +2109,25 @@ class PatternAlgorithmicMixin:
 			raise ValueError(f"self_avoiding_walk() spacing is the time between notes in beats - it must be positive, got {spacing}")
 
 		n_steps = int(self._pattern.length / spacing)
-		indices = subsequence.sequence_utils.self_avoiding_walk(
-			n=n_steps,
-			low=0,
-			high=len(pitches) - 1,
-			rng=rng,
-		)
+		call = self._self_avoiding_walk_calls
+		self._self_avoiding_walk_calls += 1
+		pool = tuple(pitches)
+		left_off = self._walk_resumes(self._pattern._walk_states.get(call), pool)
+
+		if left_off is None:
+			indices = subsequence.sequence_utils.self_avoiding_walk(n = n_steps, low = 0, high = len(pool) - 1, rng = rng)
+			heard: typing.List[int] = indices
+		else:
+			# One step more than the bar holds, from where the last bar ended, and
+			# that note itself dropped: it was the last bar's to play (#3500).
+			start, remembered = left_off
+			indices = subsequence.sequence_utils.self_avoiding_walk(
+				n = n_steps + 1, low = 0, high = len(pool) - 1, rng = rng, start = start, heard = remembered,
+			)[1:]
+			heard = list(remembered) + indices
+
+		if indices:
+			self._pattern._walk_states[call] = (pool, tuple(heard[-len(pool):]))
 
 		beat = 0.0
 

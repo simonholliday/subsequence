@@ -589,7 +589,7 @@ Functions for generating and transforming sequences.
 | `rhythmic_evenness(onsets, grid, normalize) -> float` | How evenly onsets are spread around the cycle (Toussaint's evenness). |
 | `rotate(indices, shift, length) -> List[int]` | Circularly rotate step indices by the specified amount, wrapping at *length*. |
 | `scale_clamp(value, in_min, in_max, out_min, out_max) -> float` | Scale a value from an input range to an output range and clamp the result. |
-| `self_avoiding_walk(n, low, high, rng, start) -> List[int]` | Generate a short-memory walk over an integer range. |
+| `self_avoiding_walk(n, low, high, rng, start, heard) -> List[int]` | Generate a short-memory walk over an integer range. |
 | `sequence_to_indices(sequence) -> List[int]` | Extract step indices where hits occur in a binary sequence. |
 | `shuffled_choices(pool, n, rng) -> List[~T]` | Choose N items from a pool with no immediate repetition. |
 | `sieve(classes, hi, lo) -> List[int]` | Xenakis sieve: the sorted integers in ``[lo, hi)`` in any of the classes. |
