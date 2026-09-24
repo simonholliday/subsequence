@@ -11,6 +11,7 @@ negative, and a negative span emits nothing at all, so a ramp keeps its length
 and crosses the cycle's end instead.
 """
 
+import inspect
 import pathlib
 import random
 import typing
@@ -54,6 +55,7 @@ def _pulses (builder: subsequence.pattern_builder.PatternBuilder) -> typing.List
 		[pulse for pulse, step in builder._pattern.steps.items() for _ in step.notes]
 		+ [event.pulse for event in builder._pattern.cc_events]
 		+ [event.pulse for event in getattr(builder._pattern, "osc_events", [])]
+		+ [event.pulse for event in builder._pattern.raw_note_events]
 	)
 
 
@@ -61,24 +63,33 @@ def _pulses (builder: subsequence.pattern_builder.PatternBuilder) -> typing.List
 # One position for every verb
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("place", [
-	lambda p: p.note(60, beat = -1, duration = 1),
-	lambda p: p.cc(74, 64, beat = -1),
-	lambda p: p.pitch_bend(0.5, beat = -1),
-	lambda p: p.program_change(3, beat = -1),
-	lambda p: p.nrpn(1, 64, beat = -1),
-	lambda p: p.rpn(0, 64, beat = -1),
-	lambda p: p.sysex([1, 2], beat = -1),
-	lambda p: p.osc("/x", 1, beat = -1),
-	lambda p: p.motif(subsequence.Motif.cc(74, [64], beats = [0.0]), beat = -1),
-	lambda p: p.chord([60, 64, 67], beat = -1, duration = 1),
-])
-def test_a_negative_beat_counts_from_the_end (place: typing.Callable[[typing.Any], None]) -> None:
+# By name, so the last test in this section can hold the list whole.  drone(), note_on(),
+# note_off() and silence() already counted from the end, and joined with #3543.
+AT_ONE_BEAT: typing.Dict[str, typing.Callable[[typing.Any], typing.Any]] = {
+	"note": lambda p: p.note(60, beat = -1, duration = 1),
+	"cc": lambda p: p.cc(74, 64, beat = -1),
+	"pitch_bend": lambda p: p.pitch_bend(0.5, beat = -1),
+	"program_change": lambda p: p.program_change(3, beat = -1),
+	"nrpn": lambda p: p.nrpn(1, 64, beat = -1),
+	"rpn": lambda p: p.rpn(0, 64, beat = -1),
+	"sysex": lambda p: p.sysex([1, 2], beat = -1),
+	"osc": lambda p: p.osc("/x", 1, beat = -1),
+	"motif": lambda p: p.motif(subsequence.Motif.cc(74, [64], beats = [0.0]), beat = -1),
+	"chord": lambda p: p.chord([60, 64, 67], beat = -1, duration = 1),
+	"drone": lambda p: p.drone(60, beat = -1),
+	"note_on": lambda p: p.note_on(60, beat = -1),
+	"note_off": lambda p: p.note_off(60, beat = -1),
+	"silence": lambda p: p.silence(beat = -1),
+}
+
+
+@pytest.mark.parametrize("verb", sorted(AT_ONE_BEAT))
+def test_a_negative_beat_counts_from_the_end (verb: str) -> None:
 
 	"""Beat -1 of a four-beat pattern is beat 3 — pulse 72 — whatever the verb."""
 
 	builder = _builder()
-	place(builder)
+	AT_ONE_BEAT[verb](builder)
 
 	placed = _pulses(builder)
 
@@ -86,12 +97,15 @@ def test_a_negative_beat_counts_from_the_end (place: typing.Callable[[typing.Any
 	assert set(placed) == {72}
 
 
-@pytest.mark.parametrize("verb, expected", [
-	("arpeggio", [72, 78, 84, 90]),
-	("broken_chord", [72, 78, 84, 90]),
-	("strum", [72, 78, 84]),
-])
-def test_a_figure_at_a_negative_beat_starts_that_far_from_the_end (verb: str, expected: typing.List[int]) -> None:
+FIGURES: typing.Dict[str, typing.List[int]] = {
+	"arpeggio": [72, 78, 84, 90],
+	"broken_chord": [72, 78, 84, 90],
+	"strum": [72, 78, 84],
+}
+
+
+@pytest.mark.parametrize("verb", sorted(FIGURES))
+def test_a_figure_at_a_negative_beat_starts_that_far_from_the_end (verb: str) -> None:
 
 	"""chord(), arpeggio() and broken_chord() refused a negative beat, which 7200913 meant every verb to take (#3528).
 
@@ -108,7 +122,28 @@ def test_a_figure_at_a_negative_beat_starts_that_far_from_the_end (verb: str, ex
 	else:
 		builder.strum([60, 64, 67], beat = -1, spacing = 0.25, duration = 0.25)
 
-	assert _pulses(builder) == expected
+	assert _pulses(builder) == FIGURES[verb]
+
+
+def test_every_verb_that_places_at_a_beat_is_held_to_it_here () -> None:
+
+	"""The README says a negative beat counts from the end in every verb that places something (#3543).
+
+	A verb that places returns the builder; ``capture()`` also takes ``beat=``, but reads a window
+	and returns a Motif, so it is not held to this.  A new verb with ``beat=`` fails here until one
+	of the tables above has it.  A guard: every verb it finds already counted from the end.
+	"""
+
+	verbs = {
+		name
+		for name, method in inspect.getmembers(subsequence.pattern_builder.PatternBuilder, inspect.isfunction)
+		if not name.startswith("_")
+		and "beat" in inspect.signature(method).parameters
+		and "PatternBuilder" in str(inspect.signature(method).return_annotation)
+	}
+
+	assert len(verbs) > 10, f"found only {sorted(verbs)}: has the signature reading changed?"
+	assert verbs == set(AT_ONE_BEAT) | set(FIGURES)
 
 
 @pytest.mark.parametrize("length, beat, expected", [
