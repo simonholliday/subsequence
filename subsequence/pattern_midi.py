@@ -16,6 +16,7 @@ import subsequence.constants
 import subsequence.constants.pulses
 import subsequence.declarations
 import subsequence.easing
+import subsequence.groove
 import subsequence.pattern
 
 
@@ -55,6 +56,9 @@ class PatternMidiMixin:
 	_cc_name_map: typing.Optional[typing.Dict[str, int]]
 	_nrpn_name_map: typing.Optional[typing.Dict[str, int]]
 	_pending_glides: typing.List[typing.Callable[[], None]]
+	_grooves_applied: typing.List[typing.Tuple[subsequence.groove.Groove, float, int]]
+	_grooved_notes: typing.Dict[int, typing.Tuple[subsequence.pattern.Note, int]]
+	_groove_chain_broken: bool
 
 	if typing.TYPE_CHECKING:
 		import subsequence.pattern_builder  # noqa: F401 — type-checking only
@@ -65,6 +69,61 @@ class PatternMidiMixin:
 		def _will_need_finishing (self) -> None: ...
 		def _wrapped_beat (self, beat: float) -> float: ...
 		def _wrapped_pulse (self, beat: float) -> int: ...
+
+	def _next_first_onset (self, first: int) -> int:
+
+		"""Where the next cycle's first note will play, counted from this cycle's start (#2927).
+
+		A glide that wraps leads into that note, so its reset lands there, and
+		so does the end of the note ``slide(extend=True)`` lengthens into it.
+		It plays where this cycle's first note did, one cycle on, unless a
+		groove moves it: a pattern that is not a whole number of the groove's
+		cycles long starts each time round from a different place in the
+		groove, so three swung sixteenths have their first note straight one
+		time and late the next.  The grooves this build applied are then
+		applied again from the next cycle's start, to the pulse the note was
+		placed on.  That holds only while the grooves are all that has moved
+		the notes since: once a note has been placed after a groove, or moved
+		since by ``rotate()``, ``reverse()``, ``randomize()`` or the like,
+		where the first note plays next time is more than the grooves can
+		say, so the old rule stands.  Foreseeing it anyway made some of those
+		worse.  A note taken away is no matter.
+		"""
+
+		total_pulses = subsequence.constants.pulses.beats_to_pulses(self._pattern.length)
+		as_before = total_pulses + first
+
+		if not self._grooves_applied or self._groove_chain_broken or not self._as_the_groove_left_them():
+			return as_before
+
+		# The note the glides measure the first step by: its lowest.
+		note = min(self._pattern.steps[first].notes, key=lambda sounding: sounding.pitch)
+		next_time = self._pattern._placed_pulse(first, note)
+
+		for template, strength, origin in self._grooves_applied:
+			next_time, _ = subsequence.groove._grooved_pulse(
+				next_time, template, subsequence.constants.MIDI_QUARTER_NOTE, strength, origin + total_pulses,
+			)
+
+		return total_pulses + next_time
+
+	def _as_the_groove_left_them (self) -> bool:
+
+		"""Whether every note is one the last groove left, on the pulse it left it on (#2927).
+
+		By identity, not only by pulse: a rotation can lay evenly spaced notes
+		exactly where others were, and the note that comes first was then
+		placed somewhere else.  A note taken away since does not count.
+		"""
+
+		for pulse, step in self._pattern.steps.items():
+			for sounding in step.notes:
+				left = self._grooved_notes.get(id(sounding))
+
+				if left is None or left[0] is not sounding or left[1] != pulse:
+					return False
+
+		return True
 
 	# ── Shared ramp helper ──────────────────────────────────────────────────
 
@@ -1030,14 +1089,13 @@ class PatternMidiMixin:
 		note_duration = max(sounding.duration for sounding in step.notes)
 
 		# Reset bend at the next note's onset.  For the last note that is the
-		# NEXT cycle's first onset (total + first), not pulse 0 - a bend tail
-		# spilling past the cycle end was cancelled mid-flight by a pulse-0
-		# reset, leaving the next cycle's first note bent.
+		# NEXT cycle's first onset, not pulse 0 - a bend tail spilling past the
+		# cycle end was cancelled mid-flight by a pulse-0 reset, leaving the
+		# next cycle's first note bent.
 		if note_idx < len(sorted_positions) - 1:
 			reset_pulse = sorted_positions[note_idx + 1]
 		else:
-			total_pulses = subsequence.constants.pulses.beats_to_pulses(self._pattern.length)
-			reset_pulse = total_pulses + sorted_positions[0]
+			reset_pulse = self._next_first_onset(sorted_positions[0])
 
 		# The next note resets the pitch wheel the two share, so a note that
 		# rings on past it has only the time before it to bend in: the ramp is
@@ -1165,12 +1223,11 @@ class PatternMidiMixin:
 			amount = max(-1.0, min(1.0, interval / normaliser))
 
 			# Reset at the destination note's onset.  For the wrap-around pair
-			# that is the NEXT cycle's first onset (total + first), not pulse 0
-			# - a glide spilling past the cycle end was cancelled mid-flight by
-			# the pulse-0 reset, leaving the first note fully bent.
+			# that is the NEXT cycle's first onset, not pulse 0 - a glide
+			# spilling past the cycle end was cancelled mid-flight by the
+			# pulse-0 reset, leaving the first note fully bent.
 			if is_last:
-				total_pulses = subsequence.constants.pulses.beats_to_pulses(self._pattern.length)
-				reset_pulse = total_pulses + sorted_positions[0]
+				reset_pulse = self._next_first_onset(sorted_positions[0])
 			else:
 				reset_pulse = b_pos
 
@@ -1295,7 +1352,6 @@ class PatternMidiMixin:
 			return
 
 		sorted_positions = sorted(self._pattern.steps.keys())
-		total_pulses = subsequence.constants.pulses.beats_to_pulses(self._pattern.length)
 		n = len(sorted_positions)
 
 		# Resolve each named target to the note it means.  A target with no
@@ -1364,7 +1420,7 @@ class PatternMidiMixin:
 			# Optionally extend preceding note to meet the target onset (303 style)
 			if extend:
 				if is_last:
-					gap = (total_pulses - a_pos) + sorted_positions[0]
+					gap = self._next_first_onset(sorted_positions[0]) - a_pos
 				else:
 					gap = b_pos - a_pos
 				for note in self._pattern.steps[a_pos].notes:
@@ -1376,10 +1432,10 @@ class PatternMidiMixin:
 			# near the note's start and then hold flat - the opposite of a
 			# slide.)
 			# Reset at the destination note's onset.  For the wrap-around pair
-			# the destination is the NEXT cycle's first onset (total_pulses +
-			# first onset): resetting at pulse 0 fired while a spilled glide
-			# was still in flight, so the destination note played fully bent.
-			reset_pulse = b_pos if not is_last else total_pulses + sorted_positions[0]
+			# the destination is the NEXT cycle's first onset: resetting at
+			# pulse 0 fired while a spilled glide was still in flight, so the
+			# destination note played fully bent.
+			reset_pulse = b_pos if not is_last else self._next_first_onset(sorted_positions[0])
 
 			# Without extend=, a note that rings on past its target has only the
 			# time before it to slide in, as in portamento() (#3478).

@@ -308,44 +308,22 @@ def apply_groove (
 	if grid_pulses <= 0:
 		return dict(steps)
 
-	half_grid = grid_pulses / 2.0
-	num_offsets = len(groove.offsets)
 	num_velocities = len(groove.velocities) if groove.velocities else 0
 
 	new_steps: typing.Dict[int, subsequence.pattern.Step] = {}
 
 	for old_pulse, step in steps.items():
 
-		# Find the nearest grid position, counted on the song's timeline so a
-		# groove keeps its phase against the music however long this pattern
-		# is (#2788).  ideal_pulse comes back to the pattern's own axis.
-		grid_index = round((old_pulse + origin_pulse) / grid_pulses)
-		ideal_pulse = grid_index * grid_pulses - origin_pulse
+		new_pulse, grid_index = _grooved_pulse(old_pulse, groove, pulses_per_quarter, strength, origin_pulse)
 
-		# Only groove notes that sit close to a grid position; notes deliberately
-		# placed between grid lines (flams, pushes) keep both their timing AND
-		# velocity.  The window is ±25% of a cell (half_grid * 0.5) — narrow on
-		# purpose, so off-grid expression survives a quantised groove.
-		if abs(old_pulse - ideal_pulse) > half_grid * 0.5:
-			new_pulse = old_pulse
-		else:
-			slot = grid_index % num_offsets
-
-			# Blend from the note's OWN pulse toward the groove target so
-			# strength=0.0 truly leaves timing untouched.  (Blending from
-			# ideal_pulse quantised away in-window micro-timing — e.g. from
-			# randomize() — at every strength, including 0.)
-			groove_target = ideal_pulse + groove.offsets[slot] * pulses_per_quarter
-			new_pulse = int(round(old_pulse + (groove_target - old_pulse) * strength))
-			new_pulse = max(0, new_pulse)
-
-			# Velocity scaling applies only to grooved (on-grid) notes, for the
-			# same reason — an off-grid note shouldn't pick up a slot's accent.
-			if groove.velocities and num_velocities > 0:
-				vel_slot = grid_index % num_velocities
-				# Blend between 1.0 (no effect) and the groove's scale (full effect)
-				vel_scale = 1.0 + (groove.velocities[vel_slot] - 1.0) * strength
-				step = _scale_step_velocity(step, vel_scale)
+		# Velocity scaling applies only to grooved (on-grid) notes, for the
+		# same reason as the timing: an off-grid note shouldn't pick up a
+		# slot's accent.
+		if grid_index is not None and groove.velocities and num_velocities > 0:
+			vel_slot = grid_index % num_velocities
+			# Blend between 1.0 (no effect) and the groove's scale (full effect)
+			vel_scale = 1.0 + (groove.velocities[vel_slot] - 1.0) * strength
+			step = _scale_step_velocity(step, vel_scale)
 
 		if new_pulse not in new_steps:
 			new_steps[new_pulse] = subsequence.pattern.Step()
@@ -362,6 +340,51 @@ def apply_groove (
 			new_steps[new_pulse].notes.extend(step.notes)
 
 	return new_steps
+
+
+def _grooved_pulse (
+	old_pulse: int,
+	groove: Groove,
+	pulses_per_quarter: int,
+	strength: float,
+	origin_pulse: int,
+) -> typing.Tuple[int, typing.Optional[int]]:
+
+	"""Where ``apply_groove()`` moves a note at *old_pulse*, and the grid line it counted it on.
+
+	The grid line is None for a note it leaves alone, between grid lines.
+	The glides call this too, to foresee where the next cycle's first note
+	will play (#2927), so the two cannot disagree.
+	"""
+
+	grid_pulses = groove.grid * pulses_per_quarter
+
+	if grid_pulses <= 0:
+		return old_pulse, None
+
+	# Find the nearest grid position, counted on the song's timeline so a
+	# groove keeps its phase against the music however long this pattern
+	# is (#2788).  ideal_pulse comes back to the pattern's own axis.
+	grid_index = round((old_pulse + origin_pulse) / grid_pulses)
+	ideal_pulse = grid_index * grid_pulses - origin_pulse
+
+	# Only groove notes that sit close to a grid position; notes deliberately
+	# placed between grid lines (flams, pushes) keep both their timing AND
+	# velocity.  The window is ±25% of a cell (half a cell, halved again):
+	# narrow on purpose, so off-grid expression survives a quantised groove.
+	if abs(old_pulse - ideal_pulse) > grid_pulses / 2.0 * 0.5:
+		return old_pulse, None
+
+	slot = grid_index % len(groove.offsets)
+
+	# Blend from the note's OWN pulse toward the groove target so
+	# strength=0.0 truly leaves timing untouched.  (Blending from
+	# ideal_pulse quantised away in-window micro-timing - e.g. from
+	# randomize() - at every strength, including 0.)
+	groove_target = ideal_pulse + groove.offsets[slot] * pulses_per_quarter
+	new_pulse = int(round(old_pulse + (groove_target - old_pulse) * strength))
+
+	return max(0, new_pulse), grid_index
 
 
 def _scale_step_velocity (step: "subsequence.pattern.Step", scale: float) -> "subsequence.pattern.Step":

@@ -250,6 +250,16 @@ class PatternBuilder(
 		# Glides and tunings wait for the build to finish, so they are laid
 		# against the notes where they finally sit — see _finish_build().
 		self._pending_glides: typing.List[typing.Callable[[], None]] = []
+		# The grooves this build applied, each with its strength and the cycle's
+		# start, and each note the last one left with the pulse it left it on,
+		# by identity: a glide that wraps foresees from them where the next
+		# cycle's first note plays (#2927).  The note is held as well as its id,
+		# so the id cannot pass to another note while this build runs.
+		self._grooves_applied: typing.List[typing.Tuple[subsequence.groove.Groove, float, int]] = []
+		self._grooved_notes: typing.Dict[int, typing.Tuple[subsequence.pattern.Note, int]] = {}
+		# Set when a groove finds notes moved or added since the one before it,
+		# so the grooves no longer explain where the notes are.
+		self._groove_chain_broken: bool = False
 		self._pending_tunings: typing.List[typing.Callable[[], object]] = []
 		# chord(legato=) and strum(legato=) likewise wait, so they measure
 		# against every attack the build placed, before or after them (#3463).
@@ -2511,10 +2521,20 @@ class PatternBuilder(
 				p.groove(groove, strength=0.5) # half-strength blend
 		"""
 
+		origin = self._pattern._cycle_start_pulse
+
+		if self._grooves_applied and not self._as_the_groove_left_them():
+			self._groove_chain_broken = True
+
 		self._pattern.steps = subsequence.groove.apply_groove(
 			self._pattern.steps, template, strength=strength,
-			origin_pulse=self._pattern._cycle_start_pulse,
+			origin_pulse=origin,
 		)
+
+		# A glide that wraps into the next cycle's first note needs to know
+		# where the groove will put it then (#2927).
+		self._grooves_applied.append((template, strength, origin))
+		self._grooved_notes = {id(note): (note, pulse) for pulse, step in self._pattern.steps.items() for note in step.notes}
 		return self
 
 	# These methods transform existing notes after they have been placed.
