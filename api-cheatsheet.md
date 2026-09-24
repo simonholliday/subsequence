@@ -26,7 +26,7 @@ Everything exported as `subsequence.X`:
 | `Phrase` | class | A sequence of Motifs with segmentation preserved. |
 | `PitchSet` | class | A nameless sonority - a frozen set of absolute MIDI pitches. |
 | `PlacedNote` | class | One note read back off a pattern being built - see ``PatternBuilder.placed()``. |
-| `Progression` | class | A frozen sequence of :class:`ChordSpan` - the governing harmony value. |
+| `Progression` | class | A frozen sequence of `ChordSpan` - the governing harmony value. |
 | `Section` | class | One section of a form - the payload home. |
 | `Tuning` | class | A microtonal tuning system expressed as cent offsets from the unison. |
 | `bank_select` | function | Convert a 14-bit MIDI bank number to (MSB, LSB) for use with ``p.program_change()``. |
@@ -36,12 +36,12 @@ Everything exported as `subsequence.X`:
 | `generators` | function | Describe every generator Subsequence offers, as plain data. |
 | `load_definitions` | function | Load and validate a project definitions file. |
 | `motif` | function | The lowercase shortcut: a melody as 1-based scale degrees. |
-| `parse_chord` | function | Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a :class:`Chord`. |
+| `parse_chord` | function | Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a `Chord`. |
 | `period` | function | The classical period, as a thin combinator - question, then answer. |
-| `progression` | function | Build a :class:`Progression` - the lowercase factory. |
+| `progression` | function | Build a `Progression` - the lowercase factory. |
 | `register_chord_quality` | function | Register a custom chord quality for use everywhere chords are used. |
 | `register_scale` | function | Register a custom scale for use with ``p.snap_to_scale()`` and ``scale_pitch_classes()``. |
-| `residual_class` | function | A single residual class ``{x : x % modulus == residue}`` as a :class:`Sieve`. |
+| `residual_class` | function | A single residual class ``{x : x % modulus == residue}`` as a `Sieve`. |
 | `roles` | module | Role parameter bundles - starting points you splat, not a role API. |
 | `scale_notes` | function | Return MIDI note numbers for a scale within a pitch range. |
 | `sentence` | function | The classical sentence, as a thin combinator - idea, idea, drive, close. |
@@ -67,7 +67,7 @@ The top-level controller for a musical piece.
 | `display(enabled, grid, grid_scale) -> None` | Enable or disable the live terminal dashboard. |
 | `energy(energies) -> None` | Set per-section energy - the arranging dial, as one plain dict. |
 | `form(sections, loop, start, at_end, key, scale) -> None` | Define the structure (sections) of the composition. |
-| `form_freeze(sections) -> subsequence.forms.Form` | Freeze the graph form's walk into an editable :class:`~subsequence.forms.Form`. |
+| `form_freeze(sections) -> subsequence.forms.Form` | Freeze the graph form's walk into an editable `Form`. |
 | `form_jump(section_name) -> None` | Jump the form to a named section immediately. |
 | `form_next(section_name) -> None` | Queue the next section - takes effect when the current section ends. |
 | `form_state *(property)*` | The active ``subsequence.form_state.FormState``, or ``None`` if ``form()`` has not been called. |
@@ -78,7 +78,7 @@ The top-level controller for a musical piece.
 | `hotkey(key, action, quantize, label) -> None` | Register a single-key shortcut that fires during playback. |
 | `hotkeys(enabled) -> None` | Enable or disable the global hotkey listener. |
 | `is_clock_following *(property)*` | True if either the primary or any additional device is following external clock. |
-| `is_paused *(property)*` | True while playback is held by :meth:`pause`. |
+| `is_paused *(property)*` | True while playback is held by `pause`. |
 | `layer(*builder_fns, channel, beats, bars, steps, step_duration, drum_note_map, cc_name_map, nrpn_name_map, reschedule_lookahead, voice_leading, device, mirrors) -> None` | Combine multiple functions into a single MIDI pattern. |
 | `link(quantum) -> Composition` | Enable Ableton Link tempo and phase synchronisation. |
 | `live(port) -> None` | Enable the live coding eval server. |
@@ -102,11 +102,11 @@ The top-level controller for a musical piece.
 | `render(bars, filename, max_minutes) -> None` | Render the composition to a MIDI file without real-time playback. |
 | `request_cadence(cadence, bar) -> None` | Ask the live engine to approach a cadence arriving at a bar. |
 | `reroll(name, seed) -> None` | Deal a named stream a fresh deterministic seed to try a new variation, or give it back one you noted. |
-| `resume() -> None` | Continue playback from where :meth:`pause` held it. |
+| `resume() -> None` | Continue playback from where `pause` held it. |
 | `running_patterns *(property)*` | The currently active patterns, keyed by name. |
 | `schedule(fn, cycle_beats, reschedule_lookahead, wait_for_initial, defer) -> None` | Register a custom function to run on a repeating beat-based cycle. |
 | `section_cadence(section_name, cadence) -> None` | Close every pass of a section with a cadence - the standing request. |
-| `section_chords(section_name, progression) -> None` | Bind a :class:`Progression` to a named form section. |
+| `section_chords(section_name, progression) -> None` | Bind a `Progression` to a named form section. |
 | `section_motifs(section_name, value, part) -> None` | Bind a Motif or Phrase to a named form section (per optional part). |
 | `seed *(property)*` | The composition's random seed, or None when unseeded. |
 | `seed_for(name) -> Optional[int]` | Surface the effective derived seed for a named stream. |
@@ -144,7 +144,7 @@ The musician's 'palette' for creating musical content.
 | `build_ghost_bias(grid, bias, beats) -> List[float]` | Build probability weights for ghost notes or other generative functions. |
 | `build_velocity_ramp(low, high, shape, grid) -> List[int]` | Build a per-step velocity list that ramps from *low* to *high*. |
 | `c *(property)*` | Alias for self.conductor. |
-| `capture(beat, span) -> subsequence.motifs.Motif` | Read the notes placed so far back out as a :class:`~subsequence.motifs.Motif`. |
+| `capture(beat, span) -> subsequence.motifs.Motif` | Read the notes placed so far back out as a `Motif`. |
 | `cc(control, value, beat) -> subsequence.pattern_builder.PatternBuilder` | Send a single CC message at a beat position. |
 | `cc_ramp(control, start, end, beat_start, beat_end, resolution, shape) -> subsequence.pattern_builder.PatternBuilder` | Interpolate a CC value over a beat range. |
 | `cellular_1d(pitch, rule, generation, velocity, duration, no_overlap, probability, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Generate an evolving rhythm using a 1D cellular automaton. |
@@ -173,8 +173,8 @@ The musician's 'palette' for creating musical content.
 | `lorenz(pitches, spacing, velocity, duration, dt, sigma, rho, beta, x0, y0, z0, mapping) -> subsequence.pattern_builder.PatternBuilder` | Generate a note sequence driven by the Lorenz strange attractor. |
 | `lsystem(pitch_map, axiom, rules, generations, spacing, velocity, duration, offset, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Generate a note sequence using L-system string rewriting. |
 | `markov(transitions, pitch_map, velocity, duration, spacing, start, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Generate a sequence by walking a first-order Markov chain. |
-| `melody(state, spacing, velocity, duration, chord_tones, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Generate a melodic line by querying a persistent :class:`~subsequence.melodic_state.MelodicState`. |
-| `motif(m, beat, span, root, velocity, fit, fit_weights, resolution) -> PatternBuilder` | Place an immutable :class:`~subsequence.motifs.Motif` onto the pattern. |
+| `melody(state, spacing, velocity, duration, chord_tones, seed, rng) -> subsequence.pattern_builder.PatternBuilder` | Generate a melodic line by querying a persistent `MelodicState`. |
+| `motif(m, beat, span, root, velocity, fit, fit_weights, resolution) -> PatternBuilder` | Place an immutable `Motif` onto the pattern. |
 | `note(pitch, beat, velocity, duration) -> PatternBuilder` | Place a single MIDI note at a specific beat position. |
 | `note_off(pitch, beat) -> PatternBuilder` | Place an explicit Note Off event to silence a drone. |
 | `note_on(pitch, beat, velocity) -> PatternBuilder` | Place an explicit Note On event without a duration. Useful for drones or infinite sustains. Must be paired with a ``note_off()`` later to silence the note. |
@@ -277,7 +277,7 @@ A sequence of Motifs with segmentation preserved.
 | `describe() -> str` | A readable summary: total length and each segment on its own line. |
 | `develop(motif, bars, plan, seed, beats_per_bar) -> Phrase` | Grow a motif into a phrase by a plan - the phrase generator. |
 | `flatten() -> subsequence.motifs.Motif` | Erase segmentation: one long Motif (the monoid homomorphism onto ``then``). |
-| `invert(pivot) -> Phrase` | Mirror pitches in every segment around one pivot (see :meth:`Motif.invert`). |
+| `invert(pivot) -> Phrase` | Mirror pitches in every segment around one pivot (see `Motif.invert`). |
 | `length *(property)*` | Total length in beats (sum of segment lengths). |
 | `pitched(spec) -> Phrase` | Replace every pitch, segment-wise. |
 | `quantize(grid) -> Phrase` | Snap note onsets segment-wise. |
@@ -289,7 +289,7 @@ A sequence of Motifs with segmentation preserved.
 | `slice(start, end) -> Phrase` | A window, re-segmented at whichever original boundaries fall inside it. |
 | `stack(other) -> subsequence.motifs.Motif` | The spelled form of ``&`` - flattens, then merges. |
 | `stretch(factor) -> Phrase` | Scale time in every segment (lengths scale with them). |
-| `transpose(steps, semitones) -> Phrase` | Transpose every segment (see :meth:`Motif.transpose`). |
+| `transpose(steps, semitones) -> Phrase` | Transpose every segment (see `Motif.transpose`). |
 | `with_velocity(velocity) -> Phrase` | Replace every note's velocity, segment-wise. |
 
 
@@ -373,7 +373,7 @@ One timed control gesture inside a Motif: a discrete write or a shaped ramp.
 
 ## `Progression`
 
-A frozen sequence of :class:`ChordSpan` - the governing harmony value.
+A frozen sequence of `ChordSpan` - the governing harmony value.
 
 | Method | Description |
 |---|---|
@@ -520,16 +520,16 @@ Role parameter bundles - starting points you splat, not a role API.
 | `motif(degrees, beats, velocities, durations, probabilities, length) -> subsequence.motifs.Motif` | The lowercase shortcut: a melody as 1-based scale degrees. |
 | `sentence(motif, bars, cadence, seed, beats_per_bar) -> subsequence.motifs.Phrase` | The classical sentence, as a thin combinator - idea, idea, drive, close. |
 | `period(antecedent, cadence, beats_per_bar) -> subsequence.motifs.Phrase` | The classical period, as a thin combinator - question, then answer. |
-| `progression(source, beats, style, bars, key, scale, seed, rng, pins, end, avoid, cadence, dominant_7th, key_pull, nir_strength, minor_turnaround_weight, root_diversity) -> subsequence.progressions.Progression` | Build a :class:`Progression` - the lowercase factory. |
+| `progression(source, beats, style, bars, key, scale, seed, rng, pins, end, avoid, cadence, dominant_7th, key_pull, nir_strength, minor_turnaround_weight, root_diversity) -> subsequence.progressions.Progression` | Build a `Progression` - the lowercase factory. |
 | `between(low, high, step) -> subsequence.harmonic_rhythm.HarmonicRhythm` | A harmonic rhythm that varies *between* two lengths (in beats). |
-| `parse_chord(name) -> subsequence.chords.Chord` | Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a :class:`Chord`. |
+| `parse_chord(name) -> subsequence.chords.Chord` | Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a `Chord`. |
 | `register_chord_quality(name, intervals, suffix) -> None` | Register a custom chord quality for use everywhere chords are used. |
 | `register_scale(name, intervals, qualities) -> None` | Register a custom scale for use with ``p.snap_to_scale()`` and ``scale_pitch_classes()``. |
 | `scale_notes(key, mode, low, high, count) -> List[int]` | Return MIDI note numbers for a scale within a pitch range. |
 | `bank_select(bank) -> Tuple[int, int]` | Convert a 14-bit MIDI bank number to (MSB, LSB) for use with ``p.program_change()``. |
 | `load_definitions(path) -> subsequence.definitions.Definitions` | Load and validate a project definitions file. |
 | `sieve(classes, hi, lo) -> List[int]` | Xenakis sieve: the sorted integers in ``[lo, hi)`` in any of the classes. |
-| `residual_class(modulus, residue) -> subsequence.sequence_utils.Sieve` | A single residual class ``{x : x % modulus == residue}`` as a :class:`Sieve`. |
+| `residual_class(modulus, residue) -> subsequence.sequence_utils.Sieve` | A single residual class ``{x : x % modulus == residue}`` as a `Sieve`. |
 | `generators() -> List[Dict[str, Any]]` | Describe every generator Subsequence offers, as plain data. |
 | `describe_generator(name) -> Dict[str, Any]` | Describe one generator's parameters as plain data. |
 | `transforms() -> List[Dict[str, Any]]` | Describe every transform Subsequence offers, as plain data. |
@@ -584,7 +584,7 @@ Functions for generating and transforming sequences.
 | `random_walk(n, low, high, step, rng, start) -> List[int]` | Generate values that drift by small steps within a range. |
 | `reaction_diffusion_1d(width, steps, feed_rate, kill_rate, du, dv) -> List[float]` | Simulate a 1D Gray-Scott reaction-diffusion system. |
 | `recaman(count, start, skip) -> List[int]` | Generate Recamán's sequence - a line that never settles and never repeats. |
-| `residual_class(modulus, residue) -> subsequence.sequence_utils.Sieve` | A single residual class ``{x : x % modulus == residue}`` as a :class:`Sieve`. |
+| `residual_class(modulus, residue) -> subsequence.sequence_utils.Sieve` | A single residual class ``{x : x % modulus == residue}`` as a `Sieve`. |
 | `rhythmic_evenness(onsets, grid, normalize) -> float` | How evenly onsets are spread around the cycle (Toussaint's evenness). |
 | `rotate(indices, shift, length) -> List[int]` | Circularly rotate step indices by the specified amount, wrapping at *length*. |
 | `scale_clamp(value, in_min, in_max, out_min, out_max) -> float` | Scale a value from an input range to an output range and clamp the result. |

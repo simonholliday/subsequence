@@ -88,7 +88,7 @@ New to Subsequence? The guide's **[Install and connect ↗](https://subsystem.co
 - Cheat sheet: [https://subsystem.co/subsequence/cheatsheet/](https://subsystem.co/subsequence/cheatsheet/)
 - For AI agents: [https://subsystem.co/subsequence/llms.txt](https://subsystem.co/subsequence/llms.txt)
 
-The guide is a fully runnable tutorial that builds one piece of music, from a first drum beat to a lead line that follows the weather, with every concept earning the next. The API reference and the cheat sheet are generated from the source, so they describe the release you have rather than a copy kept by hand.
+The guide is a fully runnable tutorial that builds one piece of music, from a first drum beat to a lead line that follows the weather, with every concept earning the next. The API reference and the cheat sheet are generated from the source rather than kept by hand, and each page names the release it describes.
 
 ## Design principles
 
@@ -96,7 +96,7 @@ Subsequence aims for *learn one verb, predict the rest*. A handful of convention
 
 - **Verbs share a common front.** The chord verbs (`chord`, `strum`, `arpeggio`) speak the same vocabulary - a chord or list of pitches, `root`, `velocity`, `count`, `beat` - so swapping one for another is usually a one-word change. `broken_chord` plays the tones in an order you give, so it takes `root` and `order` up front and has no `count`.
 - **`(low, high)` means one random draw.** `velocity=(60, 90)` draws once per note from that range; a plain int is fixed.
-- **One determinism knob: `seed=`.** `Composition(seed=)` makes a whole piece reproducible, and a generator with random choices of its own takes `seed=` for a reproducible take (advanced: `rng=` to share a generator). Precedence is `rng=` > `seed=` > the pattern's `p.rng`, which is also where the verbs without `seed=` draw from - `broken_chord`'s random order, `motif()`'s probabilities.
+- **One determinism knob: `seed=`.** `Composition(seed=)` makes a whole piece reproducible, and a generator with random choices of its own takes `seed=` for a reproducible take (advanced: `rng=` to share a generator). Precedence is `rng=` > `seed=` > the pattern's `p.rng`, which is also where the verbs without `seed=` draw from, such as `motif()`'s probabilities, or an order for `broken_chord` shuffled with `p.rng.shuffle`.
 - **Times are in beats; steps count grid slots.** `beat=`, `spacing=`, and `duration=` are in beats; `hit_steps`, `sequence`, and the decorator's `steps=` count grid steps.
 - **Lenient names, strict numbers.** An unknown drum or voice *name* is dropped with a one-time warning (the rest of the pattern still plays); an out-of-range CC/NRPN/RPN *number* raises, because a wrong control number is a real mistake.
 - **Builders chain, accessors don't.** Methods that place or transform return the builder (`p.euclidean(...).swing(...)`); methods that read return plain data.

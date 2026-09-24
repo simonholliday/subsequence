@@ -205,3 +205,25 @@ def test_the_sheet_prints_no_em_dash () -> None:
 
 	assert "—" not in sheet
 	assert " - " in sheet
+
+
+@pytest.mark.parametrize("doc, expected", [
+	("A frozen sequence of :class:`ChordSpan` - the governing harmony value.", "A frozen sequence of `ChordSpan` - the governing harmony value."),
+	("A Motif built as :class:`~subsequence.motifs.Motif` does.", "A Motif built as `Motif` does."),
+	("Like :meth:`Motif.transpose`, by degree.", "Like `Motif.transpose`, by degree."),
+	("See :func:`the factory <subsequence.progression>`.", "See `the factory`."),
+	("Read by :py:class:`Chord`.", "Read by `Chord`."),
+], ids = ["class", "tilde", "meth", "label", "py-domain"])
+def test_a_role_prints_as_the_code_it_names (doc: str, expected: str) -> None:
+
+	"""As the site shows a role in the reference: a leading ~ keeps the last name, a label replaces its target."""
+
+	assert GENERATOR.get_first_line(doc) == expected
+
+
+def test_the_sheet_prints_no_raw_role () -> None:
+
+	"""A Markdown table cannot render a Sphinx role, and the sheet printed 18 of them, on GitHub and on the site (#3531)."""
+
+	assert re.findall(r":(?:py:)?[a-z]+:`", GENERATOR.generate_markdown()) == []
+

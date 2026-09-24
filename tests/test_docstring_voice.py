@@ -34,6 +34,10 @@ _US_SPELLING = re.compile(
 	re.IGNORECASE,
 )
 
+# Ours, beside the site's: a music package's word that its list does not carry (#3531).  A
+# measuring meter is spelled the same, and none is in the package; one would go in backticks.
+_METER = re.compile(r"\bmeters?\b", re.IGNORECASE)
+
 _NOT_A_SUFFIX = re.compile(
 	r"(?:re|over|down|up|under|bite|king|life|pint|full)?-?siz(?:e|es|ed|er|ing)"
 	r"|seiz(?:e|es|ed|ing)|priz(?:e|es|ed|ing)|capsiz(?:e|es|ed|ing)|maize|baize|assizes?",
@@ -112,7 +116,7 @@ def _us_spellings (docstring: str) -> typing.List[str]:
 
 		masked = _CODE_SPAN.sub(lambda match: "\x00" * len(match.group(0)), line)
 
-		for match in _US_SPELLING.finditer(masked):
+		for match in [*_US_SPELLING.finditer(masked), *_METER.finditer(masked)]:
 
 			before, after = masked[:match.start()], masked[match.end():]
 
@@ -136,6 +140,7 @@ def test_the_spelling_check_reads_prose_and_passes_names () -> None:
 
 	assert _us_spellings("Snap each note to a quantized grid, then normalize it.") == ["quantized", "normalize"]
 	assert _us_spellings("Resize the window, then seize the moment.") == []
+	assert _us_spellings("In additive meters the meter-independent flavour holds; parameters pass.") == ["meters", "meter"]
 
 	names = "\n".join([
 		"quantize: ``0`` fires at once.",

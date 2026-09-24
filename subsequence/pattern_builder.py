@@ -937,7 +937,7 @@ class PatternBuilder(
 				inherent (an Approach's chromaticism is the point).
 			fit_weights: Custom per-step metric weight list (the
 				``build_ghost_bias`` precedent) for additive or
-				non-isochronous meters; defaults to the time signature's
+				non-isochronous metres; defaults to the time signature's
 				table.
 			resolution: Pulses between control-ramp messages (defaults to
 				each control verb's own default).  Kept out of the value by

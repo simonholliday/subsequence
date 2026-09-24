@@ -73,11 +73,12 @@ def _fit_to_terminal (parts: typing.List[str]) -> str:
 
 	Whole parts are dropped from the RIGHT before anything is truncated, so a
 	line that does not fit loses its last part rather than half of the
-	chord. The parts are ordered tempo, key, bar, section, chord - so what
-	goes first is what a musician can most afford to lose, and the chord
-	survives a narrow terminal. Only when even the first part is too wide is
-	the text itself cut.  The conductor's signals used to come last and so
-	go first; they have lines of their own now (#3052).
+	chord. The parts are ordered tempo, key, bar, section, chord, so the
+	chord goes first and then the section, and the tempo and the bar are
+	kept longest. Only when even the first part is too wide is the text
+	itself cut.  The conductor's signals came last and went first, which is
+	what let the chord outlast them, until they had lines of their own
+	(#3052); this said the chord survived a narrow terminal after that (#3531).
 	"""
 
 	width = shutil.get_terminal_size(fallback = (80, 24)).columns

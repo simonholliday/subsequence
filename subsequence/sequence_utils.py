@@ -3899,9 +3899,9 @@ def offbeatness (onsets: typing.Sequence[int], grid: int) -> int:
 	"""How many onsets fall on intrinsically off-beat pulses (Toussaint).
 
 	The on-beat pulses are the vertices of every regular sub-polygon of the
-	cycle (the divisor meters); the off-beat pulses are exactly those coprime
+	cycle (the divisor metres); the off-beat pulses are exactly those coprime
 	to *grid*.  Off-beatness counts onsets landing on coprime positions - a
-	meter-independent syncopation flavour (high for rhythms that fight every
+	metre-independent syncopation flavour (high for rhythms that fight every
 	even subdivision).
 
 	Parameters:
@@ -3942,7 +3942,7 @@ def syncopation (
 	downbeat add nothing, onsets on the weakest pulses add the most),
 	normalised by the onset count.  Uses :func:`build_metric_weights` by
 	default; pass a custom per-pulse *weights* list for additive or
-	non-isochronous meters.
+	non-isochronous metres.
 
 	Parameters:
 		onsets: 0-based onset indices (reduced modulo *grid*, de-duplicated).

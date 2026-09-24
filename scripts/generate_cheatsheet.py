@@ -78,6 +78,26 @@ def sequence_utilities () -> typing.List[typing.Tuple[str, typing.Any]]:
 	)
 
 
+# The roles subsystem.co resolves in the reference, spelled as its python_api.py spells them.
+_ROLE = re.compile(r":(?:py:)?(?:class|meth|func|attr|mod|data|exc|obj|const):`(?P<target>[^`]+)`")
+
+
+def _plain_role (match: "re.Match[str]") -> str:
+
+	"""A role as the code it names, shown as the site shows it: ``~a.b.C`` as ``C``, ``label <target>`` as its label."""
+
+	written = match.group("target").strip()
+	explicit = re.fullmatch(r"(?P<label>.+?)\s*<(?P<target>[^>]+)>", written)
+
+	if explicit:
+		return f"`{explicit.group('label')}`"
+
+	if written.startswith("~"):
+		return f"`{written[1:].rsplit('.', 1)[-1]}`"
+
+	return f"`{written}`"
+
+
 def get_first_line (doc: typing.Optional[str]) -> str:
 
 	"""Extract the first paragraph from a docstring, handling indentation and word-wrap."""
@@ -97,6 +117,10 @@ def get_first_line (doc: typing.Optional[str]) -> str:
 	# subsystem.co publishes this sheet, and the site never prints an em
 	# dash: its dash is a spaced hyphen (#2585).  Docstrings keep theirs.
 	first_para = re.sub(r'\s*\u2014\s*', ' - ', first_para)
+
+	# Nor can a Markdown table render a Sphinx role: the sheet printed
+	# ":class:`Progression`" on GitHub and on the site alike (#3531).
+	first_para = _ROLE.sub(_plain_role, first_para)
 
 	return re.sub(r'^[\s*`-]*', '', first_para).strip()
 

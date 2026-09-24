@@ -506,6 +506,12 @@ class ControlEvent:
 
 	A discrete write has ``end=None`` and ``span=0.0``; a ramp interpolates
 	``start`` → ``end`` over ``span`` beats through the easing ``shape``.
+
+	``shape_from`` and ``shape_to`` say which part of the whole gesture this
+	is, as fractions of it: 0.0 and 1.0 for all of it.  A ramp that a phrase's
+	window cuts through keeps the whole ramp's ``start``, ``end`` and ``shape``,
+	and plays only its own stretch of that curve, from ``shape_from`` to
+	``shape_to``, rather than a fresh ramp between two sampled values.
 	Pulse density (``resolution=``) is deliberately not stored here - beats
 	and shapes are music; MIDI traffic density is set at the placement call.
 	"""
