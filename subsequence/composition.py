@@ -9,7 +9,9 @@ pattern and callback functions at run time.
 
 import asyncio
 import builtins
+import concurrent.futures
 import dataclasses
+import functools
 import inspect
 import logging
 import math
@@ -1250,6 +1252,7 @@ def _make_safe_callback (
 	accepts_context: bool = False,
 	start_cycle: int = 0,
 	wait: typing.Optional[typing.Callable[[], bool]] = None,
+	threads: typing.Optional[typing.Callable[[], concurrent.futures.Executor]] = None,
 ) -> typing.Callable[[int], typing.Optional[typing.Awaitable[None]]]:
 
 	"""Wrap a user function as a fire-and-forget callback that never blocks the clock.
@@ -1262,6 +1265,10 @@ def _make_safe_callback (
 	(#2793): its time is simulated, so nothing is lost by waiting, and a plain
 	function feeding patterns from a thread otherwise raced the render and
 	changed the file from run to run.
+
+	*threads* gives the threads a plain function runs on: the sequencer's
+	daemon threads, which cannot hold the process open once the piece has
+	stopped (#3553).  Without it the loop's default executor is used.
 	"""
 
 	is_async = inspect.iscoroutinefunction(fn)
@@ -1280,8 +1287,8 @@ def _make_safe_callback (
 
 			else:
 				loop = asyncio.get_running_loop()
-				call = (lambda: fn(ctx)) if accepts_context else fn
-				await loop.run_in_executor(None, call)
+				call = functools.partial(fn, ctx) if accepts_context else fn
+				await loop.run_in_executor(threads() if threads is not None else None, call)
 
 		except Exception as exc:
 			logger.warning(f"Scheduled task {getattr(fn, '__name__', repr(fn))!r} failed: {exc}")
@@ -1326,7 +1333,7 @@ async def schedule_task (
 	"""
 
 	accepts_ctx = _fn_has_parameter(fn, "p")
-	wrapped = _make_safe_callback(fn, accepts_context=accepts_ctx, wait=lambda: sequencer.render_mode)
+	wrapped = _make_safe_callback(fn, accepts_context=accepts_ctx, wait=lambda: sequencer.render_mode, threads=sequencer._scheduled_call_threads)
 	start_pulse = subsequence.constants.pulses.beats_to_pulses(cycle_beats, sequencer.pulses_per_beat) if defer else 0
 
 	await sequencer.schedule_callback_repeating(
@@ -5342,6 +5349,9 @@ class Composition:
 		are run directly on the event loop.  In ``render()`` each call finishes
 		before the render moves on, plain or async, so a function that feeds
 		the patterns renders the same file on every run with the same seed.
+		A plain function still running when the piece stops is given two
+		seconds to finish, then left behind, so one that never returns
+		cannot keep the program from ending.
 
 		Parameters:
 			fn: The function to call.
@@ -7280,8 +7290,8 @@ class Composition:
 						await (fn(ctx) if accepts_ctx else fn())
 					else:
 						loop = asyncio.get_running_loop()
-						call = (lambda: fn(ctx)) if accepts_ctx else fn
-						await loop.run_in_executor(None, call)
+						call = functools.partial(fn, ctx) if accepts_ctx else fn
+						await loop.run_in_executor(self._sequencer._scheduled_call_threads(), call)
 				except Exception as exc:
 					logger.warning(f"Initial run of {getattr(fn, '__name__', repr(fn))!r} failed: {exc}")
 
@@ -7301,6 +7311,7 @@ class Composition:
 				# A render waits for each call, so what it feeds the patterns
 				# lands at the same point on every run (#2793).
 				wait = lambda: self._sequencer.render_mode,
+				threads = self._sequencer._scheduled_call_threads,
 			)
 
 			# wait_for_initial=True implies defer — no point firing at pulse 0

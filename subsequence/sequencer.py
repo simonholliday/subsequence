@@ -7,11 +7,14 @@ internally; you rarely construct it directly.
 
 import asyncio
 import collections
+import concurrent.futures
 import dataclasses
 import heapq
 import itertools
 import datetime
 import logging
+import os
+import queue
 import selectors
 import sys
 import threading
@@ -43,6 +46,107 @@ _CATCH_UP_PULSES = 24
 # describe the file, so they are saved on its first track whatever synths played
 # (#3067).  Not an index, so it cannot collide with one.
 CONDUCTOR = -1
+
+
+# How long stop() waits for the loop to end before cancelling it, and for a
+# synchronous scheduled function still running to finish before leaving it
+# behind.  A render awaits each scheduled call, so one that never returned held
+# stop() for ever.  And the loop's default executor, whose threads the loop and
+# then the interpreter both join at the end, held the process open after the
+# piece had stopped, with Ctrl+C and SIGTERM reaching a loop that had nothing
+# left to stop (#3553).
+_LOOP_STOP_GRACE_SECONDS = 2.0
+_SCHEDULED_CALL_GRACE_SECONDS = 2.0
+
+
+class _ScheduledCallThreads (concurrent.futures.Executor):
+
+	"""The threads a synchronous scheduled function runs on: daemon threads (#3553).
+
+	At most ``max_workers`` run at once, as in the loop's default executor, each
+	taking the next call waiting.  Being daemons, they cannot hold the process open:
+	a function that never returns is left behind at exit rather than joined for ever.
+	Each call is named while it runs, so ``stop()`` can say which were left.
+	"""
+
+	def __init__ (self, max_workers: typing.Optional[int] = None) -> None:
+
+		self._max_workers = max_workers or min(32, (os.cpu_count() or 1) + 4)
+		self._calls: "queue.SimpleQueue[typing.Optional[typing.Tuple[concurrent.futures.Future[typing.Any], typing.Callable[..., typing.Any], typing.Tuple[typing.Any, ...], typing.Dict[str, typing.Any]]]]" = queue.SimpleQueue()
+		self._idle = threading.Semaphore(0)
+		self._lock = threading.Lock()
+		self._threads: typing.List[threading.Thread] = []
+		self._running: typing.Dict[int, str] = {}
+
+	def submit (self, fn: typing.Callable[..., typing.Any], /, *args: typing.Any, **kwargs: typing.Any) -> "concurrent.futures.Future[typing.Any]":
+
+		"""Queue a call, and start a thread for it when none is idle and the limit allows."""
+
+		future: "concurrent.futures.Future[typing.Any]" = concurrent.futures.Future()
+		self._calls.put((future, fn, args, kwargs))
+
+		with self._lock:
+
+			if not self._idle.acquire(blocking = False) and len(self._threads) < self._max_workers:
+				thread = threading.Thread(target = self._work, name = f"subsequence-scheduled-{len(self._threads)}", daemon = True)
+				self._threads.append(thread)
+				thread.start()
+
+		return future
+
+	def _work (self) -> None:
+
+		"""Run calls as they arrive, until told to stop."""
+
+		while True:
+
+			item = self._calls.get()
+
+			if item is None:
+				return
+
+			future, fn, args, kwargs = item
+
+			if future.set_running_or_notify_cancel():
+
+				with self._lock:
+					self._running[threading.get_ident()] = _call_name(fn)
+
+				try:
+					result = fn(*args, **kwargs)
+				except BaseException as exc:
+					future.set_exception(exc)
+				else:
+					future.set_result(result)
+				finally:
+					with self._lock:
+						self._running.pop(threading.get_ident(), None)
+
+			self._idle.release()
+
+	def still_running (self) -> typing.List[str]:
+
+		"""The names of the calls running now."""
+
+		with self._lock:
+			return sorted(self._running.values())
+
+	def shutdown (self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+
+		"""Let every idle thread go.  A call still running is not waited for: its thread is a daemon."""
+
+		with self._lock:
+			count = len(self._threads)
+
+		for _ in range(count):
+			self._calls.put(None)
+
+
+def _call_name (fn: typing.Callable[..., typing.Any]) -> str:
+
+	"""A scheduled function's own name, through the ``functools.partial`` that hands it its context."""
+
+	return str(getattr(getattr(fn, "func", fn), "__name__", repr(fn)))
 
 
 @typing.runtime_checkable
@@ -745,6 +849,9 @@ class Sequencer:
 		# port still has a file to write, inputs to close and a stop event to
 		# fire (#2994).
 		self._stopped = False
+		# The threads this run's synchronous scheduled functions run on, made on
+		# first use and let go by stop() (#3553).
+		self._scheduled_calls: typing.Optional[_ScheduledCallThreads] = None
 		self._bpm_transition: typing.Optional[BpmTransition] = None
 		self._spin_wait: bool = spin_wait
 		# Spin threshold: sleep all the way to this many seconds before the target,
@@ -1924,6 +2031,15 @@ class Sequencer:
 		await self.events.emit_async("start")
 
 
+	def _scheduled_call_threads (self) -> _ScheduledCallThreads:
+
+		"""The threads a synchronous scheduled function runs on, made on first use (#3553)."""
+
+		if self._scheduled_calls is None:
+			self._scheduled_calls = _ScheduledCallThreads()
+
+		return self._scheduled_calls
+
 	async def stop (self) -> None:
 
 		"""
@@ -1953,6 +2069,19 @@ class Sequencer:
 
 		if self.task:
 			try:
+				# A loop told to stop ends within a pulse.  One still going after the
+				# grace is waiting on something that has not returned, as a render waits
+				# on each scheduled function, so it is cancelled, not waited for (#3553).
+				done, _ = await asyncio.wait({self.task}, timeout = _LOOP_STOP_GRACE_SECONDS)
+
+				if not done:
+					logger.warning(
+						"The sequencer loop did not end within %g s of being stopped: it is waiting on "
+						"something that has not returned, so it has been cancelled.",
+						_LOOP_STOP_GRACE_SECONDS,
+					)
+					self.task.cancel()
+
 				await self.task
 			except asyncio.CancelledError:
 				# The loop task was cancelled (the Ctrl-C path) — since
@@ -2002,6 +2131,31 @@ class Sequencer:
 		self._input_loop = None
 
 		self.save_recording()
+
+		# A synchronous scheduled function still running has a moment to finish, and
+		# is then left behind on its daemon thread, so it cannot hold the process
+		# open once the piece has stopped (#3553).
+		if self._scheduled_calls is not None:
+
+			threads, self._scheduled_calls = self._scheduled_calls, None
+			deadline = time.monotonic() + _SCHEDULED_CALL_GRACE_SECONDS
+
+			while threads.still_running() and time.monotonic() < deadline:
+				await asyncio.sleep(0.05)
+
+			left = threads.still_running()
+
+			if left:
+				logger.warning(
+					"Scheduled %s %s still running %g s after the piece stopped, so the program "
+					"will end without waiting for %s.",
+					"function" if len(left) == 1 else "functions",
+					", ".join(repr(name) for name in left) + (" was" if len(left) == 1 else " were"),
+					_SCHEDULED_CALL_GRACE_SECONDS,
+					"it" if len(left) == 1 else "them",
+				)
+
+			threads.shutdown(wait = False)
 
 		logger.info("Sequencer stopped")
 
