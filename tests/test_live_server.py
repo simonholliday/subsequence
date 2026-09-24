@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import logging
 import time
 
 import pytest
@@ -66,6 +67,26 @@ async def test_eval_expression (composition: subsequence.Composition) -> None:
 	writer.close()
 	await writer.wait_closed()
 	await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_port_0_names_the_port_it_bound (composition: subsequence.Composition, caplog: pytest.LogCaptureFixture) -> None:
+
+	"""live(port=0) asks the system for a free port, and the log said 0, which no client can reach (#3554)."""
+
+	server = subsequence.live_server.LiveServer(composition, port=0)
+
+	with caplog.at_level(logging.INFO, logger = "subsequence.live_server"):
+		await server.start()
+
+	try:
+		bound = server._server.sockets[0].getsockname()[1]
+
+		assert bound != 0
+		assert f"listening on 127.0.0.1:{bound}" in caplog.text
+		assert "127.0.0.1:0" not in caplog.text
+	finally:
+		await server.stop()
 
 
 @pytest.mark.asyncio

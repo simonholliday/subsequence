@@ -284,6 +284,10 @@ class LiveServer:
 			self._repl_interrupt_before = signal.signal(REPL_INTERRUPT, _absorb)
 			self._holding_repl_interrupt = True
 
+		# port=0 asks the system for a free port, and that port is the one to name:
+		# the log said 0, which no client can connect to (#3554).
+		self._port = self._server.sockets[0].getsockname()[1]
+
 		logger.info(f"Live server listening on 127.0.0.1:{self._port}")
 
 	async def stop (self) -> None:
