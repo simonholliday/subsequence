@@ -24,6 +24,7 @@ fresh evolution from generation 0 and there is nothing to reuse. That is #3072.
 """
 
 import contextlib
+import math
 import typing
 
 import pytest
@@ -323,3 +324,128 @@ def test_an_int_seeded_walk_is_unchanged (generation: int) -> None:
 	assert warm_up[-1] == cold, (
 		"walking generation by generation disagrees with jumping straight there"
 	)
+
+
+# ---------------------------------------------------------------------------
+# Two patterns reading one evolution, each at its own pace (#3559)
+# ---------------------------------------------------------------------------
+
+@contextlib.contextmanager
+def _counting_1d_steps () -> typing.Iterator[typing.Callable[[], int]]:
+
+	"""The 1D counterpart of ``_counting_steps()``."""
+
+	steps = 0
+	real_step = subsequence.sequence_utils._ca_1d_step
+
+	def counting (*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+		nonlocal steps
+		steps += 1
+		return real_step(*args, **kwargs)
+
+	subsequence.sequence_utils._ca_1d_step = counting		# type: ignore[assignment]
+
+	try:
+		yield lambda: steps
+	finally:
+		subsequence.sequence_utils._ca_1d_step = real_step	# type: ignore[assignment]
+
+
+def test_two_patterns_sharing_a_2d_automaton_each_resume_where_they_left_off () -> None:
+
+	"""A one-bar and a two-bar pattern read generations n and n / 2 of one automaton.
+
+	The cache held one generation per configuration, so each sent the other back to
+	generation 0, and every bar replayed the evolution so far: 40,400 steps over 400
+	bars.  Each now resumes from its own checkpoint, one step a bar and one every two.
+	"""
+
+	with _counting_steps() as count:
+
+		for bar in range(400):
+
+			one_bar = _2d(bar, seed = 7)				# a one-bar pattern builds every bar
+
+			if bar % 2 == 0:
+				two_bar = _2d(bar // 2, seed = 7)		# a two-bar pattern builds every other
+
+		total = count()
+
+	assert total > 500, f"only {total} steps: the walk did not reach generation 399"
+	assert total <= 600, f"the two patterns took {total} evolution steps over 400 bars"
+
+	# And each got its own generation, as a fresh evolution gives it.
+	subsequence.sequence_utils._ca_2d_cache.clear()
+	assert one_bar == _2d(399, seed = 7)
+	subsequence.sequence_utils._ca_2d_cache.clear()
+	assert two_bar == _2d(199, seed = 7)
+
+
+def test_two_patterns_sharing_a_1d_automaton_each_resume_where_they_left_off () -> None:
+
+	"""The same for the elementary automaton, whose cache is the same class."""
+
+	with _counting_1d_steps() as count:
+
+		for bar in range(400):
+
+			one_bar = _1d(bar, seed = 7)
+
+			if bar % 2 == 0:
+				two_bar = _1d(bar // 2, seed = 7)
+
+		total = count()
+
+	assert total > 500, f"only {total} steps: the walk did not reach generation 399"
+	assert total <= 600, f"the two patterns took {total} evolution steps over 400 bars"
+
+	subsequence.sequence_utils._ca_1d_cache.clear()
+	assert one_bar == _1d(399, seed = 7)
+	subsequence.sequence_utils._ca_1d_cache.clear()
+	assert two_bar == _1d(199, seed = 7)
+
+
+class _CountingMath:
+
+	"""``math`` as sequence_utils sees it, counting ``isfinite()``: Lorenz checks each new point on three axes."""
+
+	def __init__ (self) -> None:
+		self.checks = 0
+
+	def __getattr__ (self, name: str) -> typing.Any:
+		return getattr(math, name)
+
+	def isfinite (self, value: float) -> bool:
+		self.checks += 1
+		return math.isfinite(value)
+
+
+def test_two_patterns_sharing_a_lorenz_trajectory_each_carry_on (monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""lorenz carries one trajectory on from bar to bar (#3472) through the same kind of cache, and fought the same way."""
+
+	counting = _CountingMath()
+	monkeypatch.setattr(subsequence.sequence_utils, "math", counting)
+	monkeypatch.setattr(subsequence.sequence_utils, "_lorenz_cache", subsequence.sequence_utils._EvolutionCache())
+
+	def cycle_of (steps: int, cycle: int) -> typing.List[typing.Tuple[float, float, float]]:
+		return subsequence.sequence_utils._lorenz_states(steps, cycle * steps, 0.01, 10.0, 28.0, 8.0 / 3.0, 0.1, 0.0, 0.0)
+
+	for bar in range(100):
+
+		one_bar = cycle_of(16, bar)				# a one-bar pattern: 16 points each bar
+
+		if bar % 2 == 0:
+			two_bar = cycle_of(32, bar // 2)		# a two-bar pattern: 32 points each cycle
+
+	# Each carries on from where it stopped: 1,600 points each, and no more.
+	points = counting.checks // 3
+
+	assert points >= 3200, f"only {points} points integrated: the walk did not reach bar 99"
+	assert points <= 3300, f"the two patterns integrated {points} points over 100 bars"
+
+	# And each carried on its own trajectory, as a fresh integration gives it.
+	monkeypatch.setattr(subsequence.sequence_utils, "_lorenz_cache", subsequence.sequence_utils._EvolutionCache())
+	assert one_bar == cycle_of(16, 99)
+	monkeypatch.setattr(subsequence.sequence_utils, "_lorenz_cache", subsequence.sequence_utils._EvolutionCache())
+	assert two_bar == cycle_of(32, 49)

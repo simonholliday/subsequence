@@ -1845,36 +1845,54 @@ def lsystem_expand (
 # 179,456 grid cells over a 1,200-bar evening (#3071).
 _CA_CACHE_ENTRIES = 64
 
+# How many checkpoints each configuration keeps: one per pattern reading the
+# same evolution at its own pace, with room over.  One was not enough.  A
+# one-bar and a two-bar pattern sharing an automaton read generations n and
+# n / 2, each sent the other back to generation 0, and every bar replayed the
+# evolution so far: 40,400 steps over 400 bars where 600 do (#3559).
+_CHECKPOINTS_PER_EVOLUTION = 4
+
 
 _CachedState = typing.TypeVar("_CachedState")
 
 
 class _EvolutionCache (typing.Generic[_CachedState]):
 
-	"""The latest ``(generation, state)`` per configuration, oldest evicted first.
+	"""The latest few ``(generation, state)`` checkpoints per configuration, oldest evicted first.
 
 	A plain dict here was a leak rather than a cache whenever the key varied
-	per bar.  Reads move an entry to the newest end, so what a piece keeps
-	using stays and what it used once goes.
+	per bar.  Reads move a configuration to the newest end, so what a piece
+	keeps using stays and what it used once goes.  A request starts from the
+	latest checkpoint not past it, so each pattern reading the same evolution
+	resumes from its own place rather than the last writer's (#3559).
 	"""
 
-	def __init__ (self, limit: int = _CA_CACHE_ENTRIES) -> None:
+	def __init__ (self, limit: int = _CA_CACHE_ENTRIES, checkpoints: int = _CHECKPOINTS_PER_EVOLUTION) -> None:
 
-		self._entries: "collections.OrderedDict[typing.Any, typing.Tuple[int, _CachedState]]" = collections.OrderedDict()
+		self._entries: "collections.OrderedDict[typing.Any, typing.List[typing.Tuple[int, _CachedState]]]" = collections.OrderedDict()
 		self._limit = limit
+		self._checkpoints = checkpoints
 
-	def get (self, key: typing.Any) -> typing.Optional[typing.Tuple[int, _CachedState]]:
+	def get (self, key: typing.Any, at_most: typing.Optional[int] = None) -> typing.Optional[typing.Tuple[int, _CachedState]]:
+
+		"""The latest checkpoint for *key* at generation *at_most* or before (any, without one), if there is one."""
 
 		entry = self._entries.get(key)
 
-		if entry is not None:
-			self._entries.move_to_end(key)
+		if entry is None:
+			return None
 
-		return entry
+		self._entries.move_to_end(key)
+		earlier = [checkpoint for checkpoint in entry if at_most is None or checkpoint[0] <= at_most]
+
+		return max(earlier, key = lambda checkpoint: checkpoint[0]) if earlier else None
 
 	def put (self, key: typing.Any, value: typing.Tuple[int, _CachedState]) -> None:
 
-		self._entries[key] = value
+		"""Keep *value* as a checkpoint for *key*, with the latest few written before it."""
+
+		kept = [checkpoint for checkpoint in self._entries.get(key, []) if checkpoint[0] != value[0]]
+		self._entries[key] = (kept + [value])[-self._checkpoints:]
 		self._entries.move_to_end(key)
 
 		while len(self._entries) > self._limit:
@@ -1981,9 +1999,9 @@ def generate_cellular_automaton_1d (steps: int, rule: int = 30, generation: int 
 	# recomputes from the initial state.  Correct because the CA is Markovian —
 	# generation N+1 depends only on generation N.
 	cache_key = (steps, rule, seed)
-	cached = _ca_1d_cache.get(cache_key)
+	cached = _ca_1d_cache.get(cache_key, generation)
 
-	if cached is not None and cached[0] <= generation:
+	if cached is not None:
 		# Not copied here: the write below stores a copy, so the cached list is
 		# never the one returned.  See the note in the 2D version (#3071).
 		current_gen, state = cached[0], cached[1]
@@ -2167,9 +2185,9 @@ def generate_cellular_automaton_2d (
 		grid = []
 		cache_key = (rows, cols, rule, seed, density)
 
-	cached = _ca_2d_cache.get(cache_key)
+	cached = _ca_2d_cache.get(cache_key, generation)
 
-	if cached is not None and cached[0] <= generation:
+	if cached is not None:
 		# Not copied here.  What is stored below is already a copy, so the
 		# entry the cache holds is never the object handed back, and a caller
 		# is free to mutate what it is given.  Copying on the way in as well
@@ -2234,11 +2252,11 @@ def _ca_2d_redrawing (
 
 	birth_set, survival_set = _parse_life_rule(rule)
 	cache_key = (rows, cols, rule, seed, density)
-	cached = _ca_2d_redraw_cache.get(cache_key)
+	cached = _ca_2d_redraw_cache.get(cache_key, generation)
 
 	before: typing.Optional[typing.List[typing.List[int]]]
 
-	if cached is not None and cached[0] <= generation:
+	if cached is not None:
 		current_gen, (grid, before, draws) = cached
 	else:
 		current_gen, grid, before, draws = 0, _ca_2d_initial_grid(rows, cols, seed, density), None, 0
@@ -2738,9 +2756,9 @@ def _lorenz_states (
 
 	substeps, h = _lorenz_step_size(dt)
 	key = (dt, sigma, rho, beta, x0, y0, z0)
-	cached = _lorenz_cache.get(key)
+	cached = _lorenz_cache.get(key, start)
 
-	if cached is not None and cached[0] <= start:
+	if cached is not None:
 		done, (x, y, z) = cached
 	else:
 		done, (x, y, z) = 0, (x0, y0, z0)
