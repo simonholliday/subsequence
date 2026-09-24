@@ -161,3 +161,57 @@ def test_extend_leaves_a_custom_quality_unnamed_rather_than_guessing () -> None:
 	span = subsequence.progressions.ChordSpan(chord=chord, beats=4.0, extensions=(7,))
 
 	assert span.label() == "C(quartal_test)7"
+
+
+# ---------------------------------------------------------------------------
+# A registered quality, extended in a progression, never prints as another chord (#3527)
+# ---------------------------------------------------------------------------
+
+_REGISTERED = [
+	("probe_minor_sixth", [0, 3, 7, 9], None),
+	("probe_minor_sixth_named", [0, 3, 7, 9], "mx6"),
+	("probe_six", [0, 4, 7, 9], None),
+	("probe_quartal", [0, 5, 10], "q4"),
+	("probe_cluster", [0, 1, 2], None),
+	("probe_minor_ninth", [0, 3, 7, 10, 14], "mn9"),
+]
+
+_EXTENSIONS = [(), (7,), (9,), (11,), (13,), ("sus4",), (7, "sus4")]
+
+
+def test_an_extended_registered_quality_reads_back_as_itself_or_is_refused () -> None:
+
+	"""Never as a different chord: a refusal is loud, and a misread plays the wrong notes (#3014).
+
+	The stacked-name printer read any quality's first three intervals as a triad, so a registered
+	[0, 3, 7, 9] was a minor chord with its sixth taken for the seventh, and printed Cm7 and Cm9:
+	204 of these 504 labels read back as a different chord.  Found by #3521.
+	"""
+
+	misread = []
+	read = 0
+
+	for name, intervals, suffix in _REGISTERED:
+
+		subsequence.chords.register_chord_quality(name, intervals, suffix=suffix)
+
+		for root in range(12):
+			for extensions in _EXTENSIONS:
+
+				made = subsequence.progressions.progression([subsequence.chords.Chord(root_pc=root, quality=name)])
+				span = (made.extend(*extensions) if extensions else made).spans[0]
+				label = span.label()
+
+				try:
+					back = subsequence.progressions.progression([label]).spans[0]
+				except ValueError:
+					continue
+
+				read += 1
+
+				if (back.chord.root_pc, sorted(back.decorated_intervals())) != (root, sorted(span.decorated_intervals())):
+					misread.append((name, root, extensions, label))
+
+	assert misread == []
+	assert read >= 100, f"only {read} labels read back, too few for the sweep to mean anything"
+

@@ -746,6 +746,13 @@ class ChordSpan:
 		if not isinstance(self.chord, subsequence.chords.Chord):
 			return None
 
+		# A quality somebody registered is named by its own name.  Read as a triad
+		# by its first three intervals, [0, 3, 7, 9] was a minor chord whose sixth
+		# counted as the seventh: extended, it printed Cm7, which reads back as
+		# [0, 3, 7, 10], a different chord (#3527).
+		if self.chord.quality not in subsequence.chords._BUILTIN_QUALITY_NAMES:
+			return None
+
 		stacked = [e for e in self.extensions if isinstance(e, int) and e in _NUMERIC_EXTENSIONS]
 
 		if not stacked:
