@@ -1718,8 +1718,8 @@ class Composition:
 			record_filename: Optional filename for the recording (defaults to timestamp).
 			zero_indexed_channels: When False (default), MIDI channels use
 				1-based numbering (1-16) matching instrument labelling.
-				Channel 10 is drums, the way musicians and hardware panels
-				show it. When True, channels use 0-based numbering (0-15)
+				MIDI channel 10 is drums, the way musicians and hardware panels
+				show it. When True, MIDI channels use 0-based numbering (0-15)
 				matching the raw MIDI protocol.
 			latency_ms: Physical output latency of the primary device in
 				milliseconds, for delay compensation (default 0.0, must be
@@ -3818,10 +3818,10 @@ class Composition:
 		setting in semitones).
 
 		Only a part whose notes overlap plays through the pool.  A part that
-		plays one note at a time keeps its own channel, and its own pitch
+		plays one note at a time keeps its own MIDI channel, and its own pitch
 		wheel.  Once a part has played overlapping notes through the pool it
 		stays there, so a bar where it plays a single note sits on the pool's
-		first channel rather than moving its instrument.  Two parts that both
+		first MIDI channel rather than moving its instrument.  Two parts that both
 		need the pool would retune each other, so
 		that is warned about, naming them; give one of them a pool of its own
 		with ``p.apply_tuning(channels=...)``.
@@ -3832,8 +3832,8 @@ class Composition:
 			ratios: Frequency ratios for scale degrees 1..N.
 			equal: Number of equal divisions of the period.
 			bend_range: Synth pitch-bend range in semitones (default ±2).
-			channels: Channel pool for polyphonic rotation, numbered like every
-			    other channel: 1-16, or 0-15 with ``zero_indexed_channels=True``.
+			channels: MIDI channel pool for polyphonic rotation, numbered like every
+			    other MIDI channel: 1-16, or 0-15 with ``zero_indexed_channels=True``.
 			reference_note: MIDI note mapped to scale degree 0 (default 60 = C4).
 			exclude_drums: When True (default), skip patterns that have a
 			    ``drum_note_map`` (they use fixed GM pitches, not tuned ones).
@@ -4216,10 +4216,10 @@ class Composition:
 		Parameters:
 			cc: MIDI Control Change number (0–127).
 			data_key: The ``composition.data`` key to write.
-			channel: If given, only respond to CC messages on this channel.
+			channel: If given, only respond to CC messages on this MIDI channel.
 				Uses the same numbering convention as ``pattern()`` (1-16
 				by default, or 0-15 with ``zero_indexed_channels=True``).
-				``None`` matches any channel (default).
+				``None`` matches any MIDI channel (default).
 			min_val: Scaled minimum - written when CC value is 0 (default 0.0).
 			max_val: Scaled maximum - written when CC value is 127 (default 1.0).
 			input_device: Only respond to CC messages from this input device
@@ -4269,10 +4269,10 @@ class Composition:
 		**Requires** ``midi_input()`` to be called first to open an input port.
 
 		Parameters:
-			channel: If given, only track notes on this channel.  Uses the same
+			channel: If given, only track notes on this MIDI channel.  Uses the same
 				numbering convention as ``pattern()`` (1-16 by default, or 0-15
 				with ``zero_indexed_channels=True``).  ``None`` tracks any
-				channel (default).
+				MIDI channel (default).
 			release_ms: How long (milliseconds) a released note keeps counting
 				as held.  This smooths the momentary all-keys-up gap during a
 				hand-position change so the arp does not drop to silence.
@@ -4402,12 +4402,12 @@ class Composition:
 				Or a **callable** with signature
 				``(value: int, channel: int) -> Optional[mido.Message]``.
 				Return a fully formed ``mido.Message`` to send, or ``None`` to suppress.
-				``channel`` is 0-indexed (the incoming channel).
-			channel: If given, only respond to CC messages on this channel.
+				``channel`` is 0-indexed (the incoming MIDI channel).
+			channel: If given, only respond to CC messages on this MIDI channel.
 				Uses the same numbering convention as ``cc_map()``.
-				``None`` matches any channel (default).
-			output_channel: Override the output channel. ``None`` uses the
-				incoming channel. Uses the same numbering convention as ``pattern()``.
+				``None`` matches any MIDI channel (default).
+			output_channel: Override the output MIDI channel. ``None`` uses the
+				incoming MIDI channel. Uses the same numbering convention as ``pattern()``.
 			input_device: Only respond to CC from this input device - an index,
 				a registered name, or ``None`` for any input (default), the
 				same convention as ``cc_map()``.
@@ -5093,7 +5093,7 @@ class Composition:
 		the terminal grid, or any other consumer that enumerates running
 		patterns.
 
-		Another pattern sharing the channel keeps playing.  Its notes are
+		Another pattern sharing the MIDI channel keeps playing.  Its notes are
 		its own to end, and cutting them is what used to happen - a pad's
 		four-beat note stopped 0.08 of a beat in when an arp beside it was
 		unregistered (#2996).  A note with no pattern behind it, from
@@ -5177,7 +5177,7 @@ class Composition:
 
 		Trade-offs: each mirror adds another full copy of the pattern's events,
 		which can crowd a slow DIN-MIDI link.  A tuned part's rotation across a
-		channel pool collapses onto the mirror's single channel, so the mirror
+		MIDI channel pool collapses onto the mirror's one MIDI channel, so the mirror
 		cannot play it in tune.  OSC events are not mirrored.
 		"""
 
@@ -5666,7 +5666,7 @@ class Composition:
 		- ``fill=`` (+ ``channel=``, ``beat=``): a Motif played in the last
 		  bar before the boundary, starting at ``beat`` of that bar.  Drum
 		  names resolve through ``drum_note_map=`` if given, otherwise the
-		  map is borrowed from a registered pattern on the same channel.
+		  map is borrowed from a registered pattern on the same MIDI channel.
 		- ``mute=`` (+ ``beats=``): pattern names muted over the approach
 		  and unmuted at the boundary.  Muting is **bar-granular** (the
 		  existing rule), so ``beats`` rounds up to whole bars.  Performer
@@ -5951,7 +5951,7 @@ class Composition:
 				bend, NRPN/RPN bursts, program changes, SysEx, and drone events are
 				all mirrored; OSC events are not (OSC is not bound to a MIDI port).
 				``device`` is the integer index returned by ``midi_output()`` (0 =
-				primary).  ``channel`` follows this composition's channel-numbering
+				primary).  ``channel`` follows this composition's MIDI channel numbering
 				convention.  See also ``mirror()`` / ``unmirror()`` for live toggling.
 			min_energy: Automatic energy gating - the pattern is silent while
 				the current section's energy (``composition.energy()`` dict,
@@ -6269,8 +6269,8 @@ class Composition:
 		"""Declare a self-contained chord part: a progression at a chosen harmonic rhythm.
 
 		The one-call form of ``p.progression()`` - it registers a pattern on
-		*channel* that plays *progression* across *bars* (or *beats*), each chord
-		lasting a length drawn from *harmonic_rhythm* (the musical term for how often
+		MIDI channel ``channel`` that plays ``progression`` across ``bars`` (or ``beats``), each chord
+		lasting a length drawn from ``harmonic_rhythm`` (the musical term for how often
 		the chords change).  It needs no ``composition.harmony()`` call and, with an
 		explicit chord list or a ``key=``, no composition key either - so a
 		drums-plus-one-chord-part sketch stays simple.
@@ -6386,8 +6386,8 @@ class Composition:
 		"""Declare a part that plays each section's bound Motif/Phrase.
 
 		The one-call consumer for :meth:`section_motifs` - it registers a
-		pattern on *channel* that walks whatever value is bound to the
-		current section for *part* (stateless position from the cycle
+		pattern on MIDI channel ``channel`` that walks whatever value is bound to the
+		current section for ``part`` (stateless position from the cycle
 		counter, via ``p.phrase()``).  A section with no binding for the
 		part is **silent** for that part - bind material or don't; no
 		fallback guessing.

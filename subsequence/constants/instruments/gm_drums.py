@@ -1,6 +1,6 @@
 """General MIDI Level 1 drum note map.
 
-Standard MIDI percussion assignments for channel 10 (0-indexed channel 9).
+The standard percussion assignments for MIDI channel 10 (9 when counted from 0).
 These note numbers are supported by virtually all GM-compatible instruments,
 drum machines, and DAWs.
 

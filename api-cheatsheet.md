@@ -207,7 +207,7 @@ The musician's 'palette' for creating musical content.
 | `sequence(steps, pitches, velocities, velocity, durations, grid, probability, seed, rng) -> PatternBuilder` | A multi-parameter step sequencer. |
 | `set_length(length, steps) -> PatternBuilder` | Change how long the pattern is, in beats or in its own steps. |
 | `signal(name) -> float` | Read a conductor signal at the current bar. |
-| `silence(beat) -> PatternBuilder` | Sends an 'All Notes Off' (CC 123) and 'All Sound Off' (CC 120) message on the pattern's channel to immediately silence any ringing notes or drones. |
+| `silence(beat) -> PatternBuilder` | Sends an 'All Notes Off' (CC 123) and 'All Sound Off' (CC 120) message on the pattern's MIDI channel to immediately silence any ringing notes or drones. |
 | `slide(notes, steps, time, shape, resolution, bend_range, wrap, extend) -> subsequence.pattern_builder.PatternBuilder` | TB-303-style selective slide into specific notes. |
 | `snap_to_scale(key, mode, strength, seed, rng) -> PatternBuilder` | Snap all notes in the pattern to the nearest pitch in a scale. |
 | `stretch(factor) -> PatternBuilder` | Stretch the pattern in time, scaling note positions and durations. |

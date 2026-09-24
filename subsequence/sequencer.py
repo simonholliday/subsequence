@@ -132,7 +132,7 @@ class MidiEvent:
 	tests can leave it at the default.
 
 	``rank`` comes first at a shared pulse, and follows from the message
-	(#2791): note-offs go out first, then everything that sets a channel's
+	(#2791): note-offs go out first, then everything that sets a MIDI channel's
 	state (bank select, program change, CCs, NRPN, pitch bend, SysEx, OSC),
 	then note-ons.  So a note starts with the sound, controller values and
 	bend it shares its moment with, and a note ending on that moment is
@@ -894,8 +894,8 @@ class Sequencer:
 		"""Save the recorded session to a MIDI file, a track per output device.
 
 		Every device used to share one track, so a session driving two synths
-		saved as if it were one: two parts on channel 0 of different synths came
-		back as two overlapping note-ons on one channel, which no importer can
+		saved as if it were one: two parts on MIDI channel 0 of different synths came
+		back as two overlapping note-ons on one MIDI channel, which no importer can
 		pair with the right note-offs (#3067).  A track apiece keeps them
 		separate and lets a DAW route each one back where it came from.
 
@@ -1495,10 +1495,10 @@ class Sequencer:
 
 		**Tuning + mirrors**: ``CcEvent.channel`` and ``CcEvent.device`` overrides
 		(used by polyphonic microtonal tuning to rotate notes onto separate
-		channels) apply to the *primary* destination only.  Mirror destinations
+		MIDI channels) apply to the *primary* destination only.  Mirror destinations
 		always use their own pinned ``(device, channel)`` - i.e. a polyphonic-
-		tuning pattern mirrored to another synth will collapse all channel
-		rotations onto the mirror's single channel, losing per-note bend
+		tuning pattern mirrored to another synth will collapse all MIDI channel
+		rotations onto the mirror's single MIDI channel, losing per-note bend
 		isolation on that destination.  Apply tuning per-pattern if both ends
 		need it.
 		"""
@@ -3296,7 +3296,7 @@ class Sequencer:
 	async def panic (self) -> None:
 
 		"""
-		Send a MIDI panic message to all channels.
+		Send All Notes Off and All Sound Off on all 16 MIDI channels of every output.
 		"""
 
 		# A render sends nothing: it closes the sounding notes in its file (#3530).

@@ -183,7 +183,7 @@ class CC:
 @dataclasses.dataclass(frozen=True)
 class PitchBend:
 
-	"""The channel pitch-bend wheel; values are normalised -1.0 to 1.0."""
+	"""A MIDI channel's pitch-bend wheel; values are normalised -1.0 to 1.0."""
 
 
 @dataclasses.dataclass(frozen=True)

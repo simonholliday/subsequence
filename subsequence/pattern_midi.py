@@ -450,9 +450,9 @@ class PatternMidiMixin:
 		Many such parameters need values beyond 0–127 (e.g. 0–1023, 0–254);
 		set ``fine=True`` for full 14-bit precision.
 
-		Emitted on the pattern's MIDI channel.  To target a different channel
+		Emitted on the pattern's MIDI channel.  To target a different MIDI channel
 		(e.g. a per-channel RPN config), define a separate pattern on that
-		channel or use ``composition.trigger(channel=…)`` for a one-shot.
+		MIDI channel or use ``composition.trigger(channel=…)`` for a one-shot.
 
 		Parameters:
 			parameter: 14-bit NRPN parameter number (0–16383), or a string
@@ -568,16 +568,16 @@ class PatternMidiMixin:
 
 		**Another ramp or one-shot in the window is safe** (#3070).  A second
 		``nrpn_ramp``, an ``rpn_ramp``, or a one-shot ``nrpn()``/``rpn()``
-		takes the channel's selection, which used to redirect every later step
+		takes the MIDI channel's selection, which used to redirect every later step
 		of this ramp - a one-shot's default ``null_reset`` sent them to the NULL
 		parameter, where they did nothing at all.  The end of the build now
 		re-selects wherever the selection has drifted, and only there, so a ramp
 		on its own still emits exactly the messages described above.
 
 		**What it cannot see:** a plain ``p.cc(6, …)`` or ``p.cc(38, …)`` on
-		this channel, which is you addressing whatever was last selected and is
+		this MIDI channel, which is you addressing whatever was last selected and is
 		left alone deliberately; and another *pattern* writing NRPN to the same
-		channel, which is outside this builder entirely.
+		MIDI channel, which is outside this builder entirely.
 
 		Bandwidth note: with ``fine=True`` (default) every step emits two
 		CCs.  Default ``resolution=4`` is one update every four pulses
@@ -652,7 +652,7 @@ class PatternMidiMixin:
 		Identical to :meth:`nrpn_ramp` but uses CC 101 / 100 for parameter
 		selection.  String names resolve via ``pymididefs.rpn.RPN_MAP``.
 		Another ramp or one-shot in the window is safe for the same reason
-		(#3070); a plain ``p.cc(6, …)`` on this channel is still yours to keep
+		(#3070); a plain ``p.cc(6, …)`` on this MIDI channel is still yours to keep
 		track of.
 		"""
 

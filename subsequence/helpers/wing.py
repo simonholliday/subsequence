@@ -62,7 +62,7 @@ Addresses use the WING's internal node tree.  Key top-level nodes:
 /mgrp/1..8    Mute groups
 ```
 
-Useful leaf addresses per channel (e.g. ``/ch/1/…``):
+Useful leaf addresses per audio channel (e.g. ``/ch/1/…``):
 
 ```text
 fdr           Fader level, 0.0 (−∞) .. 1.0 (≈+10 dB)

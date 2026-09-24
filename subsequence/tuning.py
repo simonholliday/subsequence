@@ -8,11 +8,11 @@ can play the tuning without MPE or special hardware support.
 Pitch bend is injected automatically:
 
 - **Monophonic patterns** (no overlapping notes): a single pitch bend event
-  precedes each note on the pattern's own channel.
+  precedes each note on the pattern's own MIDI channel.
 - **Polyphonic patterns** (overlapping notes): notes are spread across an
-  explicit channel pool via ``ChannelAllocator``.  Each channel receives an
+  explicit MIDI channel pool via ``ChannelAllocator``.  Each MIDI channel receives an
   independent pitch bend, so simultaneous notes can carry different tuning
-  offsets.  The channel pool must be supplied by the caller.
+  offsets.  The MIDI channel pool must be supplied by the caller.
 
 Typical usage via ``Composition.tuning()`` (applies globally, automatically):
 
@@ -252,12 +252,12 @@ class Tuning:
 
 class ChannelAllocator:
 
-	"""Assign MIDI channels from a pool for polyphonic channel rotation.
+	"""Assign MIDI channels from a pool, rotating a polyphonic part across them.
 
-	Tracks which channels are busy (a note is sounding) and which are free.
-	Channels are reclaimed once a note ends (pulse ≥ release_pulse).
+	Tracks which MIDI channels are busy (a note is sounding) and which are free.
+	A MIDI channel is reclaimed once its note ends (pulse ≥ release_pulse).
 
-	A simple round-robin fallback is used when all channels are busy
+	A simple round-robin fallback is used when every MIDI channel in the pool is busy
 	(simultaneous voices exceed pool size) - accompanied by a warning log.
 	"""
 
@@ -270,7 +270,7 @@ class ChannelAllocator:
 		self._rr_index = 0
 
 	def allocate (self, pulse: int, duration: int) -> int:
-		"""Return a free channel for a note starting at ``pulse`` lasting ``duration`` pulses."""
+		"""Return a free MIDI channel for a note starting at ``pulse`` lasting ``duration`` pulses."""
 		# Find a channel that is free at this pulse
 		for ch in self._channels:
 			if self._release[ch] <= pulse:
@@ -291,17 +291,17 @@ class ChannelAllocator:
 
 def resolve_channel_pool (channels: typing.Sequence[int], zero_indexed: bool = False) -> typing.List[int]:
 
-	"""Read a tuning's channel pool as every other channel argument is read.
+	"""Read a tuning's MIDI channel pool as every other MIDI channel argument is read.
 
 	A pool is numbered 1-16, or 0-15 when the composition was made with
-	``zero_indexed_channels=True``, and comes back as the 0-15 channels the
+	``zero_indexed_channels=True``, and comes back as the 0-15 MIDI channels the
 	engine sends on.  A 0 in a 1-16 pool is refused with a message that says
 	why, because a pool written when pools counted from 0 would otherwise
-	play one channel low without a word.
+	play one MIDI channel low without a word.
 
 	Parameters:
 		channels: The pool as the musician numbered it.
-		zero_indexed: Whether the composition numbers channels from 0.
+		zero_indexed: Whether the composition numbers MIDI channels from 0.
 	"""
 
 	lowest, highest = (0, 15) if zero_indexed else (1, 16)
@@ -339,10 +339,10 @@ def apply_tuning_to_pattern (
 	   fractional bend that corrects from the nearest 12-TET pitch to the
 	   exact tuned frequency.
 	3. If ``channels`` is provided and the pattern has overlapping notes,
-	   notes are spread across the channel pool (``ChannelAllocator``).
+	   notes are spread across the MIDI channel pool (``ChannelAllocator``).
 	   A part that plays one note at a time moves to the pool's first
-	   channel, unless the pool is ``shared_pool``, when it keeps its own.
-	   Without a pool, overlapping notes share one channel's pitch wheel, so
+	   MIDI channel, unless the pool is ``shared_pool``, when it keeps its own.
+	   Without a pool, overlapping notes share one MIDI channel's pitch wheel, so
 	   each note's bend retunes the others; that is logged once per part.
 
 	Existing pitchwheel events (e.g., from ``p.portamento()`` or
@@ -351,26 +351,26 @@ def apply_tuning_to_pattern (
 	bend-reset-to-tuning-offset events.
 
 	A drone - a raw ``note_on`` from ``p.drone()`` - is tuned the same way,
-	with its bend at its onset on the part's own channel, and a ``note_off``
+	with its bend at its onset on the part's own MIDI channel, and a ``note_off``
 	takes the same nearest note, so ``p.drone_off()`` releases the note the
 	drone sounds, in whichever cycle it comes (#3475).  A drone holds the
-	channel's pitch wheel while it sounds, as any long note does.
+	MIDI channel's pitch wheel while it sounds, as any long note does.
 
 	Parameters:
 		pattern: The pattern to transform in place.
 		tuning: The ``Tuning`` object specifying cent offsets.
 		bend_range: Must match the MIDI synth's pitch-bend range setting
 		    (default ±2 semitones).
-		channels: Optional explicit channel pool for polyphonic parts, as
-		    the 0-15 channels the engine sends on (``resolve_channel_pool``
+		channels: Optional explicit MIDI channel pool for polyphonic parts, as
+		    the 0-15 MIDI channels the engine sends on (``resolve_channel_pool``
 		    reads a musician's numbering).  When ``None``, all notes stay on
 		    ``pattern.channel``.  Under polyphonic rotation a glide's bends
 		    (``portamento()``, ``slide()``) are not re-routed per note, so a
-		    glide and a channel pool do not combine well.
+		    glide and a MIDI channel pool do not combine well.
 		reference_note: MIDI note number mapped to scale degree 0.
 		shared_pool: The pool is the whole composition's rather than this
 		    part's own, so a part that plays one note at a time keeps its own
-		    channel instead of taking the pool's first.
+		    MIDI channel instead of taking the pool's first.
 
 	Returns:
 		Whether the part's notes rotated through the pool.

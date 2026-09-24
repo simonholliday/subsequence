@@ -190,9 +190,9 @@ class PatternBuilder(
 				``reschedule_lookahead`` would run past.  One-shots -
 				``trigger()`` and transition fills - leave it False: they never
 				reschedule, so their lookahead means nothing.
-			zero_indexed_channels: Whether the composition numbers channels
-				from 0, so a channel pool given to ``apply_tuning()`` is read
-				the way every other channel is.
+			zero_indexed_channels: Whether the composition numbers MIDI channels
+				from 0, so a MIDI channel pool given to ``apply_tuning()`` is read
+				the way every other MIDI channel is.
 		"""
 
 		self._pattern = pattern
@@ -804,7 +804,7 @@ class PatternBuilder(
 
 		"""
 		Sends an 'All Notes Off' (CC 123) and 'All Sound Off' (CC 120) message
-		on the pattern's channel to immediately silence any ringing notes or drones.
+		on the pattern's MIDI channel to immediately silence any ringing notes or drones.
 		
 		Parameters:
 			beat: The beat position (0.0 is the start).
@@ -2971,7 +2971,7 @@ class PatternBuilder(
 		``p.slide()`` or anything else.
 
 		For polyphonic patterns, supply a ``channels`` pool.  Notes will be
-		spread across those channels so each can carry an independent pitch
+		spread across those MIDI channels so each can carry an independent pitch
 		bend.  For monophonic patterns, leave ``channels=None``.
 
 		The synthesiser's pitch-bend range must match ``bend_range``.  Most
@@ -2982,12 +2982,12 @@ class PatternBuilder(
 		Parameters:
 			tuning: The :class:`~subsequence.tuning.Tuning` to apply.
 			bend_range: Synth pitch-bend range in semitones (default ±2).
-			channels: Channel pool for polyphonic rotation, numbered like
-			    every other channel: 1-16, or 0-15 when the composition was
+			channels: MIDI channel pool for polyphonic rotation, numbered like
+			    every other MIDI channel: 1-16, or 0-15 when the composition was
 			    made with ``zero_indexed_channels=True``.  The part plays
 			    through the pool, its notes rotating when they overlap and
-			    otherwise sitting on the pool's first channel.  ``None`` keeps
-			    all notes on the pattern's own channel.
+			    otherwise sitting on the pool's first MIDI channel.  ``None`` keeps
+			    all notes on the pattern's own MIDI channel.
 			reference_note: MIDI note number that maps to scale degree 0.
 			    Default 60 (middle C).
 

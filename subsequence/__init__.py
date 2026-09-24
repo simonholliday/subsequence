@@ -95,7 +95,7 @@ Composition tools:
 - **Microtonal tuning.** ``composition.tuning()`` applies a tuning
   system globally; ``p.apply_tuning()`` overrides per-pattern.
   Supports Scala ``.scl`` files, explicit cent lists, frequency ratios,
-  and N-TET equal temperaments. Polyphonic parts use explicit channel
+  and N-TET equal temperaments. Polyphonic parts use explicit MIDI channel
   rotation so simultaneous notes can carry independent pitch bends
   without MPE. Compatible with any standard MIDI synthesiser.
 - **Randomness tools.** Weighted choice, no-repeat shuffle, random
@@ -122,7 +122,7 @@ Integration:
   ``drum_note_map`` so one named drum hit re-resolves to the right voice
   on each device - a DRM1 and a General MIDI sampler alike.
 - **Shared project definitions.** ``load_definitions("project.yaml")``
-  reads a small per-project YAML file naming notes, CCs, channels,
+  reads a small per-project YAML file naming notes, CCs, MIDI channels,
   programs, and NRPNs - the same file the Subsample sampler reads - so
   both tools use identical names and a renumber is a single edit.
 - **Hardware control.** CC input mapping from knobs/faders to

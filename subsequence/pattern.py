@@ -236,7 +236,7 @@ class Pattern:
 				note, CC, pitch bend, program change, SysEx, NRPN/RPN burst, and
 				drone event onto.  Both ``device`` and ``channel`` are 0-indexed in
 				canonical form; the user-facing entry points (decorator and runtime
-				API on ``Composition``) translate the user's channel-numbering
+				API on ``Composition``) translate the user's MIDI channel numbering
 				convention before storing here.  An entry may carry an optional
 				third element - a ``drum_note_map`` - so a mirrored drum hit is
 				re-resolved by name to that device's own note number (see

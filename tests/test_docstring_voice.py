@@ -163,3 +163,156 @@ def test_docstring_prose_is_british () -> None:
 	offenders = [f"{location} {word}" for location, text in _docstrings() for word in _us_spellings(text)]
 
 	assert offenders == []
+
+
+# The site's glossary rule for the one word it binds every app to (subsystem.voice.COLLISIONS, from
+# `voice/GLOSSARY.md`): a channel is a MIDI, radio or audio channel wherever a reader could arrive
+# from another app, which on the site is every page.  Copied, as the spelling pattern is.
+_CHANNEL = re.compile(r"(?<![\w-])(?:MIDI|radio|audio)[ -]channels?\b|(?<![\w-])channels?\b", re.IGNORECASE)
+
+
+def _public_docstrings () -> typing.List[typing.Tuple[str, str]]:
+
+	"""The docstrings a public name reaches: each module's, and each class, function and method's.
+
+	A name and every class around it must be public, ``__init__`` aside, which documents its class.
+	"""
+
+	found: typing.List[typing.Tuple[str, str]] = []
+
+	def walk (path: pathlib.Path, body: typing.List[ast.stmt]) -> None:
+
+		for node in body:
+
+			if not isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+				continue
+
+			if node.name.startswith("_") and node.name != "__init__":
+				continue
+
+			docstring = ast.get_docstring(node, clean=False)
+
+			if docstring:
+				found.append((f"{path.relative_to(PACKAGE.parent)}:{node.body[0].lineno}", docstring))
+
+			if isinstance(node, ast.ClassDef):
+				walk(path, node.body)
+
+	for path in sorted(PACKAGE.rglob("*.py")):
+
+		tree = ast.parse(path.read_text(encoding="utf-8"))
+		docstring = ast.get_docstring(tree, clean=False)
+
+		if docstring:
+			found.append((f"{path.relative_to(PACKAGE.parent)}:{tree.body[0].lineno}", docstring))
+
+		walk(path, tree.body)
+
+	return found
+
+
+def _bare_channels (docstring: str) -> typing.List[str]:
+
+	"""Each bare "channel" in a docstring's prose, leaving out code and names as ``_us_spellings`` does.
+
+	An RST literal block, the indented lines after one that ends ``::``, is code as a fence is: the
+	site prints it as one, and a WING example's "fade up channel 1" is the mixer's own word there.
+	"""
+
+	found: typing.List[str] = []
+	fence = False
+	literal: typing.Optional[int] = None
+
+	for line in docstring.split("\n"):
+
+		stripped = line.strip()
+		indent = len(line) - len(line.lstrip())
+
+		if literal is not None:
+
+			if not stripped or indent > literal:
+				continue
+
+			literal = None
+
+		if stripped.startswith("```"):
+			fence = not fence
+			continue
+
+		if fence or stripped.startswith((">>>", "...")):
+			continue
+
+		if stripped.endswith("::"):
+			literal = indent
+
+		masked = _CODE_SPAN.sub(lambda match: "\x00" * len(match.group(0)), line)
+
+		for match in _CHANNEL.finditer(masked):
+
+			before, after = masked[:match.start()], masked[match.end():]
+
+			# A qualified use matches whole, as "MIDI channel", and passes.
+			if not match.group(0).lower().startswith("channel"):
+				continue
+
+			if before.endswith((".", "_")) or after.startswith(("(", "=", "_")):
+				continue
+
+			if not before.strip() and re.match(r"\s*(\([^)]*\))?\s*:", after):
+				continue
+
+			found.append(match.group(0))
+
+	return found
+
+
+def test_the_channel_check_reads_prose_and_passes_names () -> None:
+
+	"""What the check below finds, on text whose answer is known: so a check that saw nothing cannot pass."""
+
+	assert _bare_channels("Send it on the pattern's channel, or on channels 1-4.") == ["channel", "channels"]
+	assert _bare_channels("Channel 10 is drums.") == ["Channel"]
+
+	passed = "\n".join([
+		"On the MIDI channel, a radio channel or an audio channel, MIDI channels, MIDI-channel numbering.",
+		"A per-channel setting, ``zero_indexed_channels`` and the ``channel`` argument.",
+		"channel: MIDI channel 1-16.",
+		"channels (list): The pool.",
+		"Call p.channel() or pass channel=3.",
+		"```python",
+		"p.cc(7, 100)  # on this channel",
+		"```",
+		"An example::",
+		"",
+		"    p.osc('/ch/1/fdr', 0.5)  # fade up channel 1",
+		"",
+		">>> print('a channel')",
+	])
+
+	assert _bare_channels(passed) == []
+
+
+def test_the_public_walk_reaches_methods () -> None:
+
+	"""A walk that stopped at module level would pass the check below, so it must reach the builder's verbs."""
+
+	where = [location for location, _ in _public_docstrings()]
+	builder = [location for location in where if location.startswith("subsequence/pattern_builder.py:")]
+
+	assert len(where) > 500
+	assert len(builder) > 50
+	assert len(where) < len(_docstrings())
+
+
+def test_public_docstrings_say_which_channel () -> None:
+
+	"""A channel is a MIDI channel wherever the site prints one (#3547, Simon's call, 2026-09-24).
+
+	subsystem.co is shared with Substation's radio channels and Subsample's audio channels, and its
+	glossary check files an item for every page whose prose says one bare.  A private helper's
+	docstring is read only beside its code, so this walks the docstrings a public name reaches.
+	"""
+
+	offenders = [f"{location} {word}" for location, text in _public_docstrings() for word in _bare_channels(text)]
+
+	assert offenders == []
