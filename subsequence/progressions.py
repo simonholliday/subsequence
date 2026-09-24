@@ -2290,8 +2290,10 @@ def progression (
 	passed = [name for name, was_set in generation_only.items() if was_set]
 
 	if passed:
+		names = sorted(passed)
+		listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 		raise ValueError(
-			f"{', '.join(sorted(passed))} only apply when generating with style=. "
+			f"{listed} only {'applies' if len(names) == 1 else 'apply'} when generating with style=. "
 			"A concrete progression takes these as methods instead - e.g. "
 			".cadence('strong') for the close, and the key binds at "
 			"composition.harmony() / resolve() time."

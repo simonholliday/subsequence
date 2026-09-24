@@ -1090,3 +1090,20 @@ def test_generate_unconstrained_matches_stage_two_walk () -> None:
 		expected.append(state.step())
 
 	assert list(value.chords) == expected
+
+
+def test_the_generation_only_refusal_agrees_with_how_many_names_it_lists () -> None:
+
+	"""One name only applies; several are listed with an "and" and only apply (#3538).
+
+	It read "key_pull only apply" for one name, and "key_pull, nir_strength only apply" for two.
+	"""
+
+	with pytest.raises(ValueError, match=r"^key_pull only applies when generating with style="):
+		subsequence.progressions.progression([1, 4, 5], key_pull=0.5)
+
+	with pytest.raises(ValueError, match=r"^key_pull and nir_strength only apply when generating with style="):
+		subsequence.progressions.progression([1, 4, 5], key_pull=0.5, nir_strength=0.9)
+
+	with pytest.raises(ValueError, match=r"^bars, key_pull and seed only apply when generating with style="):
+		subsequence.progressions.progression([1, 4, 5], bars=4, key_pull=0.5, seed=3)

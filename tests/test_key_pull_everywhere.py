@@ -76,5 +76,5 @@ def test_key_pull_outside_its_range_is_refused () -> None:
 
 def test_a_written_progression_refuses_key_pull_as_it_refuses_the_other_walk_parameters () -> None:
 
-	with pytest.raises(ValueError, match="key_pull only apply when generating with style="):
+	with pytest.raises(ValueError, match="key_pull only applies when generating with style="):
 		subsequence.progression(["C", "F"], key_pull=0.5)
