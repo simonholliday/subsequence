@@ -1549,10 +1549,16 @@ class PatternBuilder(
 		one-time warning.  Placed back where it came from, nothing changes.
 
 		Parameters:
-			beat: Window start within the pattern.
+			beat: Where the window starts in the pattern.  A negative beat
+				counts back from the end, as it does in every verb that
+				places something, so ``capture(beat=-1, span=1)`` reads the
+				last beat (#3544).  Nothing is read past the pattern's end,
+				since the builder knows only this cycle; the motif is still
+				``span`` beats long.
 			span: Window length in beats (also the captured motif's length).
 		"""
 
+		beat = self._wrapped_beat(beat)
 		ppq = subsequence.constants.MIDI_QUARTER_NOTE
 		lo, hi = subsequence.constants.pulses.beats_to_pulses(beat), subsequence.constants.pulses.beats_to_pulses(beat + span)
 		events = []

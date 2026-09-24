@@ -129,9 +129,10 @@ def test_every_verb_that_places_at_a_beat_is_held_to_it_here () -> None:
 
 	"""The README says a negative beat counts from the end in every verb that places something (#3543).
 
-	A verb that places returns the builder; ``capture()`` also takes ``beat=``, but reads a window
-	and returns a Motif, so it is not held to this.  A new verb with ``beat=`` fails here until one
-	of the tables above has it.  A guard: every verb it finds already counted from the end.
+	A verb that places returns the builder.  ``capture()`` also takes ``beat=``, but reads a window
+	and returns a Motif, so it is held to the rule below instead (#3544).  A new verb with ``beat=``
+	fails here until one of the tables above has it.  A guard: every verb it finds already counted
+	from the end.
 	"""
 
 	verbs = {
@@ -144,6 +145,82 @@ def test_every_verb_that_places_at_a_beat_is_held_to_it_here () -> None:
 
 	assert len(verbs) > 10, f"found only {sorted(verbs)}: has the signature reading changed?"
 	assert verbs == set(AT_ONE_BEAT) | set(FIGURES)
+
+
+# ---------------------------------------------------------------------------
+# Reading a window, which starts by the same rule (#3544)
+# ---------------------------------------------------------------------------
+
+# The readers that take a beat=: each reads a window from it rather than placing there.
+READERS = {"capture"}
+
+
+def _captured (start: float, span: float) -> typing.List[typing.Tuple[int, float]]:
+
+	"""What ``capture()`` reads from a four-beat bar with a different pitch on 0, 1, 2, 3 and 3.5."""
+
+	builder = _builder()
+
+	for beat, pitch in ((0.0, 60), (1.0, 62), (2.0, 64), (3.0, 65), (3.5, 67)):
+		builder.note(pitch, beat = beat, duration = 0.25)
+
+	motif = builder.capture(beat = start, span = span)
+
+	assert motif.length == span
+
+	return [(event.pitch, event.beat) for event in motif.events]
+
+
+@pytest.mark.parametrize("start, span, expected", [
+	(-1.0, 1.0, [(65, 0.0), (67, 0.5)]),		# the last beat, as a one-beat motif
+	(-0.5, 1.0, [(67, 0.0)]),
+	(-5.0, 1.0, [(65, 0.0), (67, 0.5)]),		# any magnitude wraps, as it does when placing
+	(-1.0, 4.0, [(65, 0.0), (67, 0.5)]),		# the default span: nothing is read past the end
+])
+def test_capture_at_a_negative_beat_reads_from_that_far_from_the_end (start: float, span: float, expected: typing.List[typing.Tuple[int, float]]) -> None:
+
+	"""``capture(beat=-1)`` read a window starting a beat before the bar (#3544).
+
+	It gave the bar a beat late with its last beat lost, and ``capture(beat=-1, span=1)`` gave
+	nothing at all.  A negative start now counts from the end, as a placing verb's does.
+	"""
+
+	assert _captured(start, span) == expected
+
+
+@pytest.mark.parametrize("start, span, expected", [
+	(0.0, 4.0, [(60, 0.0), (62, 1.0), (64, 2.0), (65, 3.0), (67, 3.5)]),
+	(1.0, 2.0, [(62, 0.0), (64, 1.0)]),
+	(3.0, 4.0, [(65, 0.0), (67, 0.5)]),		# past the end: the next cycle is not known here
+	(5.0, 1.0, []),							# a note at beat 5 is placed past the end too
+])
+def test_a_capture_from_a_positive_beat_reads_as_before (start: float, span: float, expected: typing.List[typing.Tuple[int, float]]) -> None:
+
+	"""A guard: the ordinary windows read exactly what they did, and none reads round the loop.
+
+	The builder knows only this cycle, and the next is rebuilt, so a window running past the end
+	reads nothing there rather than this cycle's notes again (Simon's call on #3544).
+	"""
+
+	assert _captured(start, span) == expected
+
+
+def test_every_reader_that_takes_a_beat_is_held_to_it_here () -> None:
+
+	"""A public method with ``beat=`` that does not return the builder reads a window, and is listed in READERS.
+
+	A guard: a new reader fails here until it has a test above.
+	"""
+
+	takes_a_beat = {
+		name: inspect.signature(method)
+		for name, method in inspect.getmembers(subsequence.pattern_builder.PatternBuilder, inspect.isfunction)
+		if not name.startswith("_") and "beat" in inspect.signature(method).parameters
+	}
+	readers = {name for name, signature in takes_a_beat.items() if "PatternBuilder" not in str(signature.return_annotation)}
+
+	assert len(takes_a_beat) > len(readers), "found no placing verb at all: has the signature reading changed?"
+	assert readers == READERS
 
 
 @pytest.mark.parametrize("length, beat, expected", [
