@@ -327,15 +327,21 @@ class PatternAlgorithmicMixin:
 		length: int,
 		spacing: typing.Optional[subsequence.declarations.GridBeats],
 		noun: str = "notes",
-	) -> typing.Tuple[float, int]:
+	) -> typing.List[float]:
 
 		"""Resolve auto-fit or fixed spacing for a generated sequence (the shared core).
 
 		With ``spacing`` None the sequence is spread evenly across the whole pattern,
 		so every symbol is heard.  Given a spacing, events land that many beats apart
-		and the sequence is truncated to whatever fits in the bar.  Callers slice with
-		the returned count - ``sequence[:n_steps]`` - which is a no-op in the auto-fit
-		case, so one code path serves both.
+		and the sequence is truncated to whatever fits in the bar.  Callers pair the
+		onsets with the sequence - ``zip(onsets, sequence)`` - which drops nothing in
+		the auto-fit case, so one code path serves both.
+
+		An onset is ``index × step``, never a running sum, and counts only if its
+		pulse is before the pattern's end (``subsequence.pattern.spaced_onsets``).
+		``int(length / spacing)`` counted one fewer wherever the division came out
+		a hair under a whole number, as 9 / (9 / 7) does (#3560, as #2960 for
+		``repeat()``).
 
 		Parameters:
 			verb: Calling method name, for the error message.
@@ -344,19 +350,20 @@ class PatternAlgorithmicMixin:
 			noun: What the caller places, for the error message.
 
 		Returns:
-			A ``(step, n_steps)`` pair - beats between events, and how many to place.
+			The beat of each event to place, in order.
 
 		Raises:
 			ValueError: If ``spacing`` is zero or negative.
 		"""
 
 		if spacing is None:
-			return self._pattern.length / length, length
+			step = self._pattern.length / length if length else 0.0
+			return [index * step for index in range(length)]
 
 		if spacing <= 0:
 			raise ValueError(f"{verb}() spacing is the time between {noun} in beats - it must be positive, got {spacing}")
 
-		return spacing, int(self._pattern.length / spacing)
+		return subsequence.pattern.spaced_onsets(0.0, self._pattern.length, spacing)
 
 	@subsequence.declarations.bounded
 	def euclidean (self, pitch: subsequence.declarations.Pitch, pulses: int, velocity: subsequence.declarations.VelocityValue = subsequence.constants.velocity.DEFAULT_VELOCITY, duration: subsequence.declarations.GateBeats = 0.1, probability: subsequence.declarations.UnitInterval = 1.0, no_overlap: bool = False, seed: typing.Optional[int] = None, rng: typing.Optional[random.Random] = None) -> "subsequence.pattern_builder.PatternBuilder":
@@ -1118,19 +1125,15 @@ class PatternAlgorithmicMixin:
 		if spacing <= 0:
 			raise ValueError(f"markov() spacing is the time between notes in beats - it must be positive, got {spacing}")
 
-		n_steps = int(self._pattern.length / spacing)
-
 		state = start
-		beat = 0.0
 
-		for _ in range(n_steps):
+		for beat in subsequence.pattern.spaced_onsets(0.0, self._pattern.length, spacing):
 
 			if state in pitch_map:
 				vel = self._resolve_velocity(velocity, rng)
 				self.note(pitch=pitch_map[state], beat=beat, velocity=vel, duration=duration)
 
 			state = graph.choose_next(state, rng)
-			beat += spacing
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	def melody (
@@ -1195,18 +1198,13 @@ class PatternAlgorithmicMixin:
 		if spacing <= 0:
 			raise ValueError(f"melody() spacing is the time between notes in beats - it must be positive, got {spacing}")
 
-		n_steps = int(self._pattern.length / spacing)
-		beat = 0.0
-
-		for _ in range(n_steps):
+		for beat in subsequence.pattern.spaced_onsets(0.0, self._pattern.length, spacing):
 
 			pitch = state.choose_next(chord_tones, rng, beat=beat)
 
 			if pitch is not None:
 				vel = self._resolve_velocity(velocity, rng)
 				self.note(pitch=pitch, beat=beat, velocity=vel, duration=duration)
-
-			beat += spacing
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	@subsequence.declarations.bounded
@@ -1342,12 +1340,9 @@ class PatternAlgorithmicMixin:
 		turn = offset % len(expanded)
 		expanded = expanded[turn:] + expanded[:turn]
 
-		auto_step, n_steps = self._fit_spacing("lsystem", len(expanded), spacing, noun="symbols")
-		symbols = expanded[:n_steps]
+		onsets = self._fit_spacing("lsystem", len(expanded), spacing, noun="symbols")
 
-		beat = 0.0
-
-		for symbol in symbols:
+		for beat, symbol in zip(onsets, expanded):
 			if symbol in pitch_map:
 				vel = self._resolve_velocity(velocity, rng)
 				self.note(
@@ -1356,7 +1351,6 @@ class PatternAlgorithmicMixin:
 					velocity=vel,
 					duration=duration,
 				)
-			beat += auto_step
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	@subsequence.declarations.bounded
@@ -1510,15 +1504,11 @@ class PatternAlgorithmicMixin:
 		if not sequence:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-		auto_step, n_steps = self._fit_spacing("de_bruijn", len(sequence), spacing)
-		symbols = sequence[:n_steps]
+		onsets = self._fit_spacing("de_bruijn", len(sequence), spacing)
 
-		beat = 0.0
-
-		for idx in symbols:
+		for beat, idx in zip(onsets, sequence):
 			vel = self._resolve_velocity(velocity, rng)
 			self.note(pitch=pitches[idx], beat=beat, velocity=vel, duration=duration)
-			beat += auto_step
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	def golden (
@@ -1701,11 +1691,9 @@ class PatternAlgorithmicMixin:
 		else:
 			octaves = [0] * len(octaves)
 
-		auto_step, n_steps = self._fit_spacing("recaman", len(values), spacing)
+		onsets = self._fit_spacing("recaman", len(values), spacing)
 
-		beat = 0.0
-
-		for index in range(min(n_steps, len(values))):
+		for index, beat in enumerate(onsets[:len(values)]):
 
 			if mapping is not None:
 				result = mapping(values[index], index)
@@ -1720,8 +1708,6 @@ class PatternAlgorithmicMixin:
 					velocity=vel,
 					duration=duration,
 				)
-
-			beat += auto_step
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
@@ -1810,12 +1796,9 @@ class PatternAlgorithmicMixin:
 		if not sequence:
 			return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
-		auto_step, n_steps = self._fit_spacing("fibonacci", len(sequence), spacing)
-		symbols = sequence[:n_steps]
+		onsets = self._fit_spacing("fibonacci", len(sequence), spacing)
 
-		beat = 0.0
-
-		for index, value in enumerate(symbols):
+		for index, (beat, value) in enumerate(zip(onsets, sequence)):
 
 			if mapping is not None:
 				result = mapping(value, index)
@@ -1825,8 +1808,6 @@ class PatternAlgorithmicMixin:
 			else:
 				vel = self._resolve_velocity(velocity, rng)
 				self.note(pitch=pitches[value % len(pitches)], beat=beat, velocity=vel, duration=duration)
-
-			beat += auto_step
 
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
@@ -1910,14 +1891,13 @@ class PatternAlgorithmicMixin:
 
 		# One trajectory, carried on bar by bar: this cycle plays the stretch after
 		# the last one's (#3472).
-		n_steps = int(self._pattern.length / spacing)
+		onsets = subsequence.pattern.spaced_onsets(0.0, self._pattern.length, spacing)
+		n_steps = len(onsets)
 		points = subsequence.sequence_utils.lorenz_attractor(
 			n_steps, dt=dt, sigma=sigma, rho=rho, beta=beta, x0=x0, y0=y0, z0=z0, start=self.cycle * n_steps
 		)
 
-		beat = 0.0
-
-		for x, y, z in points:
+		for (x, y, z), beat in zip(points, onsets):
 
 			if mapping is not None:
 				result = mapping(x, y, z)
@@ -1937,8 +1917,6 @@ class PatternAlgorithmicMixin:
 					p_vel = int(velocity)
 				p_dur = 0.05 + z * max(0.0, duration - 0.05)
 				self.note(pitch=p_pitch, beat=beat, velocity=p_vel, duration=p_dur)
-
-			beat += spacing
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	@subsequence.declarations.bounded
@@ -2150,7 +2128,8 @@ class PatternAlgorithmicMixin:
 		if spacing <= 0:
 			raise ValueError(f"self_avoiding_walk() spacing is the time between notes in beats - it must be positive, got {spacing}")
 
-		n_steps = int(self._pattern.length / spacing)
+		onsets = subsequence.pattern.spaced_onsets(0.0, self._pattern.length, spacing)
+		n_steps = len(onsets)
 		call = self._self_avoiding_walk_calls
 		self._self_avoiding_walk_calls += 1
 		pool = tuple(pitches)
@@ -2171,12 +2150,9 @@ class PatternAlgorithmicMixin:
 		if indices:
 			self._pattern._walk_states[call] = (pool, tuple(heard[-len(pool):]))
 
-		beat = 0.0
-
-		for idx in indices:
+		for idx, beat in zip(indices, onsets):
 			vel = self._resolve_velocity(velocity, rng)
 			self.note(pitch=pitches[idx], beat=beat, velocity=vel, duration=duration)
-			beat += spacing
 		return typing.cast("subsequence.pattern_builder.PatternBuilder", self)
 
 	@staticmethod

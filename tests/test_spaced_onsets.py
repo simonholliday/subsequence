@@ -3,12 +3,14 @@
 import fractions
 import math
 import pathlib
+import random
 import typing
 
 import mido
 import pytest
 
 import subsequence
+import subsequence.melodic_state
 import subsequence.pattern
 import subsequence.pattern_builder
 
@@ -113,3 +115,53 @@ def test_an_onset_float_noise_puts_a_hair_before_the_end_is_not_placed_on_it () 
 
 	assert len(pulses) == 49
 	assert pulses[-1] < 24
+
+
+# ---------------------------------------------------------------------------
+# The generators that step at a spacing (#3560)
+# ---------------------------------------------------------------------------
+
+# Each places one note per onset here, so the notes it places are its onsets.
+_GENERATORS: typing.Dict[str, typing.Callable[[typing.Any, float], typing.Any]] = {
+	"markov": lambda p, s: p.markov(transitions = {"a": [("b", 1)], "b": [("a", 1)]}, pitch_map = {"a": 60, "b": 62}, spacing = s),
+	"melody": lambda p, s: p.melody(subsequence.melodic_state.MelodicState(), spacing = s),
+	"lorenz": lambda p, s: p.lorenz([60, 62, 64, 65, 67], spacing = s),
+	"self_avoiding_walk": lambda p, s: p.self_avoiding_walk([60, 62, 64, 65, 67, 69, 71], spacing = s),
+	"lsystem": lambda p, s: p.lsystem({"A": 60, "B": 62}, axiom = "A", rules = {"A": "AB", "B": "A"}, generations = 8, spacing = s),
+	"de_bruijn": lambda p, s: p.de_bruijn([60, 62, 64], window = 4, spacing = s),
+	"recaman": lambda p, s: p.recaman([60, 62, 64, 65, 67, 69, 71], count = 60, spacing = s),
+	"fibonacci": lambda p, s: p.fibonacci([60, 62, 64, 65, 67], count = 60, spacing = s),
+}
+
+# Exact: three where the division comes out a hair under a whole number in binary,
+# two where the spacing does not divide the bar at all, and a sixteenth, which it does.
+_GENERATOR_CASES = [
+	(fractions.Fraction(9), fractions.Fraction(9, 7)),
+	(fractions.Fraction(7), fractions.Fraction("0.28")),
+	(fractions.Fraction("3.5"), fractions.Fraction("0.07")),
+	(fractions.Fraction(3), fractions.Fraction(2, 3)),
+	(fractions.Fraction(4), fractions.Fraction(3, 4)),
+	(fractions.Fraction(4), fractions.Fraction(1, 4)),
+]
+
+
+@pytest.mark.parametrize("length, spacing", _GENERATOR_CASES, ids = [f"{float(l):g}-at-{float(s):.4g}" for l, s in _GENERATOR_CASES])
+@pytest.mark.parametrize("name", sorted(_GENERATORS))
+def test_a_spaced_generator_places_every_onset_before_the_end (name: str, length: fractions.Fraction, spacing: fractions.Fraction) -> None:
+
+	"""``int(length / spacing)`` counted one onset too few, as repeat() once placed one too many (#2960).
+
+	9 / (9/7) is 6.999999999999999 in binary, and 3 / (2/3) is 4.5, so seven onsets before the
+	end were six, and five were four: the last note of the bar went missing.  Every onset
+	that starts before the end is placed now, as repeat() places them.
+	"""
+
+	pattern = subsequence.pattern.Pattern(channel = 0, length = float(length))
+	builder = subsequence.pattern_builder.PatternBuilder(pattern, cycle = 0, key = "C", scale = "ionian", rng = random.Random(1))
+
+	_GENERATORS[name](builder, float(spacing))
+
+	onsets = sorted(pulse for pulse, step in pattern.steps.items() if step.notes)
+
+	assert len(onsets) == math.ceil(length / spacing)
+	assert onsets[-1] < float(length) * 24
