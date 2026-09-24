@@ -27,7 +27,8 @@ What makes it different:
   thin itself as tension builds, a cellular automaton can seed from the
   harmony, and a Markov chain can shift behaviour between sections.
 - **Optional chord graph.** Define weighted chord and key transitions
-  via probability graphs, with gravity and automatic voice leading.
+  via probability graphs, with a pull toward the key and automatic
+  voice leading.
   A dozen built-in palettes and frozen progressions to lock some sections
   while others evolve freely. Layer on cognitive harmony for
   Narmour-based melodic inertia.

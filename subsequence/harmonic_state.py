@@ -20,6 +20,32 @@ import subsequence.weighted_graph
 DEFAULT_ROOT_DIVERSITY: float = 0.4
 
 
+# Parameters the harmony engine's callers used to take, and what replaced them.  A rename is a
+# hard break here with no alias (#1460), but a bare TypeError names the parameter and not the
+# conversion, and the whole point of retiring `gravity` was that its numbers ran the other way
+# round.  harmony(), progression() and Progression.generate() all refuse through here (#3524).
+_RETIRED_PARAMETERS: typing.Dict[str, str] = {
+	"gravity": (
+		"gravity= has been retired for key_pull=, which reads the natural way "
+		"round: key_pull=0.0 is no pull toward the key's centres (and is what "
+		"gravity=1.0, the old default, actually did), key_pull=1.0 is the "
+		"strongest. Convert with key_pull = 1 - gravity."
+	),
+}
+
+
+def _refuse_retired_parameters (caller: str, given: typing.Dict[str, typing.Any]) -> None:
+
+	"""Raise for a keyword *caller* used to take and has retired, or one it simply does not know."""
+
+	for name in given:
+
+		if name in _RETIRED_PARAMETERS:
+			raise TypeError(f"{caller}(): {_RETIRED_PARAMETERS[name]}")
+
+	raise TypeError(f"{caller}() got an unexpected keyword argument {sorted(given)[0]!r}")
+
+
 
 # ---------------------------------------------------------------------------
 # Graph style registry — see _resolve_graph_style() below.

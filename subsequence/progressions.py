@@ -1635,10 +1635,11 @@ class Progression:
 		avoid: typing.Optional[typing.Sequence[typing.Any]] = None,
 		cadence: typing.Optional[str] = None,
 		dominant_7th: bool = True,
-		gravity: float = 1.0,
+		key_pull: float = 0.0,
 		nir_strength: float = 0.5,
 		minor_turnaround_weight: float = 0.0,
 		root_diversity: float = subsequence.harmonic_state.DEFAULT_ROOT_DIVERSITY,
+		**retired: typing.Any,
 	) -> "Progression":
 
 		"""Generate a progression from a chord-graph walk - the hybrid generator.
@@ -1650,7 +1651,7 @@ class Progression:
 		feasibility pass guarantees satisfiability before any chord is
 		drawn (unsatisfiable constraints raise immediately), then a forward
 		walk samples through the engine's real history-dependent weights
-		(NIR, gravity, diversity keep their character).
+		(NIR, key pull, diversity keep their character).
 
 		**Without** ``key=`` the result is key-relative - the walk runs
 		against a reference tonic and the spans store scale-proof
@@ -1682,7 +1683,7 @@ class Progression:
 				``"fakeout"``, theory aliases accepted) - its formula
 				becomes pins on the final bars, so the walk *approaches*
 				the close.  Conflicts with ``end=`` or pins on those bars.
-			dominant_7th / gravity / nir_strength / minor_turnaround_weight /
+			dominant_7th / key_pull / nir_strength / minor_turnaround_weight /
 				root_diversity: The engine parameters, exactly as
 				:meth:`Composition.harmony` takes them.
 
@@ -1694,6 +1695,12 @@ class Progression:
 			print(chorus)        # romans until bound
 			```
 		"""
+
+		if retired:
+			subsequence.harmonic_state._refuse_retired_parameters("Progression.generate", retired)
+
+		if not 0.0 <= key_pull <= 1.0:
+			raise ValueError(f"Progression.generate(key_pull={key_pull!r}) takes 0.0 to 1.0")
 
 		if bars < 1:
 			raise ValueError("bars must be at least 1")
@@ -1721,7 +1728,7 @@ class Progression:
 			key_name = reference,
 			graph_style = style,
 			include_dominant_7th = dominant_7th,
-			key_gravity_blend = gravity,
+			key_gravity_blend = 1.0 - key_pull,
 			nir_strength = nir_strength,
 			minor_turnaround_weight = minor_turnaround_weight,
 			root_diversity = root_diversity,
@@ -2183,10 +2190,11 @@ def progression (
 	avoid: typing.Optional[typing.Sequence[typing.Any]] = None,
 	cadence: typing.Optional[str] = None,
 	dominant_7th: bool = True,
-	gravity: float = 1.0,
+	key_pull: float = 0.0,
 	nir_strength: float = 0.5,
 	minor_turnaround_weight: float = 0.0,
 	root_diversity: float = subsequence.harmonic_state.DEFAULT_ROOT_DIVERSITY,
+	**retired: typing.Any,
 ) -> Progression:
 
 	"""Build a :class:`Progression` - the lowercase factory.
@@ -2215,9 +2223,9 @@ def progression (
 			reload.
 		rng: An explicit random stream (overrides ``seed``; used by
 			engine-mediated calls).
-		dominant_7th / gravity / nir_strength: Graph-walk parameters,
-			matching :meth:`Composition.harmony` (style mode only; full
-			pass-through arrives with ``Progression.generate``).
+		dominant_7th / key_pull / nir_strength / minor_turnaround_weight /
+			root_diversity: The engine parameters, exactly as
+			:meth:`Composition.harmony` takes them (style mode only).
 
 	Example:
 		```python
@@ -2227,6 +2235,9 @@ def progression (
 		chart = subsequence.progression(["Cmaj9", "Am7/G", "Dm9", "G7sus4"])
 		```
 	"""
+
+	if retired:
+		subsequence.harmonic_state._refuse_retired_parameters("progression", retired)
 
 	if style is not None:
 		if source is not None:
@@ -2244,7 +2255,7 @@ def progression (
 			avoid = avoid,
 			cadence = cadence,
 			dominant_7th = dominant_7th,
-			gravity = gravity,
+			key_pull = key_pull,
 			nir_strength = nir_strength,
 			minor_turnaround_weight = minor_turnaround_weight,
 			root_diversity = root_diversity,
@@ -2264,7 +2275,7 @@ def progression (
 		"avoid": avoid is not None,
 		"cadence": cadence is not None,
 		"dominant_7th": dominant_7th is not True,
-		"gravity": gravity != 1.0,
+		"key_pull": key_pull != 0.0,
 		"nir_strength": nir_strength != 0.5,
 		"minor_turnaround_weight": minor_turnaround_weight != 0.0,
 		"root_diversity": root_diversity != subsequence.harmonic_state.DEFAULT_ROOT_DIVERSITY,

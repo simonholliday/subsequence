@@ -3480,7 +3480,7 @@ def constrained_walk (
 	walk through the graph's **real, possibly history-dependent** weights
 	masked to surviving candidates.  This guarantees *satisfaction*, not an
 	exact conditional distribution - history-dependent weighting (NIR,
-	gravity, diversity) keeps its character rather than being flattened.
+	key pull, diversity) keeps its character rather than being flattened.
 
 	Positions are **1-based** (the musician count); position 1 is *start*,
 	which is fixed - pins may name it only redundantly.  ``avoid`` applies

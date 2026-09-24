@@ -133,20 +133,6 @@ def _derive_label (action: typing.Callable[[], None]) -> str:
 	return "<action>"
 
 
-# Parameters harmony() used to take, and what replaced them.  A rename is a
-# hard break here with no alias (#1460) — but a bare TypeError names the
-# parameter and not the conversion, and the whole point of retiring `gravity`
-# was that its numbers ran the other way round.
-_RETIRED_HARMONY_PARAMETERS: typing.Dict[str, str] = {
-	"gravity": (
-		"gravity= has been retired for key_pull=, which reads the natural way "
-		"round: key_pull=0.0 is no pull toward the key's centres (and is what "
-		"gravity=1.0, the old default, actually did), key_pull=1.0 is the "
-		"strongest. Convert with key_pull = 1 - gravity."
-	),
-}
-
-
 class _Keep:
 
 	"""Sentinel for a ``harmony()`` argument that was not given.
@@ -161,20 +147,6 @@ class _Keep:
 
 
 KEEP: typing.Any = _Keep()
-
-
-def _refuse_retired_harmony_parameters (given: typing.Dict[str, typing.Any]) -> None:
-
-	"""Raise for a harmony() keyword that has been retired, or is simply unknown."""
-
-	for name in given:
-
-		if name in _RETIRED_HARMONY_PARAMETERS:
-			raise TypeError(f"harmony(): {_RETIRED_HARMONY_PARAMETERS[name]}")
-
-	raise TypeError(
-		f"harmony() got an unexpected keyword argument {sorted(given)[0]!r}"
-	)
 
 
 def _fn_has_parameter (fn: typing.Callable, name: str) -> bool:
@@ -2430,7 +2402,7 @@ class Composition:
 		"""
 
 		if retired:
-			_refuse_retired_harmony_parameters(retired)
+			subsequence.harmonic_state._refuse_retired_parameters("harmony", retired)
 
 		# Resolve each parameter against what the last call configured, so a
 		# re-call naming one of them keeps the rest (#3088).  Before this, the

@@ -385,7 +385,7 @@ A frozen sequence of :class:`ChordSpan` - the governing harmony value.
 | `elaborate(depth, seed) -> Progression` | Steedman-inspired chord elaboration - approach each chord by fifths. |
 | `events() -> Tuple[subsequence.progressions.ChordEvent, ...]` | The realised timeline as a tuple (iteration, materialised). |
 | `extend(*extensions, only) -> Progression` | Add chord extensions (``7``/``9``/``11``/``13``/``"sus4"``/...) to every span. |
-| `generate(style, bars, beats, key, scale, seed, rng, pins, end, avoid, cadence, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity) -> Progression` | Generate a progression from a chord-graph walk - the hybrid generator. |
+| `generate(style, bars, beats, key, scale, seed, rng, pins, end, avoid, cadence, dominant_7th, key_pull, nir_strength, minor_turnaround_weight, root_diversity) -> Progression` | Generate a progression from a chord-graph walk - the hybrid generator. |
 | `inversions(spec) -> Progression` | Set chord inversions - a single int for all spans, or a list cycled per span. |
 | `is_concrete *(property)*` | True when every span is key-independent (no romans/degrees). |
 | `length *(property)*` | Total length in beats (the sum of span lengths). |
@@ -520,7 +520,7 @@ Role parameter bundles - starting points you splat, not a role API.
 | `motif(degrees, beats, velocities, durations, probabilities, length) -> subsequence.motifs.Motif` | The lowercase shortcut: a melody as 1-based scale degrees. |
 | `sentence(motif, bars, cadence, seed, beats_per_bar) -> subsequence.motifs.Phrase` | The classical sentence, as a thin combinator - idea, idea, drive, close. |
 | `period(antecedent, cadence, beats_per_bar) -> subsequence.motifs.Phrase` | The classical period, as a thin combinator - question, then answer. |
-| `progression(source, beats, style, bars, key, scale, seed, rng, pins, end, avoid, cadence, dominant_7th, gravity, nir_strength, minor_turnaround_weight, root_diversity) -> subsequence.progressions.Progression` | Build a :class:`Progression` - the lowercase factory. |
+| `progression(source, beats, style, bars, key, scale, seed, rng, pins, end, avoid, cadence, dominant_7th, key_pull, nir_strength, minor_turnaround_weight, root_diversity) -> subsequence.progressions.Progression` | Build a :class:`Progression` - the lowercase factory. |
 | `between(low, high, step) -> subsequence.harmonic_rhythm.HarmonicRhythm` | A harmonic rhythm that varies *between* two lengths (in beats). |
 | `parse_chord(name) -> subsequence.chords.Chord` | Parse a chord name like ``"Cm7"`` or ``"Dbmaj7"`` into a :class:`Chord`. |
 | `register_chord_quality(name, intervals, suffix) -> None` | Register a custom chord quality for use everywhere chords are used. |

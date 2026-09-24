@@ -232,7 +232,9 @@ def test_an_example_calls_methods_that_exist (example: Example) -> None:
 		except (ValueError, TypeError):
 			continue
 
-		if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()):
+		# `**retired` is not API: it only catches a keyword a rename left behind, to say what
+		# replaced it, as the cheat sheet reads it too (#3524).  Any other ** takes what it is given.
+		if any(p.kind is inspect.Parameter.VAR_KEYWORD and p.name != "retired" for p in parameters.values()):
 			continue
 
 		for name in sorted(named | bundled):
@@ -481,6 +483,20 @@ def test_a_keyword_given_by_name_and_in_a_bundle_is_caught () -> None:
 	example = Example("synthetic", 'comp.phrase_part(channel=4, part="lead", **subsequence.roles.LEAD, root=78)\n')
 
 	with pytest.raises(AssertionError, match="by name and in a"):
+		test_an_example_calls_methods_that_exist(example)
+
+
+def test_a_retired_catch_all_does_not_excuse_a_wrong_keyword () -> None:
+
+	"""harmony() takes ``**retired`` only to say what a renamed keyword became (#3524).
+
+	Any ``**`` used to excuse a method from this check, so harmony()'s examples went unchecked
+	from the day gravity= was retired.
+	"""
+
+	example = Example("synthetic", 'comp.harmony(style="aeolian_minor", gravitas=0.5)\n')
+
+	with pytest.raises(AssertionError, match="takes no gravitas="):
 		test_an_example_calls_methods_that_exist(example)
 
 
