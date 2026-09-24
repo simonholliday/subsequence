@@ -778,10 +778,15 @@ class ChordSpan:
 		# 9 implies 7 (and so on up): the highest stacked extension names the chord.
 		# The seventh is read without an added 6th, which sits at 9 and was taken
 		# for a diminished seventh: Cmaj7 with a 6th printed "C76" (#3014).
-		top = max(stacked)
 		sevenths = dataclasses.replace(self, extensions = tuple(e for e in self.extensions if e != "6"))
-		seventh = next((i for i in sevenths.decorated_intervals() if i in (9, 10, 11)), None)
+		decorated = sevenths.decorated_intervals()
+		seventh = next((i for i in decorated if i in (9, 10, 11)), None)
 		root_name = subsequence.chords.PC_TO_NOTE_NAME[self.chord.root_pc % 12]
+
+		# The number is the highest tension that is the plain one, and an altered
+		# tension follows it, as a chart writes one: V9 in A harmonic minor plays a
+		# flat ninth and printed "E9", which reads back with a natural one (#3490).
+		top, altered = _spelled_tensions(decorated, max(stacked))
 
 		if shape == "diminished":
 			tail = f"m{top}b5" if seventh == 10 else f"dim{top}"
@@ -800,9 +805,9 @@ class ChordSpan:
 			# arrived as an extension is printed by the extension loop below,
 			# so only a suspended *quality* spells itself here.  A major seventh
 			# says so: it printed as C7sus4, a different chord (#3014).
-			tail = ("maj" if seventh == 11 else "") + str(top) + ("" if sus else shape)
+			return root_name + ("maj" if seventh == 11 else "") + str(top) + altered + ("" if sus else shape)
 
-		return root_name + tail
+		return root_name + tail + altered
 
 	def _decoration_suffix (self, resolved: bool, stacked: bool = True) -> str:
 
@@ -900,8 +905,10 @@ class ChordSpan:
 			if 13 in stacked and 11 not in stacked and third == 4:
 				added = [i for i in added if i != 17]
 
-			# And a dominant 11th is played without the third instead.
-			elif 11 in stacked and third == 4 and seventh == 10 and len(intervals) >= 2:
+			# And a dominant 11th is played without the third instead.  Only a
+			# natural 11 clashes: a sharp one sits a tone above the third, and the
+			# lydian dominant (IV11 in melodic minor) lost its third to it (#3490).
+			elif 11 in stacked and third == 4 and seventh == 10 and 17 in added and len(intervals) >= 2:
 				del intervals[1]
 
 		if "add9" in self.extensions:
@@ -1235,6 +1242,39 @@ _NAMED_TAILS: typing.Tuple[str, ...] = ("add9", "sus2", "sus4", "6")
 # itself (mMaj): the upper intervals as a chart means them.
 _ABOVE_THE_SEVENTH: typing.Dict[int, typing.Tuple[int, ...]] = {7: (), 9: (14,), 11: (14, 17), 13: (14, 17, 21)}
 
+# The tensions above a seventh chord, as (level, the plain interval, {an altered
+# interval: how a chart spells it}).  The printer and the reader both use it (#3490).
+_TENSIONS: typing.Tuple[typing.Tuple[int, int, typing.Dict[int, str]], ...] = (
+	(9, 14, {13: "b9", 15: "#9"}),
+	(11, 17, {16: "b11", 18: "#11"}),
+	(13, 21, {20: "b13"}),
+)
+
+
+def _spelled_tensions (decorated: typing.Sequence[int], top: int) -> typing.Tuple[int, str]:
+
+	"""The number a chord symbol carries, and the altered tensions written after it.
+
+	The number is the highest tension up to *top* that is the plain one, and
+	each altered one is spelled after it, as a chart spells it: E7 with a flat
+	ninth is ``(7, "b9")``, and a major 13th with a sharp 11th ``(13, "#11")``.
+	"""
+
+	number = 7
+	altered = ""
+
+	for level, plain, spellings in _TENSIONS:
+
+		if level > top:
+			break
+
+		if plain in decorated:
+			number = level
+
+		altered += "".join(spelling for interval, spelling in spellings.items() if interval in decorated)
+
+	return number, altered
+
 
 def _parse_chord_name (name: str, beats: float) -> ChordSpan:
 
@@ -1293,7 +1333,55 @@ def _parse_chord_body (body: str) -> typing.Tuple[subsequence.chords.Chord, typi
 	if stacked is not None:
 		return stacked
 
+	altered = _parse_altered(body)
+
+	if altered is not None:
+		return altered
+
 	raise refused
+
+
+def _parse_altered (body: str) -> typing.Optional[typing.Tuple[subsequence.chords.Chord, typing.Tuple[typing.Any, ...], typing.Optional[typing.Tuple[int, ...]]]]:
+
+	"""A seventh chord with an altered tension after it, as a chart writes one; None if it is not one.
+
+	``E7b9``, ``Fmaj7#9``, ``Dmaj13#11`` and ``Am11b13``: the last tension comes
+	off the end, what is left is read as any chord name, itself perhaps with
+	a tension of its own, and the tension stands in for the plain one at its
+	level (#3490).  One at a time, so a root's accidental is never taken for
+	a tension: ``A#11b9`` is A# eleven with a flat ninth.  What comes before a
+	tension has to be a seventh chord, its seventh read as the printer reads
+	it, without an added 6th: ``Cmb9`` and ``C6b9`` are refused rather than
+	read as chords that would print back as something else.  (``C#9`` never
+	gets here: the stacked reader takes it first, as the ninth chord on C#.)
+	"""
+
+	for level, plain, spellings in _TENSIONS:
+
+		for interval, spelling in spellings.items():
+
+			if not body.endswith(spelling):
+				continue
+
+			try:
+				chord, extensions, intervals = _parse_chord_body(body[:-len(spelling)])
+			except ValueError:
+				return None
+
+			decorated = ChordSpan(chord = chord, beats = 1, extensions = extensions, extension_intervals = intervals).decorated_intervals()
+			sevenths = ChordSpan(chord = chord, beats = 1, extensions = tuple(e for e in extensions if e != "6"), extension_intervals = intervals).decorated_intervals()
+
+			if not any(i in (9, 10, 11) for i in sevenths):
+				return None
+
+			own = chord.intervals()
+			upper = {i for i in decorated if i not in own and i != plain} | {interval}
+			stacked = [e for e in extensions if isinstance(e, int) and e in _NUMERIC_EXTENSIONS]
+			named = tuple(e for e in extensions if not (isinstance(e, int) and e in _NUMERIC_EXTENSIONS))
+
+			return chord, (max(stacked + [level]),) + named, tuple(sorted(upper))
+
+	return None
 
 
 def _raised_fifth (body: str) -> typing.Optional[typing.Tuple[subsequence.chords.Chord, typing.Tuple[typing.Any, ...], typing.Optional[typing.Tuple[int, ...]]]]:

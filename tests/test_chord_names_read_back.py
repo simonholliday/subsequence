@@ -192,3 +192,125 @@ def test_a_chart_spelling_prints_as_the_library_spells_it (name: str, printed: s
 
 	assert span.label() == printed
 	assert _sound(_read(printed)) == _sound(span)
+
+
+# ── A roman chord's label names the tensions it plays (#3490) ──
+
+_ROMAN_SCALES = [name for name, (_, qualities) in subsequence.intervals.SCALE_MODE_MAP.items() if qualities is not None]
+
+
+def _roman (degree: int, number: int, scale: str, key: str = "A") -> subsequence.progressions.ChordSpan:
+
+	return subsequence.progressions.progression([degree]).extend(number).resolve(key, scale).spans[0]
+
+
+def test_every_roman_chord_reads_back_as_the_chord_it_plays () -> None:
+
+	"""Every degree of every scale with chords, extended to 7, 9, 11 and 13, in two keys.
+
+	An extended roman takes the scale's own tensions (#3026), and the label printed only the
+	number, so 108 of the 308 in A read back as a different chord: V9 in A harmonic minor
+	plays E7b9 and printed ``E9``, which plays a natural ninth.
+	"""
+
+	misread: typing.List[str] = []
+	refused: typing.List[str] = []
+	checked = 0
+
+	for scale, degree, number, key in itertools.product(_ROMAN_SCALES, range(1, 8), (7, 9, 11, 13), ("A", "Eb")):
+
+		span = _roman(degree, number, scale, key)
+		label = span.label()
+		checked += 1
+
+		try:
+			back = _read(label)
+		except ValueError:
+			refused.append(label)
+			continue
+
+		if _sound(back) != _sound(span):
+			misread.append(f"{scale} {degree} {number} in {key}: {label} plays {span.decorated_intervals()}, reads {back.decorated_intervals()}")
+
+	assert misread == []
+	assert refused == []
+	assert checked >= 600
+
+
+@pytest.mark.parametrize("scale, degree, number, label, intervals", [
+	("harmonic_minor", 5, 9, "E7b9", [0, 4, 7, 10, 13]),
+	("harmonic_minor", 6, 9, "Fmaj7#9", [0, 4, 7, 11, 15]),
+	("harmonic_minor", 2, 9, "Bm7b5b9", [0, 3, 6, 10, 13]),
+	("harmonic_minor", 7, 9, "G#dim7b9", [0, 3, 6, 9, 13]),
+	("aeolian", 5, 9, "Em7b9", [0, 3, 7, 10, 13]),
+	("ionian", 4, 11, "Dmaj9#11", [0, 4, 7, 11, 14, 18]),
+	("ionian", 4, 13, "Dmaj13#11", [0, 4, 7, 11, 14, 18, 21]),
+	("aeolian", 1, 13, "Am11b13", [0, 3, 7, 10, 14, 17, 20]),
+	("harmonic_minor", 5, 13, "E7b9b13", [0, 4, 7, 10, 13, 20]),
+	("harmonic_minor", 5, 11, "E11b9", [0, 7, 10, 13, 17]),
+	("melodic_minor", 5, 13, "E9b13", [0, 4, 7, 10, 14, 20]),
+	("melodic_minor", 7, 13, "G#m7b5b9b11b13", [0, 3, 6, 10, 13, 16, 20]),
+	("mixolydian", 1, 13, "A13", [0, 4, 7, 10, 14, 21]),
+])
+def test_a_roman_label_names_its_altered_tensions (scale: str, degree: int, number: int, label: str, intervals: typing.List[int]) -> None:
+
+	"""The number is the highest plain tension, and each altered one follows it, as a chart writes it."""
+
+	span = _roman(degree, number, scale)
+
+	assert (span.label(), span.decorated_intervals()) == (label, intervals)
+
+
+def test_a_sharp_eleventh_keeps_the_third () -> None:
+
+	"""The lydian dominant, IV11 in melodic minor: D F# A C E G#.
+
+	A dominant 11th drops its third because the natural 11 sits a semitone above it.  The rule
+	dropped it under a sharp 11 as well, which sits a tone above, so the chord lost its F#.
+	"""
+
+	assert _roman(4, 11, "melodic_minor").decorated_intervals() == [0, 4, 7, 10, 14, 18]
+
+
+@pytest.mark.parametrize("name, intervals", [
+	("C7b9", [0, 4, 7, 10, 13]),
+	("C7#9", [0, 4, 7, 10, 15]),
+	("C7b9#9", [0, 4, 7, 10, 13, 15]),
+	("C9#11", [0, 4, 7, 10, 14, 18]),
+	("C13b9", [0, 4, 7, 10, 13, 21]),
+	("C7b9b13", [0, 4, 7, 10, 13, 20]),
+	("Cmaj9#11", [0, 4, 7, 11, 14, 18]),
+	("Cm7b5b9", [0, 3, 6, 10, 13]),
+	("Cm11b13", [0, 3, 7, 10, 14, 17, 20]),
+])
+def test_a_chart_symbol_with_altered_tensions_reads (name: str, intervals: typing.List[int]) -> None:
+
+	span = _read(name)
+
+	assert span.decorated_intervals() == intervals
+	assert span.label() == name
+
+
+@pytest.mark.parametrize("name, root, intervals", [
+	("C#9", 1, [0, 4, 7, 10, 14]),
+	("Db9", 1, [0, 4, 7, 10, 14]),
+	("Eb13", 3, [0, 4, 7, 10, 14, 21]),
+	("F#11", 6, [0, 7, 10, 14, 17]),
+	("Bb9", 10, [0, 4, 7, 10, 14]),
+])
+def test_a_sharp_or_flat_root_is_never_read_as_a_tension (name: str, root: int, intervals: typing.List[int]) -> None:
+
+	"""A guard: ``C#9`` is the ninth chord on C#, never C with a sharp ninth.  This passed before as well."""
+
+	span = _read(name)
+
+	assert (span.chord.root_pc, span.decorated_intervals()) == (root, intervals)
+
+
+@pytest.mark.parametrize("name", ["Cmb9", "C6b9", "Cm#11"])
+def test_a_tension_after_a_chord_with_no_seventh_is_refused (name: str) -> None:
+
+	"""Read as a triad with a tension, each would print back as a seventh chord, a different one."""
+
+	with pytest.raises(ValueError):
+		_read(name)
