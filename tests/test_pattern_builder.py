@@ -1430,14 +1430,20 @@ def test_arpeggio_span_non_positive_raises () -> None:
 		builder.arpeggio([60, 64, 67], span=-2, spacing=0.5)
 
 
-def test_arpeggio_negative_beat_raises () -> None:
+def test_arpeggio_negative_beat_counts_from_the_end_without_a_wall_of_notes () -> None:
 
-	"""A negative start beat raises rather than wrapping into a wall of notes."""
+	"""A negative start counts from the end, and fills only what is left of the pattern.
+
+	It raised, so that it could not wrap into a wall of notes.  Wrapping the start first,
+	as every verb does since 7200913, leaves no wall to fear: beat -1 of four is beat 3,
+	and the figure runs to the end (#3528).
+	"""
 
 	pattern, builder = _make_builder(length=4)
 
-	with pytest.raises(ValueError, match="beat must be >= 0"):
-		builder.arpeggio([60, 64, 67], beat=-1.0, spacing=0.5)
+	builder.arpeggio([60, 64, 67], beat=-1.0, spacing=0.5)
+
+	assert sorted(pattern.steps) == [72, 84]
 
 
 def test_arpeggio_chord_without_root_raises () -> None:

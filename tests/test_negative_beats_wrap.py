@@ -19,6 +19,7 @@ import mido
 import pytest
 
 import subsequence
+import subsequence.chords
 import subsequence.constants
 import subsequence.pattern
 import subsequence.pattern_builder
@@ -70,6 +71,7 @@ def _pulses (builder: subsequence.pattern_builder.PatternBuilder) -> typing.List
 	lambda p: p.sysex([1, 2], beat = -1),
 	lambda p: p.osc("/x", 1, beat = -1),
 	lambda p: p.motif(subsequence.Motif.cc(74, [64], beats = [0.0]), beat = -1),
+	lambda p: p.chord([60, 64, 67], beat = -1, duration = 1),
 ])
 def test_a_negative_beat_counts_from_the_end (place: typing.Callable[[typing.Any], None]) -> None:
 
@@ -82,6 +84,31 @@ def test_a_negative_beat_counts_from_the_end (place: typing.Callable[[typing.Any
 
 	assert placed, "the verb placed nothing at all"
 	assert set(placed) == {72}
+
+
+@pytest.mark.parametrize("verb, expected", [
+	("arpeggio", [72, 78, 84, 90]),
+	("broken_chord", [72, 78, 84, 90]),
+	("strum", [72, 78, 84]),
+])
+def test_a_figure_at_a_negative_beat_starts_that_far_from_the_end (verb: str, expected: typing.List[int]) -> None:
+
+	"""chord(), arpeggio() and broken_chord() refused a negative beat, which 7200913 meant every verb to take (#3528).
+
+	strum() already counted one from the end, so its case is a guard that held before as well.
+	"""
+
+	builder = _builder()
+	triad = subsequence.chords.parse_chord("C")
+
+	if verb == "arpeggio":
+		builder.arpeggio([60, 64, 67], beat = -1, span = 1, spacing = 0.25)
+	elif verb == "broken_chord":
+		builder.broken_chord(triad, root = 60, order = [0, 1, 2], beat = -1, span = 1, spacing = 0.25)
+	else:
+		builder.strum([60, 64, 67], beat = -1, spacing = 0.25, duration = 0.25)
+
+	assert _pulses(builder) == expected
 
 
 @pytest.mark.parametrize("length, beat, expected", [

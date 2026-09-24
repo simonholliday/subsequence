@@ -1821,7 +1821,7 @@ class PatternBuilder(
 			inversion: Chord inversion for the chord form (ignored when voice leading
 				is on).  Chord form only.
 			beat: Beat to start the figure at (default 0.0 = the start of the
-				pattern).  Use it to place an arpeggio over one progression chord.
+				pattern; a negative beat counts from the end).  Use it to place an arpeggio over one progression chord.
 			span: How many beats the figure fills, starting at ``beat`` (default: to
 				the end of the pattern).  Pass the chord's ``length`` from a
 				progression loop to confine the arpeggio to its slot.
@@ -1863,8 +1863,8 @@ class PatternBuilder(
 			```
 		"""
 
-		if beat < 0:
-			raise ValueError("arpeggio beat must be >= 0 - use a positive start within the pattern")
+		# A negative beat counts from the end, as in every verb; this refused one (#3005, #3528).
+		beat = self._wrapped_beat(beat)
 
 		if spacing <= 0:
 			raise ValueError("Spacing must be positive")
@@ -2101,7 +2101,7 @@ class PatternBuilder(
 				releases before the next chord begins.  Mutually exclusive
 				with ``sustain`` and ``legato``.
 			beat: Beat offset to place the chord at (default 0.0 = the start of the
-				pattern).  ``sustain`` and ``detached`` still measure their ring from the
+				pattern; a negative beat counts from the end).  ``sustain`` and ``detached`` still measure their ring from the
 				pattern length, not from ``beat`` - when placing several positioned chords
 				(e.g. over a progression) set ``duration`` explicitly instead.
 
@@ -2118,6 +2118,9 @@ class PatternBuilder(
 		set_count = (1 if sustain else 0) + (1 if legato is not None else 0) + (1 if detached is not None else 0)
 		if set_count > 1:
 			raise ValueError("sustain=, legato=, and detached= are mutually exclusive - use one or the other")
+
+		# A negative beat counts from the end, as in every verb (#3005, #3528).
+		beat = self._wrapped_beat(beat)
 
 		if beat != 0.0 and (sustain or detached is not None):
 			self._warn_positioned_articulation("chord", beat)
@@ -2346,7 +2349,8 @@ class PatternBuilder(
 				fresh random draw per note.
 			duration: Note duration in beats. Defaults to ``spacing``.
 			inversion: Specific chord inversion (ignored if voice leading is on).
-			beat: Beat to start the broken chord at (default 0.0).
+			beat: Beat to start the broken chord at (default 0.0; a negative beat
+				counts from the end).
 			span: How many beats to fill from ``beat`` (default: to the end of the
 				pattern).  Like ``arpeggio()``, use it to place a broken chord over
 				one chord of a progression.
