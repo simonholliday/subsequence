@@ -17,6 +17,9 @@ leaf, not an operator algebra.
 import dataclasses
 import typing
 
+import subsequence.chords
+import subsequence.intervals
+
 
 @dataclasses.dataclass(frozen=True)
 class Section:
@@ -64,6 +67,14 @@ class Section:
 
 		if not 0.0 <= float(self.energy) <= 1.0:
 			raise ValueError(f"Section {self.name!r} energy must be 0.0–1.0, got {self.energy!r}")
+
+		# A key or scale override is read now, as the composition's own is, rather
+		# than failing on every build of the section (#3561).
+		if self.key is not None:
+			subsequence.chords.key_name_to_pc(self.key)
+
+		if self.scale is not None:
+			subsequence.intervals.scale_pitch_classes(0, self.scale)
 
 
 def _coerce_section (element: typing.Any) -> Section:

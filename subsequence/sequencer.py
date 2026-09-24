@@ -13,6 +13,7 @@ import heapq
 import itertools
 import datetime
 import logging
+import math
 import os
 import queue
 import selectors
@@ -1133,9 +1134,10 @@ class Sequencer:
 		"""
 
 		# Validate BEFORE the Link branch — a zero/negative tempo must never
-		# be proposed to the whole Link session.
-		if bpm <= 0:
-			raise ValueError("BPM must be positive")
+		# be proposed to the whole Link session.  Nor an infinite one, or no
+		# number at all: set_bpm(inf) hung the loop, and OSC can send it (#3561).
+		if not math.isfinite(bpm) or bpm <= 0:
+			raise ValueError(f"BPM must be positive and finite - got {bpm!r}")
 
 		if self.clock_follow and self.running:
 			logger.info("BPM is controlled by external clock - set_bpm() ignored")
@@ -1219,8 +1221,8 @@ class Sequencer:
 			logger.info("Tempo is controlled by the Ableton Link session - set_target_bpm() ramp ignored; use set_bpm() to propose a new Link tempo")
 			return
 
-		if target_bpm <= 0:
-			raise ValueError("Target BPM must be positive")
+		if not math.isfinite(target_bpm) or target_bpm <= 0:
+			raise ValueError(f"Target BPM must be positive and finite - got {target_bpm!r}")
 
 		if bars <= 0:
 			raise ValueError("Transition bars must be positive")

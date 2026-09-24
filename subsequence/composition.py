@@ -1751,6 +1751,15 @@ class Composition:
 		if latency_ms < 0:
 			raise ValueError(f"latency_ms must be non-negative - got {latency_ms}")
 
+		# A key or scale the package cannot read was accepted here, and then failed
+		# on every build, logged rather than raised (#3561).  Each is read now, by
+		# the same code that reads it later, so the refusal names what was written.
+		if key is not None:
+			subsequence.chords.key_name_to_pc(key)
+
+		if scale is not None:
+			subsequence.intervals.scale_pitch_classes(0, scale)
+
 		self.output_device = output_device
 		self.bpm = bpm
 		self.time_signature = subsequence.metre.check(time_signature)
@@ -4197,6 +4206,11 @@ class Composition:
 		    is active.  The network-authoritative tempo is applied on the next
 		    pulse, so there may be a brief lag before the change is visible.
 		"""
+
+		# The quantum is checked before aalink is, so a bad one is refused whether or
+		# not Link is installed here (#3561).
+		if quantum is not None and not (math.isfinite(quantum) and quantum > 0):
+			raise ValueError(f"link(quantum=) is a positive number of beats - got {quantum!r}")
 
 		# Eagerly check that aalink is installed — fail early with a clear message.
 		subsequence.link_clock._require_aalink()

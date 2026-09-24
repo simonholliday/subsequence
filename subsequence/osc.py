@@ -292,7 +292,9 @@ class OscServer:
 		try:
 			bpm = int(args[0])
 			self._composition.set_bpm(bpm)
-		except (ValueError, TypeError):
+		# int() raises OverflowError for an infinite argument, which this missed,
+		# so /bpm inf was logged as a traceback rather than refused (#3561).
+		except (ValueError, TypeError, OverflowError):
 			logger.warning(f"Invalid OSC BPM argument: {args[0]}")
 
 	def _handle_mute (self, address: str, *args: typing.Any) -> None:

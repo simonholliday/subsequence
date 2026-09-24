@@ -5,6 +5,7 @@ the functions that work against it - ``scale_notes``, ``scale_pitch_classes``,
 ``quantize_pitch``, ``register_scale`` and friends.
 """
 
+import difflib
 import logging
 import typing
 
@@ -211,8 +212,12 @@ def scale_pitch_classes (key_pc: int, mode: str = "ionian") -> typing.List[int]:
 				f"'{mode}' is a chord or an interval, not a scale - to use notes like it "
 				"as a scale, register them under a name of your own with register_scale()"
 			)
+		# A misspelt name is the likelier mistake, so the nearest comes first (#3561).
+		nearest = difflib.get_close_matches(str(mode), sorted(SCALE_MODE_MAP), n = 1)
+		guess = f"Did you mean '{nearest[0]}'? " if nearest else ""
+
 		raise ValueError(
-			f"Unknown mode '{mode}'. Available: {sorted(SCALE_MODE_MAP)}. "
+			f"Unknown mode '{mode}'. {guess}Available: {sorted(SCALE_MODE_MAP)}. "
 			"Use register_scale() to add custom scales."
 		)
 
