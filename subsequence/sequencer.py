@@ -3299,7 +3299,9 @@ class Sequencer:
 		Send a MIDI panic message to all channels.
 		"""
 
-		logger.info("Panic: sending all notes off.")
+		# A render sends nothing: it closes the sounding notes in its file (#3530).
+		if not self.render_mode:
+			logger.info("Panic: sending all notes off.")
 		
 		# 1. Stop all tracked active notes manually
 		await self._stop_all_active_notes()

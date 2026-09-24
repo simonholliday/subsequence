@@ -133,6 +133,19 @@ def _derive_label (action: typing.Callable[[], None]) -> str:
 	return "<action>"
 
 
+# Methods a Composition used to have, and what replaced them.  An AttributeError
+# that names only the method leaves an upgrading piece guessing, as a bare
+# TypeError would have for harmony(gravity=) (#3530).
+_RETIRED_METHODS: typing.Dict[str, str] = {
+	"web_ui": (
+		"composition.web_ui() was retired in 0.7.0, with the browser dashboard it served. "
+		"composition.display() shows the playing state in the terminal (display(grid=True) "
+		"adds the pattern grid), and Superconductor, a touchscreen control surface for "
+		"Subsequence, is at https://github.com/simonholliday/superconductor."
+	),
+}
+
+
 class _Keep:
 
 	"""Sentinel for a ``harmony()`` argument that was not given.
@@ -1441,7 +1454,9 @@ async def run_until_stopped (sequencer: subsequence.sequencer.Sequencer) -> None
 	Run the sequencer until a stop signal is received.
 	"""
 
-	logger.info("Playing sequence. Press Ctrl+C to stop.")
+	# A render plays nothing live, and Ctrl+C is not how it ends (#3530).
+	if not sequencer.render_mode:
+		logger.info("Playing sequence. Press Ctrl+C to stop.")
 
 	await sequencer.start()
 
@@ -6681,6 +6696,19 @@ class Composition:
 
 		return self._clock_follow or any(cf for _, _, cf in self._additional_inputs)
 
+
+	# Hidden from mypy on purpose: a __getattr__ it could see would make any
+	# attribute name valid on a Composition, typos included.
+	if not typing.TYPE_CHECKING:
+
+		def __getattr__ (self, name: str) -> typing.Any:
+
+			"""Say what replaced a retired method, not only that it is missing (#3530)."""
+
+			if name in _RETIRED_METHODS:
+				raise AttributeError(_RETIRED_METHODS[name])
+
+			raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
 	def play (self) -> None:
 

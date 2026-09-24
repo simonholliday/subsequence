@@ -51,10 +51,16 @@ def check_midi_range (value: typing.Any, what: str, where: str, low: int = 0, hi
 		raise ValueError(f"{where}: {what} must be a whole number, got {value!r}") from None
 
 	if not low <= number <= high:
-		raise ValueError(
-			f"{where}: {what} must be {low}–{high}, got {number}. "
-			f"MIDI cannot carry it, so it would be dropped at every send."
-		)
+
+		# MIDI carries a 0 well enough: the velocity range alone narrows its floor to 1,
+		# because a note-on at velocity 0 is a note-off.  This said MIDI could not carry
+		# it (#3530).
+		if number == 0 and low == 1:
+			reason = "A note-on at velocity 0 is a note-off, so the note would never sound."
+		else:
+			reason = "MIDI cannot carry it, so it would be dropped at every send."
+
+		raise ValueError(f"{where}: {what} must be {low}–{high}, got {number}. {reason}")
 
 	return number
 
