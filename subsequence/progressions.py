@@ -346,8 +346,9 @@ class RomanChord:
 		if qualities is None:
 			raise ValueError(
 				f"Scale {mode!r} has no chord qualities defined, so degree "
-				f"{self.degree} cannot be inferred. Use register_scale(..., "
-				"qualities=[...]) or write the chord name explicitly."
+				f"{self.degree} cannot be inferred. Write the chord name explicitly, or "
+				"register the scale's intervals under a name of your own with "
+				"register_scale(name, intervals, qualities=[...])."
 			)
 
 		if self.degree > len(qualities):

@@ -50,9 +50,10 @@ def diatonic_chords (key: str, mode: str = "ionian") -> typing.List[subsequence.
 
 	if qualities is None:
 		raise ValueError(
-			f"Mode {mode!r} has no chord qualities defined. "
-			"Use register_scale(..., qualities=[...]) to add them, "
-			"or use p.snap_to_scale() for pitch snapping without harmony."
+			f"Mode {mode!r} has no chord qualities defined. To build chords on it, "
+			"register its intervals under a name of your own with "
+			"register_scale(name, intervals, qualities=[...]); for notes alone, "
+			"p.snap_to_scale() and scale_notes() take it as it is."
 		)
 	key_pc = subsequence.chords.key_name_to_pc(key)
 	scale_pcs = subsequence.intervals.scale_pitch_classes(key_pc, mode)

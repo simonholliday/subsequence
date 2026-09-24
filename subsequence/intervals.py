@@ -120,9 +120,14 @@ MELODIC_MINOR_QUALITIES: typing.List[str] = [
 
 
 # Map mode/scale names to (interval_key, qualities) for use by helpers.
-# qualities is None for scales without predefined chord mappings — these
+# qualities is None for scales without predefined chord mappings - these
 # can still be used with scale_pitch_classes() and p.snap_to_scale(), but not
 # with diatonic_chords() or composition.harmony().
+#
+# Every scale INTERVAL_DEFINITIONS names is here.  Seventeen were not, and
+# _BUILTIN_SCALE_NAMES reserved them all the same, so "whole_tone" could
+# neither be used as a mode nor registered as one (#3044);
+# tests/test_scales_as_modes.py keeps the two tables in step.
 SCALE_MODE_MAP: typing.Dict[str, typing.Tuple[str, typing.Optional[typing.List[str]]]] = {
 	# -- Western diatonic modes (7-note, with chord qualities) --
 	"ionian":         ("major_ionian",     IONIAN_QUALITIES),
@@ -144,6 +149,25 @@ SCALE_MODE_MAP: typing.Dict[str, typing.Tuple[str, typing.Optional[typing.List[s
 	"egyptian":       ("egyptian",         None),
 	"major_pentatonic": ("major_pentatonic", None),
 	"minor_pentatonic": ("minor_pentatonic", None),
+	# -- The interval table's own spellings of the modes above, with their chords --
+	"major_ionian":   ("major_ionian",     IONIAN_QUALITIES),
+	"dorian_mode":    ("dorian_mode",      DORIAN_QUALITIES),
+	"phrygian_mode":  ("phrygian_mode",    PHRYGIAN_QUALITIES),
+	"natural_minor":  ("natural_minor",    AEOLIAN_QUALITIES),
+	"locrian_mode":   ("locrian_mode",     LOCRIAN_QUALITIES),
+	# -- The interval table's other scales (no chord qualities yet) --
+	"augmented":         ("augmented",         None),
+	"blues_scale":       ("blues_scale",       None),
+	"chromatic":         ("chromatic",         None),
+	"double_harmonic":   ("double_harmonic",   None),
+	"enigmatic":         ("enigmatic",         None),
+	"hungarian_minor":   ("hungarian_minor",   None),
+	"lydian_dominant":   ("lydian_dominant",   None),
+	"minor_blues":       ("minor_blues",       None),
+	"neapolitan_major":  ("neapolitan_major",  None),
+	"phrygian_dominant": ("phrygian_dominant", None),
+	"superlocrian":      ("superlocrian",      None),
+	"whole_tone":        ("whole_tone",        None),
 }
 
 # Backwards-compatible alias.
@@ -182,6 +206,11 @@ def scale_pitch_classes (key_pc: int, mode: str = "ionian") -> typing.List[int]:
 	"""
 
 	if mode not in SCALE_MODE_MAP:
+		if mode in INTERVAL_DEFINITIONS:
+			raise ValueError(
+				f"'{mode}' is a chord or an interval, not a scale - to use notes like it "
+				"as a scale, register them under a name of your own with register_scale()"
+			)
 		raise ValueError(
 			f"Unknown mode '{mode}'. Available: {sorted(SCALE_MODE_MAP)}. "
 			"Use register_scale() to add custom scales."
