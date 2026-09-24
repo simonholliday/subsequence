@@ -207,8 +207,13 @@ class PatternAlgorithmicMixin:
 			raise TypeError(f"velocity must be a number or a (low, high) pair, got bool: {velocity!r}")
 		if isinstance(velocity, (int, float)):
 			return int(velocity)
+		# 0.6.6 documented ghost_fill(velocity=lambda i: ...); a function of the step
+		# goes to velocities= now, and the refusal says so (#3535).  Inside the raise,
+		# because the annotation leaves no type a function could be, and mypy would
+		# call a statement testing for one unreachable.
 		raise TypeError(
 			f"velocity must be a number or a (low, high) pair, got {type(velocity).__name__}: {velocity!r}"
+			+ (" - a value per step goes to velocities=, which takes a function of the step where the verb offers one" if callable(velocity) else "")
 		)
 
 	def _velocities_at (self, velocities: typing.Any, index: int) -> subsequence.declarations.VelocityValue:

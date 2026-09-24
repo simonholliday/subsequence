@@ -96,3 +96,12 @@ def test_a_tuple_that_is_not_a_pair_is_refused_naming_both_forms () -> None:
 
 	with pytest.raises(ValueError, match=r"velocities= takes a list, one value per step or row, or what velocity= takes"):
 		_builder().ghost_fill(60, density=1.0, velocities=(40, 50, 60), seed=1)
+
+
+def test_a_function_given_to_velocity_is_pointed_at_velocities () -> None:
+
+	"""0.6.6 documented ghost_fill(velocity=lambda i: ...), and the refusal did not say where a function goes (#3535)."""
+
+	with pytest.raises(TypeError, match=r"got function: .* - a value per step goes to velocities="):
+		_builder().ghost_fill(60, density=1.0, velocity=lambda i: 20 + i)
+
