@@ -59,6 +59,15 @@ CONDUCTOR = -1
 _LOOP_STOP_GRACE_SECONDS = 2.0
 _SCHEDULED_CALL_GRACE_SECONDS = 2.0
 
+# How long a thread that is computing may keep the interpreter while another
+# waits for it, while a piece plays live.  Python's default is 5 ms, and a
+# synchronous scheduled function computing on its thread held the clock waiting
+# for its turn: up to 9.5 ms late, where idle the clock is never more than about
+# 0.15 ms out.  At 0.2 ms the clock stayed within 0.2 ms beside a busy thread,
+# which paid about 2% of its speed for it; two busy threads sharing the
+# interpreter paid under 4% (measured, #3552).
+_LIVE_SWITCH_INTERVAL_SECONDS = 0.0002
+
 
 class _ScheduledCallThreads (concurrent.futures.Executor):
 
@@ -853,6 +862,9 @@ class Sequencer:
 		# The threads this run's synchronous scheduled functions run on, made on
 		# first use and let go by stop() (#3553).
 		self._scheduled_calls: typing.Optional[_ScheduledCallThreads] = None
+		# The switch interval start() found and the one it set in its place, while
+		# a live run holds it shortened, so stop() can put back what it found (#3552).
+		self._switch_interval: typing.Optional[typing.Tuple[float, float]] = None
 		self._bpm_transition: typing.Optional[BpmTransition] = None
 		self._spin_wait: bool = spin_wait
 		# Spin threshold: sleep all the way to this many seconds before the target,
@@ -2002,6 +2014,9 @@ class Sequencer:
 		(after the event loop is running) so that call_soon_threadsafe works.
 		When ``clock_output`` is True, a MIDI Start (0xFA) message is sent before
 		the first clock tick so connected hardware begins from the top.
+		Playing live, it shortens Python's thread switch interval to 0.2 ms,
+		so a thread that is computing cannot keep the clock waiting, and
+		``stop()`` puts back the interval it found.
 		"""
 
 		if self.running:
@@ -2019,6 +2034,10 @@ class Sequencer:
 
 		# Store the event loop for thread-safe scheduling (e.g., trigger() from user threads)
 		self._event_loop = asyncio.get_running_loop()
+
+		# After everything above that can refuse to start, so a refusal leaves
+		# the interval as it found it.
+		self._shorten_switch_interval()
 
 		self._transport_held = self.clock_follow
 		self.running = True
@@ -2041,6 +2060,38 @@ class Sequencer:
 			self._scheduled_calls = _ScheduledCallThreads()
 
 		return self._scheduled_calls
+
+	def _shorten_switch_interval (self) -> None:
+
+		"""Give the clock its turn within 0.2 ms of a thread that is computing, while playing live (#3552).
+
+		A smaller interval somebody set is kept, and a render, which keeps no
+		time, leaves it alone.  The setting belongs to the whole process, so
+		what was found is kept for ``stop()`` to put back.
+		"""
+
+		found = sys.getswitchinterval()
+
+		if self.render_mode or found <= _LIVE_SWITCH_INTERVAL_SECONDS:
+			return
+
+		sys.setswitchinterval(_LIVE_SWITCH_INTERVAL_SECONDS)
+
+		# What Python reads back, not the constant: it keeps whole microseconds.
+		self._switch_interval = (found, sys.getswitchinterval())
+
+	def _restore_switch_interval (self) -> None:
+
+		"""Put back the switch interval ``start()`` found, unless something has changed it since."""
+
+		if self._switch_interval is None:
+			return
+
+		found, shortened = self._switch_interval
+		self._switch_interval = None
+
+		if sys.getswitchinterval() == shortened:
+			sys.setswitchinterval(found)
 
 	async def stop (self) -> None:
 
@@ -2101,6 +2152,9 @@ class Sequencer:
 				# (pending-send cancellation, panic, port close, recording
 				# save) is exactly what a dying session needs most.
 				logger.exception("Sequencer loop task ended with an exception - continuing shutdown")
+
+		# The clock has stopped, so nothing is waiting on a busy thread any more.
+		self._restore_switch_interval()
 
 		# Cancel any latency-compensation deferrals still in flight.  Must happen
 		# after the loop has stopped producing (await self.task) and before

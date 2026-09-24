@@ -5359,7 +5359,10 @@ class Composition:
 		Register a custom function to run on a repeating beat-based cycle.
 
 		Subsequence automatically runs synchronous functions in a thread pool
-		so they don't block the timing-critical MIDI clock. Async functions
+		so they don't block the timing-critical MIDI clock.  While the piece
+		plays, it shortens Python's thread switch interval
+		(``sys.setswitchinterval()``) to 0.2 ms, from a default of 5 ms, so a
+		function busy computing does not make the notes late. Async functions
 		are run directly on the event loop.  In ``render()`` each call finishes
 		before the render moves on, plain or async, so a function that feeds
 		the patterns renders the same file on every run with the same seed.
