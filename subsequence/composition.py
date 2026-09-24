@@ -1499,12 +1499,19 @@ async def run_until_stopped (sequencer: subsequence.sequencer.Sequencer) -> None
 			)
 
 	assert sequencer.task is not None, "Sequencer task should exist after start()"
-	await asyncio.wait(
-		[asyncio.create_task(stop_event.wait()), sequencer.task],
-		return_when = asyncio.FIRST_COMPLETED
-	)
 
-	await sequencer.stop()
+	try:
+		await asyncio.wait(
+			[asyncio.create_task(stop_event.wait()), sequencer.task],
+			return_when = asyncio.FIRST_COMPLETED
+		)
+
+	finally:
+		# Every way out stops the sequencer, which releases what is sounding
+		# and writes the recording.  A SystemExit from a pattern or a scheduled
+		# function leaves the loop and has this run cancelled, and the stop that
+		# followed the wait never ran: a held note kept sounding (#3551).
+		await sequencer.stop()
 
 
 @dataclasses.dataclass
@@ -4630,6 +4637,8 @@ class Composition:
 
 		* ``SyntaxError`` if ``source`` fails to compile.
 		* The exception raised inside ``exec()`` for any runtime error.
+		* ``RuntimeError`` if the source calls ``sys.exit()`` while the
+		  composition plays: a live source cannot end the performance.
 		* ``RuntimeError`` if called from inside the composition's own
 		  event loop thread (would deadlock - see Threading below).
 
@@ -4764,6 +4773,15 @@ class Composition:
 		try:
 			with subsequence.live_server.stop_signals_reach_the_code():
 				exec(compiled, namespace)
+		except SystemExit as exit_request:
+			# A live source cannot end the performance, any more than a line typed
+			# at the REPL can: its sys.exit() is its own failure.  Let through, it
+			# left the loop with notes sounding (#3551).
+			self._roll_back_pending(before)
+			raise RuntimeError(
+				f"{source_key} called sys.exit(), which a live source cannot do: it would end "
+				"the performance.  Stop the piece with Ctrl+C."
+			) from exit_request
 		except BaseException:
 			self._roll_back_pending(before)
 			raise

@@ -47,6 +47,28 @@ async def _watching (tmp_path: pathlib.Path, source: str) -> typing.Tuple[subseq
 	return composition, live_file
 
 
+@pytest.mark.asyncio
+async def test_a_save_that_calls_sys_exit_is_that_save_s_failure (patch_midi: None, tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture) -> None:
+
+	"""A watched file's sys.exit() left the loop and ended the performance with notes sounding (#3551).
+
+	It is the save's failure, as SystemExit is at the REPL: logged, and the parts left as they were.
+	"""
+
+	composition, live_file = await _watching(tmp_path, _part("keeper"))
+	assert composition._live_reloader is not None
+
+	live_file.write_text("import sys\nsys.exit(0)\n")
+
+	try:
+		await composition._live_reloader._reload_async()
+	except SystemExit:
+		pytest.fail("the save's sys.exit() escaped the watcher, and would have ended the performance")
+
+	assert "keeper" in composition._running_patterns
+	assert "called sys.exit()" in caplog.text
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="sends a signal to its own process")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("number", [signal.SIGINT, signal.SIGTERM], ids=["SIGINT", "SIGTERM"])

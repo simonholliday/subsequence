@@ -263,6 +263,34 @@ async def test_load_patterns_post_play_runtime_error_propagates (patch_midi: Non
 
 
 @pytest.mark.asyncio
+async def test_load_patterns_post_play_sys_exit_is_the_source_s_failure (patch_midi: None) -> None:
+
+	"""A source's sys.exit() while playing comes back to the caller as an error, and the parts stay (#3551).
+
+	It used to leave the loop as a SystemExit, ending the performance with notes sounding.
+	"""
+
+	composition = subsequence.Composition(bpm=120, output_device="Dummy MIDI")
+
+	composition.load_patterns(
+		"@composition.pattern(channel=1, beats=4)\n"
+		"def keeper (p): pass\n"
+	)
+
+	composition._sequencer._event_loop = asyncio.get_event_loop()
+	await composition._activate_new_pending_patterns()
+
+	with pytest.raises(RuntimeError, match=r"upload called sys\.exit\(\)"):
+		await asyncio.to_thread(
+			composition.load_patterns,
+			"import sys\nsys.exit(0)\n",
+			"upload",
+		)
+
+	assert "keeper" in composition._running_patterns
+
+
+@pytest.mark.asyncio
 async def test_load_patterns_refuses_on_loop_thread (patch_midi: None) -> None:
 
 	"""Calling from inside the composition's own loop raises rather than deadlocking."""

@@ -1937,6 +1937,11 @@ class Sequencer:
 				# `except Exception` missed it and the whole cleanup below
 				# was skipped.
 				logger.info("Sequencer loop task cancelled - continuing shutdown")
+			except (SystemExit, KeyboardInterrupt) as ended:
+				# The loop ended the run this way, and asyncio has already carried it
+				# out of the loop; awaiting the task raises it again here, and it
+				# skipped the panic and the recording below (#3551).
+				logger.info("Sequencer loop ended by %s - continuing shutdown", type(ended).__name__)
 			except Exception:
 				# A crashed loop must not abort shutdown - the cleanup below
 				# (pending-send cancellation, panic, port close, recording
