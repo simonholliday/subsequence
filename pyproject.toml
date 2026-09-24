@@ -25,6 +25,7 @@ dependencies = [
 ]
 
 [project.urls]
+Documentation = "https://subsystem.co/subsequence/"
 Repository = "https://github.com/simonholliday/subsequence"
 Issues = "https://github.com/simonholliday/subsequence/issues"
 
