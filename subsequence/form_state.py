@@ -559,6 +559,48 @@ class FormState:
 			scale = self._current.scale,
 		)
 
+	def next_section_info (self) -> typing.Optional[SectionInfo]:
+
+		"""The section the form has picked to follow the current one, or None where nothing does.
+
+		The pick is made as each section starts (``_pick_next``) and is what
+		``next_section`` names; ``form_next()`` replaces it.  A graph or generator
+		form has no layout past the playhead for :meth:`section_info_at_bar` to
+		read, but it has this one section beyond it, which is what the harmony
+		window needs to name the chord across an edge (#3526).  ``None`` at the
+		end of a finite form, or of a generator with nothing left.
+		"""
+
+		name = self._next_section_name
+
+		if self._finished or self._current is None or name is None:
+			return None
+
+		section: typing.Optional[subsequence.forms.Section]
+
+		if self._graph is not None:
+			assert self._section_bars is not None
+			section = subsequence.forms.Section(name = name, bars = self._section_bars[name])
+		elif self._sequence is not None:
+			position = self._queued_position if self._queued_position is not None else self._sequence_next_position()
+			section = self._sequence[position] if position is not None else self._current
+		else:
+			section = self._peeked if self._peeked is not None else self._current
+
+		if section is None or section.name != name:
+			return None
+
+		return SectionInfo(
+			name = section.name,
+			bar = 0,
+			bars = section.bars,
+			index = self._section_index + 1,
+			next_section = None,
+			energy = section.energy,
+			key = section.key,
+			scale = section.scale,
+		)
+
 	def section_info_at_bar (self, bar: int) -> typing.Optional[SectionInfo]:
 
 		"""Return the section covering a 1-based GLOBAL bar, or ``None``.

@@ -13,8 +13,12 @@ verse's own first chord, where **Am** actually followed.  Exactly the
 review's numbers.
 
 Past the edge the window reports the next section's FIRST chord and nothing
-further, and `None` where the next section is genuinely unknowable — a graph
-or generator form, whose layout past the playhead is not decided yet.
+further.  It first reported `None` for a graph or generator form, whose layout
+past the playhead it took to be undecided.  It is not: each section's successor
+is picked as the section starts, and `p.section.next_section` names it.  So a
+part anticipating the next chord went silent at every edge of a graph form, the
+one place anticipation is for (#3526).  The window now reads the pick, and
+`None` is left for where nothing follows.
 """
 
 import pathlib
@@ -151,41 +155,125 @@ def test_a_looping_form_sees_round_to_its_first_section (
 	)
 
 
-def test_a_graph_form_admits_it_does_not_know (
+def _bars (
+	comp: "subsequence.Composition", bars: int, tmp_path: pathlib.Path
+) -> typing.List[typing.Tuple[typing.Optional[str], int, int, typing.Optional[str], typing.Optional[str]]]:
+
+	"""Render, and report (section, bar in it, its bars, chord, next_chord) as each bar's pattern saw it."""
+
+	seen: typing.List[typing.Tuple[typing.Optional[str], int, int, typing.Optional[str], typing.Optional[str]]] = []
+
+	@comp.pattern(channel = 1, bars = 1)
+	def melody (p: typing.Any) -> None:
+		chord = None if p.harmony is None or p.harmony.chord is None else p.harmony.chord.name()
+		nxt = None if p.harmony is None or p.harmony.next_chord is None else p.harmony.next_chord.name()
+		if p.section is None:
+			seen.append((None, 0, 0, chord, nxt))
+		else:
+			seen.append((p.section.name, p.section.bar, p.section.bars, chord, nxt))
+		p.note(pitch = 60, beat = 0, velocity = 100, duration = 1)
+
+	comp.render(bars = bars, filename = str(tmp_path / "w.mid"))
+
+	return seen
+
+
+def _edges_that_name_what_follows (seen: typing.List[typing.Tuple[typing.Any, ...]]) -> typing.List[typing.Tuple[int, typing.Any, typing.Any]]:
+
+	"""Every section's last bar that another section follows, as (bar, the next chord it read, the chord the next bar played).
+
+	Where the form ends there is no next section, None is right, and the harmony holds its last chord.
+	"""
+
+	return [
+		(index, row[4], seen[index + 1][3])
+		for index, row in enumerate(seen[:-1])
+		if row[0] is not None and row[1] == row[2] - 1 and seen[index + 1][0] is not None
+	]
+
+
+FORMS: typing.Dict[str, typing.Callable[[], typing.Any]] = {
+	# A verse that can only go to the chorus, and back.
+	"graph, one way": lambda: {"verse": (2, [("chorus", 1)]), "chorus": (2, [("verse", 1)])},
+	# A real choice, re-picked at every section, and a section that can follow itself.
+	"graph, a choice": lambda: {
+		"verse": (2, [("chorus", 2), ("bridge", 1), ("verse", 1)]),
+		"chorus": (2, [("verse", 1), ("bridge", 1)]),
+		"bridge": (1, [("verse", 1)]),
+	},
+	# One-bar sections: the pick and the reading fall in the same bar.
+	"graph, one bar each": lambda: {"verse": (1, [("chorus", 1)]), "chorus": (1, [("bridge", 1), ("verse", 1)]), "bridge": (1, [("verse", 1)])},
+	"generator": lambda: (section for section in [("verse", 2), ("chorus", 1), ("bridge", 2), ("verse", 1), ("chorus", 2)] * 4),
+	"list": lambda: [("verse", 2), ("chorus", 1), ("bridge", 2), ("verse", 1), ("chorus", 2)],
+}
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+@pytest.mark.parametrize("form", sorted(FORMS))
+def test_a_section_s_last_bar_names_the_chord_the_next_bar_plays (
+	form: str, seed: int, patch_midi: None, tmp_path: pathlib.Path
+) -> None:
+
+	"""Whatever the form, next_chord at a section's last bar is what the next bar plays.
+
+	A chord a bar, so the one change after a section's last bar is the next
+	section's first chord.  A graph or generator form reported None here (#3526).
+	"""
+
+	comp = subsequence.Composition(key = "C", bpm = 480, seed = seed)
+	layout = FORMS[form]()
+	comp.form(layout, start = "verse") if isinstance(layout, dict) else comp.form(layout)
+
+	for name, chords in (("verse", ["C", "F"]), ("chorus", ["Am", "G"]), ("bridge", ["Dm", "E"])):
+		if form != "graph, one way" or name != "bridge":
+			comp.section_chords(name, chords)
+
+	seen = _bars(comp, 12, tmp_path)
+	edges = _edges_that_name_what_follows(seen)
+
+	assert len(edges) >= 3, f"too few section edges to judge: {seen}"
+	assert [(index, read) for index, read, played in edges if read != played] == [], (
+		f"at these last bars next_chord did not name what the next bar played: {edges}.  The whole reading was {seen}"
+	)
+
+
+def test_the_end_of_a_graph_form_still_says_nothing_follows (
 	patch_midi: None, tmp_path: pathlib.Path
 ) -> None:
 
-	"""A graph's next section is not decided by layout, so the window says None.
+	"""The verse's last bar names the outro's first chord, and the outro, with nowhere to go, ends the form: its last bar's next_chord is None."""
 
-	Guessing here would be worse than silence: the window would name a chord
-	the form may never reach.
+	comp = subsequence.Composition(key = "C", bpm = 480, seed = 1)
+	comp.form({"verse": (2, [("outro", 1)]), "outro": (2, None)}, start = "verse")
+	comp.section_chords("verse", ["C", "F"])
+	comp.section_chords("outro", ["Am", "G"])
+
+	seen = _bars(comp, 4, tmp_path)
+
+	assert [row[0] for row in seen[:4]] == ["verse", "verse", "outro", "outro"], seen
+	assert seen[1][4] == "Am" and seen[3][4] is None, seen
+
+
+def test_the_pick_is_given_only_for_the_section_whose_edge_it_is (patch_midi: None) -> None:
+
+	"""The window made in one section, read after a live jump or a re-bind, gets None, not another section's pick.
+
+	No render reaches that moment, between the form moving and the harmony clock next firing, so
+	this asks the composition directly.
 	"""
 
-	comp = subsequence.Composition(key = "C", bpm = 480, seed = 5)
+	comp = subsequence.Composition(key = "C", bpm = 120)
 	comp.form({"verse": (2, [("chorus", 1)]), "chorus": (2, [("verse", 1)])}, start = "verse")
 	comp.section_chords("verse", ["C", "F"])
 	comp.section_chords("chorus", ["Am", "G"])
 
-	seen = _window_per_bar(comp, 4, tmp_path)
+	info = comp.form_state.get_section_info()
+	here = (comp._form_generation, info.index)
 
-	# Take the FIRST run of verse bars, not every verse bar in the reading: a
-	# graph form comes back round, so the last "verse" row is the second
-	# occurrence's first bar, which legitimately sees F next.
-	verse = []
-	for row in seen:
-		if row[0] == "verse":
-			verse.append(row)
-		elif verse:
-			break
-
-	assert verse, f"the verse never played: {seen}"
-
-	last = verse[-1]
-
-	assert last[2] is None, (
-		f"a graph form's window named {last[2]} as the next chord, which its "
-		f"layout cannot know.  The whole reading was {seen}"
-	)
+	assert info.next_section == "chorus"
+	assert comp._following_section_progression(here) is comp._section_progressions["chorus"]
+	assert comp._following_section_progression((comp._form_generation, info.index + 1)) is None
+	assert comp._following_section_progression((comp._form_generation + 1, info.index)) is None
 
 
 def test_a_one_bar_next_section_is_seen_as_itself (

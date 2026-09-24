@@ -611,6 +611,9 @@ async def schedule_harmonic_clock (
 	get_section_progression_at: typing.Optional[
 		typing.Callable[[int], typing.Optional["Progression"]]
 	] = None,
+	get_following_section_progression: typing.Optional[
+		typing.Callable[[typing.Any], typing.Optional["Progression"]]
+	] = None,
 	get_pinned: typing.Optional[typing.Callable[[int], typing.Optional[typing.Any]]] = None,
 	cadence_requests: typing.Optional[typing.Dict[int, str]] = None,
 	resolve_cadence: typing.Optional[typing.Callable[[str], typing.List[subsequence.chords.Chord]]] = None,
@@ -648,9 +651,11 @@ async def schedule_harmonic_clock (
 	(#3084).  ``get_section_progression_at``
 	answers the same question for the section owning a 1-based global bar, and
 	is what lets the window see one chord past a section's edge (#3086).  It
-	returns ``None`` for graph and generator forms, whose layout is not known
-	ahead of the playhead, and the window then reports ``None`` rather than
-	guessing.
+	returns ``None`` for graph and generator forms, which have no layout ahead
+	of the playhead; for those, ``get_following_section_progression`` takes the
+	entry of the section whose edge it is and answers with the section the form
+	has picked to follow it, the one ``p.section.next_section`` names, for as
+	long as the form is still in that section (#3526).
 
 	``cadence_requests`` is the request-hook seam: a mutable ``{bar: name}``
 	dict (shared with ``Composition.request_cadence``) the live walk steers
@@ -827,6 +832,7 @@ async def schedule_harmonic_clock (
 		anchor: float,
 		loops: bool,
 		section_end: typing.Optional[float],
+		entry: typing.Any = None,
 	) -> typing.Callable[[float], typing.Optional[typing.Tuple[float, float, typing.Any]]]:
 
 		"""A section's spans, stopping at the section's own edge (#3086).
@@ -840,9 +846,13 @@ async def schedule_harmonic_clock (
 
 		Past the edge this reports the next section's FIRST span and nothing
 		further: that is what anticipation needs, and it is the most the clock
-		can honestly claim.  Where the next section is unknowable (a graph or
-		generator form) or plays live chords, it reports ``None`` - the caller
-		then says "not known" rather than something false.
+		can honestly claim.  Where nothing follows (the end of a finite form) or
+		the next section plays live chords, it reports ``None`` - the caller then
+		says "not known" rather than something false.  A graph or generator form
+		has no layout to look the next section up in, but it has picked it: past
+		the edge of the section entered as *entry*, the window reads that pick,
+		as ``p.section.next_section`` does.  It used to report ``None`` there, and
+		a part anticipating the next chord went silent at every edge (#3526).
 		"""
 
 		inner = _data_future(progression, anchor, loops)
@@ -854,10 +864,13 @@ async def schedule_harmonic_clock (
 
 			if beat >= section_end - 1e-9:
 
-				if get_section_progression_at is None:
-					return None
+				following = (
+					get_section_progression_at(int(section_end // bar_beats) + 1)
+					if get_section_progression_at is not None else None
+				)
 
-				following = get_section_progression_at(int(section_end // bar_beats) + 1)
+				if following is None and get_following_section_progression is not None:
+					following = get_following_section_progression(entry)
 
 				if following is None:
 					return None
@@ -1033,6 +1046,7 @@ async def schedule_harmonic_clock (
 
 					horizon.set_future(_section_future(
 						section_progression, state["section_anchor"], loops, state["section_end"],
+						state["last_section_index"],
 					))
 
 			# Priority 2: the composition-bound progression.
@@ -2188,6 +2202,32 @@ class Composition:
 
 		return key, scale
 
+	def _following_section_progression (self, entry: typing.Any) -> typing.Optional[Progression]:
+
+		"""The progression of the section the form has picked to follow the one entered as *entry*.
+
+		What the harmony window reads past a section's edge in a graph or
+		generator form, which has no layout to look the next section up in but
+		has picked it, as each section starts: ``p.section.next_section`` names it
+		(#3526).  *entry* is the ``(form generation, section index)`` the clock
+		entered the section with, and the pick is given only while the form is
+		still there.  After a live jump or a re-bind, until the clock next fires,
+		the window made in the old section could be read, and the new section's
+		pick would be a chord for somewhere else.
+		"""
+
+		if self._form_state is None:
+			return None
+
+		info = self._form_state.get_section_info()
+
+		if info is None or (self._form_generation, info.index) != entry:
+			return None
+
+		following = self._form_state.next_section_info()
+
+		return None if following is None else self._resolve_section_progression(following)
+
 	def _resolve_section_progression (
 		self,
 		info: "subsequence.form_state.SectionInfo",
@@ -2650,9 +2690,8 @@ class Composition:
 			"""The progression bound to the section owning a 1-based global bar.
 
 			``section_info_at_bar`` answers for sequence forms only and returns
-			``None`` for graphs and generators, whose layout past the playhead
-			is not decided yet - which is exactly the case where the window
-			should admit it does not know (#3086).
+			``None`` for graphs and generators, which have no layout past the
+			playhead; _following_section_progression answers for those.
 			"""
 			if self._form_state is None:
 				return None
@@ -2681,6 +2720,7 @@ class Composition:
 			get_bound_progression = lambda: self._bound_progression,
 			get_section_progression = _get_section_progression,
 			get_section_progression_at = _get_section_progression_at,
+			get_following_section_progression = self._following_section_progression,
 			get_pinned = self._resolve_pin,
 			cadence_requests = self._cadence_requests,
 			resolve_cadence = _resolve_cadence_formula,
