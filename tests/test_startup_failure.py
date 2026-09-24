@@ -18,6 +18,11 @@ blind `stty sane`.
 The services now start inside the `try`, `web_ui()` takes `http_port` and
 `ws_port`, and the listener also restores the terminal from `atexit` for the
 exits that never reach a teardown at all.
+
+The web UI was retired in #3052, and with it the port that failed most.  The
+guarantee stands, so these now fail what still can: the live server, which
+starts after the display, and the run itself, which starts after everything -
+the keystroke listener included.
 """
 
 import atexit
@@ -30,13 +35,13 @@ import socket
 import sys
 import termios
 import typing
-import unittest.mock
 
 import pytest
 
 import subsequence
+import subsequence.composition
 import subsequence.keystroke
-import subsequence.web_ui
+import subsequence.live_server
 
 
 REPO_ROOT = str(pathlib.Path(subsequence.__file__).resolve().parent.parent)
@@ -69,11 +74,10 @@ def test_a_service_that_fails_to_start_still_stops_the_keystroke_listener (
 	patch_midi: None,
 ) -> None:
 
-	"""The listener starts before the web UI, and is what holds the terminal."""
+	"""The listener holds the terminal, and the run starts after it."""
 
 	composition = _piece()
 	composition.hotkeys()
-	composition.web_ui()
 
 	stopped: typing.List[str] = []
 
@@ -82,16 +86,16 @@ def test_a_service_that_fails_to_start_still_stops_the_keystroke_listener (
 		lambda self: stopped.append("keystroke"),
 	)
 
-	def will_not_start (self: typing.Any) -> None:
+	async def will_not_start (sequencer: typing.Any) -> None:
 		raise OSError(98, "Address already in use")
 
-	monkeypatch.setattr(subsequence.web_ui.WebUI, "start", will_not_start)
+	monkeypatch.setattr(subsequence.composition, "run_until_stopped", will_not_start)
 
 	with pytest.raises(OSError):
 		composition.play()
 
 	assert stopped == ["keystroke"], \
-		"the web UI failed to start and the terminal was left to the listener's daemon thread"
+		"the run failed to start and the terminal was left to the listener's daemon thread"
 
 
 def test_a_service_that_fails_to_start_still_stops_the_display (
@@ -103,7 +107,7 @@ def test_a_service_that_fails_to_start_still_stops_the_display (
 
 	composition = _piece()
 	composition.display()
-	composition.web_ui()
+	composition.live(port = _free_port())
 
 	stopped: typing.List[str] = []
 
@@ -112,10 +116,10 @@ def test_a_service_that_fails_to_start_still_stops_the_display (
 		lambda self: stopped.append("display"),
 	)
 
-	def will_not_start (self: typing.Any) -> None:
+	async def will_not_start (self: typing.Any) -> None:
 		raise OSError(98, "Address already in use")
 
-	monkeypatch.setattr(subsequence.web_ui.WebUI, "start", will_not_start)
+	monkeypatch.setattr(subsequence.live_server.LiveServer, "start", will_not_start)
 
 	with pytest.raises(OSError):
 		composition.play()
@@ -151,49 +155,6 @@ def test_an_ordinary_run_still_tears_everything_down (
 	# A render starts no listener at all — that is the render contract (#2995).
 	assert started == []
 	assert stopped == []
-
-
-# ---------------------------------------------------------------------------
-# The port is the musician's to move
-# ---------------------------------------------------------------------------
-
-def test_web_ui_ports_reach_the_server (patch_midi: None) -> None:
-
-	"""`web_ui()` took hosts but no ports, so a taken 8080 could not be moved."""
-
-	composition = _piece()
-	composition.web_ui(http_port = 8090, ws_port = 8775)
-
-	seen: typing.Dict[str, typing.Any] = {}
-
-	original = subsequence.web_ui.WebUI.__init__
-
-	def recording (self: typing.Any, composition: typing.Any, **kwargs: typing.Any) -> None:
-		seen.update(kwargs)
-		original(self, composition, **kwargs)
-
-	def will_not_start (self: typing.Any) -> None:
-		raise OSError(98, "Address already in use")
-
-	with unittest.mock.patch.object(subsequence.web_ui.WebUI, "__init__", recording), \
-	     unittest.mock.patch.object(subsequence.web_ui.WebUI, "start", will_not_start):
-
-		with pytest.raises(OSError):
-			composition.play()
-
-	assert seen.get("http_port") == 8090, seen
-	assert seen.get("ws_port") == 8775, seen
-
-
-def test_the_web_ui_ports_still_default_to_the_documented_pair (patch_midi: None) -> None:
-
-	"""Adding the parameters must not move anybody's dashboard."""
-
-	composition = _piece()
-	composition.web_ui()
-
-	assert composition._web_ui_http_port == 8080
-	assert composition._web_ui_ws_port == 8765
 
 
 # ---------------------------------------------------------------------------
@@ -285,8 +246,9 @@ def test_a_failed_startup_leaves_the_terminal_usable () -> None:
 
 	"""The finding as the musician meets it: echo and line editing survive.
 
-	Runs a composition on a real pty with the dashboard's port already taken,
-	and reads the terminal flags afterwards.
+	Runs a composition on a real pty whose run fails to start, after the
+	keystroke listener has taken the terminal, and reads the flags afterwards.
+	It used the web UI's port, taken, until the web UI was retired (#3052).
 
 	Two independent mechanisms hold this up — the teardown in `_run`'s
 	`finally`, and the listener's `atexit` restore — so breaking either one
@@ -295,20 +257,14 @@ def test_a_failed_startup_leaves_the_terminal_usable () -> None:
 	gets a usable terminal back, however that is achieved.
 	"""
 
-	port = _free_port()
-
-	blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-	blocker.bind(("127.0.0.1", port))
-	blocker.listen(1)
-
 	child_code = (
-		"import subsequence\n"
+		"import subsequence, subsequence.composition\n"
+		"async def fails_to_start(sequencer): raise OSError(98, 'Address already in use')\n"
+		"subsequence.composition.run_until_stopped = fails_to_start\n"
 		"c = subsequence.Composition(bpm=480, output_device='Dummy MIDI')\n"
 		"@c.pattern(channel=1, beats=4)\n"
 		"def d(p): p.note(beat=0, pitch=36, velocity=100)\n"
 		"c.hotkeys()\n"
-		f"c.web_ui(http_port={port})\n"
 		"try:\n"
 		"    c.play()\n"
 		"except BaseException as e:\n"
@@ -376,8 +332,8 @@ def test_a_failed_startup_leaves_the_terminal_usable () -> None:
 
 		after = flags(master)
 
-		assert b"FAILED" in seen, \
-			f"the port was taken but the composition did not fail: {seen[-500:]!r}"
+		assert b"FAILED OSError" in seen, \
+			f"the run was made to fail but the composition did not: {seen[-500:]!r}"
 
 		changed = [name for name in before if before[name] != after[name]]
 
@@ -386,4 +342,3 @@ def test_a_failed_startup_leaves_the_terminal_usable () -> None:
 
 	finally:
 		os.close(master)
-		blocker.close()

@@ -126,6 +126,39 @@ def test_draw_writes_to_stderr (patch_midi: None) -> None:
 	assert "test status" in output
 
 
+def test_draw_puts_the_signal_lines_above_the_status_line (patch_midi: None) -> None:
+
+	"""The region is signal lines then the status line, and the redraw counts both (#3052).
+
+	The count is what the next redraw moves the cursor up by, so a count that left the
+	signal lines out would leave a stale copy of them behind on every refresh.
+	"""
+
+	comp = _make_composition(patch_midi)
+	comp.conductor.lfo("swell", shape="sine", cycle_beats=16.0)
+	comp.conductor.lfo("tide", shape="sine", cycle_beats=16.0)
+
+	display = subsequence.display.Display(comp)
+	display._active = True
+
+	stream = io.StringIO()
+
+	import sys
+	original_stderr = sys.stderr
+	sys.stderr = stream
+
+	try:
+		display.update()
+	finally:
+		sys.stderr = original_stderr
+
+	output = stream.getvalue()
+
+	assert display._last_signals, "no signal lines were built"
+	assert output.index("Swell:") < output.index("Tide:") < output.index("125.00 BPM"), output
+	assert display._drawn_line_count == len(display._last_signals) + 1
+
+
 def test_clear_line_writes_ansi (patch_midi: None) -> None:
 
 	"""clear_line() should write carriage return and clear-to-end-of-line."""
@@ -285,19 +318,20 @@ def test_composition_display_disable (patch_midi: None) -> None:
 	assert comp._display is None
 
 
-def test_format_status_with_conductor_signals (patch_midi: None) -> None:
+def test_the_signal_lines_carry_every_conductor_signal (patch_midi: None) -> None:
 
-	"""Status line should include conductor signal names and formatted values."""
+	"""Conductor signals are shown by name and value, on lines of their own rather than the status line (#3052)."""
 
 	comp = _make_composition(patch_midi)
 	comp.conductor.lfo("swell", shape="triangle", cycle_beats=16.0)
 	comp.conductor.line("ramp", start_val=0.0, end_val=1.0, duration_beats=32.0)
 
 	display = subsequence.display.Display(comp)
-	status = display._format_status()
+	signals = "  ".join(display._format_signals())
 
-	assert "Swell:" in status
-	assert "Ramp:" in status
+	assert "Swell:" in signals
+	assert "Ramp:" in signals
+	assert "Swell:" not in display._format_status()
 
 
 def test_format_status_no_conductor_signals (patch_midi: None) -> None:
@@ -311,6 +345,7 @@ def test_format_status_no_conductor_signals (patch_midi: None) -> None:
 	# Should contain standard parts but no signal formatting.
 	assert "125.00 BPM" in status
 	assert ":" not in status.split("Key:")[-1].split("Bar:")[0].strip()
+	assert display._format_signals() == []
 
 
 def test_section_display_syncs_with_bar_counter (patch_midi: None) -> None:
@@ -359,10 +394,10 @@ def test_conductor_signals_sorted (patch_midi: None) -> None:
 	comp.conductor.lfo("alpha", shape="sine", cycle_beats=16.0)
 
 	display = subsequence.display.Display(comp)
-	status = display._format_status()
+	signals = "  ".join(display._format_signals())
 
-	alpha_pos = status.index("Alpha:")
-	zebra_pos = status.index("Zebra:")
+	alpha_pos = signals.index("Alpha:")
+	zebra_pos = signals.index("Zebra:")
 
 	assert alpha_pos < zebra_pos
 

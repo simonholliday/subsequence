@@ -331,5 +331,4 @@ else:
 if __name__ == "__main__":
 
 	composition.display(grid=True, grid_scale=4)
-	composition.web_ui()
 	composition.play()

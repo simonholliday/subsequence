@@ -123,7 +123,6 @@ The top-level controller for a musical piece.
 | `unmute(name) -> None` | Unmute a previously muted pattern. |
 | `unregister(name) -> None` | Fully remove a running pattern from rotation. |
 | `watch(path, poll_interval) -> None` | Watch a Python file and reload it into the composition on every save. |
-| `web_ui(http_host, ws_host, http_port, ws_port) -> None` | Enable the realtime Web UI Dashboard. |
 
 
 ## `PatternBuilder`

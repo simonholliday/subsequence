@@ -140,15 +140,13 @@ Integration:
   fire any action - with optional bar-boundary quantisation.
 - **Real-time pattern triggering.** ``composition.trigger()`` generates
   one-shot patterns in response to sensors, OSC, or any event.
-- **Terminal display.** Live status line (BPM, bar, section, chord).
+- **Terminal display.** Live status line (BPM, bar, section, chord),
+  with the conductor's signals on lines of their own above it.
   Add ``grid=True`` for an ASCII pattern grid showing velocity and
   sustain - makes legato, detached, and staccato articulations visually
   distinct at a glance.
   Add ``grid_scale=2`` to zoom in horizontally, revealing swing and
   groove micro-timing.
-- **Web UI Dashboard (Beta).** Enable with ``composition.web_ui()`` to 
-  broadcast live composition metadata and visualise piano-roll pattern 
-  grids in a reactive HTTP/WebSocket browser dashboard.
 - **Ableton Link.** Industry-standard wireless tempo/phase sync
   (``comp.link()``; requires ``pip install subsequence[link]``).
   Any Link-enabled app on the same LAN - Ableton Live, iOS synths,

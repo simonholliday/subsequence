@@ -274,7 +274,7 @@ def _package_value (node: ast.expr) -> typing.Any:
 # machine.  Building a Composition was on this list until #2995 made it open
 # nothing; the examples that declare patterns on one now run (#3486).
 _UNSAFE = (
-	".play(", ".render(", ".live(", ".watch(", ".web_ui(", ".osc(", ".link(",
+	".play(", ".render(", ".live(", ".watch(", ".osc(", ".link(",
 	"helpers.wing", "midi_input", "midi_output", "input(", "while True",
 )
 

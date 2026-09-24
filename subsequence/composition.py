@@ -43,7 +43,6 @@ import subsequence.progressions
 import subsequence.sequence_utils
 import subsequence.sequencer
 import subsequence.voicings
-import subsequence.web_ui
 import subsequence.weighted_graph
 import subsequence.conductor
 import subsequence.form_state
@@ -1862,12 +1861,6 @@ class Composition:
 		self.data: typing.Dict[str, typing.Any] = {}
 		self._osc_server: typing.Optional[subsequence.osc.OscServer] = None
 		self.conductor = subsequence.conductor.Conductor()
-		self._web_ui_enabled: bool = False
-		self._web_ui_http_host: str = "127.0.0.1"
-		self._web_ui_ws_host: str = "127.0.0.1"
-		self._web_ui_http_port: int = 8080
-		self._web_ui_ws_port: int = 8765
-		self._web_ui_server: typing.Optional[subsequence.web_ui.WebUI] = None
 		self._link_quantum: typing.Optional[float] = None
 
 		# Hotkey state — populated by hotkeys() and hotkey().
@@ -3969,37 +3962,6 @@ class Composition:
 		else:
 			self._display = None
 
-	def web_ui (
-		self,
-		http_host: str = "127.0.0.1",
-		ws_host:   str = "127.0.0.1",
-		http_port: int = 8080,
-		ws_port:   int = 8765,
-	) -> None:
-
-		"""
-		Enable the realtime Web UI Dashboard.
-
-		When enabled, Subsequence instantiates a WebSocket server that broadcasts
-		the current state, signals, and active patterns (with high-res timing and
-		note data) to any connected browser clients.
-
-		Both servers bind to localhost by default.  Pass ``http_host`` / ``ws_host``
-		(e.g. "0.0.0.0") to opt into LAN exposure - the dashboard is read-only but
-		broadcasts full composition state, so only do so on a trusted network.
-
-		``http_port`` and ``ws_port`` move the dashboard when something else
-		already holds 8080 or 8765 - another Subsequence piece, most often::
-
-			composition.web_ui(http_port=8090, ws_port=8775)
-		"""
-
-		self._web_ui_enabled = True
-		self._web_ui_http_host = http_host
-		self._web_ui_ws_host = ws_host
-		self._web_ui_http_port = http_port
-		self._web_ui_ws_port = ws_port
-
 	def midi_input (self, device: str, clock_follow: bool = False, name: typing.Optional[str] = None) -> None:
 
 		"""
@@ -4867,7 +4829,7 @@ class Composition:
 			send_port: Port to send state updates to (default 9001).
 			send_host: The IP address to send updates to (default "127.0.0.1").
 			receive_host: Interface to listen on (default "127.0.0.1" - this
-				machine only, as for ``live()`` and ``web_ui()``).  Pass
+				machine only, as for ``live()``).  Pass
 				``receive_host="0.0.0.0"`` to let an OSC controller elsewhere
 				on the network reach it.  A listener can change tempo, mute
 				parts and write data, so that is worth doing deliberately
@@ -5158,8 +5120,8 @@ class Composition:
 
 			logger.info(f"Unregistered pattern: {name}")
 
-		# The running-patterns dict is iterated by the display, web UI, and
-		# reschedule loop on the event loop thread — mutate it there when this
+		# The running-patterns dict is iterated by the display and the
+		# reschedule loop on the event loop thread - mutate it there when this
 		# call arrives from another thread (e.g. a scheduled function's).
 		self._sequencer._on_the_clock(_finalise_removal)
 
@@ -7321,9 +7283,9 @@ class Composition:
 
 		# Every service starts INSIDE this try, so one that fails to start
 		# still tears down the ones already up.  They used to start before it,
-		# and a single busy port — the web UI's, most often — skipped the
-		# whole teardown below and handed the musician back a terminal with
-		# no echo and no line editing (#3035).
+		# and a single busy port - the web dashboard's, most often, until it was
+		# retired (#3052) - skipped the whole teardown below and handed the
+		# musician back a terminal with no echo and no line editing (#3035).
 		try:
 			if self._display is not None and not self._sequencer.render_mode:
 				self._display.start()
@@ -7361,28 +7323,12 @@ class Composition:
 					self._list_hotkeys()
 				# If not active, KeystrokeListener.start() already logged a warning.
 
-			if self._web_ui_enabled and not self._sequencer.render_mode:
-				self._web_ui_server = subsequence.web_ui.WebUI(
-					self,
-					http_host = self._web_ui_http_host,
-					ws_host   = self._web_ui_ws_host,
-					http_port = self._web_ui_http_port,
-					ws_port   = self._web_ui_ws_port,
-				)
-				self._web_ui_server.start()
-
 			await run_until_stopped(self._sequencer)
 		finally:
 			# Tear down every service even if run_until_stopped (or an earlier
 			# stop) raised, and guard each individually, so one failure can't
 			# strand the rest — most importantly the keystroke listener's
 			# terminal restore.
-			if self._web_ui_server is not None:
-				try:
-					self._web_ui_server.stop()
-				except Exception:
-					logger.exception("Error stopping web UI")
-
 			if self._live_server is not None:
 				try:
 					await self._live_server.stop()

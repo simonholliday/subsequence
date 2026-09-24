@@ -1,7 +1,7 @@
 """OSC listens on this machine unless it is asked not to (#3045).
 
-`Composition.osc()` defaulted `receive_host="0.0.0.0"` — every interface —
-while `web_ui()` and `live()` bind localhost. An OSC sender is not a passive
+`Composition.osc()` defaulted `receive_host="0.0.0.0"` - every interface -
+while `live()` binds localhost (as `web_ui()` did, until #3052 retired it). An OSC sender is not a passive
 observer: it can change tempo, mute parts and write data, and a future-dated
 bundle used to freeze the clock outright (#3001).
 
@@ -9,11 +9,13 @@ Decision 15 of #2991: default to `127.0.0.1`, let `"0.0.0.0"` opt in, and say
 in the startup log which of the two it chose.
 """
 
+import asyncio
 import inspect
 
 import pytest
 
 import subsequence
+import subsequence.live_server
 import subsequence.osc
 
 
@@ -39,18 +41,22 @@ def test_the_osc_server_itself_defaults_the_same_way () -> None:
 	assert default == "127.0.0.1"
 
 
-def test_osc_agrees_with_the_other_two_servers () -> None:
+def test_osc_agrees_with_the_live_server (patch_midi: None) -> None:
 
-	"""The point is that one of three was different; say so mechanically."""
+	"""The point is that one server was different; say so mechanically, where the live server really binds."""
 
-	web_ui = inspect.signature(subsequence.Composition.web_ui).parameters
-
-	assert web_ui["http_host"].default == "127.0.0.1"
-	assert web_ui["ws_host"].default == "127.0.0.1"
+	async def bound () -> str:
+		server = subsequence.live_server.LiveServer(subsequence.Composition(bpm = 120), port = 0)
+		await server.start()
+		try:
+			assert server._server is not None
+			return str(server._server.sockets[0].getsockname()[0])
+		finally:
+			await server.stop()
 
 	osc = inspect.signature(subsequence.Composition.osc).parameters
 
-	assert osc["receive_host"].default == web_ui["http_host"].default
+	assert osc["receive_host"].default == asyncio.run(bound()) == "127.0.0.1"
 
 
 def test_the_lan_is_still_available_to_anybody_who_asks (patch_midi: None) -> None:

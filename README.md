@@ -144,7 +144,6 @@ Planned, roughly in priority order:
 
 - **Example library** - more short, single-screen compositions across styles (minimal techno, ambient generative, polyrhythmic, data-driven).
 - **MIDI file import & analysis** - load `.mid` files and extract rhythmic or harmonic content to feed the algorithms (e.g. a Markov chain trained on a Bach invention).
-- **Visual dashboard** - a richer real-time view of the chord graph, conductor signals, and active patterns.
 - **Starter templates** - ready-made genre starting points for new compositions.
 - **Network sync** - share conductor signals, progressions, and composition data between instances (tempo sync is already handled by Ableton Link).
 - **Further out:** standalone Raspberry Pi mode, performance profiling, live-coding UX (editor integration), and CV/Gate output for modular synths.
@@ -177,7 +176,6 @@ Subsequence makes use of these excellent open-source libraries:
 | [python-rtmidi ↗](https://github.com/SpotlightKid/python-rtmidi) | Real-time MIDI I/O | MIT |
 | [python-osc ↗](https://github.com/attwad/python-osc) | OSC protocol support | Unlicense |
 | [pymididefs ↗](https://github.com/simonholliday/PyMidiDefs) | Canonical MIDI 1.0/2.0 constant definitions | MIT |
-| [websockets ↗](https://github.com/python-websockets/websockets) | Web UI dashboard communication | BSD-3-Clause |
 | [aalink ↗](https://github.com/artfwo/aalink) *(optional)* | Ableton Link integration | GPL-3.0 |
 
 [Ableton Link ↗](https://www.ableton.com/en/link/) is a technology by Ableton AG. The `aalink` Python wrapper is written by Artem Popov and licensed under GPL-3.0, which is compatible with Subsequence's AGPL-3.0 license.
@@ -192,6 +190,6 @@ This project is managed with [Subroutine](https://github.com/simonholliday/subro
 
 Subsequence is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPLv3). You are free to use, modify, and distribute it under the terms of the AGPL. If you run a modified version as part of a network service, you must make the source code available to its users.
 
-The core dependencies (mido, python-rtmidi, python-osc, websockets) are all permissively licensed (MIT, Unlicense, BSD-3-Clause). The optional Ableton Link integration uses `aalink` (GPL-3.0), compatible with the AGPL.
+The core dependencies (mido, python-rtmidi, python-osc) are all permissively licensed (MIT, Unlicense). The optional Ableton Link integration uses `aalink` (GPL-3.0), compatible with the AGPL.
 
 **Commercial licensing.** To use Subsequence in a proprietary or closed-source product without the obligations of the AGPL, contact simon.holliday@protonmail.com to discuss a commercial license.

@@ -36,7 +36,6 @@ import subsequence.progressions
 import subsequence.sequence_utils
 import subsequence.sequencer
 import subsequence.voicings
-import subsequence.web_ui
 
 
 def _builder (
@@ -659,20 +658,6 @@ async def test_link_tempo_change_recorded_as_set_tempo (patch_midi: None) -> Non
 	assert len(tempos) == 1
 	assert tempos[0].tempo == 600000		# mido.bpm2tempo(100)
 	assert sequencer.current_bpm == pytest.approx(100.0)
-
-
-# ── web_ui: the dashboard reports the live tempo ───────────────────────────────
-
-def test_web_ui_state_reports_live_bpm (patch_midi: None) -> None:
-
-	"""_get_state() reads the sequencer's current_bpm, not the declared comp.bpm."""
-
-	comp = subsequence.Composition(output_device="Dummy MIDI", bpm=120, key="C")
-	ui = subsequence.web_ui.WebUI(comp)
-
-	comp._sequencer.current_bpm = 133.5		# a live tempo change
-
-	assert ui._get_state(comp)["bpm"] == 133.5
 
 
 # ── midi_utils: headless multi-output selection fails usably ───────────────────

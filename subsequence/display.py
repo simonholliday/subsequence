@@ -1,8 +1,9 @@
 """Live terminal dashboard for composition playback.
 
 Provides a persistent status line showing the current bar, section, chord, BPM,
-and key.  Optionally renders an ASCII grid visualisation of all running patterns
-above the status line, showing which steps have notes and at what velocity.
+and key, with the conductor's signals on lines of their own above it.
+Optionally renders an ASCII grid visualisation of all running patterns above
+those, showing which steps have notes and at what velocity.
 
 Log messages scroll above the dashboard without disruption.
 
@@ -18,6 +19,12 @@ The status line updates every beat and looks like:
 
 ```text
 125.00 BPM  Key: E  Bar: 17.1  [chorus 1/8]  Chord: Em7
+```
+
+A piece with conductor signals shows each above it, as many lines as they need:
+
+```text
+Brightness: 0.72  Density: 0.40  Swell: 0.15
 ```
 
 The grid (when enabled) updates every bar and looks like:
@@ -65,11 +72,12 @@ def _fit_to_terminal (parts: typing.List[str]) -> str:
 	behind and the display walked down the screen.
 
 	Whole parts are dropped from the RIGHT before anything is truncated, so a
-	line that does not fit loses a conductor signal rather than half of the
-	chord. The parts are ordered tempo, key, bar, section, chord, signals -
-	so what goes first is what a musician can most afford to lose, and the
-	chord survives a narrow terminal. Only when even the first part is too
-	wide is the text itself cut.
+	line that does not fit loses its last part rather than half of the
+	chord. The parts are ordered tempo, key, bar, section, chord - so what
+	goes first is what a musician can most afford to lose, and the chord
+	survives a narrow terminal. Only when even the first part is too wide is
+	the text itself cut.  The conductor's signals used to come last and so
+	go first; they have lines of their own now (#3052).
 	"""
 
 	width = shutil.get_terminal_size(fallback = (80, 24)).columns
@@ -91,6 +99,27 @@ def _fit_to_terminal (parts: typing.List[str]) -> str:
 		return line[:width]
 
 	return line[:width - len(_TRUNCATION)] + _TRUNCATION
+
+
+def _wrap_to_terminal (parts: typing.List[str]) -> typing.List[str]:
+
+	"""Lay the parts out on as many lines as they need, none wider than the terminal.
+
+	A part is never split across two lines; one wider than the terminal on its
+	own is cut, as the status line cuts it.
+	"""
+
+	width = shutil.get_terminal_size(fallback = (80, 24)).columns
+	lines: typing.List[str] = []
+
+	for part in parts:
+
+		if lines and (width <= 0 or len(lines[-1]) + 2 + len(part) <= width):
+			lines[-1] += "  " + part
+		else:
+			lines.append(_fit_to_terminal([part]))
+
+	return lines
 
 
 
@@ -424,9 +453,10 @@ class Display:
 	"""Live-updating terminal dashboard showing composition state.
 
 	Reads bar, section, chord, BPM, and key from the ``Composition`` and renders
-	a persistent region to stderr.  When ``grid=True`` an ASCII pattern grid is
-	rendered above the status line.  A custom ``DisplayLogHandler`` ensures log
-	messages scroll cleanly above the dashboard.
+	a persistent region to stderr.  Conductor signals get lines of their own
+	above the status line, wrapped to the terminal's width, so every one shows.
+	When ``grid=True`` an ASCII pattern grid is rendered above those.  A custom
+	``DisplayLogHandler`` ensures log messages scroll cleanly above the dashboard.
 
 	Example:
 		```python
@@ -453,14 +483,15 @@ class Display:
 		self._handler: typing.Optional[DisplayLogHandler] = None
 		self._saved_handlers: typing.List[logging.Handler] = []
 		self._last_line: str = ""
+		self._last_signals: typing.List[str] = []
 		self._last_bar: typing.Optional[int] = None
 		self._cached_section: typing.Any = None
 		self._grid: typing.Optional[GridDisplay] = GridDisplay(composition, scale=grid_scale) if grid else None
 		self._last_grid_bar: typing.Optional[int] = None
 		self._drawn_line_count: int = 0
 		# Serialises terminal writes: update()/draw() run on the event loop,
-		# but DisplayLogHandler.emit() runs on whatever thread logged (e.g.
-		# the web UI's HTTP worker) — unsynchronised, an emit mid-draw would
+		# but DisplayLogHandler.emit() runs on whatever thread logged (a
+		# worker thread, say) - unsynchronised, an emit mid-draw would
 		# interleave ANSI sequences and garble the dashboard.  RLock because
 		# emit() holds it across its clear_line() → write → draw() sequence.
 		self._render_lock = threading.RLock()
@@ -533,6 +564,7 @@ class Display:
 			return
 
 		self._last_line = self._format_status()
+		self._last_signals = self._format_signals()
 
 		# Rebuild grid data only when the bar counter changes.
 		if self._grid is not None:
@@ -553,7 +585,7 @@ class Display:
 		with self._render_lock:
 
 			grid_lines = self._grid._lines if self._grid is not None else []
-			total = len(grid_lines) + 1  # grid lines + status line
+			total = len(grid_lines) + len(self._last_signals) + 1  # grid, signals, status
 
 			if grid_lines:
 				total += 1  # separator line
@@ -569,6 +601,9 @@ class Display:
 				sys.stderr.write(f"\r\033[K{sep}\n")
 				for line in grid_lines:
 					sys.stderr.write(f"\r\033[K{line}\n")
+
+			for line in self._last_signals:
+				sys.stderr.write(f"\r\033[K{line}\n")
 
 			# Status line (no trailing newline — cursor stays on this line).
 			sys.stderr.write(f"\r\033[K{self._last_line}")
@@ -652,15 +687,26 @@ class Display:
 		if chord is not None:
 			parts.append(f"Chord: {chord.name()}")
 
-		# Conductor signals (when any are registered).  builder_bar is the
-		# lookahead bar - deliberately the same time base the pattern builders
-		# read, so the status line shows the values shaping what you are about
-		# to hear (the section line above shows playing-bar time instead).
-		conductor = comp.conductor
-		if conductor.signal_names:
-			bar_start = comp.builder_bar * subsequence.metre.bar_beats(comp.sequencer.time_signature)
-			for name in conductor.signal_names:
-				value = conductor.get(name, bar_start)
-				parts.append(f"{name.title()}: {value:.2f}")
-
 		return _fit_to_terminal(parts)
+
+	def _format_signals (self) -> typing.List[str]:
+
+		"""The conductor's signals, on lines of their own above the status line.
+
+		They shared the status line until #3052, came last on it, and so were the
+		first thing a narrow terminal dropped: a piece with a few signals never
+		showed them all.  Each is read at builder_bar, the lookahead bar -
+		deliberately the time base the pattern builders read, so these show the
+		values shaping what you are about to hear (the status line's section
+		shows playing-bar time instead).
+		"""
+
+		comp = self._composition
+		conductor = comp.conductor
+
+		if not conductor.signal_names:
+			return []
+
+		bar_start = comp.builder_bar * subsequence.metre.bar_beats(comp.sequencer.time_signature)
+
+		return _wrap_to_terminal([f"{name.title()}: {conductor.get(name, bar_start):.2f}" for name in conductor.signal_names])

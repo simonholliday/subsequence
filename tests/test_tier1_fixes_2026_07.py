@@ -2,8 +2,9 @@
 
 Covers the behavioural fixes applied directly by the review follow-up:
 harmony() style preservation, performer-mute ownership, partial-build
-clearing, set_bpm validation order, the web dashboard port substitution,
-form navigation error context, and the ChordPattern removal.
+clearing, set_bpm validation order, form navigation error context, and the
+ChordPattern removal.  (The web dashboard's port substitution went with the
+dashboard, #3052.)
 """
 
 import random
@@ -142,28 +143,6 @@ def test_set_bpm_validates_before_link_proposal (patch_midi: None) -> None:
 		seq.set_bpm(0)
 
 	assert spy.proposed == []
-
-
-def test_dashboard_page_carries_ws_port_token () -> None:
-
-	"""index.html uses the __WS_PORT__ token web_ui.py substitutes at serve time.
-
-	The page hardcoding 8765 made WebUI(ws_port=...) a dashboard that
-	could never connect; the raw file must keep a regex fallback so it
-	still works opened directly from disk.
-	"""
-
-	import os
-	import subsequence.web_ui
-
-	page_path = os.path.join(os.path.dirname(subsequence.web_ui.__file__), "assets", "web", "index.html")
-	page = open(page_path, encoding="utf-8").read()
-
-	assert "__WS_PORT__" in page
-	assert "8765" in page		# the no-server fallback
-
-	substituted = page.replace("__WS_PORT__", "9999")
-	assert "9999" in substituted
 
 
 def test_queue_next_error_names_the_operation () -> None:

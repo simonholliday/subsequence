@@ -422,5 +422,4 @@ def drums (p):
 if __name__ == "__main__":
 
 	composition.display(grid=True, grid_scale=2)
-	composition.web_ui()
 	composition.play()
