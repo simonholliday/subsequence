@@ -240,11 +240,14 @@ def test_quantize_pitch_will_not_snap_below_zero (caplog: pytest.LogCaptureFixtu
 
 def test_a_chord_stacked_past_the_ceiling_folds () -> None:
 
-	"""`chord("C", root=110, count=8)` reached 132 and 136."""
+	"""`chord("C", root=110, count=8)` reached 132 and 136.
+
+	Folded, they landed on 120 and 124, which the chord already held, and are left out (#3529).
+	"""
 
 	tones = subsequence.chords.parse_chord("C").tones(110, count = 8)
 
-	assert tones == [108, 112, 115, 120, 124, 127, 120, 124]
+	assert tones == [108, 112, 115, 120, 124, 127]
 	assert all(0 <= tone <= 127 for tone in tones)
 
 
@@ -256,6 +259,29 @@ def test_a_chord_never_leaves_the_range (root: int, count: int) -> None:
 
 	for tone in subsequence.chords.parse_chord("Cmaj7").tones(root, count = count):
 		assert 0 <= tone <= 127, f"root {root} count {count} produced {tone}"
+
+
+@pytest.mark.parametrize("name", ["C", "Cm", "Caug", "Csus4", "Cmaj7", "C7", "Cm7", "Cdim7"])
+@pytest.mark.parametrize("root", [0, 4, 60, 110, 120, 127])
+@pytest.mark.parametrize("count", [None, 3, 6, 8, 12])
+def test_a_voicing_never_doubles_a_pitch (name: str, root: int, count: typing.Optional[int]) -> None:
+
+	"""One pitch twice on one channel is one note that the first note-off ends (#3529)."""
+
+	tones = subsequence.chords.parse_chord(name).tones(root, count = count)
+
+	assert len(tones) == len(set(tones)), f"{name} from {root}, count {count}: {tones}"
+
+
+def test_the_chord_verb_sends_each_pitch_once () -> None:
+
+	"""What reaches the channel: six distinct notes of C major fit between 108 and 127."""
+
+	pattern = subsequence.pattern.Pattern(channel = 0, length = 4)
+	builder = subsequence.pattern_builder.PatternBuilder(pattern = pattern, cycle = 0, default_grid = 16)
+	builder.chord(subsequence.chords.parse_chord("C"), root = 110, count = 8)
+
+	assert sorted(note.pitch for step in pattern.steps.values() for note in step.notes) == [108, 112, 115, 120, 124, 127]
 
 
 def test_an_ordinary_chord_is_untouched () -> None:

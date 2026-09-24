@@ -181,7 +181,10 @@ class Chord:
 				Wraps around for values >= number of notes.
 			count: Number of notes to return. When set, the chord intervals cycle
 				into higher octaves until ``count`` notes are produced. When ``None``
-				(default), returns the natural chord tones.
+				(default), returns the natural chord tones.  Near the top or the
+				bottom of the keyboard a tone folds back by octaves, and one that
+				lands on a pitch the chord already holds is left out, so fewer
+				than ``count`` can come back.
 
 		Returns:
 			List of MIDI note numbers for chord tones
@@ -214,15 +217,21 @@ class Chord:
 		# by octaves, so it keeps the note it is and lands where it can sound.
 		if count is not None:
 			n = len(intervals)
-			return [
+			voiced = [
 				subsequence.sequence_utils.fold_to_midi_range(effective_root + intervals[i % n] + 12 * (i // n))
 				for i in range(count)
 			]
+		else:
+			voiced = [
+				subsequence.sequence_utils.fold_to_midi_range(effective_root + interval)
+				for interval in intervals
+			]
 
-		return [
-			subsequence.sequence_utils.fold_to_midi_range(effective_root + interval)
-			for interval in intervals
-		]
+		# A tone folded onto a pitch the chord already holds is dropped.  MIDI cannot
+		# sound one pitch twice on one channel: the second note-on restrikes it and
+		# the first note-off ends both.  From root 110, count=8 folded 132 and 136
+		# back onto 120 and 124, the chord's own tones (#3529).
+		return list(dict.fromkeys(voiced))
 
 
 	def root_note (self, root_midi: int) -> int:
