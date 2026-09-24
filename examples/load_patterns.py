@@ -1,6 +1,6 @@
 """Load patterns from an in-memory string instead of a file.
 
-Shows ``composition.load_patterns(source)`` — useful when patterns arrive
+Shows ``composition.load_patterns(source)`` - useful when patterns arrive
 from somewhere other than the local filesystem.  A typical use case is a
 small web service that accepts pattern uploads from a trusted contributor:
 the HTTP handler takes the request body, calls ``load_patterns`` with it,
@@ -14,7 +14,7 @@ Two ways to use it:
 
 2. **Hot-swap mid-composition.**  After ``play()``, call ``load_patterns()``
    from a worker thread (e.g. a web handler) to swap patterns in.  Behaves
-   exactly like one ``watch()`` reload — same diff-and-unregister semantics.
+   exactly like one ``watch()`` reload - same diff-and-unregister semantics.
 
 The source can declare ``@composition.pattern`` decorators just as a
 watched file would.  ``composition`` and ``subsequence`` are available

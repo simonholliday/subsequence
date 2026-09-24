@@ -1,8 +1,8 @@
-"""Frozen progressions demo — verse and chorus with pre-baked harmony.
+"""Frozen progressions demo - verse and chorus with pre-baked harmony.
 
 This example shows how to capture chord progressions from the live harmony
 engine and lock them to form sections, so the verse always plays the same
-chords and the chorus always plays the same chords — while leaving the
+chords and the chorus always plays the same chords - while leaving the
 bridge to generate freely each time.
 
 Key idea: call composition.harmony() with different key_pull/nir_strength
@@ -10,9 +10,9 @@ values before each freeze() call.  The engine advances through each call,
 so the sections feel harmonically connected even though they repeat.
 
 Form:
-    verse  (8 bars)  — plays ~2–3 times, frozen to a stable diatonic sequence
-    chorus (4 bars)  — plays once per cycle, frozen to a more adventurous sequence
-    bridge (4 bars)  — no section_chords() binding, generates fresh live chords each time
+    verse  (8 bars)  - plays ~2–3 times, frozen to a stable diatonic sequence
+    chorus (4 bars)  - plays once per cycle, frozen to a more adventurous sequence
+    bridge (4 bars)  - no section_chords() binding, generates fresh live chords each time
 """
 
 import logging
@@ -60,7 +60,7 @@ composition.harmony(
 )
 chorus = composition.freeze(4)  # 4 chord changes
 
-# Bridge: no freeze — the engine generates live chords every time it plays.
+# Bridge: no freeze - the engine generates live chords every time it plays.
 # harmony() reconfigures for a suspended colour that suits improvisation.
 composition.harmony(
 	style="suspended",
@@ -82,7 +82,7 @@ composition.form({
 # Bind frozen progressions to sections.
 composition.section_chords("verse",  verse)
 composition.section_chords("chorus", chorus)
-# bridge is intentionally unbound — it always generates live chords.
+# bridge is intentionally unbound - it always generates live chords.
 
 # ---------------------------------------------------------------------------
 # Patterns
@@ -128,7 +128,7 @@ def arp (p, chord):
 		pitches = chord.tones(root=60, count=8)
 		p.arpeggio(pitches, spacing=0.25, velocity=80)
 
-	# Bridge: silence — let the live harmony breathe on its own.
+	# Bridge: silence - let the live harmony breathe on its own.
 
 
 # ---------------------------------------------------------------------------

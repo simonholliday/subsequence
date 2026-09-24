@@ -44,14 +44,14 @@ Listening guide: what you can determine by ear
 
 import logging
 
-# requests is not a subsequence dependency — this example fetches live ISS
+# requests is not a subsequence dependency - this example fetches live ISS
 # telemetry over HTTP and needs it installed separately.
 try:
 	import requests
 except ImportError:
 	raise SystemExit(
 		"This example fetches live ISS position data and needs the 'requests' "
-		"package — install it with: pip install requests"
+		"package - install it with: pip install requests"
 	)
 
 import subsequence
@@ -113,7 +113,7 @@ def fetch_iss (p) -> None:
 		foot    = float(body["footprint"])
 		sol_lat = float(body["solar_lat"])
 		sol_lon = float(body["solar_lon"])
-		daynum  = float(body["daynum"])    # Julian Day Number — logged for context
+		daynum  = float(body["daynum"])    # Julian Day Number - logged for context
 
 		# Normalise to 0–1 using each parameter's known physical range.
 		iss_lat.update(sc(lat, -51.6, 51.6))   # Orbital inclination bounds
@@ -137,7 +137,7 @@ def fetch_iss (p) -> None:
 		)
 
 		# pole_proximity: 0 at the equator, 1 at the orbital extremes (±51.6°).
-		# Latitude oscillates through its full range every ~92-minute orbit —
+		# Latitude oscillates through its full range every ~92-minute orbit -
 		# the fastest-changing ISS parameter and the primary musical driver here.
 		pole_proximity = abs(iss_lat.current - 0.5) * 2
 
@@ -186,12 +186,12 @@ def drums (p):
 	if p.rng.random() < pole_proximity:
 		p.hit_steps("snare_1", [4, 12], velocity=100)
 
-	# Hi-hat: velocity follows latitude — louder in the northern hemisphere,
+	# Hi-hat: velocity follows latitude - louder in the northern hemisphere,
 	# quieter in the south. EasedValue.get() interpolates within each fetch window.
 	p.hit_steps("hi_hat_closed", range(16), velocity=int(100 * iss_lat.get(progress)))
 
 	# Open hi-hat: one accent per bar, placed by the sun's longitude.
-	# A very slow signal — but it IS shifting, and it IS orbital.
+	# A very slow signal - but it IS shifting, and it IS orbital.
 	p.hit_steps("hi_hat_open", [p.data.get("iss_hat_accent", 6)], velocity=60)
 
 
@@ -199,7 +199,7 @@ def drums (p):
 @composition.pattern(channel=DRUMS_CHANNEL, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def ride (p):
 
-	# The ride only plays in sunlight — it brightens the texture and disappears
+	# The ride only plays in sunlight - it brightens the texture and disappears
 	# completely during eclipse, leaving the shaker to fill the space instead.
 	if p.data.get("iss_visibility") != 1.0:
 		return
@@ -217,7 +217,7 @@ def ride (p):
 @composition.pattern(channel=DRUMS_CHANNEL, beats=4, drum_note_map=gm_drums.GM_DRUM_MAP)
 def shaker (p):
 
-	# Shaker fills the darker eclipse texture — steady 16ths with subtle variation.
+	# Shaker fills the darker eclipse texture - steady 16ths with subtle variation.
 	if p.data.get("iss_visibility") == 1.0:
 		return
 
@@ -233,7 +233,7 @@ def arp (p, chord):
 	progress     = (p.cycle % FETCH_BARS) / FETCH_BARS
 	arp_velocity = int(40 + 60 * iss_lon.get(progress))   # 40–100, louder heading east
 
-	# Direction mirrors the ISS's north/south heading — ascending when going north,
+	# Direction mirrors the ISS's north/south heading - ascending when going north,
 	# descending when going south. iss_lat.delta is positive while climbing, negative
 	# while descending. The flip happens naturally at each pole (~every 46 minutes).
 	direction = "low_to_high" if iss_lat.delta >= 0 else "high_to_low"
@@ -246,7 +246,7 @@ def arp (p, chord):
 @composition.pattern(channel=BASS_CHANNEL, beats=4)
 def bass (p, chord):
 
-	# `chord` is injected by the harmony engine — new chord each 8 bars, same rhythm.
+	# `chord` is injected by the harmony engine - new chord each 8 bars, same rhythm.
 	# bass_note() finds the chord's root nearest to E3 (MIDI 52), then drops one octave.
 	bass_root = chord.bass_note(52, octave_offset=-1)
 
@@ -263,7 +263,7 @@ def chords (p, chord):
 	progress = (p.cycle % FETCH_BARS) / FETCH_BARS
 
 	# Solar proximity: when the ISS's latitude aligns with the subsolar latitude,
-	# the ISS is near solar noon — chords swell louder and brighter.
+	# the ISS is near solar noon - chords swell louder and brighter.
 	solar_prox = 1.0 - abs(iss_lat.get(progress) - iss_sol_lat.get(progress))
 	velocity   = 65 + int(30 * solar_prox)   # 65–95
 

@@ -1,4 +1,4 @@
-"""Composition API demo — drums, bass, and arp in E aeolian minor.
+"""Composition API demo - drums, bass, and arp in E aeolian minor.
 
 This is the simplest way to build a composition with Subsequence.
 The Composition class handles the MIDI clock, device discovery, and

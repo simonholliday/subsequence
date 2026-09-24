@@ -1,7 +1,7 @@
-"""Live-coding entry point — runs once and watches the live pattern file.
+"""Live-coding entry point - runs once and watches the live pattern file.
 
 Workflow: run ``python examples/live_init.py``, then open
-``examples/live_patterns.py`` in your editor and edit + save — patterns
+``examples/live_patterns.py`` in your editor and edit + save - patterns
 hot-swap on the next bar without stopping the clock.
 
 The split is intentional: anything that should run once at startup
@@ -22,7 +22,7 @@ A save replaces each pattern's body, and any decorator argument you
 changed (``channel``, ``beats``, ``min_energy`` and the rest), heard from
 its next cycle.  Only a changed ``device`` waits until you restart.
 
-Syntax errors are caught before exec and skipped — your previous
+Syntax errors are caught before exec and skipped - your previous
 patterns keep running until you fix and save again.  Runtime errors
 during reload are also caught and skip the rest of the reload, so a
 half-broken save won't tear down working patterns.
@@ -43,7 +43,7 @@ LIVE_FILE = pathlib.Path(__file__).parent / "live_patterns.py"
 composition = subsequence.Composition(bpm=120, key="E")
 composition.harmony(style="aeolian_minor", cycle_beats=4, key_pull=0.2)
 
-# Watch the live file — changes are picked up on save.
+# Watch the live file - changes are picked up on save.
 composition.watch(LIVE_FILE)
 
 

@@ -1,4 +1,4 @@
-"""Direct Pattern API demo — drums, bass, and arp in E aeolian minor.
+"""Direct Pattern API demo - drums, bass, and arp in E aeolian minor.
 
 This produces the same music as demo.py, but uses the Direct Pattern API:
 Pattern subclasses instead of decorated functions, and a manually managed
@@ -21,7 +21,7 @@ SYNTH_CHANNEL = 0
 
 
 class DrumPattern (subsequence.pattern.Pattern):
-	"""Kick, snare, and hi-hats — built using the PatternBuilder bridge."""
+	"""Kick, snare, and hi-hats - built using the PatternBuilder bridge."""
 
 	def __init__ (self) -> None:
 		super().__init__(channel=DRUMS_CHANNEL, length=4)

@@ -1,7 +1,7 @@
-"""Live-editable pattern file — change me while the composition is running.
+"""Live-editable pattern file - change me while the composition is running.
 
 The ``composition`` and ``subsequence`` names are provided by the watcher;
-do not redefine them here.  Save to apply changes — syntax errors are
+do not redefine them here.  Save to apply changes - syntax errors are
 skipped, valid edits hot-swap on the next bar.
 
 Try while it's running.
@@ -10,7 +10,7 @@ Change the kick to ``[0, 6, 8, 14]`` for a syncopated feel.
 
 Add a ``hi_hat_open`` line at every offbeat: ``[2, 6, 10, 14]``.
 
-Delete the ``drums`` function entirely — drums stop within one bar.
+Delete the ``drums`` function entirely - drums stop within one bar.
 
 Add a second pattern (e.g. a bass line on ``channel=6``).
 """

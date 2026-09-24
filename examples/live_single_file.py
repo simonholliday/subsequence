@@ -1,7 +1,7 @@
-"""Single-file live coding — one file watches itself.
+"""Single-file live coding - one file watches itself.
 
 Run this file with ``python examples/live_single_file.py``.  Edit and
-save it in your editor — patterns reload on the next bar without
+save it in your editor - patterns reload on the next bar without
 stopping the clock, exactly like the two-file watch workflow.
 
 Why two phases in one file work
@@ -10,7 +10,7 @@ Why two phases in one file work
 The file is exec'd twice over its lifetime:
 
 1. **At startup** by Python's normal script execution.  ``__name__`` is
-   ``"__main__"`` and the ``if __name__ == "__main__":`` blocks run —
+   ``"__main__"`` and the ``if __name__ == "__main__":`` blocks run -
    that's where we build the ``Composition``, open MIDI ports, attach
    the watcher and call ``play()``.
 
@@ -23,16 +23,16 @@ The file is exec'd twice over its lifetime:
 Rule of thumb
 ─────────────
 
-* **Inside ``if __name__ == "__main__":``** — anything that should run
+* **Inside ``if __name__ == "__main__":``** - anything that should run
   once: MIDI ports, harmony engine, ``composition.watch(__file__)``,
   ``composition.display(...)``, ``composition.play()``.
-* **Outside the guard** — anything you want to iterate on live:
+* **Outside the guard** - anything you want to iterate on live:
   patterns, scales, constants, and form structure if you want to tweak
   it without restarting.
 
 The two-file workflow (``examples/live_init.py`` + ``examples/live_patterns.py``)
 is still supported and recommended if you prefer the misuse-impossible
-separation — ``examples/live_init.py`` describes it.
+separation - ``examples/live_init.py`` describes it.
 """
 
 import subsequence
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 	composition = subsequence.Composition(bpm=120, key="E")
 	composition.harmony(style="aeolian_minor", cycle_beats=4, key_pull=0.2)
 
-	# Self-watch — ``__file__`` is this file's path when run as a script.
+	# Self-watch - ``__file__`` is this file's path when run as a script.
 	composition.watch(__file__)
 
 

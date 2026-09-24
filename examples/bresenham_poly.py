@@ -27,7 +27,7 @@ DRUM_CHANNEL = 10
 
 composition = subsequence.Composition(bpm=120)
 
-# Shared example asset — loaded from a path relative to this script so the
+# Shared example asset - loaded from a path relative to this script so the
 # example runs from any working directory.
 GROOVE_PATH = pathlib.Path(__file__).parent / "assets" / "Swing 16ths 57.agr"
 groove = subsequence.Groove.from_agr(str(GROOVE_PATH))
