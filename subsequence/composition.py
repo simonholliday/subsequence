@@ -7054,6 +7054,9 @@ class Composition:
 			open_name, port = subsequence.midi_utils.select_input_device(dev_name, callback)
 			if open_name and port is not None:
 				self._sequencer.add_input_device(open_name, port)
+			elif cf and self._sequencer.clock_follow and self._sequencer.clock_device_idx == idx:
+				# The clock the piece follows: without it nothing would play (#3556).
+				self._sequencer._refuse_a_missing_clock(dev_name)
 			else:
 				logger.warning(f"Could not open additional input device '{dev_name}'")
 

@@ -1213,6 +1213,29 @@ class Sequencer:
 			self.input_device_name = device_name
 			self._input_devices.add(device_name, midi_in)
 
+		elif self.clock_follow and self.clock_device_idx == 0:
+			self._refuse_a_missing_clock(self.input_device_name)
+
+	def _refuse_a_missing_clock (self, device_name: str) -> None:
+
+		"""Refuse to start when the input the clock follows did not open (#3556).
+
+		The external-clock loop waits for ticks on that input, so it waited for ever, with
+		one log line to say why.  A port that matched but would not open is the case: a name
+		matching nothing already raises in ``select_input_device()``.  Whatever this run
+		already opened is closed first.
+		"""
+
+		self._input_devices.close_all()
+		self._output_devices.close_all()
+		self._midi_input_queue = None
+
+		raise RuntimeError(
+			f"clock_follow: the MIDI input '{device_name}' did not open (the log says why), so there "
+			"is no clock to follow and nothing would play.  Check that it is connected and that no "
+			"other program holds it, or play without clock_follow to use the internal clock."
+		)
+
 	def _make_input_callback (self, device_idx: int) -> typing.Callable:
 		"""Return a mido callback closure that tags messages with *device_idx*."""
 

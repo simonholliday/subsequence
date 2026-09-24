@@ -1,5 +1,6 @@
 import asyncio
 import time
+import typing
 
 import mido
 import pytest
@@ -26,6 +27,59 @@ def test_sequencer_accepts_input_device (patch_midi: None) -> None:
 
 	assert seq.input_device_name == "Dummy MIDI"
 	assert seq.clock_follow is True
+
+
+@pytest.mark.asyncio
+async def test_a_clock_input_that_will_not_open_is_refused (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""The input a piece follows would not open, and the loop waited for its ticks for ever (#3556).
+
+	The only sign was one log line; the piece now refuses to start, naming the input.
+	"""
+
+	def _will_not_open (name: str, callback: typing.Any = None) -> typing.Any:
+		raise OSError(f"{name} is held by another program")
+
+	monkeypatch.setattr(mido, "open_input", _will_not_open)
+
+	sequencer = subsequence.sequencer.Sequencer(
+		output_device_name = "Dummy MIDI",
+		initial_bpm = 120,
+		input_device_name = "Dummy MIDI",
+		clock_follow = True,
+	)
+
+	try:
+		with pytest.raises(RuntimeError, match = "clock_follow: the MIDI input 'Dummy MIDI' did not open"):
+			await sequencer.start()
+	finally:
+		await sequencer.stop()
+
+
+@pytest.mark.asyncio
+async def test_an_additional_clock_input_that_will_not_open_is_refused (patch_midi: None, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""The same, where the clock is followed from a second input and the first opens (#3556)."""
+
+	open_the_fake = mido.open_input
+
+	def _clock_will_not_open (name: str, callback: typing.Any = None) -> typing.Any:
+
+		if name == "Clock":
+			raise OSError("Clock is held by another program")
+
+		return open_the_fake(name, callback = callback)
+
+	monkeypatch.setattr(mido, "get_input_names", lambda: ["Keys", "Clock"])
+	monkeypatch.setattr(mido, "open_input", _clock_will_not_open)
+
+	composition = subsequence.Composition(output_device = "Dummy MIDI", bpm = 120)
+	composition.midi_input("Keys")
+	composition.midi_input("Clock", clock_follow = True)
+
+	# Unfixed, the run plays on waiting for the clock, so it is given a few seconds.
+	with pytest.raises(RuntimeError, match = "clock_follow: the MIDI input 'Clock' did not open"):
+		await asyncio.wait_for(composition._run(), timeout = 3)
 
 
 def test_clock_follow_without_input_raises (patch_midi: None) -> None:
