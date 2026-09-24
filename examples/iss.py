@@ -87,15 +87,6 @@ iss_footprint = subsequence.easing.EasedValue()  # Ground visibility diameter
 iss_sol_lat   = subsequence.easing.EasedValue()  # Subsolar latitude (−23.4°–23.4°)
 iss_sol_lon   = subsequence.easing.EasedValue()  # Subsolar longitude (−180°–180°)
 
-# Expose them to the Web UI
-composition.data["iss_lat"] = iss_lat
-composition.data["iss_lon"] = iss_lon
-composition.data["iss_alt"] = iss_alt
-composition.data["iss_vel"] = iss_vel
-composition.data["iss_footprint"] = iss_footprint
-composition.data["iss_sol_lat"] = iss_sol_lat
-composition.data["iss_sol_lon"] = iss_sol_lon
-
 
 # At 120 BPM, 16 bars ≈ 32 seconds. All patterns use
 # progress = (p.cycle % FETCH_BARS) / FETCH_BARS
