@@ -170,9 +170,19 @@ GENERATORS: typing.Tuple[str, ...] = (
 #
 # The line here is the exact complement of the one above: **does it reshape
 # notes already placed?**  That is what keeps this a category rather than a
-# leftovers bin, and it is why the tuple is fifteen rather than the twenty-odd
-# methods that merely happen to describe cleanly.  thin and ratchet were filed
-# as generators until #3497, though neither places a note on an empty pattern.
+# leftovers bin, and it is why the tuple is nineteen rather than every method
+# that merely happens to describe cleanly.  thin and ratchet were filed as
+# generators until #3497, though neither places a note on an empty pattern.
+#
+# Four are listed although no surface can drive them, so that everything that
+# reshapes notes can be read from here: subsystem.co draws the catalogue as it
+# stands (#3649).  Each requires something with no control shape, so each
+# reports itself partial, and names what it wanted in ``dropped``:
+#
+#   groove             a Groove template
+#   scale_velocities   a list of factors, one per step
+#   apply_tuning       a Tuning
+#   every              a function, which it applies every nth cycle
 #
 # Out, and why:
 #
@@ -181,10 +191,6 @@ GENERATORS: typing.Tuple[str, ...] = (
 #   program_change     mean "everything that is not a generator", which is not
 #   the *_ramp family  a category and would not survive its first addition.
 #   set_length         changes the pattern, not its notes.
-#   every, groove      real transforms, but each requires something with no
-#   scale_velocities   control shape — a callable, a template, a factor list,
-#   apply_tuning       a Tuning.  Not excluded on principle; they can join as
-#                      partial entries whenever somebody wants them.
 #
 # A transform places nothing on an empty pattern, and adds no note of its own:
 # only ratchet adds any, splitting a note into a burst of copies of it.  That
@@ -195,18 +201,22 @@ TRANSFORMS: typing.Tuple[str, ...] = (
 	"rotate",
 	"snap_to_scale",
 	"swing",
+	"groove",
 	"dropout",
 	"thin",
 	"ratchet",
 	"randomize",
 	"velocity_shape",
+	"scale_velocities",
 	"transpose",
+	"apply_tuning",
 	"invert",
 	"stretch",
 	"legato",
 	"detached",
 	"duration",
 	"reverse",
+	"every",
 )
 
 

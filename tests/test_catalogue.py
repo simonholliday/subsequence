@@ -1074,6 +1074,16 @@ def test_every_transform_returns_the_builder () -> None:
 # The one transform that adds notes: it splits each into a burst of copies of it (#3497).
 _SPLITS_NOTES = {"ratchet"}
 
+# What a partial transform requires and no control can supply, given here so the
+# rule below is run on it too (#3649).  A reshaping function for every(), which
+# applies whatever it is given.
+_UNSHAPED: typing.Dict[str, typing.Dict[str, typing.Any]] = {
+	"groove": {"template": subsequence.Groove.swing(57)},
+	"scale_velocities": {"factors": [1.0, 0.5]},
+	"apply_tuning": {"tuning": subsequence.Tuning.equal(19)},
+	"every": {"fn": lambda p: p.reverse()},
+}
+
 
 def test_a_transform_never_places_a_note () -> None:
 
@@ -1083,27 +1093,64 @@ def test_a_transform_never_places_a_note () -> None:
 	and on a populated one (it may move, shorten, quieten or remove notes, but
 	add none of its own).  Anything failing this is a generator and belongs in
 	the other tuple.  ratchet adds notes, and every one is a copy of a note that
-	was there, which here means pitch 60.
+	was there, which here means pitch 60.  The build is finished before the
+	notes are counted, because apply_tuning() acts only then.
 	"""
 
 	for entry in subsequence.transforms():
 
-		arguments = _arguments_for(entry)
+		arguments = dict(_arguments_for(entry), **_UNSHAPED.get(entry["name"], {}))
 
 		empty = _builder()
 		getattr(empty, entry["name"])(**arguments)
+		empty._finish_build()
 		assert _note_count(empty) == 0, f'{entry["name"]} placed notes on an empty pattern'
 
 		populated = _builder()
 		populated.hit(60, [0.0, 1.0, 2.0, 3.0])
 		before = _note_count(populated)
 		getattr(populated, entry["name"])(**arguments)
+		populated._finish_build()
 
 		if entry["name"] in _SPLITS_NOTES:
 			pitches = {note.pitch for step in populated._pattern.steps.values() for note in step.notes}
 			assert _note_count(populated) > before and pitches == {60}, f'{entry["name"]} added something that was not a copy'
 		else:
 			assert _note_count(populated) <= before, f'{entry["name"]} added notes'
+
+
+def test_every_partial_transform_is_given_what_no_control_can_supply () -> None:
+
+	"""The table above covers exactly the partial transforms, and gives each exactly what it dropped.
+
+	So a transform that joins as partial cannot slip past the rule it is held to,
+	and the table cannot keep an argument a transform no longer requires.
+	"""
+
+	partial = {entry["name"]: entry for entry in subsequence.transforms() if entry["partial"]}
+
+	assert set(_UNSHAPED) == set(partial)
+
+	for name, entry in partial.items():
+		signature = inspect.signature(getattr(subsequence.pattern_builder.PatternBuilder, name))
+		required = {dropped for dropped in entry["dropped"] if signature.parameters[dropped].default is inspect.Parameter.empty}
+		assert set(_UNSHAPED[name]) == required, name
+
+
+def test_the_transforms_no_control_can_drive_are_listed_as_partial () -> None:
+
+	"""groove, scale_velocities, apply_tuning and every reshape notes, so they are listed (#3649).
+
+	subsystem.co draws what the catalogue lists, and a musician looks for groove
+	there.  Each is partial, naming the parameter no control shape can give it.
+	"""
+
+	for name, wanted in (("groove", "template"), ("scale_velocities", "factors"), ("apply_tuning", "tuning"), ("every", "fn")):
+
+		entry = subsequence.describe_transform(name)
+
+		assert entry["partial"] is True, name
+		assert wanted in entry["dropped"], name
 
 
 def test_a_generator_places_notes_on_an_empty_pattern () -> None:
