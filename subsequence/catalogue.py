@@ -75,9 +75,9 @@ list has nothing to index - and declaring it a pool would hand a consumer a
 control that raises rather than one that is merely coarse.
 
 ``partial`` says a *required* parameter has no shape - a list, a dict, a
-callable - so the generator cannot be fully offered.  It is reported rather
-than hidden, because a control that cannot be completed is worse than one that
-is absent, and only the caller can decide which to show.
+callable - so the generator or transform cannot be fully offered.  It is
+reported rather than hidden, because a control that cannot be completed is
+worse than one that is absent, and only the caller can decide which to show.
 
 ``dropped`` names every parameter left out for want of a shape, required or
 not.  ``partial`` alone was not enough: it speaks only for the *required*
@@ -95,11 +95,11 @@ The entries have the same shape, because a surface drives both the same way -
 Each list is a curation judgement rather than a category, and each has a
 mechanical test that :mod:`tests.test_catalogue` runs rather than eyeballs: a
 generator returns the builder and places notes; a transform returns the builder
-and never increases the note count.  Curating by reading names is what once put
-an accessor among the generators (#2096).  Accessors that return data are out of
-both, and so is MIDI plumbing, which emits control events rather than touching
-notes.  See :data:`GENERATORS` and :data:`TRANSFORMS` for the lists and the
-reasoning.
+and adds no note of its own, except ``ratchet``, which splits a note into a
+burst of copies of it.  Curating by reading names is what once put an accessor
+among the generators (#2096).  Accessors that return data are out of both, and
+so is MIDI plumbing, which emits control events rather than touching notes.
+See :data:`GENERATORS` and :data:`TRANSFORMS` for the lists and the reasoning.
 """
 
 import collections.abc
